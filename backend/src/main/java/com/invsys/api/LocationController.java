@@ -50,11 +50,12 @@ public class LocationController {
     }
 
     /**
-     * LBAC-scoped warehouse list for the active session (floor switcher bootstrap).
+     * LBAC-scoped warehouses for the active session (floor switcher bootstrap).
+     * {@code /assigned} is the canonical path; {@code /allowed} is retained as an alias.
      */
-    @GetMapping("/warehouses/allowed")
+    @GetMapping({"/warehouses/assigned", "/warehouses/allowed"})
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
-    public List<Location> listAllowedWarehouses() {
+    public List<Location> listAssignedWarehouses() {
         UUID tenantId = TenantContext.requireTenantId();
         List<Location> warehouses = locationRepository.findByTenantIdAndType(tenantId, "WAREHOUSE");
         if (isElevated()) {

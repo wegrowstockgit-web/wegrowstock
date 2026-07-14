@@ -47,6 +47,9 @@ public class InventoryLedger extends TenantScopedEntity {
     @Column(name = "unit_cost")
     private BigDecimal unitCost;
 
+    @Column(name = "landed_cost_component", nullable = false)
+    private BigDecimal landedCostComponent = BigDecimal.ZERO;
+
     @Column(name = "serial_number_id")
     private UUID serialNumberId;
 
@@ -144,6 +147,14 @@ public class InventoryLedger extends TenantScopedEntity {
 
     public void setUnitCost(BigDecimal unitCost) {
         this.unitCost = unitCost;
+    }
+
+    public BigDecimal getLandedCostComponent() {
+        return landedCostComponent;
+    }
+
+    public void setLandedCostComponent(BigDecimal landedCostComponent) {
+        this.landedCostComponent = landedCostComponent != null ? landedCostComponent : BigDecimal.ZERO;
     }
 
     public UUID getSerialNumberId() {

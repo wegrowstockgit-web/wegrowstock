@@ -32,19 +32,30 @@ public class PickingWaveService {
     private final AllocationRepository allocationRepository;
     private final LocationRepository locationRepository;
     private final PickingService pickingService;
+    private final CrossDockService crossDockService;
 
     public PickingWaveService(PickingWaveRepository waveRepository,
                               PickingBatchRepository batchRepository,
                               PickingTaskRepository taskRepository,
                               AllocationRepository allocationRepository,
                               LocationRepository locationRepository,
-                              PickingService pickingService) {
+                              PickingService pickingService,
+                              CrossDockService crossDockService) {
         this.waveRepository = waveRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
         this.allocationRepository = allocationRepository;
         this.locationRepository = locationRepository;
         this.pickingService = pickingService;
+        this.crossDockService = crossDockService;
+    }
+
+    /**
+     * Cross-dock checker: inbound open PO lines vs unfulfilled sales backorders.
+     */
+    @Transactional(readOnly = true)
+    public List<CrossDockService.CrossDockSuggestion> crossDockSuggestions() {
+        return crossDockService.suggestions();
     }
 
     /**

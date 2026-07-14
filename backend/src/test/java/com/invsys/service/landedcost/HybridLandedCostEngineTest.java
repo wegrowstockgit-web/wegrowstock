@@ -115,6 +115,25 @@ class HybridLandedCostEngineTest {
         assertThat(shares.get(line.getId()).toBigDecimal()).isEqualByComparingTo("50.0000");
     }
 
+    @Test
+    void byVolumeAliasAllocatesByResolvedVolumes() {
+        ProductVariant large = variant(null, new BigDecimal("3"), null);
+        ProductVariant small = variant(null, new BigDecimal("1"), null);
+        PurchaseOrderLine lineA = line(large.getId(), new BigDecimal("10"), new BigDecimal("1"));
+        PurchaseOrderLine lineB = line(small.getId(), new BigDecimal("10"), new BigDecimal("1"));
+        when(variantRepository.findById(large.getId())).thenReturn(Optional.of(large));
+        when(variantRepository.findById(small.getId())).thenReturn(Optional.of(small));
+
+        Map<UUID, Money> shares = engine.allocateWithStrategy(
+                Money.of("40"),
+                List.of(lineA, lineB),
+                "BY_VOLUME",
+                HybridLandedCostEngine.CostEventType.FREIGHT);
+
+        assertThat(shares.get(lineA.getId()).toBigDecimal()).isEqualByComparingTo("30.0000");
+        assertThat(shares.get(lineB.getId()).toBigDecimal()).isEqualByComparingTo("10.0000");
+    }
+
     private static PurchaseOrderLine line(BigDecimal qty, BigDecimal unitCost) {
         return line(UUID.randomUUID(), qty, unitCost);
     }

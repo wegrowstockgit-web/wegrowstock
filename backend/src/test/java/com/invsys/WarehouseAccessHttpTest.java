@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
@@ -92,12 +93,44 @@ class WarehouseAccessHttpTest extends AbstractIntegrationTest {
                         .param("type", "WAREHOUSE")
                         .header("Authorization", "Bearer " + pickerTokens.accessToken())
                         .header(WarehouseAccessFilter.HEADER, wh02.getId().toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title").value("WAREHOUSE_FORBIDDEN"))
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.detail").exists());
+
+        mockMvc.perform(get("/api/v1/locations/warehouses/assigned")
+                        .header("Authorization", "Bearer " + pickerTokens.accessToken())
+                        .header(WarehouseAccessFilter.HEADER, wh01.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(wh01.getId().toString()));
 
         mockMvc.perform(get("/api/v1/locations")
                         .param("type", "WAREHOUSE")
                         .header("Authorization", "Bearer " + pickerTokens.accessToken())
                         .header(WarehouseAccessFilter.HEADER, wh01.getId().toString()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void ownerSkipsWarehouseMembershipValidation() throws Exception {
+        String slug = "lbac-own-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse ownerTokens = authService.signup(new SignupRequest(
+                "LBAC Owner Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = ownerTokens.tenantId();
+
+        TenantContext.setTenantId(tenantId);
+        Location wh02 = new Location();
+        wh02.setTenantId(tenantId);
+        wh02.setType("WAREHOUSE");
+        wh02.setCode("WH-02");
+        wh02.setName("Secondary Warehouse");
+        wh02.setPath("/WH-02");
+        wh02 = locationRepository.save(wh02);
+        TenantContext.clear();
+
+        mockMvc.perform(get("/api/v1/locations/warehouses/assigned")
+                        .header("Authorization", "Bearer " + ownerTokens.accessToken())
+                        .header(WarehouseAccessFilter.HEADER, wh02.getId().toString()))
                 .andExpect(status().isOk());
     }
 }

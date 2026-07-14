@@ -146,12 +146,107 @@ class LandedCostServiceTest extends AbstractIntegrationTest {
         assertThat(costLines).hasSize(2);
         assertThat(costLines).allMatch(e -> e.getQuantityDelta().compareTo(BigDecimal.ZERO) == 0);
         assertThat(costLines).allMatch(e -> "ADJUST".equals(e.getMovementType()));
+        assertThat(costLines).allMatch(e -> e.getLandedCostComponent() != null
+                && e.getLandedCostComponent().signum() > 0);
+        assertThat(costLines.stream()
+                .map(InventoryLedger::getLandedCostComponent)
+                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("100.00");
 
         BigDecimal avgAAfter = variantRepository.findById(a.getId()).orElseThrow().getAvgCost();
         BigDecimal avgBAfter = variantRepository.findById(b.getId()).orElseThrow().getAvgCost();
         assertThat(avgAAfter).isGreaterThan(avgABefore);
         assertThat(avgBAfter).isGreaterThan(avgBBefore);
         assertThat(avgBAfter.subtract(avgBBefore)).isGreaterThan(avgAAfter.subtract(avgABefore));
+    }
+
+    @Test
+    void allocatesFreightByVolumeWithCategoryMedianCascade() {
+        UUID tenantId = testDataHelper.createTenant("Vol LC", "vollc-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+
+        Supplier supplier = new Supplier();
+        supplier.setTenantId(tenantId);
+        supplier.setName("Volume Vendor");
+        supplier = supplierRepository.save(supplier);
+
+        ProductCategory category = new ProductCategory();
+        category.setTenantId(tenantId);
+        category.setName("Crates");
+        category.setMedianVolume(new BigDecimal("2.0"));
+        category = productCategoryRepository.save(category);
+
+        Product product = new Product();
+        product.setTenantId(tenantId);
+        product.setSkuRoot("VOL");
+        product.setName("Volume SKU");
+        product = productRepository.save(product);
+
+        ProductVariant withVolume = new ProductVariant();
+        withVolume.setTenantId(tenantId);
+        withVolume.setProductId(product.getId());
+        withVolume.setSku("VOL-A");
+        withVolume.setVolume(new BigDecimal("4.0"));
+        withVolume = variantRepository.save(withVolume);
+
+        ProductVariant medianOnly = new ProductVariant();
+        medianOnly.setTenantId(tenantId);
+        medianOnly.setProductId(product.getId());
+        medianOnly.setSku("VOL-B");
+        medianOnly.setCategoryId(category.getId());
+        medianOnly = variantRepository.save(medianOnly);
+
+        Location wh = new Location();
+        wh.setTenantId(tenantId);
+        wh.setType("WAREHOUSE");
+        wh.setCode("WH-VOL");
+        wh.setName("Volume WH");
+        wh.setPath("/WH-VOL");
+        wh = locationRepository.save(wh);
+
+        PurchaseOrder po = new PurchaseOrder();
+        po.setTenantId(tenantId);
+        po.setSupplierId(supplier.getId());
+        po.setNumber("PO-VOL-1");
+        po.setStatus("SUBMITTED");
+        po = purchaseOrderRepository.save(po);
+
+        PurchaseOrderLine lineA = poLine(tenantId, po.getId(), withVolume.getId());
+        PurchaseOrderLine lineB = poLine(tenantId, po.getId(), medianOnly.getId());
+        purchaseOrderService.receiveLine(lineA.getId(), wh.getId(), null, new BigDecimal("10"));
+        purchaseOrderService.receiveLine(lineB.getId(), wh.getId(), null, new BigDecimal("10"));
+
+        SupplierInvoiceIngestion invoice = new SupplierInvoiceIngestion();
+        invoice.setTenantId(tenantId);
+        invoice.setPurchaseOrderId(po.getId());
+        invoice.setStatus("RECONCILED");
+        invoice.setExtractedData(new LinkedHashMap<>());
+        invoice = ingestionRepository.save(invoice);
+
+        LandedCostService.LandedCostResult result = landedCostService.allocate(
+                invoice.getId(),
+                new BigDecimal("60.00"),
+                HybridLandedCostEngine.CostEventType.FREIGHT,
+                "BY_VOLUME");
+
+        assertThat(result.strategy()).isEqualTo("BY_VOLUME");
+        assertThat(result.lines()).hasSize(2);
+        // Volume 4 vs median 2 → 40 / 20 of 60
+        Map<String, BigDecimal> bySku = new LinkedHashMap<>();
+        for (Map<String, Object> row : result.lines()) {
+            bySku.put(row.get("sku").toString(), new BigDecimal(row.get("allocatedFreight").toString()));
+        }
+        assertThat(bySku.get("VOL-A")).isEqualByComparingTo("40.00");
+        assertThat(bySku.get("VOL-B")).isEqualByComparingTo("20.00");
+
+        List<InventoryLedger> costLines = ledgerRepository.findAll().stream()
+                .filter(e -> "LANDED_COST_ALLOCATION".equals(e.getReasonCode()))
+                .toList();
+        assertThat(costLines).hasSize(2);
+        assertThat(costLines).allMatch(e -> e.getLandedCostComponent().signum() > 0);
+        assertThat(costLines.stream().map(InventoryLedger::getLandedCostComponent)
+                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("60.00");
     }
 
     @Test

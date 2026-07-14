@@ -7,21 +7,26 @@ import com.invsys.domain.ProductVariant;
 import com.invsys.domain.PurchaseOrderLine;
 import com.invsys.repository.ProductCategoryRepository;
 import com.invsys.repository.ProductVariantRepository;
+import com.invsys.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 /**
  * Hybrid waterfall (cascade) for landed costs.
@@ -101,11 +106,10 @@ public class HybridLandedCostEngine {
 
         ResolvedDimensions dims = resolveDimensionsParallel(lines);
         return switch (strategy) {
-            case "VOLUME" -> {
+            case "VOLUME", "BY_VOLUME" -> {
                 try {
                     yield VolumeStrategy.withResolvedVolumes(dims.volumes()).allocate(totalCost, lines);
                 } catch (MissingDimensionException ex) {
-                    // Cascade: category already applied; fall back to quantity for full set
                     yield quantityStrategy.allocate(totalCost, lines);
                 }
             }
@@ -186,15 +190,55 @@ public class HybridLandedCostEngine {
     }
 
     /**
-     * Resolve weight/volume on virtual threads: variant → category median → null (never zero).
+     * Resolve weight/volume: variant → category median → null (never zero).
+     * Entity prefetch stays on the transactional caller thread (JPA + RLS safe);
+     * pure in-memory cascade runs on virtual threads with TenantContext restored.
      */
     ResolvedDimensions resolveDimensionsParallel(List<PurchaseOrderLine> lines) {
         Map<UUID, BigDecimal> volumes = new LinkedHashMap<>();
         Map<UUID, BigDecimal> weights = new LinkedHashMap<>();
 
+        Set<UUID> variantIds = lines.stream()
+                .map(PurchaseOrderLine::getVariantId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, ProductVariant> variantsById = new HashMap<>();
+        for (UUID variantId : variantIds) {
+            variantRepository.findById(variantId).ifPresent(v -> variantsById.put(variantId, v));
+        }
+        Set<UUID> categoryIds = variantsById.values().stream()
+                .map(ProductVariant::getCategoryId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, ProductCategory> categoriesById = new HashMap<>();
+        for (UUID categoryId : categoryIds) {
+            categoryRepository.findById(categoryId).ifPresent(c -> categoriesById.put(categoryId, c));
+        }
+
+        UUID tenantId = TenantContext.getTenantId().orElse(null);
+        UUID userId = TenantContext.getUserId().orElse(null);
+        UUID warehouseId = TenantContext.getWarehouseId().orElse(null);
+        List<UUID> authorizedWarehouses = TenantContext.getAuthorizedWarehouseIds();
+
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Callable<LineDimension>> tasks = lines.stream()
-                    .map(line -> (Callable<LineDimension>) () -> resolveLine(line))
+                    .map(line -> (Callable<LineDimension>) () -> {
+                        try {
+                            if (tenantId != null) {
+                                TenantContext.setTenantId(tenantId);
+                            }
+                            if (userId != null) {
+                                TenantContext.setUserId(userId);
+                            }
+                            if (warehouseId != null) {
+                                TenantContext.setWarehouseId(warehouseId);
+                            }
+                            TenantContext.setAuthorizedWarehouseIds(authorizedWarehouses);
+                            return resolveLineCached(line, variantsById, categoriesById);
+                        } finally {
+                            TenantContext.clear();
+                        }
+                    })
                     .toList();
             List<Future<LineDimension>> futures = executor.invokeAll(tasks);
             for (Future<LineDimension> future : futures) {
@@ -221,8 +265,10 @@ public class HybridLandedCostEngine {
         return new ResolvedDimensions(volumes, weights);
     }
 
-    private LineDimension resolveLine(PurchaseOrderLine line) {
-        ProductVariant variant = variantRepository.findById(line.getVariantId()).orElse(null);
+    private LineDimension resolveLineCached(PurchaseOrderLine line,
+                                            Map<UUID, ProductVariant> variantsById,
+                                            Map<UUID, ProductCategory> categoriesById) {
+        ProductVariant variant = variantsById.get(line.getVariantId());
         BigDecimal volume = null;
         BigDecimal weight = null;
         ProductCategory category = null;
@@ -231,7 +277,7 @@ public class HybridLandedCostEngine {
             volume = resolveVolume(variant);
             weight = positiveOrNull(variant.getWeight());
             if (variant.getCategoryId() != null) {
-                category = categoryRepository.findById(variant.getCategoryId()).orElse(null);
+                category = categoriesById.get(variant.getCategoryId());
             }
         }
         if (volume == null && category != null) {

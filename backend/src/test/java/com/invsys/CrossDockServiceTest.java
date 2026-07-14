@@ -17,6 +17,7 @@ import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
 import com.invsys.repository.SupplierRepository;
 import com.invsys.service.CrossDockService;
+import com.invsys.service.PickingWaveService;
 import com.invsys.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ class CrossDockServiceTest extends AbstractIntegrationTest {
     @Autowired SalesOrderRepository salesOrderRepository;
     @Autowired SalesOrderLineRepository salesOrderLineRepository;
     @Autowired CrossDockService crossDockService;
+    @Autowired PickingWaveService pickingWaveService;
 
     @AfterEach
     void cleanup() {
@@ -111,5 +113,10 @@ class CrossDockServiceTest extends AbstractIntegrationTest {
         assertThat(suggestions.getFirst().inboundOpenQty()).isEqualByComparingTo("20");
         assertThat(suggestions.getFirst().purchaseOrderId()).isEqualTo(po.getId());
         assertThat(suggestions.getFirst().salesOrderId()).isEqualTo(so.getId());
+
+        // Wave service exposes the same checker for GET /api/v1/picking/cross-dock/suggestions
+        List<CrossDockService.CrossDockSuggestion> viaWave = pickingWaveService.crossDockSuggestions();
+        assertThat(viaWave).hasSize(suggestions.size());
+        assertThat(viaWave.getFirst().variantId()).isEqualTo(variant.getId());
     }
 }

@@ -23,4 +23,15 @@ test.describe('Hybrid landed cost API', () => {
     const body = await res.json();
     expect(JSON.stringify(body)).toMatch(/VALUE_RESERVED_FOR_CUSTOMS|Customs/i);
   });
+
+  test('cross-dock suggestions endpoint is reachable for owner', async ({ ownerPage }) => {
+    await ownerPage.goto('/dashboard');
+    const token = await sessionAccessToken(ownerPage);
+    const res = await ownerPage.request.get('/api/v1/picking/cross-dock/suggestions', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(Array.isArray(body)).toBeTruthy();
+  });
 });

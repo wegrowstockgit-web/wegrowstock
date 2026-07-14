@@ -20,20 +20,26 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * Validates optional {@code X-Warehouse-Id} against JWT warehouse_ids (LBAC).
- * OWNER/ADMIN may select any warehouse present in their authorized claim list
- * (populated with all tenant warehouses at login). Localized roles may only use mapped facilities.
- * When a localized user has exactly one authorized warehouse and no header is sent,
- * that warehouse is applied automatically (terminal lockdown).
+ * LBAC gate for {@code X-Warehouse-Id}.
+ * <ul>
+ *   <li>OWNER / ADMIN — skip warehouse membership validation</li>
+ *   <li>PICKER / WAREHOUSE_MANAGER (and other localized roles) — header must match
+ *       JWT {@code warehouse_ids} populated from {@code user_warehouses}</li>
+ * </ul>
+ * RFC 7807 problem+json on boundary violations.
  */
 @Component
 @Order(Ordered.LOWEST_PRECEDENCE - 50)
 public class WarehouseAccessFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Warehouse-Id";
+
+    private static final Set<String> ELEVATED = Set.of("ROLE_OWNER", "ROLE_ADMIN");
 
     private final ObjectMapper objectMapper;
 
@@ -47,9 +53,7 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String raw = request.getHeader(HEADER);
         List<UUID> authorized = TenantContext.getAuthorizedWarehouseIds();
-        boolean elevated = auth != null && auth.isAuthenticated() && auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(a -> "ROLE_OWNER".equals(a) || "ROLE_ADMIN".equals(a));
+        boolean elevated = isElevated(auth);
 
         if (raw == null || raw.isBlank()) {
             if (auth != null && auth.isAuthenticated() && !elevated && authorized.size() == 1) {
@@ -74,12 +78,18 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (!elevated && (authorized.isEmpty() || !authorized.contains(warehouseId))) {
-            writeForbidden(response, "Warehouse context not authorized for this user");
+        // OWNER / ADMIN: skip user_warehouses membership check
+        if (elevated) {
+            TenantContext.setWarehouseId(warehouseId);
+            MDC.put("warehouseId", warehouseId.toString());
+            chain.doFilter(request, response);
             return;
         }
-        if (elevated && !authorized.isEmpty() && !authorized.contains(warehouseId)) {
-            writeForbidden(response, "Warehouse does not belong to this tenant context");
+
+        // PICKER / WAREHOUSE_MANAGER / other floor roles: must be in user_warehouses-backed claims
+        Set<UUID> allowed = authorized.stream().collect(Collectors.toSet());
+        if (allowed.isEmpty() || !allowed.contains(warehouseId)) {
+            writeForbidden(response, "Warehouse context not authorized for this user");
             return;
         }
 
@@ -88,10 +98,20 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    private static boolean isElevated(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(ELEVATED::contains);
+    }
+
     private void writeForbidden(HttpServletResponse response, String detail) throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("type", "about:blank");
         body.put("title", "WAREHOUSE_FORBIDDEN");
         body.put("detail", detail);
         body.put("status", 403);

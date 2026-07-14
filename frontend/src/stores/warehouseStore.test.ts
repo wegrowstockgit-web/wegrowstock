@@ -34,6 +34,6 @@ describe('warehouseStore', () => {
     const allowed = await useWarehouseStore.getState().fetchAllowed();
     expect(allowed).toHaveLength(1);
     expect(useWarehouseStore.getState().switcherDisabled).toBe(true);
-    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/locations/warehouses/allowed');
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/locations/warehouses/assigned');
   });
 });

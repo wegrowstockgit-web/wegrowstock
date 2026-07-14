@@ -198,8 +198,32 @@ public class InventoryService {
                                                 String reasonCode,
                                                 String referenceType,
                                                 UUID referenceId) {
-        return appendMovement("ADJUST", variantId, locationId, null, BigDecimal.ZERO,
-                reasonCode, referenceType, referenceId, null, unitCost, null);
+        return appendCostAdjustment(variantId, locationId, unitCost, reasonCode, referenceType, referenceId, null);
+    }
+
+    @Transactional
+    public InventoryLedger appendCostAdjustment(UUID variantId,
+                                                UUID locationId,
+                                                BigDecimal unitCost,
+                                                String reasonCode,
+                                                String referenceType,
+                                                UUID referenceId,
+                                                BigDecimal landedCostComponent) {
+        InventoryLedger entry = new InventoryLedger();
+        entry.setTenantId(TenantContext.requireTenantId());
+        entry.setVariantId(variantId);
+        entry.setLocationId(locationId);
+        entry.setMovementType("ADJUST");
+        entry.setQuantityDelta(BigDecimal.ZERO);
+        entry.setReasonCode(reasonCode);
+        entry.setReferenceType(referenceType);
+        entry.setReferenceId(referenceId);
+        entry.setUnitCost(unitCost);
+        entry.setLandedCostComponent(landedCostComponent != null ? landedCostComponent : BigDecimal.ZERO);
+        entry.setCreatedBy(TenantContext.getUserId().orElse(null));
+        InventoryLedger saved = ledgerRepository.save(entry);
+        cycleCountService.evaluateLocationVelocity(locationId);
+        return saved;
     }
 
     @Transactional

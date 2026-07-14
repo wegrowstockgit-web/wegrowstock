@@ -38,6 +38,7 @@ public class LandedCostService {
     public enum AllocationStrategy {
         BY_VALUE,
         BY_WEIGHT,
+        BY_VOLUME,
         HYBRID,
         VOLUME,
         WEIGHT,
@@ -151,7 +152,8 @@ public class LandedCostService {
                     perUnit,
                     "LANDED_COST_ALLOCATION",
                     "SUPPLIER_INVOICE",
-                    invoice.getId());
+                    invoice.getId(),
+                    share);
             ledgerIds.add(entry.getId());
             costingService.applyLandedCostAmount(variant.getId(), share);
 
