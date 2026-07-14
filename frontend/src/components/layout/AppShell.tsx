@@ -9,10 +9,9 @@ import { Button } from '@/components/ui/Button';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { useWarehouseStore } from '@/stores/warehouseStore';
 import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
-import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
-import type { Warehouse as WarehouseType } from '@/api/types';
 import { cn } from '@/lib/utils';
 
 function isWarehouseRoute(pathname: string): boolean {
@@ -39,11 +38,13 @@ export function AppShell() {
   const lockFromJwtSingle = useActiveWarehouseStore((s) => s.lockFromJwtSingle);
   const contextLocked = useActiveWarehouseStore((s) => s.contextLocked);
   const lockReason = useActiveWarehouseStore((s) => s.lockReason);
+  const fetchAllowedWarehouses = useWarehouseStore((s) => s.fetchAllowed);
+  const switcherDisabled = useWarehouseStore((s) => s.switcherDisabled);
 
   const isWarehouseView = isWarehouseRoute(location.pathname);
   /** Kiosk / terminal lockdown: JWT has exactly one warehouse — no switcher. */
   const jwtTerminalLocked = sessionWarehouseIds.length === 1;
-  const hideSwitcher = jwtTerminalLocked || contextLocked;
+  const hideSwitcher = jwtTerminalLocked || contextLocked || switcherDisabled;
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -53,11 +54,8 @@ export function AppShell() {
   }, [isWarehouseView]);
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: async () => {
-      const res = await apiClient.get<WarehouseType[]>('/api/v1/locations?type=WAREHOUSE');
-      return res.data;
-    },
+    queryKey: ['warehouses', 'allowed'],
+    queryFn: () => fetchAllowedWarehouses(),
     enabled: authenticated,
     retry: false,
   });

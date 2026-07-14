@@ -188,6 +188,20 @@ public class InventoryService {
         return appendMovement("ADJUST", variantId, locationId, lotId, delta, reasonCode, null, null, null, null, serialId);
     }
 
+    /**
+     * Quantity-neutral cost correction (landed freight). Does not change on_hand (delta = 0).
+     */
+    @Transactional
+    public InventoryLedger appendCostAdjustment(UUID variantId,
+                                                UUID locationId,
+                                                BigDecimal unitCost,
+                                                String reasonCode,
+                                                String referenceType,
+                                                UUID referenceId) {
+        return appendMovement("ADJUST", variantId, locationId, null, BigDecimal.ZERO,
+                reasonCode, referenceType, referenceId, null, unitCost, null);
+    }
+
     @Transactional
     public UUID transfer(UUID variantId, UUID fromLocationId, UUID toLocationId, UUID lotId, BigDecimal quantity) {
         validateNegative(quantity.negate(), variantId, fromLocationId, lotId);

@@ -20,7 +20,7 @@ test.describe('LBAC warehouse boundaries', () => {
     await expect(pickerPage.getByText('Floor ops')).toBeVisible();
     const token = await sessionAccessToken(pickerPage);
 
-    const forbidden = await pickerPage.request.get('/api/v1/locations?type=WAREHOUSE', {
+    const forbidden = await pickerPage.request.get('/api/v1/locations/warehouses/allowed', {
       headers: {
         Authorization: `Bearer ${token}`,
         'X-Warehouse-Id': WH_02,
@@ -28,7 +28,7 @@ test.describe('LBAC warehouse boundaries', () => {
     });
     expect(forbidden.status()).toBe(403);
 
-    const allowed = await pickerPage.request.get('/api/v1/locations?type=WAREHOUSE', {
+    const allowed = await pickerPage.request.get('/api/v1/locations/warehouses/allowed', {
       headers: {
         Authorization: `Bearer ${token}`,
         'X-Warehouse-Id': WH_01,

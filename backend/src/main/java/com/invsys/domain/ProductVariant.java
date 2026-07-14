@@ -54,6 +54,11 @@ public class ProductVariant extends TenantScopedEntity {
     @Column(name = "weight_unit", nullable = false)
     private String weightUnit = "kg";
 
+    private BigDecimal volume;
+
+    @Column(name = "category_id")
+    private UUID categoryId;
+
     private BigDecimal length;
 
     private BigDecimal width;
@@ -181,6 +186,22 @@ public class ProductVariant extends TenantScopedEntity {
 
     public void setWeightUnit(String weightUnit) {
         this.weightUnit = weightUnit;
+    }
+
+    public BigDecimal getVolume() {
+        return volume;
+    }
+
+    public void setVolume(BigDecimal volume) {
+        this.volume = volume;
+    }
+
+    public UUID getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(UUID categoryId) {
+        this.categoryId = categoryId;
     }
 
     public BigDecimal getLength() {

@@ -52,6 +52,33 @@ public class CostingService {
         variantRepository.save(variant);
     }
 
+    /**
+     * Spreads a landed-cost dollar amount across current on-hand without changing quantity.
+     * newAvg = (onHand * avg + allocatedAmount) / onHand
+     */
+    @Transactional
+    public void applyLandedCostAmount(UUID variantId, BigDecimal allocatedAmount) {
+        if (allocatedAmount == null || allocatedAmount.signum() == 0) {
+            return;
+        }
+        ProductVariant variant = variantRepository.findById(variantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found"));
+        BigDecimal onHand = totalOnHand(variantId);
+        if (onHand.signum() <= 0) {
+            // No stock yet — park freight into avg_cost as absolute bump for next receive basis
+            BigDecimal current = variant.getAvgCost() != null ? variant.getAvgCost() : BigDecimal.ZERO;
+            variant.setAvgCost(current.add(allocatedAmount).setScale(4, RoundingMode.HALF_UP));
+            variantRepository.save(variant);
+            return;
+        }
+        BigDecimal currentAvg = variant.getAvgCost() != null ? variant.getAvgCost() : BigDecimal.ZERO;
+        BigDecimal newAvg = onHand.multiply(currentAvg)
+                .add(allocatedAmount)
+                .divide(onHand, 4, RoundingMode.HALF_UP);
+        variant.setAvgCost(newAvg);
+        variantRepository.save(variant);
+    }
+
     @Transactional(readOnly = true)
     public BigDecimal snapshotShipCost(UUID variantId) {
         ProductVariant variant = variantRepository.findById(variantId)
