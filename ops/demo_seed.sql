@@ -1,15 +1,16 @@
 -- =============================================================================
 -- InventorySystem Demo Seed Data
--- Populates ALL tables with realistic test data for two tenants.
+-- Populates ALL tables with realistic test data for four tenants.
 --
--- Usage (after Flyway migrations V001-V009 have run):
+-- Usage (after Flyway migrations have run):
 --   docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed.sql
---   -- or locally:
---   psql -U app_owner -d invsys -f ops/demo_seed.sql
+--   docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_extra.sql
 --
 -- Demo credentials (password for all users): password123
--- Primary tenant login: demo-corp / owner@demo.test
--- Secondary tenant (isolation test): acme-wholesale / owner@acme.test
+-- Tenants: Demo Corp, Acme Wholesale (+ full roles via extra seed),
+--          Northwind Logistics, Pacific Parts Co (extra seed)
+-- Primary: owner@demo.test | Acme: owner@acme.test | see README for full matrix
+-- Picker LBAC (Demo Corp): WH-01 Main Warehouse only (cannot select WH-02)
 -- =============================================================================
 
 BEGIN;
@@ -47,7 +48,7 @@ INSERT INTO users (id, tenant_id, email, password_hash, display_name, status) VA
     ('a0000000-0000-4000-8000-000000000204', 'a0000000-0000-4000-8000-000000000001', 'picker@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Floor Picker', 'ACTIVE'),
     ('a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000001', 'viewer@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Read Only User', 'ACTIVE'),
     ('a0000000-0000-4000-8000-000000000206', 'a0000000-0000-4000-8000-000000000001', 'b2b@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'B2B Buyer', 'ACTIVE')
-ON CONFLICT (tenant_id, email) DO NOTHING;
+ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES
     ('a0000000-0000-4000-8000-000000000301', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000201', 'a0000000-0000-4000-8000-000000000101'),
@@ -89,6 +90,16 @@ INSERT INTO locations (id, tenant_id, parent_location_id, type, code, name, path
     ('a0000000-0000-4000-8000-000000000612', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000611', 'ZONE', 'Z-B', 'Zone B', 'WH-02/Z-B'),
     ('a0000000-0000-4000-8000-000000000613', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000612', 'BIN', 'B-10', 'Bin 10', 'WH-02/Z-B/B-10')
 ON CONFLICT (tenant_id, code) DO NOTHING;
+
+-- LBAC: picker + manager + viewer scoped to Main Warehouse (WH-01) only
+INSERT INTO user_warehouses (id, tenant_id, user_id, location_id) VALUES
+    ('a0000000-0000-4000-8000-000000000351', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000204', 'a0000000-0000-4000-8000-000000000601'),
+    ('a0000000-0000-4000-8000-000000000352', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000203', 'a0000000-0000-4000-8000-000000000601'),
+    ('a0000000-0000-4000-8000-000000000353', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000601')
+ON CONFLICT (user_id, location_id) DO NOTHING;
 
 INSERT INTO products (id, tenant_id, sku_root, name, description) VALUES
     ('a0000000-0000-4000-8000-000000000701', 'a0000000-0000-4000-8000-000000000001', 'WIDGET', 'Industrial Widget', 'Standard widget'),
@@ -383,7 +394,7 @@ ON CONFLICT (tenant_id, code) DO NOTHING;
 
 INSERT INTO users (id, tenant_id, email, password_hash, display_name, status) VALUES
     ('b0000000-0000-4000-8000-000000000201', 'b0000000-0000-4000-8000-000000000001', 'owner@acme.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Acme Owner', 'ACTIVE')
-ON CONFLICT (tenant_id, email) DO NOTHING;
+ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES
     ('b0000000-0000-4000-8000-000000000301', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000201', 'b0000000-0000-4000-8000-000000000101')
@@ -394,7 +405,7 @@ INSERT INTO refresh_tokens (id, tenant_id, user_id, token_hash, expires_at) VALU
 ON CONFLICT (token_hash) DO NOTHING;
 
 INSERT INTO invitations (id, tenant_id, email, role_id, token_hash, invited_by, expires_at) VALUES
-    ('b0000000-0000-4000-8000-000000000501', 'b0000000-0000-4000-8000-000000000001', 'picker@acme.test', 'b0000000-0000-4000-8000-000000000104', 'acme_invite_hash', 'b0000000-0000-4000-8000-000000000201', NOW() + INTERVAL '7 days')
+    ('b0000000-0000-4000-8000-000000000501', 'b0000000-0000-4000-8000-000000000001', 'newhire@acme.test', 'b0000000-0000-4000-8000-000000000104', 'acme_invite_hash', 'b0000000-0000-4000-8000-000000000201', NOW() + INTERVAL '7 days')
 ON CONFLICT (token_hash) DO NOTHING;
 
 INSERT INTO locations (id, tenant_id, parent_location_id, type, code, name, path) VALUES

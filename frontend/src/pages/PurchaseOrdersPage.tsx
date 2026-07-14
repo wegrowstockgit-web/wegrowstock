@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useSessionStore } from '@/stores/session';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -230,6 +231,7 @@ function CreatePoModal({ open, onClose }: { open: boolean; onClose: () => void }
 function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] }) {
   const queryClient = useQueryClient();
   const [poId, setPoId] = useState('');
+  const [documentUrl, setDocumentUrl] = useState('');
   const [jsonPayload, setJsonPayload] = useState(
     '{\n  "lines": [\n    { "sku": "WIDGET-S", "qty": 100, "unitCost": 5.00 }\n  ]\n}'
   );
@@ -246,6 +248,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
       const extractedData = JSON.parse(jsonPayload) as Record<string, unknown>;
       await apiClient.post('/api/v1/ap/ingestions', {
         purchaseOrderId: poId,
+        documentUrl: documentUrl || undefined,
         extractedData,
       });
     },
@@ -274,6 +277,12 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
             </option>
           ))}
         </Select>
+        <Input
+          label="Document URL"
+          value={documentUrl}
+          onChange={(e) => setDocumentUrl(e.target.value)}
+          placeholder="https://…/supplier-invoice.pdf"
+        />
         <label className="block text-sm font-medium text-text">
           Extracted invoice JSON
           <textarea
@@ -305,6 +314,9 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
                   <span className="font-medium">{ing.status}</span>
                   <span className="text-text-muted">{ing.matchConfidence.toFixed(0)}% match</span>
                 </div>
+                {ing.documentUrl && (
+                  <p className="mt-1 truncate text-xs text-text-muted">{ing.documentUrl}</p>
+                )}
                 {ing.status === 'CONFLICT' && (
                   <p className="mt-1 text-xs text-warning">Line conflicts require review</p>
                 )}
@@ -321,13 +333,16 @@ export function PurchaseOrdersPage() {
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [modalOpen, setModalOpen] = useState(false);
+  const [peekPoId, setPeekPoId] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } =
     useListQuery<PurchaseOrder>(['purchase-orders'], '/api/v1/purchase-orders');
 
+  const peekPo = data?.find((po) => po.id === peekPoId) ?? null;
+
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
         <div>
           <h1 className="text-2xl font-bold text-text">Purchase Orders</h1>
           <p className="mt-1 text-sm text-text-muted">Inbound supply chain</p>
@@ -340,66 +355,135 @@ export function PurchaseOrdersPage() {
         )}
       </div>
 
-      <ListPageState
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        data={data}
-        refetch={refetch}
-        emptyIcon={ClipboardList}
-        emptyTitle="No purchase orders yet"
-        emptyDescription={
-          canCreate
-            ? 'Create a purchase order to start receiving inventory.'
-            : 'Purchase orders will appear here once created by a manager.'
-        }
-        emptyAction={
-          canCreate ? (
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Create purchase order
-            </Button>
-          ) : undefined
-        }
-      >
-        {(items) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Supplier</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Expected</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((po) => (
-                <TableRow key={po.id}>
-                  <TableCell mono>{po.number}</TableCell>
-                  <TableCell>{po.supplierName}</TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted'
-                      )}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <ListPageState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          data={data}
+          refetch={refetch}
+          emptyIcon={ClipboardList}
+          emptyTitle="No purchase orders yet"
+          emptyDescription={
+            canCreate
+              ? 'Create a purchase order to start receiving inventory.'
+              : 'Purchase orders will appear here once created by a manager.'
+          }
+          emptyAction={
+            canCreate ? (
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Create purchase order
+              </Button>
+            ) : undefined
+          }
+        >
+          {(items) => (
+            <div className="w-full">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Number</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Expected</TableHead>
+                    <TableHead align="right">Freight</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((po) => (
+                    <TableRow
+                      key={po.id}
+                      className="cursor-pointer"
+                      onClick={() => setPeekPoId(po.id)}
                     >
-                      {po.status.replaceAll('_', ' ')}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-text-muted">
-                    {po.expectedAt ? new Date(po.expectedAt).toLocaleDateString() : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </ListPageState>
+                      <TableCell mono>{po.number}</TableCell>
+                      <TableCell>{po.supplierName}</TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                            STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted'
+                          )}
+                        >
+                          {po.status.replaceAll('_', ' ')}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-text-muted">
+                        {po.expectedAt ? new Date(po.expectedAt).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell align="right" mono>
+                        {po.freightAmount != null ? po.freightAmount.toFixed(2) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </ListPageState>
 
-      {canCreate && <ApIngestionPanel purchaseOrders={data ?? []} />}
+        {canCreate && (
+          <div className="border-t border-border/60 px-6 pb-6">
+            <ApIngestionPanel purchaseOrders={data ?? []} />
+          </div>
+        )}
+      </div>
 
       <CreatePoModal open={modalOpen} onClose={() => setModalOpen(false)} />
+
+      <RightPeekDrawer
+        open={!!peekPoId}
+        onClose={() => setPeekPoId(null)}
+        title={peekPo?.number ?? 'Purchase order'}
+        description={
+          peekPo
+            ? `${peekPo.supplierName} · ${peekPo.status.replaceAll('_', ' ')}`
+            : undefined
+        }
+      >
+        {peekPo ? (
+          <dl className="space-y-3 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Supplier</dt>
+              <dd className="font-medium text-text">{peekPo.supplierName}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Status</dt>
+              <dd>
+                <span
+                  className={cn(
+                    'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                    STATUS_STYLES[peekPo.status] ?? 'bg-surface-overlay text-text-muted'
+                  )}
+                >
+                  {peekPo.status.replaceAll('_', ' ')}
+                </span>
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Expected</dt>
+              <dd>
+                {peekPo.expectedAt ? new Date(peekPo.expectedAt).toLocaleDateString() : '—'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Freight</dt>
+              <dd className="font-mono tabular-nums">
+                {peekPo.freightAmount != null ? peekPo.freightAmount.toFixed(2) : '—'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Duties</dt>
+              <dd className="font-mono tabular-nums">
+                {peekPo.dutiesAmount != null ? peekPo.dutiesAmount.toFixed(2) : '—'}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-sm text-text-muted">Loading…</p>
+        )}
+      </RightPeekDrawer>
     </div>
   );
 }

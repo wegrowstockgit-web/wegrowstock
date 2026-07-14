@@ -5,12 +5,22 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './Sidebar';
 import { CommandPalette, useCommandPalette } from './CommandPalette';
 import { Button } from '@/components/ui/Button';
+import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import type { Warehouse as WarehouseType } from '@/api/types';
 import { cn } from '@/lib/utils';
+
+function isWarehouseRoute(pathname: string): boolean {
+  return (
+    pathname.startsWith('/fulfillment') ||
+    pathname.startsWith('/cycle-counts') ||
+    pathname.startsWith('/manufacturing/terminal') ||
+    pathname.startsWith('/returns/receive')
+  );
+}
 
 export function AppShell() {
   const location = useLocation();
@@ -21,10 +31,7 @@ export function AppShell() {
   const user = useSessionStore((s) => s.user);
   const { warehouse, setWarehouse } = useActiveWarehouseStore();
 
-  const isWarehouseView =
-    location.pathname.startsWith('/fulfillment') ||
-    location.pathname.startsWith('/manufacturing/terminal') ||
-    location.pathname.startsWith('/returns/receive');
+  const isWarehouseView = isWarehouseRoute(location.pathname);
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -71,13 +78,20 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface">
+    <div className="relative flex h-screen overflow-hidden bg-surface">
       {!isWarehouseView && <Sidebar />}
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 flex-col overflow-hidden',
+          !isWarehouseView &&
+            'pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]'
+        )}
+      >
         <header
           className={cn(
-            'flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-border bg-surface-raised px-4',
+            'flex h-[var(--header-height)] shrink-0 items-center justify-between px-4',
+            'border-b border-border/60 bg-surface-raised/80 backdrop-blur-md',
             isWarehouseView && 'border-border/60'
           )}
         >
@@ -141,6 +155,7 @@ export function AppShell() {
       </div>
 
       {!isWarehouseView && <CommandPalette open={open} onClose={close} />}
+      <SyncConflictToast />
     </div>
   );
 }

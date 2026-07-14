@@ -45,6 +45,13 @@ public class ApOcrIngestionService {
 
     @Transactional
     public SupplierInvoiceIngestion submitDocument(UUID purchaseOrderId, Map<String, Object> extractedData) {
+        return submitDocument(purchaseOrderId, extractedData, null);
+    }
+
+    @Transactional
+    public SupplierInvoiceIngestion submitDocument(UUID purchaseOrderId,
+                                                   Map<String, Object> extractedData,
+                                                   String documentUrl) {
         UUID tenantId = TenantContext.requireTenantId();
         purchaseOrderRepository.findById(purchaseOrderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Purchase order not found"));
@@ -53,12 +60,14 @@ public class ApOcrIngestionService {
         ingestion.setTenantId(tenantId);
         ingestion.setPurchaseOrderId(purchaseOrderId);
         ingestion.setStatus("PENDING");
+        ingestion.setDocumentUrl(documentUrl);
         ingestion.setExtractedData(extractedData != null ? new LinkedHashMap<>(extractedData) : new LinkedHashMap<>());
         ingestion = ingestionRepository.save(ingestion);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("ingestionId", ingestion.getId().toString());
         payload.put("purchaseOrderId", purchaseOrderId.toString());
+        payload.put("documentUrl", documentUrl);
         payload.put("extractedData", ingestion.getExtractedData());
         outboxService.append("SUPPLIER_INVOICE", ingestion.getId(), "SUPPLIER_DOCUMENT_UPLOADED", payload);
 

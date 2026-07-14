@@ -3,6 +3,7 @@ export interface User {
   email: string;
   displayName: string;
   roles: string[];
+  warehouseIds?: string[];
 }
 
 export interface AuthTokens {
@@ -11,7 +12,6 @@ export interface AuthTokens {
 }
 
 export interface LoginRequest {
-  tenantSlug: string;
   email: string;
   password: string;
 }
@@ -22,6 +22,7 @@ export interface TokenResponse {
   tenantId: string;
   userId: string;
   roles: string[];
+  warehouseIds?: string[];
 }
 
 /** @deprecated use TokenResponse */
@@ -466,6 +467,7 @@ export interface SupplierInvoiceIngestion {
   id: string;
   purchaseOrderId: string;
   status: 'PENDING' | 'RECONCILED' | 'CONFLICT';
+  documentUrl?: string | null;
   matchConfidence: number;
   extractedData: Record<string, unknown>;
   createdAt: string;
@@ -480,7 +482,9 @@ export interface FintechDashboard {
   };
   utilizationPercent: number;
   underwriting?: {
+    gmv30d: number;
     gmv90d: number;
+    dsoDays: number;
     avgInvoiceAgeDays: number;
     paymentVelocityScore: number;
     eligibleFactoringLimit: number;

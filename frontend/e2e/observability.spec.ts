@@ -5,7 +5,6 @@ const API_BASE = process.env.E2E_API_URL ?? 'http://localhost:8080';
 
 async function officeLogin(page: import('@playwright/test').Page) {
   await page.goto('/login');
-  await page.getByLabel('Company slug').fill('demo-corp');
   await page.getByLabel('Email').fill('owner@demo.test');
   await page.getByLabel('Password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();

@@ -1,11 +1,13 @@
 package com.invsys.service;
 
 import com.invsys.common.ApiException;
+import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.Location;
 import com.invsys.domain.ReturnLine;
 import com.invsys.domain.ReturnOrder;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
+import com.invsys.repository.InventoryLedgerRepository;
 import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ReturnLineRepository;
 import com.invsys.repository.ReturnOrderRepository;
@@ -17,12 +19,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class ReturnService {
+
+    private static final List<String> FINAL_DISPOSITIONS = List.of("RESTOCK", "SCRAP", "REPAIR");
+    private static final List<String> RECEIPT_DISPOSITIONS = List.of("QUARANTINE", "RESTOCK", "SCRAP", "REPAIR");
 
     private final ReturnOrderRepository returnOrderRepository;
     private final ReturnLineRepository returnLineRepository;
@@ -31,6 +36,7 @@ public class ReturnService {
     private final InventoryService inventoryService;
     private final DocumentSequenceService sequenceService;
     private final LocationRepository locationRepository;
+    private final InventoryLedgerRepository ledgerRepository;
 
     public ReturnService(ReturnOrderRepository returnOrderRepository,
                          ReturnLineRepository returnLineRepository,
@@ -38,7 +44,8 @@ public class ReturnService {
                          SalesOrderLineRepository salesOrderLineRepository,
                          InventoryService inventoryService,
                          DocumentSequenceService sequenceService,
-                         LocationRepository locationRepository) {
+                         LocationRepository locationRepository,
+                         InventoryLedgerRepository ledgerRepository) {
         this.returnOrderRepository = returnOrderRepository;
         this.returnLineRepository = returnLineRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -46,6 +53,7 @@ public class ReturnService {
         this.inventoryService = inventoryService;
         this.sequenceService = sequenceService;
         this.locationRepository = locationRepository;
+        this.ledgerRepository = ledgerRepository;
     }
 
     @Transactional
@@ -71,6 +79,7 @@ public class ReturnService {
             line.setReturnId(returnOrder.getId());
             line.setSalesOrderLineId(sol.getId());
             line.setQuantityExpected(input.quantityExpected());
+            line.setDisposition("QUARANTINE");
             returnLineRepository.save(line);
         }
         return returnOrder;
@@ -103,7 +112,7 @@ public class ReturnService {
         if (!List.of("APPROVED", "RECEIVED").contains(returnOrder.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Return is not approved");
         }
-        if (!List.of("RESTOCK", "SCRAP", "REPAIR").contains(disposition)) {
+        if (!RECEIPT_DISPOSITIONS.contains(disposition)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
         }
 
@@ -114,27 +123,7 @@ public class ReturnService {
 
         line.setDisposition(disposition);
         line.setQuantityReceived(line.getQuantityExpected());
-
-        switch (disposition) {
-            case "RESTOCK" -> inventoryService.receive(
-                    salesOrderLineRepository.findById(line.getSalesOrderLineId()).orElseThrow().getVariantId(),
-                    locationId,
-                    null,
-                    remaining,
-                    "RETURN",
-                    line.getId());
-            case "SCRAP" -> inventoryService.adjust(
-                    salesOrderLineRepository.findById(line.getSalesOrderLineId()).orElseThrow().getVariantId(),
-                    locationId,
-                    null,
-                    remaining.negate(),
-                    "RMA_SCRAP");
-            case "REPAIR" -> {
-                // status only, no ledger movement
-            }
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
-        }
-
+        applyReceiptMovement(line, locationId, remaining, disposition);
         returnLineRepository.save(line);
         updateReturnStatus(returnOrder);
         return line;
@@ -155,7 +144,7 @@ public class ReturnService {
 
     @Transactional
     public ReturnLine setDisposition(UUID returnLineId, String disposition) {
-        if (!List.of("RESTOCK", "SCRAP", "REPAIR").contains(disposition)) {
+        if (!RECEIPT_DISPOSITIONS.contains(disposition)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
         }
         ReturnLine line = returnLineRepository.findById(returnLineId)
@@ -184,27 +173,73 @@ public class ReturnService {
 
         String disposition = line.getDisposition();
         if (disposition == null || disposition.isBlank()) {
-            disposition = "RESTOCK";
+            disposition = "QUARANTINE";
             line.setDisposition(disposition);
         }
 
-        UUID variantId = salesOrderLineRepository.findById(line.getSalesOrderLineId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"))
-                .getVariantId();
-
         UUID resolvedLocation = resolveLocationId(locationId);
-
-        switch (disposition) {
-            case "RESTOCK" -> inventoryService.receive(variantId, resolvedLocation, null, toReceive, "RETURN", line.getId());
-            case "SCRAP" -> inventoryService.adjust(variantId, resolvedLocation, null, toReceive.negate(), "RMA_SCRAP");
-            case "REPAIR" -> { /* status only */ }
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
-        }
+        applyReceiptMovement(line, resolvedLocation, toReceive, disposition);
 
         line.setQuantityReceived(line.getQuantityReceived().add(toReceive));
         returnLineRepository.save(line);
         updateReturnStatus(returnOrder);
         return line;
+    }
+
+    @Transactional
+    public ReturnLine releaseFromQuarantine(UUID returnLineId, String disposition) {
+        if (!FINAL_DISPOSITIONS.contains(disposition)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION",
+                    "Release disposition must be RESTOCK, SCRAP, or REPAIR");
+        }
+        ReturnLine line = returnLineRepository.findById(returnLineId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Return line not found"));
+        if (!"QUARANTINE".equals(line.getDisposition())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Return line is not in QUARANTINE disposition");
+        }
+        if (line.getQuantityReceived().signum() <= 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "NOT_RECEIVED",
+                    "Return line has no quarantined quantity to release");
+        }
+
+        SalesOrderLine sol = salesOrderLineRepository.findById(line.getSalesOrderLineId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+
+        UUID locationId = ledgerRepository
+                .findByTenantIdAndReferenceTypeAndReferenceId(
+                        TenantContext.requireTenantId(), "RETURN", line.getId())
+                .stream()
+                .filter(l -> "RMA_QUARANTINE".equals(l.getReasonCode()))
+                .max(Comparator.comparing(InventoryLedger::getCreatedAt))
+                .map(InventoryLedger::getLocationId)
+                .orElseGet(() -> resolveLocationId(null));
+
+        if ("REPAIR".equals(disposition)) {
+            line.setDisposition("REPAIR");
+            return returnLineRepository.save(line);
+        }
+
+        inventoryService.releaseQuarantineHold(
+                sol.getId(), sol.getVariantId(), locationId, null,
+                line.getQuantityReceived(), disposition);
+        line.setDisposition(disposition);
+        return returnLineRepository.save(line);
+    }
+
+    private void applyReceiptMovement(ReturnLine line, UUID locationId, BigDecimal qty, String disposition) {
+        SalesOrderLine sol = salesOrderLineRepository.findById(line.getSalesOrderLineId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+        UUID variantId = sol.getVariantId();
+
+        switch (disposition) {
+            case "QUARANTINE" -> inventoryService.quarantineReceive(
+                    variantId, locationId, null, qty, "RETURN", line.getId(), sol.getId());
+            case "RESTOCK" -> inventoryService.receive(variantId, locationId, null, qty, "RETURN", line.getId());
+            case "SCRAP" -> inventoryService.adjust(variantId, locationId, null, qty.negate(), "RMA_SCRAP");
+            case "REPAIR" -> { /* status only */ }
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
+        }
     }
 
     public ReturnOrder findByBarcode(String barcode) {

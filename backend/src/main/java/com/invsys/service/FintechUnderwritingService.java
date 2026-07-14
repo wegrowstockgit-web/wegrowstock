@@ -21,7 +21,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -29,7 +28,8 @@ public class FintechUnderwritingService {
 
     private static final BigDecimal DEFAULT_ADVANCE_RATE = new BigDecimal("85.00");
     private static final BigDecimal DEFAULT_DISCOUNT_FEE = new BigDecimal("2.50");
-    private static final int LOOKBACK_DAYS = 90;
+    private static final int GMV_LOOKBACK_DAYS = 30;
+    private static final int PAYMENT_LOOKBACK_DAYS = 90;
 
     private final InvoiceRepository invoiceRepository;
     private final FactoredInvoiceRepository factoredInvoiceRepository;
@@ -69,7 +69,9 @@ public class FintechUnderwritingService {
         }
 
         UnderwritingMetrics metrics = new UnderwritingMetrics(
+                baseMetrics.gmv30d(),
                 baseMetrics.gmv90d(),
+                baseMetrics.dsoDays(),
                 baseMetrics.avgInvoiceAgeDays(),
                 baseMetrics.paymentVelocityScore(),
                 factoringLimit.setScale(2, RoundingMode.HALF_UP));
@@ -142,16 +144,17 @@ public class FintechUnderwritingService {
 
     @Transactional
     public CapitalCreditLine provisionCreditLine(UUID tenantId, UnderwritingMetrics metrics) {
-        BigDecimal baseLimit = metrics.gmv90d().multiply(new BigDecimal("0.15"));
+        // Dynamic limit from GMV30d cash flow with DSO penalty / payment velocity boost.
+        BigDecimal baseLimit = metrics.gmv30d().multiply(new BigDecimal("0.25"));
         BigDecimal velocityBoost = metrics.paymentVelocityScore()
                 .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP)
                 .multiply(new BigDecimal("0.10"));
-        BigDecimal agingPenalty = metrics.avgInvoiceAgeDays()
-                .divide(new BigDecimal("90"), 4, RoundingMode.HALF_UP)
+        BigDecimal dsoPenalty = metrics.dsoDays()
+                .divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP)
                 .min(BigDecimal.ONE)
-                .multiply(new BigDecimal("0.20"));
+                .multiply(new BigDecimal("0.25"));
 
-        BigDecimal multiplier = BigDecimal.ONE.add(velocityBoost).subtract(agingPenalty).max(new BigDecimal("0.50"));
+        BigDecimal multiplier = BigDecimal.ONE.add(velocityBoost).subtract(dsoPenalty).max(new BigDecimal("0.40"));
         BigDecimal limit = baseLimit.multiply(multiplier).max(new BigDecimal("10000")).setScale(2, RoundingMode.HALF_UP);
 
         CapitalCreditLine line = creditLineRepository.findByTenantId(tenantId).orElseGet(CapitalCreditLine::new);
@@ -169,12 +172,28 @@ public class FintechUnderwritingService {
         return creditLineRepository.save(line);
     }
 
+    /**
+     * Continuous underwriting refresh — recalculates credit limits from live GMV30d / DSO.
+     */
+    @Transactional
+    public CapitalCreditLine refreshUnderwriting(UUID tenantId) {
+        return provisionCreditLine(tenantId, computeMetrics(tenantId));
+    }
+
     public UnderwritingMetrics computeMetrics(UUID tenantId) {
-        Instant cutoff = Instant.now().minus(LOOKBACK_DAYS, ChronoUnit.DAYS);
+        Instant gmvCutoff = Instant.now().minus(GMV_LOOKBACK_DAYS, ChronoUnit.DAYS);
+        Instant paymentCutoff = Instant.now().minus(PAYMENT_LOOKBACK_DAYS, ChronoUnit.DAYS);
         List<Invoice> invoices = invoiceRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
 
+        BigDecimal gmv30d = invoices.stream()
+                .filter(i -> i.getCreatedAt() != null && i.getCreatedAt().isAfter(gmvCutoff))
+                .filter(i -> List.of("OPEN", "PARTIALLY_PAID", "PAID").contains(i.getStatus()))
+                .map(Invoice::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Instant gmv90Cutoff = Instant.now().minus(PAYMENT_LOOKBACK_DAYS, ChronoUnit.DAYS);
         BigDecimal gmv90d = invoices.stream()
-                .filter(i -> i.getCreatedAt() != null && i.getCreatedAt().isAfter(cutoff))
+                .filter(i -> i.getCreatedAt() != null && i.getCreatedAt().isAfter(gmv90Cutoff))
                 .filter(i -> List.of("OPEN", "PARTIALLY_PAID", "PAID").contains(i.getStatus()))
                 .map(Invoice::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -183,21 +202,34 @@ public class FintechUnderwritingService {
                 .filter(i -> List.of("OPEN", "PARTIALLY_PAID").contains(i.getStatus()))
                 .toList();
 
+        BigDecimal openAr = openInvoices.stream()
+                .map(Invoice::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // DSO ≈ (open AR / GMV30d) * 30
+        BigDecimal dsoDays = BigDecimal.ZERO;
+        if (gmv30d.signum() > 0) {
+            dsoDays = openAr
+                    .divide(gmv30d, 4, RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal(GMV_LOOKBACK_DAYS))
+                    .setScale(1, RoundingMode.HALF_UP);
+        }
+
         double avgAgeDays = openInvoices.isEmpty() ? 0.0 : openInvoices.stream()
                 .mapToDouble(i -> {
-                    Instant anchor = i.getDueAt() != null ? i.getDueAt() : i.getCreatedAt();
+                    Instant anchor = i.getCreatedAt() != null ? i.getCreatedAt() : Instant.now();
                     return ChronoUnit.DAYS.between(anchor, Instant.now());
                 })
                 .average()
                 .orElse(0.0);
 
         BigDecimal payments90d = paymentRepository.findByTenantId(tenantId).stream()
-                .filter(p -> p.getSettledAt() != null && p.getSettledAt().isAfter(cutoff))
+                .filter(p -> p.getSettledAt() != null && p.getSettledAt().isAfter(paymentCutoff))
                 .map(Payment::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal paymentVelocity = payments90d.divide(new BigDecimal(LOOKBACK_DAYS), 4, RoundingMode.HALF_UP);
-        BigDecimal invoiceVelocity = gmv90d.divide(new BigDecimal(LOOKBACK_DAYS), 4, RoundingMode.HALF_UP);
+        BigDecimal paymentVelocity = payments90d.divide(new BigDecimal(PAYMENT_LOOKBACK_DAYS), 4, RoundingMode.HALF_UP);
+        BigDecimal invoiceVelocity = gmv90d.divide(new BigDecimal(PAYMENT_LOOKBACK_DAYS), 4, RoundingMode.HALF_UP);
 
         BigDecimal velocityScore = BigDecimal.ZERO;
         if (invoiceVelocity.signum() > 0) {
@@ -211,7 +243,9 @@ public class FintechUnderwritingService {
         }
 
         return new UnderwritingMetrics(
+                gmv30d.setScale(2, RoundingMode.HALF_UP),
                 gmv90d.setScale(2, RoundingMode.HALF_UP),
+                dsoDays,
                 BigDecimal.valueOf(Math.max(0, avgAgeDays)).setScale(1, RoundingMode.HALF_UP),
                 velocityScore.setScale(1, RoundingMode.HALF_UP),
                 BigDecimal.ZERO);
@@ -231,7 +265,9 @@ public class FintechUnderwritingService {
     }
 
     public record UnderwritingMetrics(
+            BigDecimal gmv30d,
             BigDecimal gmv90d,
+            BigDecimal dsoDays,
             BigDecimal avgInvoiceAgeDays,
             BigDecimal paymentVelocityScore,
             BigDecimal eligibleFactoringLimit

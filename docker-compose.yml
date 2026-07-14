@@ -12,6 +12,7 @@ services:
       - invsys_pgdata:/var/lib/postgresql/data
       - ./ops/postgres/init:/docker-entrypoint-initdb.d:ro
       - ./ops/demo_seed.sql:/seed/demo_seed.sql:ro
+      - ./ops/demo_seed_tenants_extra.sql:/seed/demo_seed_tenants_extra.sql:ro
       - ./ops/fix_passwords.sql:/seed/fix_passwords.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d invsys"]

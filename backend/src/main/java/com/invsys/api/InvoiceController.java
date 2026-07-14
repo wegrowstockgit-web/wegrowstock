@@ -82,6 +82,12 @@ public class InvoiceController {
         return invoicingService.createFromSalesOrder(salesOrderId);
     }
 
+    @PostMapping("/from-shipment/{shipmentId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+    public Invoice createFromShipment(@PathVariable UUID shipmentId) {
+        return invoicingService.createFromShipment(shipmentId);
+    }
+
     @PostMapping("/{invoiceId}/payment-intent")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     public PaymentIntent createPaymentIntent(@PathVariable @NotNull UUID invoiceId) {

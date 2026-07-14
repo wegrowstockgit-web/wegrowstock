@@ -42,7 +42,6 @@ class SsoLoginGateTest extends AbstractIntegrationTest {
     void forcedSsoRejectsPasswordLoginWithRedirect() {
         String slug = "sso-corp-" + UUID.randomUUID().toString().substring(0, 8);
         final UUID tenantId = testDataHelper.createTenant("SSO Corp", slug);
-        final String tenantSlug = slug;
         TenantContext.setTenantId(tenantId);
 
         TenantContext.setTenantId(tenantId);
@@ -64,7 +63,7 @@ class SsoLoginGateTest extends AbstractIntegrationTest {
         config.setForceSso(true);
         ssoConfigRepository.save(config);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest(tenantSlug, "owner@sso.test", "password123")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("owner@sso.test", "password123")))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
                     ApiException api = (ApiException) ex;

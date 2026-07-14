@@ -70,8 +70,10 @@ public class AuthService {
     }
 
     public TokenResponse login(LoginRequest request) {
-        UUID tenantId = bootstrapJdbc.findTenantIdBySlug(request.tenantSlug())
+        var authUser = bootstrapJdbc.findUserForAuthByEmail(request.email())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
+
+        UUID tenantId = authUser.tenantId();
 
         bootstrapJdbc.findSsoConfigByTenantId(tenantId).ifPresent(sso -> {
             if (sso.enabled() && sso.forceSso()) {
@@ -81,8 +83,6 @@ public class AuthService {
             }
         });
 
-        var authUser = bootstrapJdbc.findUserForAuth(tenantId, request.email())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
         if (!"ACTIVE".equals(authUser.status())
                 || !passwordEncoder.matches(request.password(), authUser.passwordHash())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials");
@@ -124,7 +124,8 @@ public class AuthService {
         refreshTokenRepository.save(tokenEntity);
 
         List<String> roles = userRoleRepository.findRoleCodesByUserId(user.getId());
-        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles);
+        List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
         String refresh = UUID.randomUUID().toString();
         RefreshToken replacement = new RefreshToken();
         replacement.setTenantId(user.getTenantId());
@@ -134,7 +135,7 @@ public class AuthService {
         replacement = refreshTokenRepository.save(replacement);
         tokenEntity.setReplacedBy(replacement.getId());
         refreshTokenRepository.save(tokenEntity);
-        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles);
+        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds);
     }
 
     @Transactional
@@ -149,7 +150,8 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user, List<String> roles) {
-        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles);
+        List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
         String refresh = UUID.randomUUID().toString();
         RefreshToken entity = new RefreshToken();
         entity.setTenantId(user.getTenantId());
@@ -157,7 +159,17 @@ public class AuthService {
         entity.setTokenHash(hashToken(refresh));
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
         refreshTokenRepository.save(entity);
-        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles);
+        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds);
+    }
+
+    /**
+     * OWNER/ADMIN see all tenant warehouses. Localized roles are restricted to user_warehouses mappings.
+     */
+    List<UUID> resolveWarehouseIds(UUID tenantId, UUID userId, List<String> roles) {
+        if (roles.contains("OWNER") || roles.contains("ADMIN")) {
+            return bootstrapJdbc.findAllWarehouseIds(tenantId);
+        }
+        return bootstrapJdbc.findWarehouseIdsForUser(tenantId, userId);
     }
 
     static String hashToken(String token) {

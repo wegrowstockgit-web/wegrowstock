@@ -260,6 +260,20 @@ public class ReturnController {
 
 
 
+    @PostMapping("/lines/{lineId}/release-from-quarantine")
+
+    public ReturnLineResponse releaseFromQuarantine(@PathVariable UUID lineId,
+
+                                                    @Valid @RequestBody ReleaseQuarantineRequest request) {
+
+        ReturnLine line = returnService.releaseFromQuarantine(lineId, request.disposition());
+
+        return toLineResponse(line);
+
+    }
+
+
+
     private ReturnResponse toResponse(ReturnOrder returnOrder) {
 
         Map<UUID, SalesOrder> orders = salesOrderRepository.findAll().stream()
@@ -413,6 +427,12 @@ public class ReturnController {
             @NotBlank String disposition
 
     ) {
+
+    }
+
+
+
+    public record ReleaseQuarantineRequest(@NotBlank String disposition) {
 
     }
 

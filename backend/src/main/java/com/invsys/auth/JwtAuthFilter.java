@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -42,9 +43,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 UUID tenantId = UUID.fromString((String) claims.getClaim("tenant_id"));
                 @SuppressWarnings("unchecked")
                 List<String> roles = (List<String>) claims.getClaim("roles");
+                if (roles == null) {
+                    roles = List.of();
+                }
+
+                List<UUID> warehouseIds = parseWarehouseIds(claims.getClaim("warehouse_ids"));
 
                 TenantContext.setTenantId(tenantId);
                 TenantContext.setUserId(userId);
+                TenantContext.setAuthorizedWarehouseIds(warehouseIds);
                 MDC.put("tenantId", tenantId.toString());
                 MDC.put("userId", userId.toString());
 
@@ -69,9 +76,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         } finally {
             MDC.remove("tenantId");
             MDC.remove("userId");
+            MDC.remove("warehouseId");
             TenantContext.clear();
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<UUID> parseWarehouseIds(Object claim) {
+        if (!(claim instanceof List<?> raw) || raw.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> ids = new ArrayList<>();
+        for (Object item : raw) {
+            if (item != null) {
+                ids.add(UUID.fromString(item.toString()));
+            }
+        }
+        return ids;
     }
 
     @Override

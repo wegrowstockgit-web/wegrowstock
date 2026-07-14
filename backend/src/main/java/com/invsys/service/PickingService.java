@@ -4,7 +4,6 @@ import com.invsys.domain.Allocation;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.Location;
 import com.invsys.repository.InventoryLevelRepository;
-import com.invsys.tenancy.TenantContext;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -18,7 +17,8 @@ import java.util.UUID;
 
 /**
  * Intelligent path optimization for wave/zone picking using a nearest-neighbor
- * approximation over warehouse location paths (TSP heuristic).
+ * approximation over warehouse location paths (TSP heuristic), biased by
+ * {@code locations.sequence_index} for spatial locality.
  */
 @Service
 public class PickingService {
@@ -30,6 +30,12 @@ public class PickingService {
     }
 
     public List<Allocation> optimizePickSequence(List<Allocation> allocations, Map<UUID, String> locationPaths) {
+        return optimizePickSequence(allocations, locationPaths, Map.of());
+    }
+
+    public List<Allocation> optimizePickSequence(List<Allocation> allocations,
+                                                 Map<UUID, String> locationPaths,
+                                                 Map<UUID, Integer> sequenceIndexes) {
         if (allocations.size() <= 1) {
             return List.copyOf(allocations);
         }
@@ -37,17 +43,18 @@ public class PickingService {
         Map<UUID, PathCoordinate> coordinates = new HashMap<>();
         for (Allocation allocation : allocations) {
             String path = locationPaths.getOrDefault(allocation.getLocationId(), "ZZZZ");
-            coordinates.put(allocation.getId(), PathCoordinate.fromPath(path));
+            int seq = sequenceIndexes.getOrDefault(allocation.getLocationId(), 0);
+            coordinates.put(allocation.getId(), PathCoordinate.fromPath(path, seq));
         }
 
         List<Allocation> remaining = new ArrayList<>(allocations);
-        remaining.sort(Comparator.comparing(a -> locationPaths.getOrDefault(a.getLocationId(), "ZZZZ")));
+        remaining.sort(Comparator
+                .comparing((Allocation a) -> sequenceIndexes.getOrDefault(a.getLocationId(), Integer.MAX_VALUE))
+                .thenComparing(a -> locationPaths.getOrDefault(a.getLocationId(), "ZZZZ")));
 
         List<Allocation> route = new ArrayList<>();
         Allocation current = remaining.removeFirst();
         route.add(current);
-        Set<UUID> visited = new HashSet<>();
-        visited.add(current.getId());
 
         while (!remaining.isEmpty()) {
             PathCoordinate currentCoord = coordinates.get(current.getId());
@@ -71,6 +78,51 @@ public class PickingService {
             current = nearest;
         }
 
+        return route;
+    }
+
+    /**
+     * Re-sequence pending pick tasks by minimizing travel across location paths / sequence_index.
+     */
+    public List<String> optimizePendingPaths(List<String> pendingPaths, Map<String, Integer> pathToSequenceIndex) {
+        if (pendingPaths.size() <= 1) {
+            return List.copyOf(pendingPaths);
+        }
+
+        List<PathNode> remaining = new ArrayList<>();
+        for (int i = 0; i < pendingPaths.size(); i++) {
+            String path = pendingPaths.get(i);
+            remaining.add(new PathNode(i, path, PathCoordinate.fromPath(
+                    path, pathToSequenceIndex.getOrDefault(path, i))));
+        }
+        remaining.sort(Comparator
+                .comparingInt((PathNode n) -> pathToSequenceIndex.getOrDefault(n.path(), Integer.MAX_VALUE))
+                .thenComparing(PathNode::path));
+
+        List<String> route = new ArrayList<>();
+        PathNode current = remaining.removeFirst();
+        route.add(current.path());
+        Set<Integer> visited = new HashSet<>();
+        visited.add(current.index());
+
+        while (!remaining.isEmpty()) {
+            PathNode nearest = null;
+            double nearestDistance = Double.MAX_VALUE;
+            for (PathNode candidate : remaining) {
+                double distance = current.coord().distanceTo(candidate.coord());
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearest = candidate;
+                }
+            }
+            if (nearest == null) {
+                nearest = remaining.removeFirst();
+            } else {
+                remaining.remove(nearest);
+            }
+            route.add(nearest.path());
+            current = nearest;
+        }
         return route;
     }
 
@@ -125,15 +177,19 @@ public class PickingService {
     ) {
     }
 
-    private record PathCoordinate(int warehouse, int zone, int aisle, int bin) {
+    private record PathNode(int index, String path, PathCoordinate coord) {
+    }
 
-        static PathCoordinate fromPath(String path) {
+    private record PathCoordinate(int warehouse, int zone, int aisle, int bin, int sequenceIndex) {
+
+        static PathCoordinate fromPath(String path, int sequenceIndex) {
             String[] parts = path.split("/");
             return new PathCoordinate(
                     hash(parts, 0),
                     hash(parts, 1),
                     hash(parts, 2),
-                    hash(parts, 3)
+                    hash(parts, 3),
+                    sequenceIndex
             );
         }
 
@@ -145,7 +201,10 @@ public class PickingService {
         }
 
         double distanceTo(PathCoordinate other) {
-            return Math.abs(warehouse - other.warehouse) * 1000
+            // Prefer sequence_index locality (warehouse walk order) then hierarchical path distance.
+            double seqDelta = Math.abs(sequenceIndex - other.sequenceIndex);
+            return seqDelta * 50
+                    + Math.abs(warehouse - other.warehouse) * 1000
                     + Math.abs(zone - other.zone) * 100
                     + Math.abs(aisle - other.aisle) * 10
                     + Math.abs(bin - other.bin);

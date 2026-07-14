@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useSessionStore } from '@/stores/session';
+import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { clearQueryCache, queryClient } from '@/offline/queryPersistence';
 
 // Empty base URL: requests use /api/v1/... and are proxied by Vite (dev) or nginx (Docker).
@@ -51,8 +52,43 @@ function singleFlightRefresh(): Promise<string | null> {
   return refreshPromise;
 }
 
+function accessTokenExpiresSoon(token: string, skewMs = 60_000): boolean {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return true;
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: number;
+    };
+    return typeof json.exp !== 'number' || json.exp * 1000 <= Date.now() + skewMs;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Ensure a valid access token before offline queue flush. Refreshes only when
+ * the access token is missing or near expiry so mid-session rotation does not
+ * invalidate other clients holding the prior refresh token.
+ */
+export async function ensureFreshSession(): Promise<boolean> {
+  const { accessToken, refreshToken } = useSessionStore.getState();
+  if (!refreshToken && !accessToken) {
+    return false;
+  }
+  if (accessToken && !accessTokenExpiresSoon(accessToken)) {
+    return true;
+  }
+  if (!refreshToken) {
+    return !!accessToken;
+  }
+  const token = await singleFlightRefresh();
+  return !!token;
+}
+
 function isAuthFailure(status?: number): boolean {
-  return status === 401 || status === 403;
+  // Only 401 means the session is invalid. 403 is an RBAC denial and must not
+  // trigger refresh/logout (otherwise floor roles get signed out on office APIs).
+  return status === 401;
 }
 
 function isProtectedApiRequest(url?: string): boolean {
@@ -71,6 +107,10 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = useSessionStore.getState().accessToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const warehouseId = useActiveWarehouseStore.getState().warehouseId;
+  if (warehouseId) {
+    config.headers['X-Warehouse-Id'] = warehouseId;
   }
   if (!config.headers['X-Request-Id']) {
     config.headers['X-Request-Id'] =

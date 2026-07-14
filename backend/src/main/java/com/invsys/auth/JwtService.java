@@ -72,12 +72,20 @@ public class JwtService {
     }
 
     public String generateAccessToken(UUID userId, UUID tenantId, List<String> roles) {
+        return generateAccessToken(userId, tenantId, roles, List.of());
+    }
+
+    public String generateAccessToken(UUID userId, UUID tenantId, List<String> roles, List<UUID> warehouseIds) {
         try {
             Instant now = Instant.now();
+            List<String> warehouseClaim = warehouseIds == null
+                    ? List.of()
+                    : warehouseIds.stream().map(UUID::toString).toList();
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                     .subject(userId.toString())
                     .claim("tenant_id", tenantId.toString())
                     .claim("roles", roles)
+                    .claim("warehouse_ids", warehouseClaim)
                     .issueTime(Date.from(now))
                     .expirationTime(Date.from(now.plusSeconds(properties.getAccessTokenMinutes() * 60L)))
                     .build();

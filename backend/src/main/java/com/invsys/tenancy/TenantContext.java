@@ -1,5 +1,7 @@
 package com.invsys.tenancy;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -7,6 +9,8 @@ public final class TenantContext {
     private static final ThreadLocal<UUID> TENANT = new ThreadLocal<>();
     private static final ThreadLocal<UUID> USER = new ThreadLocal<>();
     private static final ThreadLocal<UUID> CUSTOMER = new ThreadLocal<>();
+    private static final ThreadLocal<UUID> WAREHOUSE = new ThreadLocal<>();
+    private static final ThreadLocal<List<UUID>> AUTHORIZED_WAREHOUSES = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> BOOTSTRAP = ThreadLocal.withInitial(() -> false);
 
     private TenantContext() {}
@@ -43,6 +47,23 @@ public final class TenantContext {
         return getCustomerId().orElseThrow(() -> new IllegalStateException("Customer context not set"));
     }
 
+    public static void setWarehouseId(UUID warehouseId) {
+        WAREHOUSE.set(warehouseId);
+    }
+
+    public static Optional<UUID> getWarehouseId() {
+        return Optional.ofNullable(WAREHOUSE.get());
+    }
+
+    public static void setAuthorizedWarehouseIds(List<UUID> warehouseIds) {
+        AUTHORIZED_WAREHOUSES.set(warehouseIds == null ? List.of() : List.copyOf(warehouseIds));
+    }
+
+    public static List<UUID> getAuthorizedWarehouseIds() {
+        List<UUID> ids = AUTHORIZED_WAREHOUSES.get();
+        return ids == null ? Collections.emptyList() : ids;
+    }
+
     public static void setBootstrap(boolean bootstrap) {
         BOOTSTRAP.set(bootstrap);
     }
@@ -55,6 +76,8 @@ public final class TenantContext {
         TENANT.remove();
         USER.remove();
         CUSTOMER.remove();
+        WAREHOUSE.remove();
+        AUTHORIZED_WAREHOUSES.remove();
         BOOTSTRAP.remove();
     }
 }

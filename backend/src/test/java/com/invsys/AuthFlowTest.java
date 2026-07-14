@@ -25,7 +25,7 @@ class AuthFlowTest extends AbstractIntegrationTest {
         assertThat(created.accessToken()).isNotBlank();
         assertThat(created.roles()).contains("OWNER");
 
-        TokenResponse loggedIn = authService.login(new LoginRequest("acme-test", "owner@acme.test", "password123"));
+        TokenResponse loggedIn = authService.login(new LoginRequest("owner@acme.test", "password123"));
         assertThat(loggedIn.tenantId()).isEqualTo(created.tenantId());
 
         TokenResponse refreshed = authService.refresh(new RefreshRequest(loggedIn.refreshToken()));

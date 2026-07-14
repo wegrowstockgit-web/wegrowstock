@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
 
@@ -218,6 +219,7 @@ export function ProductsPage() {
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [uomVariant, setUomVariant] = useState<ProductVariant | null>(null);
+  const [peekProductId, setPeekProductId] = useState<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -246,6 +248,7 @@ export function ProductsPage() {
   });
 
   const products = data?.pages.flatMap((p) => p.items) ?? [];
+  const peekProduct = products.find((p) => p.id === peekProductId) ?? null;
   const displayed = useMemo(() => {
     if (!lowStockOnly) return products;
     return products.filter((p) => (p.reorderPoint ?? 0) > 0 && p.atp < (p.reorderPoint ?? 0));
@@ -311,8 +314,8 @@ export function ProductsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col p-6">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-0 flex shrink-0 flex-col gap-4 border-b border-border/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Products</h1>
           <p className="mt-1 text-sm text-text-muted">
@@ -338,6 +341,7 @@ export function ProductsPage() {
         </div>
       </div>
 
+      <div className="shrink-0 px-6 pt-4">
       <SavedFilterViews
         storageKey="products-filters"
         activeFilters={{ lowStock: lowStockOnly ? '1' : '' }}
@@ -347,8 +351,10 @@ export function ProductsPage() {
           { id: 'low', label: 'Low stock', filters: { lowStock: '1' } },
         ]}
       />
+      </div>
 
       {displayed.length === 0 ? (
+        <div className="p-6">
         <EmptyState
           icon={Package}
           title="No products yet"
@@ -362,12 +368,13 @@ export function ProductsPage() {
             ) : undefined
           }
         />
+        </div>
       ) : (
-        <div className="flex-1 overflow-hidden rounded-lg border border-border bg-surface-raised">
+        <div className="min-h-0 flex-1 overflow-hidden bg-surface-raised">
           <div
             className={cn(
               productsGridClass(canManage, syncSupported),
-              'sticky top-0 z-10 h-11 border-b border-border bg-surface-overlay text-xs font-medium uppercase tracking-wide text-text-muted'
+              'sticky top-0 z-10 h-11 border-b border-border bg-surface-overlay px-4 text-xs font-medium uppercase tracking-wide text-text-muted'
             )}
             role="row"
           >
@@ -403,13 +410,14 @@ export function ProductsPage() {
                     key={product.id}
                     className={cn(
                       productsGridClass(canManage, syncSupported),
-                      'absolute left-0 top-0 border-b border-border text-sm hover:bg-surface-overlay'
+                      'absolute left-0 top-0 cursor-pointer border-b border-border text-sm hover:bg-surface-overlay'
                     )}
                     style={{
                       height: `${virtualRow.size}px`,
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                     role="row"
+                    onClick={() => setPeekProductId(product.id)}
                   >
                     <div className="truncate font-mono text-text">{product.sku}</div>
                     <div className="truncate text-text">{product.name}</div>
@@ -425,7 +433,7 @@ export function ProductsPage() {
                     <div className="text-right font-mono text-sm font-medium tabular-nums text-text">
                       {qty(product.atp)}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right" onClick={(e) => e.stopPropagation()}>
                       {canManage ? (
                         <InlineEditableCell
                           value={product.reorderPoint ?? 0}
@@ -442,7 +450,7 @@ export function ProductsPage() {
                       )}
                     </div>
                     {canManage && (
-                      <div className="flex justify-center">
+                      <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => setUomVariant(product)}
@@ -454,7 +462,7 @@ export function ProductsPage() {
                       </div>
                     )}
                     {syncSupported && (
-                      <div className="flex justify-center">
+                      <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                         {canManage ? (
                           <ExternalSyncToggle
                             variantId={product.id}
@@ -484,6 +492,55 @@ export function ProductsPage() {
 
       <AddProductModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <UomEditModal variant={uomVariant} open={uomVariant !== null} onClose={() => setUomVariant(null)} />
+
+      <RightPeekDrawer
+        open={!!peekProductId}
+        onClose={() => setPeekProductId(null)}
+        title={peekProduct?.sku ?? 'Product'}
+        description={peekProduct?.name}
+      >
+        {peekProduct ? (
+          <dl className="space-y-3 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Barcode</dt>
+              <dd className="font-mono">{peekProduct.barcode ?? '—'}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">On hand</dt>
+              <dd className="font-mono tabular-nums">{qty(peekProduct.onHand)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Allocated</dt>
+              <dd className="font-mono tabular-nums">{qty(peekProduct.allocated)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">ATP</dt>
+              <dd className="font-mono tabular-nums font-semibold">{qty(peekProduct.atp)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-text-muted">Reorder point</dt>
+              <dd className="w-28">
+                {canManage ? (
+                  <InlineEditableCell
+                    value={peekProduct.reorderPoint ?? 0}
+                    inputType="number"
+                    onSave={async (val) => {
+                      await reorderMutation.mutateAsync({
+                        id: peekProduct.id,
+                        reorderPoint: Number(val),
+                      });
+                    }}
+                  />
+                ) : (
+                  <span className="font-mono tabular-nums">{qty(peekProduct.reorderPoint)}</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-sm text-text-muted">Loading…</p>
+        )}
+      </RightPeekDrawer>
     </div>
   );
 }

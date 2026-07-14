@@ -36,6 +36,7 @@ export const useSessionStore = create<SessionState>()(
             email,
             displayName: displayName ?? email.split('@')[0],
             roles: token.roles,
+            warehouseIds: token.warehouseIds ?? [],
           },
         }),
 

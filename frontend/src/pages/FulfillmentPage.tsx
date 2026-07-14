@@ -8,8 +8,8 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { useSessionStore } from '@/stores/session';
 import { cn, generateIdempotencyKey } from '@/lib/utils';
-import { enqueueMutation } from '@/offline/mutationQueue';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
@@ -18,7 +18,57 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { LocationBreadcrumb } from '@/components/ui/LocationBreadcrumb';
 import { UndoToast } from '@/components/ui/UndoToast';
-import { useUndoToast } from '@/hooks/useUndoToast';
+import { useWarehouseUXStore } from '@/stores/warehouseUX';
+
+function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
+  const canManage = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'));
+  const [draftWaveId, setDraftWaveId] = useState<string | null>(null);
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post<{ waveId: string; status: string }>(
+        '/api/v1/picking/waves/generate',
+        {}
+      );
+      return res.data;
+    },
+    onSuccess: (data) => setDraftWaveId(data.waveId),
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: async (waveId: string) => {
+      await apiClient.post(`/api/v1/picking/waves/${waveId}/release`);
+    },
+    onSuccess: () => {
+      setDraftWaveId(null);
+      onReleased();
+    },
+  });
+
+  if (!canManage) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        loading={generateMutation.isPending}
+        onClick={() => generateMutation.mutate()}
+      >
+        Generate draft wave
+      </Button>
+      {draftWaveId && (
+        <Button
+          size="sm"
+          loading={releaseMutation.isPending}
+          onClick={() => releaseMutation.mutate(draftWaveId)}
+        >
+          Release to floor
+        </Button>
+      )}
+    </div>
+  );
+}
 
 interface ScanResult {
   barcode: string;
@@ -52,7 +102,9 @@ export function FulfillmentPage() {
   const [packSalesOrderId, setPackSalesOrderId] = useState('');
   const [labelMessage, setLabelMessage] = useState('');
   const scale = useBluetoothScale();
-  const undoToast = useUndoToast(5000);
+  const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
+  const bufferMisScan = useWarehouseUXStore((s) => s.bufferMisScan);
+  const undoMisScan = useWarehouseUXStore((s) => s.undoMisScan);
 
   const { data: packOrders = [] } = useQuery({
     queryKey: ['sales-orders', 'pack'],
@@ -118,18 +170,14 @@ export function FulfillmentPage() {
         requiresSerial: false,
         message: 'Queued for sync',
       };
-      undoToast.schedule({
+      bufferMisScan({
+        barcode,
         message: `Scan queued — undo within 5s`,
-        rollback: () => {
-          setHistory((h) => h.filter((item) => item.barcode !== barcode || item.message !== 'Queued for sync'));
-        },
-        execute: async () => {
-          await enqueueMutation({
-            idempotencyKey,
-            method: 'POST',
-            url: '/api/v1/fulfillment/scan',
-            body: payload,
-          });
+        mutation: {
+          idempotencyKey,
+          method: 'POST',
+          url: '/api/v1/fulfillment/scan',
+          body: payload,
         },
       });
       return queuedHistory as FulfillmentScanResponse;
@@ -408,19 +456,22 @@ export function FulfillmentPage() {
                   <p className="mt-1 text-sm text-text-muted">
                     Stop {nextTask.sequenceOrder} of {batchTasks.length}
                   </p>
-                  <div className="mt-4 space-y-1">
+                  <div className="mt-4 space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Optimized route</p>
                     {batchTasks.map((task) => (
                       <div
                         key={task.id}
                         className={cn(
-                          'flex items-center justify-between rounded px-2 py-1 text-sm',
-                          task.status === 'PICKED' && 'text-text-muted line-through',
-                          task.id === nextTask.id && 'bg-accent/20 font-semibold text-accent'
+                          'rounded px-2 py-2 text-sm transition-colors duration-200',
+                          task.status === 'PICKED' && 'text-text-muted line-through opacity-60',
+                          task.id === nextTask.id && 'bg-accent/20'
                         )}
                       >
-                        <span className="font-mono">{task.sequenceOrder}. {task.locationPath}</span>
-                        <span className="text-xs uppercase">{task.status}</span>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs text-text-muted">Stop {task.sequenceOrder}</span>
+                          <span className="text-xs uppercase tracking-wide">{task.status}</span>
+                        </div>
+                        <LocationBreadcrumb locationPath={task.locationPath} />
                       </div>
                     ))}
                   </div>
@@ -428,8 +479,10 @@ export function FulfillmentPage() {
               ) : (
                 <div>
                   <p className="text-sm text-text-muted">
-                    No active batch. Ask a manager to release a picking wave from the office.
+                    No released batch on the floor. Generate a draft wave (path optimizer runs in
+                    background), then release it when ready.
                   </p>
+                  <WaveReleaseControls onReleased={() => void refetchTasks()} />
                   <p className="mt-2 text-xs text-text-muted">
                     Tip: switch to Single pick if you already know the bin.
                   </p>
@@ -490,10 +543,10 @@ export function FulfillmentPage() {
       </div>
 
       <UndoToast
-        visible={undoToast.visible}
-        message={undoToast.message}
-        onUndo={undoToast.undo}
-        onDismiss={undoToast.dismiss}
+        visible={!!pendingMisScan}
+        message={pendingMisScan?.message ?? ''}
+        onUndo={undoMisScan}
+        onDismiss={() => void useWarehouseUXStore.getState().commitMisScan()}
       />
     </div>
   );

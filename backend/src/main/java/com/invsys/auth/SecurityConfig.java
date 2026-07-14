@@ -20,6 +20,7 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final WarehouseAccessFilter warehouseAccessFilter;
     private final UnauthorizedEntryPoint unauthorizedEntryPoint;
     private final TenantClientRegistrationRepository tenantClientRegistrationRepository;
     private final OidcLoginSuccessHandler oidcLoginSuccessHandler;
@@ -27,12 +28,14 @@ public class SecurityConfig {
     private final boolean publicSignupEnabled;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          WarehouseAccessFilter warehouseAccessFilter,
                           UnauthorizedEntryPoint unauthorizedEntryPoint,
                           TenantClientRegistrationRepository tenantClientRegistrationRepository,
                           OidcLoginSuccessHandler oidcLoginSuccessHandler,
                           Environment environment,
                           @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.warehouseAccessFilter = warehouseAccessFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
         this.tenantClientRegistrationRepository = tenantClientRegistrationRepository;
         this.oidcLoginSuccessHandler = oidcLoginSuccessHandler;
@@ -74,7 +77,8 @@ public class SecurityConfig {
                 .oauth2Login(oauth2 -> oauth2
                         .clientRegistrationRepository(tenantClientRegistrationRepository)
                         .successHandler(oidcLoginSuccessHandler))
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(warehouseAccessFilter, JwtAuthFilter.class);
         return http.build();
     }
 

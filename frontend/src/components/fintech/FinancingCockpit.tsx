@@ -50,8 +50,9 @@ export function FinancingCockpit() {
           description="Credit utilization, underwriting signals, and instant factoring"
         />
         {metrics && (
-          <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-4">
-            <Metric label="GMV (90d)" value={`$${metrics.gmv90d.toLocaleString()}`} />
+          <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-3 lg:grid-cols-5">
+            <Metric label="GMV (30d)" value={`$${metrics.gmv30d.toLocaleString()}`} />
+            <Metric label="DSO" value={`${metrics.dsoDays.toFixed(0)}d`} />
             <Metric label="Avg invoice age" value={`${metrics.avgInvoiceAgeDays.toFixed(0)}d`} />
             <Metric
               label="Payment velocity"

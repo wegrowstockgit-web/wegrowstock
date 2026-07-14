@@ -25,6 +25,9 @@ public class Location extends TenantScopedEntity {
     @Column(nullable = false)
     private String path;
 
+    @Column(name = "sequence_index", nullable = false)
+    private int sequenceIndex;
+
     public UUID getParentLocationId() {
         return parentLocationId;
     }
@@ -63,5 +66,13 @@ public class Location extends TenantScopedEntity {
 
     public void setPath(String path) {
         this.path = path;
+    }
+
+    public int getSequenceIndex() {
+        return sequenceIndex;
+    }
+
+    public void setSequenceIndex(int sequenceIndex) {
+        this.sequenceIndex = sequenceIndex;
     }
 }

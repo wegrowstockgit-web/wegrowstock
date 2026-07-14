@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
-import { SlideOutDrawer } from '@/components/ui/SlideOutDrawer';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
   TableBody,
@@ -218,7 +218,7 @@ export function InvoicesPage() {
 
       <CreateInvoiceModal open={modalOpen} onClose={() => setModalOpen(false)} />
 
-      <SlideOutDrawer
+      <RightPeekDrawer
         open={!!peekInvoiceId}
         onClose={() => setPeekInvoiceId(null)}
         title={peekInvoice?.number ?? 'Invoice'}
@@ -244,7 +244,7 @@ export function InvoicesPage() {
         ) : (
           <p className="text-sm text-text-muted">Loading…</p>
         )}
-      </SlideOutDrawer>
+      </RightPeekDrawer>
     </div>
   );
 }

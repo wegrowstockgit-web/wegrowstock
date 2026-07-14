@@ -284,6 +284,41 @@ public class DashboardController {
         return points;
     }
 
+    @GetMapping("/stockout-projections")
+    public List<StockoutProjectionResponse> stockoutProjections() {
+        UUID tenantId = TenantContext.requireTenantId();
+
+        Map<UUID, BigDecimal> availableByVariant = levelRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        InventoryLevel::getVariantId,
+                        Collectors.mapping(InventoryLevel::getAvailable,
+                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))));
+
+        return variantRepository.findAll().stream()
+                .map(variant -> {
+                    BigDecimal available = availableByVariant.getOrDefault(variant.getId(), BigDecimal.ZERO);
+                    BigDecimal velocity = forecastRepository.findByTenantIdAndVariantId(tenantId, variant.getId())
+                            .map(DemandForecast::getVelocity30d)
+                            .orElse(BigDecimal.ZERO);
+                    LocalDate projected = null;
+                    if (velocity != null && velocity.signum() > 0 && available.signum() >= 0) {
+                        int days = available.divide(velocity, 0, java.math.RoundingMode.FLOOR).intValue();
+                        projected = LocalDate.now(ZoneOffset.UTC).plusDays(Math.max(days, 0));
+                    }
+                    return new StockoutProjectionResponse(
+                            variant.getId(),
+                            variant.getSku(),
+                            available,
+                            velocity != null ? velocity : BigDecimal.ZERO,
+                            projected);
+                })
+                .filter(row -> row.velocity30d().signum() > 0)
+                .sorted(Comparator.comparing(
+                        StockoutProjectionResponse::projectedStockoutDate,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+    }
+
     public record WorkQueueResponse(
             long needsAllocation,
             long readyToInvoice,
@@ -301,6 +336,15 @@ public class DashboardController {
     }
 
     public record VelocityPointResponse(String date, BigDecimal availableUnits) {
+    }
+
+    public record StockoutProjectionResponse(
+            UUID variantId,
+            String sku,
+            BigDecimal available,
+            BigDecimal velocity30d,
+            LocalDate projectedStockoutDate
+    ) {
     }
 
     public record RecentOrderResponse(

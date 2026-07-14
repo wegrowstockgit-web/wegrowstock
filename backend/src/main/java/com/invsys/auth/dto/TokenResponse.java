@@ -8,6 +8,10 @@ public record TokenResponse(
         String refreshToken,
         UUID tenantId,
         UUID userId,
-        List<String> roles
+        List<String> roles,
+        List<UUID> warehouseIds
 ) {
+    public TokenResponse(String accessToken, String refreshToken, UUID tenantId, UUID userId, List<String> roles) {
+        this(accessToken, refreshToken, tenantId, userId, roles, List.of());
+    }
 }

@@ -28,7 +28,19 @@
   --color-danger: #dc2626;
 
   --sidebar-width: 16rem;
+  --rail-width-collapsed: 4.5rem;
+  --rail-width-expanded: 15.5rem;
+  --rail-width: var(--rail-width-collapsed);
+  --rail-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --rail-duration: 220ms;
   --header-height: 3.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  [data-theme='office'] {
+    --rail-duration: 1ms;
+  }
 }
 
 [data-theme="warehouse"] {

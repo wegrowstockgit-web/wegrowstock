@@ -51,7 +51,9 @@ public class FintechController {
                         line.getUtilizationStatus()),
                 dash.utilizationPercent(),
                 new UnderwritingResponse(
+                        metrics.gmv30d(),
                         metrics.gmv90d(),
+                        metrics.dsoDays(),
                         metrics.avgInvoiceAgeDays(),
                         metrics.paymentVelocityScore(),
                         metrics.eligibleFactoringLimit()),
@@ -62,6 +64,7 @@ public class FintechController {
     }
 
     @PostMapping("/factoring/{invoiceId}/request")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> requestFactoring(
             @PathVariable UUID invoiceId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
@@ -69,6 +72,7 @@ public class FintechController {
     }
 
     @PostMapping("/factor")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> factor(
             @Valid @RequestBody FactorRequest body,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
@@ -95,6 +99,7 @@ public class FintechController {
     }
 
     @PostMapping("/capital/drawdown")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> capitalDrawdown(
             @Valid @RequestBody DrawdownRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
@@ -102,6 +107,7 @@ public class FintechController {
     }
 
     @PostMapping("/drawdown")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> drawdown(
             @Valid @RequestBody DrawdownRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
@@ -168,7 +174,9 @@ public class FintechController {
     }
 
     public record UnderwritingResponse(
+            BigDecimal gmv30d,
             BigDecimal gmv90d,
+            BigDecimal dsoDays,
             BigDecimal avgInvoiceAgeDays,
             BigDecimal paymentVelocityScore,
             BigDecimal eligibleFactoringLimit

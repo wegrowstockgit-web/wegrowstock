@@ -1,5 +1,6 @@
 package com.invsys.service;
 
+import com.invsys.common.ApiException;
 import com.invsys.domain.Allocation;
 import com.invsys.domain.Location;
 import com.invsys.domain.PickingBatch;
@@ -11,10 +12,12 @@ import com.invsys.repository.PickingBatchRepository;
 import com.invsys.repository.PickingTaskRepository;
 import com.invsys.repository.PickingWaveRepository;
 import com.invsys.tenancy.TenantContext;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,13 +47,17 @@ public class PickingWaveService {
         this.pickingService = pickingService;
     }
 
+    /**
+     * Builds a DRAFT wave/batch so {@link PathOptimizationScheduler} can continuously
+     * re-sequence pending tasks before an explicit floor release.
+     */
     @Transactional
     public WaveResult generateWave(UUID assignedUserId, UUID zoneId) {
         UUID tenantId = TenantContext.requireTenantId();
 
         PickingWave wave = new PickingWave();
         wave.setTenantId(tenantId);
-        wave.setStatus("RELEASED");
+        wave.setStatus("DRAFT");
         wave = waveRepository.save(wave);
 
         PickingBatch batch = new PickingBatch();
@@ -58,17 +65,20 @@ public class PickingWaveService {
         batch.setWaveId(wave.getId());
         batch.setAssignedUserId(assignedUserId);
         batch.setZoneId(zoneId);
-        batch.setStatus("RELEASED");
+        batch.setStatus("DRAFT");
         batch = batchRepository.save(batch);
 
-        Map<UUID, String> locationPaths = locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+        List<Location> locations = locationRepository.findByTenantIdOrderByPathAsc(tenantId);
+        Map<UUID, String> locationPaths = locations.stream()
                 .collect(Collectors.toMap(Location::getId, Location::getPath, (a, b) -> a));
+        Map<UUID, Integer> sequenceIndexes = locations.stream()
+                .collect(Collectors.toMap(Location::getId, Location::getSequenceIndex, (a, b) -> a, HashMap::new));
 
         List<Allocation> active = allocationRepository.findByTenantIdAndStatus(tenantId, "ACTIVE").stream()
                 .filter(a -> a.getSalesOrderLineId() != null)
                 .toList();
 
-        List<Allocation> optimizedRoute = pickingService.optimizePickSequence(active, locationPaths);
+        List<Allocation> optimizedRoute = pickingService.optimizePickSequence(active, locationPaths, sequenceIndexes);
         pickingService.lockLevelsForRoute(tenantId, optimizedRoute);
 
         List<PickingTask> tasks = new ArrayList<>();
@@ -85,6 +95,54 @@ public class PickingWaveService {
         }
 
         return new WaveResult(wave, batch, tasks);
+    }
+
+    @Transactional
+    public WaveResult releaseWave(UUID waveId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        PickingWave wave = waveRepository.findById(waveId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found"));
+        if (!tenantId.equals(wave.getTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found");
+        }
+
+        // Final optimization pass before floor release.
+        List<PickingBatch> batches = batchRepository.findByWaveId(waveId);
+        for (PickingBatch batch : batches) {
+            List<PickingTask> pending = taskRepository.findByBatchIdAndStatusOrderBySequenceOrderAsc(
+                    batch.getId(), "PENDING");
+            if (pending.size() > 1) {
+                Map<String, Integer> pathToSeq = locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+                        .collect(Collectors.toMap(Location::getPath, Location::getSequenceIndex, (a, b) -> a, HashMap::new));
+                List<String> paths = pending.stream().map(PickingTask::getLocationPath).toList();
+                List<String> optimized = pickingService.optimizePendingPaths(paths, pathToSeq);
+                Map<String, List<PickingTask>> byPath = new HashMap<>();
+                for (PickingTask task : pending) {
+                    byPath.computeIfAbsent(task.getLocationPath(), k -> new ArrayList<>()).add(task);
+                }
+                int seq = 1;
+                for (String path : optimized) {
+                    List<PickingTask> bucket = byPath.get(path);
+                    if (bucket == null || bucket.isEmpty()) {
+                        continue;
+                    }
+                    PickingTask task = bucket.removeFirst();
+                    task.setSequenceOrder(seq++);
+                    taskRepository.save(task);
+                }
+            }
+            batch.setStatus("RELEASED");
+            batchRepository.save(batch);
+        }
+
+        wave.setStatus("RELEASED");
+        wave = waveRepository.save(wave);
+
+        PickingBatch primary = batches.isEmpty() ? null : batches.getFirst();
+        List<PickingTask> tasks = primary == null
+                ? List.of()
+                : taskRepository.findByBatchIdOrderBySequenceOrderAsc(primary.getId());
+        return new WaveResult(wave, primary, tasks);
     }
 
     @Transactional(readOnly = true)

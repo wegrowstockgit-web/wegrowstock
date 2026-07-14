@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,7 +31,7 @@ public class BootstrapJdbc {
 
     public Optional<UserAuthRow> findUserForAuth(UUID tenantId, String email) {
         return jdbc.query(
-                "SELECT id, password_hash, status FROM users WHERE tenant_id = ? AND email = ?",
+                "SELECT id, password_hash, status FROM users WHERE tenant_id = ? AND lower(email) = lower(?)",
                 rs -> {
                     if (!rs.next()) {
                         return Optional.empty();
@@ -41,6 +42,42 @@ public class BootstrapJdbc {
                             rs.getString("status")));
                 },
                 tenantId, email);
+    }
+
+    /**
+     * Slugless login: resolve tenant + credentials from globally unique email.
+     */
+    public Optional<UserAuthWithTenantRow> findUserForAuthByEmail(String email) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, password_hash, status
+                FROM users WHERE lower(email) = lower(?)
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new UserAuthWithTenantRow(
+                            UUID.fromString(rs.getString("id")),
+                            UUID.fromString(rs.getString("tenant_id")),
+                            rs.getString("password_hash"),
+                            rs.getString("status")));
+                },
+                email);
+    }
+
+    public List<UUID> findWarehouseIdsForUser(UUID tenantId, UUID userId) {
+        return jdbc.query(
+                "SELECT location_id FROM user_warehouses WHERE tenant_id = ? AND user_id = ?",
+                (rs, rowNum) -> UUID.fromString(rs.getString(1)),
+                tenantId, userId);
+    }
+
+    public List<UUID> findAllWarehouseIds(UUID tenantId) {
+        return jdbc.query(
+                "SELECT id FROM locations WHERE tenant_id = ? AND type = 'WAREHOUSE' ORDER BY code",
+                (rs, rowNum) -> UUID.fromString(rs.getString(1)),
+                tenantId);
     }
 
     public Optional<RefreshTokenRow> findRefreshTokenByHash(String tokenHash) {
@@ -90,6 +127,8 @@ public class BootstrapJdbc {
     }
 
     public record UserAuthRow(UUID id, String passwordHash, String status) {}
+
+    public record UserAuthWithTenantRow(UUID id, UUID tenantId, String passwordHash, String status) {}
 
     public record RefreshTokenRow(UUID tenantId, UUID userId, java.time.Instant expiresAt, java.time.Instant revokedAt) {}
 

@@ -21,6 +21,9 @@ public class SupplierInvoiceIngestion extends TenantScopedEntity {
     @Column(nullable = false)
     private String status = "PENDING";
 
+    @Column(name = "document_url")
+    private String documentUrl;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "extracted_data", columnDefinition = "jsonb", nullable = false)
     private Map<String, Object> extractedData = new LinkedHashMap<>();
@@ -42,6 +45,14 @@ public class SupplierInvoiceIngestion extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getDocumentUrl() {
+        return documentUrl;
+    }
+
+    public void setDocumentUrl(String documentUrl) {
+        this.documentUrl = documentUrl;
     }
 
     public Map<String, Object> getExtractedData() {

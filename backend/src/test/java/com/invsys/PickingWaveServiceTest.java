@@ -114,8 +114,10 @@ class PickingWaveServiceTest extends AbstractIntegrationTest {
         allocationRepository.save(allocA);
 
         PickingWaveService.WaveResult result = pickingWaveService.generateWave(null, null);
+        result = pickingWaveService.releaseWave(result.wave().getId());
         List<String> paths = result.tasks().stream().map(t -> t.getLocationPath()).toList();
 
+        assertThat(result.wave().getStatus()).isEqualTo("RELEASED");
         assertThat(paths).hasSize(2);
         assertThat(paths).containsExactly("WH-01/A-1", "WH-01/B-1");
     }

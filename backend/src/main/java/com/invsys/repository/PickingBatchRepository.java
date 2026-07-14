@@ -11,4 +11,8 @@ public interface PickingBatchRepository extends JpaRepository<PickingBatch, UUID
     List<PickingBatch> findByWaveId(UUID waveId);
 
     Optional<PickingBatch> findFirstByTenantIdAndStatusOrderByCreatedAtDesc(UUID tenantId, String status);
+
+    List<PickingBatch> findByStatus(String status);
+
+    List<PickingBatch> findByTenantIdAndStatus(UUID tenantId, String status);
 }

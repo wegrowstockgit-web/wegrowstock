@@ -5,7 +5,6 @@ const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 test.describe('B2B portal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Company slug').fill('demo-corp');
     await page.getByLabel('Email').fill('b2b@demo.test');
     await page.getByLabel('Password').fill(DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();

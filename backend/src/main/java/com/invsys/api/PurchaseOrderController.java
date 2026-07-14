@@ -110,6 +110,18 @@ public class PurchaseOrderController {
         return po;
     }
 
+    @PostMapping("/purchase-orders/{id}/submit")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrder submit(@PathVariable UUID id) {
+        return purchaseOrderService.submit(id);
+    }
+
+    @PostMapping("/purchase-orders/{id}/mark-in-transit")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrder markInTransit(@PathVariable UUID id) {
+        return purchaseOrderService.markInTransit(id);
+    }
+
     @PostMapping("/purchase-orders/{id}/send-magic-link")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public SupplierPortalService.MagicLinkResponse sendMagicLink(@PathVariable UUID id) {

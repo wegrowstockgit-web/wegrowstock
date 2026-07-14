@@ -75,13 +75,13 @@ export function InlineEditableCell({
     <button
       type="button"
       disabled={disabled}
-      onClick={() => !disabled && setEditing(true)}
+      onDoubleClick={() => !disabled && setEditing(true)}
       className={cn(
         'group inline-flex w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-right font-mono tabular-nums transition-colors',
         !disabled && 'hover:bg-surface-overlay',
         className
       )}
-      title={disabled ? undefined : 'Click to edit'}
+      title={disabled ? undefined : 'Double-click to edit'}
       aria-label={disabled ? undefined : `Edit value ${formatDisplay ? formatDisplay(value) : value}`}
     >
       <span>{formatDisplay ? formatDisplay(value) : value}</span>

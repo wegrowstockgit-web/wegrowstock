@@ -30,11 +30,13 @@ public class PickingController {
         PickingWaveService.WaveResult result = pickingWaveService.generateWave(
                 request != null ? request.assignedUserId() : null,
                 request != null ? request.zoneId() : null);
-        List<TaskResponse> tasks = result.tasks().stream()
-                .map(t -> new TaskResponse(t.getId(), t.getAllocationId(), t.getLocationPath(),
-                        resolveZone(t.getLocationPath()), t.getSequenceOrder(), t.getStatus()))
-                .toList();
-        return new GenerateWaveResponse(result.wave().getId(), result.batch().getId(), tasks);
+        return toGenerateResponse(result);
+    }
+
+    @PostMapping("/waves/{waveId}/release")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public GenerateWaveResponse releaseWave(@PathVariable UUID waveId) {
+        return toGenerateResponse(pickingWaveService.releaseWave(waveId));
     }
 
     @GetMapping("/batches/current/tasks")
@@ -52,6 +54,15 @@ public class PickingController {
                 resolveZone(task.getLocationPath()), task.getSequenceOrder(), task.getStatus());
     }
 
+    private GenerateWaveResponse toGenerateResponse(PickingWaveService.WaveResult result) {
+        List<TaskResponse> tasks = result.tasks().stream()
+                .map(t -> new TaskResponse(t.getId(), t.getAllocationId(), t.getLocationPath(),
+                        resolveZone(t.getLocationPath()), t.getSequenceOrder(), t.getStatus()))
+                .toList();
+        UUID batchId = result.batch() != null ? result.batch().getId() : null;
+        return new GenerateWaveResponse(result.wave().getId(), batchId, result.wave().getStatus(), tasks);
+    }
+
     private static String resolveZone(String path) {
         if (path == null) {
             return "—";
@@ -63,7 +74,7 @@ public class PickingController {
     public record GenerateWaveRequest(UUID assignedUserId, UUID zoneId) {
     }
 
-    public record GenerateWaveResponse(UUID waveId, UUID batchId, List<TaskResponse> tasks) {
+    public record GenerateWaveResponse(UUID waveId, UUID batchId, String status, List<TaskResponse> tasks) {
     }
 
     public record TaskResponse(UUID id, UUID allocationId, String locationPath, String zone,

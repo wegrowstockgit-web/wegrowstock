@@ -41,7 +41,8 @@ public class ApIngestionController {
 
     @PostMapping("/ingestions")
     public IngestionResponse submit(@Valid @RequestBody SubmitIngestionRequest request) {
-        return toResponse(apOcrIngestionService.submitDocument(request.purchaseOrderId(), request.extractedData()));
+        return toResponse(apOcrIngestionService.submitDocument(
+                request.purchaseOrderId(), request.extractedData(), request.documentUrl()));
     }
 
     private IngestionResponse toResponse(SupplierInvoiceIngestion ingestion) {
@@ -49,6 +50,7 @@ public class ApIngestionController {
                 ingestion.getId(),
                 ingestion.getPurchaseOrderId(),
                 ingestion.getStatus(),
+                ingestion.getDocumentUrl(),
                 ingestion.getMatchConfidence(),
                 ingestion.getExtractedData(),
                 ingestion.getCreatedAt()
@@ -57,6 +59,7 @@ public class ApIngestionController {
 
     public record SubmitIngestionRequest(
             @NotNull UUID purchaseOrderId,
+            String documentUrl,
             Map<String, Object> extractedData
     ) {
     }
@@ -65,6 +68,7 @@ public class ApIngestionController {
             UUID id,
             UUID purchaseOrderId,
             String status,
+            String documentUrl,
             BigDecimal matchConfidence,
             Map<String, Object> extractedData,
             Instant createdAt

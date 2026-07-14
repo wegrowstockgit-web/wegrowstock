@@ -12,6 +12,9 @@ import java.util.UUID;
 public interface InventoryLedgerRepository extends JpaRepository<InventoryLedger, UUID> {
     List<InventoryLedger> findByTenantIdAndVariantIdOrderByCreatedAtDesc(UUID tenantId, UUID variantId);
 
+    List<InventoryLedger> findByTenantIdAndReferenceTypeAndReferenceId(
+            UUID tenantId, String referenceType, UUID referenceId);
+
     @Query("""
             SELECT l.locationId, COUNT(l), COALESCE(SUM(ABS(l.quantityDelta)), 0)
             FROM InventoryLedger l

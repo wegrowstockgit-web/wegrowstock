@@ -39,7 +39,11 @@ export function ProtectedRoute({
   }
 
   if (roles && !hasRole(...roles)) {
-    return <Navigate to={isB2bCustomerOnly() ? '/showroom/catalog' : '/dashboard'} replace />;
+    if (isB2bCustomerOnly()) {
+      return <Navigate to="/showroom/catalog" replace />;
+    }
+    const isPickerOnly = useSessionStore.getState().isPickerOnly();
+    return <Navigate to={isPickerOnly ? '/fulfillment' : '/dashboard'} replace />;
   }
 
   return <>{children}</>;

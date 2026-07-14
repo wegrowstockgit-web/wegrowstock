@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
-import { SlideOutDrawer } from '@/components/ui/SlideOutDrawer';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
   TableBody,
@@ -347,8 +347,8 @@ export function SalesOrdersPage() {
   ];
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
         <div>
           <h1 className="text-2xl font-bold text-text">Sales Orders</h1>
           <p className="mt-1 text-sm text-text-muted">Outbound fulfillment</p>
@@ -361,13 +361,16 @@ export function SalesOrdersPage() {
         )}
       </div>
 
+      <div className="shrink-0 px-6 pt-4">
       <SavedFilterViews
         storageKey="sales-orders-filters"
         activeFilters={{ status: statusFilter }}
         onApply={(f) => setStatusFilter(f.status ?? '')}
         defaultPresets={orderPresets}
       />
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-auto">
       <ListPageState
         isLoading={isLoading}
         isError={isError}
@@ -423,10 +426,11 @@ export function SalesOrdersPage() {
           </Table>
         )}
       </ListPageState>
+      </div>
 
       <CreateOrderModal open={modalOpen} onClose={() => setModalOpen(false)} />
 
-      <SlideOutDrawer
+      <RightPeekDrawer
         open={!!peekOrderId}
         onClose={() => setPeekOrderId(null)}
         title={peekOrder?.number ?? 'Sales order'}
@@ -466,7 +470,7 @@ export function SalesOrdersPage() {
         ) : (
           <p className="text-sm text-text-muted">Loading…</p>
         )}
-      </SlideOutDrawer>
+      </RightPeekDrawer>
     </div>
   );
 }

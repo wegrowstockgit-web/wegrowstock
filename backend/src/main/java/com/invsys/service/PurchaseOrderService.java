@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -32,9 +33,36 @@ public class PurchaseOrderService {
     }
 
     @Transactional
+    public PurchaseOrder submit(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if (!"DRAFT".equals(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only DRAFT purchase orders can be submitted");
+        }
+        po.setStatus("SUBMITTED");
+        return purchaseOrderRepository.save(po);
+    }
+
+    @Transactional
+    public PurchaseOrder markInTransit(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if (!"SUBMITTED".equals(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only SUBMITTED purchase orders can be marked in transit");
+        }
+        po.setStatus("IN_TRANSIT");
+        return purchaseOrderRepository.save(po);
+    }
+
+    @Transactional
     public PurchaseOrderLine receiveLine(UUID lineId, UUID locationId, UUID lotId, BigDecimal quantity) {
         PurchaseOrderLine line = lineRepository.findById(lineId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found"));
+        PurchaseOrder po = requirePo(line.getPurchaseOrderId());
+        if (!List.of("SUBMITTED", "IN_TRANSIT", "PARTIALLY_RECEIVED").contains(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Receiving requires SUBMITTED, IN_TRANSIT, or PARTIALLY_RECEIVED status");
+        }
         BigDecimal remaining = line.getQtyOrdered().subtract(line.getQtyReceived());
         if (quantity.compareTo(remaining) > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "OVER_RECEIVE", "Cannot receive more than ordered");
@@ -46,7 +74,6 @@ public class PurchaseOrderService {
         line.setQtyReceived(line.getQtyReceived().add(quantity));
         lineRepository.save(line);
 
-        PurchaseOrder po = purchaseOrderRepository.findById(line.getPurchaseOrderId()).orElseThrow();
         boolean fullyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
                 .allMatch(l -> l.getQtyReceived().compareTo(l.getQtyOrdered()) >= 0);
         boolean anyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
@@ -58,5 +85,14 @@ public class PurchaseOrderService {
         }
         purchaseOrderRepository.save(po);
         return line;
+    }
+
+    private PurchaseOrder requirePo(UUID purchaseOrderId) {
+        PurchaseOrder po = purchaseOrderRepository.findById(purchaseOrderId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Purchase order not found"));
+        if (!po.getTenantId().equals(TenantContext.requireTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Purchase order not found");
+        }
+        return po;
     }
 }

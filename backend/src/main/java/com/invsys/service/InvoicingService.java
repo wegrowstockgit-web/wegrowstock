@@ -3,13 +3,14 @@ package com.invsys.service;
 import com.invsys.integration.OutboxService;
 import com.invsys.billing.StripeGateway;
 import com.invsys.common.ApiException;
-import com.invsys.domain.Customer;
 import com.invsys.domain.Invoice;
 import com.invsys.domain.InvoiceLine;
 import com.invsys.domain.Payment;
 import com.invsys.domain.PaymentIntent;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
+import com.invsys.domain.Shipment;
+import com.invsys.domain.ShipmentLine;
 import com.invsys.domain.StripeAccount;
 import com.invsys.domain.TenantSettings;
 import com.invsys.repository.CustomerRepository;
@@ -19,6 +20,8 @@ import com.invsys.repository.PaymentIntentRepository;
 import com.invsys.repository.PaymentRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
+import com.invsys.repository.ShipmentLineRepository;
+import com.invsys.repository.ShipmentRepository;
 import com.invsys.repository.StripeAccountRepository;
 import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.tenancy.TenantContext;
@@ -29,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,6 +53,8 @@ public class InvoicingService {
     private final StripeGateway stripeGateway;
     private final OutboxService outboxService;
     private final CreditService creditService;
+    private final ShipmentRepository shipmentRepository;
+    private final ShipmentLineRepository shipmentLineRepository;
 
     public InvoicingService(InvoiceRepository invoiceRepository,
                             InvoiceLineRepository invoiceLineRepository,
@@ -62,7 +68,9 @@ public class InvoicingService {
                             PaymentRepository paymentRepository,
                             StripeGateway stripeGateway,
                             OutboxService outboxService,
-                            CreditService creditService) {
+                            CreditService creditService,
+                            ShipmentRepository shipmentRepository,
+                            ShipmentLineRepository shipmentLineRepository) {
         this.invoiceRepository = invoiceRepository;
         this.invoiceLineRepository = invoiceLineRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -76,6 +84,8 @@ public class InvoicingService {
         this.stripeGateway = stripeGateway;
         this.outboxService = outboxService;
         this.creditService = creditService;
+        this.shipmentRepository = shipmentRepository;
+        this.shipmentLineRepository = shipmentLineRepository;
     }
 
     @Transactional
@@ -84,45 +94,130 @@ public class InvoicingService {
         SalesOrder order = salesOrderRepository.findById(salesOrderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
 
-        invoiceRepository.findByTenantIdAndSalesOrderId(tenantId, salesOrderId).ifPresent(existing -> {
+        List<Invoice> existing = invoiceRepository.findByTenantIdAndSalesOrderId(tenantId, salesOrderId);
+        Map<UUID, BigDecimal> alreadyInvoiced = invoicedQtyBySalesOrderLine(existing);
+
+        Map<UUID, BigDecimal> qtyByLine = new HashMap<>();
+        if (existing.isEmpty()) {
+            for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(order.getId())) {
+                qtyByLine.put(line.getId(), line.getQtyOrdered());
+            }
+        } else {
+            for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(order.getId())) {
+                BigDecimal invoiced = alreadyInvoiced.getOrDefault(line.getId(), BigDecimal.ZERO);
+                BigDecimal remaining = line.getQtyShipped().subtract(invoiced);
+                if (remaining.signum() > 0) {
+                    qtyByLine.put(line.getId(), remaining);
+                }
+            }
+            if (qtyByLine.isEmpty()) {
+                throw new ApiException(HttpStatus.CONFLICT, "ALREADY_INVOICED",
+                        "All shipped quantities for this sales order are already invoiced");
+            }
+        }
+
+        return createInvoice(order, null, qtyByLine);
+    }
+
+    @Transactional
+    public Invoice createFromShipment(UUID shipmentId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Shipment shipment = shipmentRepository.findById(shipmentId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Shipment not found"));
+        if (!shipment.getTenantId().equals(tenantId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Shipment not found");
+        }
+
+        invoiceRepository.findByTenantIdAndShipmentId(tenantId, shipmentId).ifPresent(existing -> {
             throw new ApiException(HttpStatus.CONFLICT, "ALREADY_INVOICED",
-                    "Sales order already has invoice " + existing.getNumber());
+                    "Shipment already has invoice " + existing.getNumber());
         });
 
+        SalesOrder order = salesOrderRepository.findById(shipment.getSalesOrderId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+
+        Map<UUID, BigDecimal> qtyByLine = new HashMap<>();
+        for (ShipmentLine shipmentLine : shipmentLineRepository.findByShipmentId(shipmentId)) {
+            qtyByLine.merge(shipmentLine.getSalesOrderLineId(), shipmentLine.getQuantity(), BigDecimal::add);
+        }
+        if (qtyByLine.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "EMPTY_SHIPMENT", "Shipment has no lines to invoice");
+        }
+
+        return createInvoice(order, shipmentId, qtyByLine);
+    }
+
+    private Invoice createInvoice(SalesOrder order, UUID shipmentId, Map<UUID, BigDecimal> qtyByLine) {
+        UUID tenantId = TenantContext.requireTenantId();
         TenantSettings settings = settingsRepository.findByTenantId(tenantId).orElseThrow();
         String format = (String) settings.getSettings().getOrDefault("invoice_number_format", "INV-{YYYY}-{seq:5}");
         int termsDays = ((Number) settings.getSettings().getOrDefault("payment_terms_days", 30)).intValue();
 
         Invoice invoice = new Invoice();
-        invoice.setTenantId(TenantContext.requireTenantId());
+        invoice.setTenantId(tenantId);
         invoice.setSalesOrderId(order.getId());
+        invoice.setShipmentId(shipmentId);
         invoice.setCustomerId(order.getCustomerId());
         invoice.setNumber(sequenceService.nextNumber("INVOICE", format));
         invoice.setStatus("OPEN");
         invoice.setCurrency((String) settings.getSettings().getOrDefault("currency", "USD"));
         invoice.setDueAt(Instant.now().plus(termsDays, ChronoUnit.DAYS));
-
-        BigDecimal subtotal = BigDecimal.ZERO;
         invoice = invoiceRepository.save(invoice);
 
+        BigDecimal subtotal = BigDecimal.ZERO;
+        Map<UUID, SalesOrderLine> lines = new HashMap<>();
         for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(order.getId())) {
-            BigDecimal amount = line.getUnitPrice().multiply(line.getQtyOrdered());
+            lines.put(line.getId(), line);
+        }
+
+        for (Map.Entry<UUID, BigDecimal> entry : qtyByLine.entrySet()) {
+            SalesOrderLine line = lines.get(entry.getKey());
+            if (line == null) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found");
+            }
+            BigDecimal qty = entry.getValue();
+            BigDecimal amount = line.getUnitPrice().multiply(qty);
             subtotal = subtotal.add(amount);
             InvoiceLine il = new InvoiceLine();
-            il.setTenantId(TenantContext.requireTenantId());
+            il.setTenantId(tenantId);
             il.setInvoiceId(invoice.getId());
             il.setDescription("Line " + line.getId());
-            il.setQty(line.getQtyOrdered());
+            il.setQty(qty);
             il.setUnitPrice(line.getUnitPrice());
             il.setAmount(amount);
             invoiceLineRepository.save(il);
         }
+
         invoice.setSubtotal(subtotal);
         invoice.setTax(BigDecimal.ZERO);
         invoice.setTotal(subtotal);
         invoice = invoiceRepository.save(invoice);
         outboxService.append("INVOICE", invoice.getId(), "INVOICE_OPEN", Map.of("invoiceId", invoice.getId()));
         return invoice;
+    }
+
+    private Map<UUID, BigDecimal> invoicedQtyBySalesOrderLine(List<Invoice> invoices) {
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        for (Invoice invoice : invoices) {
+            for (InvoiceLine line : invoiceLineRepository.findByInvoiceId(invoice.getId())) {
+                UUID solId = parseSalesOrderLineId(line.getDescription());
+                if (solId != null) {
+                    result.merge(solId, line.getQty(), BigDecimal::add);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static UUID parseSalesOrderLineId(String description) {
+        if (description == null || !description.startsWith("Line ")) {
+            return null;
+        }
+        try {
+            return UUID.fromString(description.substring("Line ".length()).trim());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     @Transactional

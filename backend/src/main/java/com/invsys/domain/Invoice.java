@@ -45,6 +45,9 @@ public class Invoice extends TenantScopedEntity {
     @Column(name = "fx_rate")
     private BigDecimal fxRate;
 
+    @Column(name = "shipment_id")
+    private UUID shipmentId;
+
     public UUID getSalesOrderId() {
         return salesOrderId;
     }
@@ -123,5 +126,13 @@ public class Invoice extends TenantScopedEntity {
 
     public void setFxRate(BigDecimal fxRate) {
         this.fxRate = fxRate;
+    }
+
+    public UUID getShipmentId() {
+        return shipmentId;
+    }
+
+    public void setShipmentId(UUID shipmentId) {
+        this.shipmentId = shipmentId;
     }
 }

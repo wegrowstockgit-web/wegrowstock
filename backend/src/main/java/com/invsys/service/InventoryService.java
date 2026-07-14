@@ -93,6 +93,76 @@ public class InventoryService {
         return entry;
     }
 
+    /**
+     * Receive stock into a location without increasing ATP/available.
+     * Posts a RECEIVE ledger (on_hand++) and an ACTIVE allocation hold (allocated++)
+     * so available = on_hand - allocated stays unchanged.
+     */
+    @Transactional
+    public InventoryLedger quarantineReceive(UUID variantId, UUID locationId, UUID lotId, BigDecimal quantity,
+                                             String referenceType, UUID referenceId, UUID salesOrderLineId) {
+        ProductVariant variant = serialNumberService.requireVariant(variantId);
+        serialNumberService.validateSerializedQuantity(variant, quantity);
+        BigDecimal qty = quantity.abs();
+        costingService.applyReceiveCost(variantId, qty, null);
+        InventoryLedger entry = appendMovement("RECEIVE", variantId, locationId, lotId, qty,
+                "RMA_QUARANTINE", referenceType, referenceId, null, null, null);
+
+        Allocation hold = new Allocation();
+        hold.setTenantId(TenantContext.requireTenantId());
+        hold.setSalesOrderLineId(salesOrderLineId);
+        hold.setVariantId(variantId);
+        hold.setLocationId(locationId);
+        hold.setLotId(lotId);
+        hold.setQuantity(qty);
+        hold.setStatus("ACTIVE");
+        allocationRepository.save(hold);
+
+        emitIntegrationEvents(entry, variantId);
+        return entry;
+    }
+
+    /**
+     * Release quarantine hold into ATP (RESTOCK) or scrap from quarantine (SCRAP).
+     * ACTIVE allocation holds keep available flat after quarantineReceive; releasing them
+     * restores ATP, while scrapping consumes the hold and adjusts on-hand down.
+     */
+    @Transactional
+    public void releaseQuarantineHold(UUID salesOrderLineId, UUID variantId, UUID locationId, UUID lotId,
+                                      BigDecimal quantity, String disposition) {
+        BigDecimal remaining = quantity.abs();
+        List<Allocation> holds = allocationRepository
+                .findBySalesOrderLineIdAndStatus(salesOrderLineId, "ACTIVE").stream()
+                .filter(a -> a.getVariantId().equals(variantId))
+                .filter(a -> a.getLocationId().equals(locationId))
+                .filter(a -> (lotId == null && a.getLotId() == null) || (lotId != null && lotId.equals(a.getLotId())))
+                .toList();
+
+        for (Allocation hold : holds) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+            BigDecimal take = hold.getQuantity().min(remaining);
+            if (take.compareTo(hold.getQuantity()) == 0) {
+                hold.setStatus("SCRAP".equals(disposition) ? "CONSUMED" : "RELEASED");
+                allocationRepository.save(hold);
+            } else {
+                hold.setQuantity(hold.getQuantity().subtract(take));
+                allocationRepository.save(hold);
+            }
+            if ("SCRAP".equals(disposition)) {
+                appendMovement("ADJUST", variantId, locationId, lotId, take.negate(),
+                        "RMA_SCRAP", "RETURN", null, null, null, null);
+            }
+            remaining = remaining.subtract(take);
+        }
+
+        if (remaining.signum() > 0 && "SCRAP".equals(disposition)) {
+            appendMovement("ADJUST", variantId, locationId, lotId, remaining.negate(),
+                    "RMA_SCRAP", "RETURN", null, null, null, null);
+        }
+    }
+
     @Transactional
     public InventoryLedger adjust(UUID variantId, UUID locationId, UUID lotId, BigDecimal delta, String reasonCode) {
         return adjust(variantId, locationId, lotId, delta, reasonCode, null);

@@ -5,8 +5,6 @@ const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 test.describe('Authentication', () => {
   test('demo login reaches dashboard', async ({ page }) => {
     await page.goto('/login');
-
-    await page.getByLabel('Company slug').fill('demo-corp');
     await page.getByLabel('Email').fill('owner@demo.test');
     await page.getByLabel('Password').fill(DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -19,7 +17,6 @@ test.describe('Authentication', () => {
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Company slug').fill('demo-corp');
     await page.getByLabel('Email').fill('owner@demo.test');
     await page.getByLabel('Password').fill(DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -27,11 +24,17 @@ test.describe('Dashboard', () => {
   });
 
   test('shows KPI cards without crashing', async ({ page }) => {
-    const kpis = page.locator('a.group.rounded-lg.border-l-4');
-    await expect(kpis.filter({ hasText: 'Stock value' })).toBeVisible();
-    await expect(kpis.filter({ hasText: 'Open orders' })).toBeVisible();
-    await expect(kpis.filter({ hasText: 'Low stock items' })).toBeVisible();
-    await expect(kpis.filter({ hasText: 'Unpaid invoices' })).toBeVisible();
+    const kpis = page.getByTestId('floating-kpi-row');
+    await expect(kpis).toBeVisible();
+    await expect(page.getByTestId('kpi-stock-value')).toBeVisible();
+    await expect(page.getByTestId('kpi-open-orders')).toBeVisible();
+    await expect(page.getByTestId('kpi-low-stock-items')).toBeVisible();
+    await expect(page.getByTestId('kpi-unpaid-invoices')).toBeVisible();
+  });
+
+  test('shows activity feed timeline', async ({ page }) => {
+    await expect(page.getByTestId('activity-feed')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Activity feed')).toBeVisible();
   });
 
   test('shows actionable work queue', async ({ page }) => {
@@ -44,7 +47,6 @@ test.describe('Dashboard', () => {
 test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Company slug').fill('demo-corp');
     await page.getByLabel('Email').fill('owner@demo.test');
     await page.getByLabel('Password').fill(DEMO_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -52,6 +54,7 @@ test.describe('Navigation', () => {
   });
 
   test('manufacturing and settings routes load', async ({ page }) => {
+    await expect(page.getByTestId('icon-rail')).toBeVisible();
     await page.getByRole('link', { name: 'Manufacturing' }).click();
     await expect(page).toHaveURL(/\/manufacturing/);
 
@@ -151,7 +154,21 @@ test.describe('Navigation', () => {
     await page.getByRole('link', { name: 'Sales Orders' }).click();
     const firstRow = page.locator('table tbody tr').first();
     await firstRow.click({ timeout: 15_000 });
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByTestId('right-peek-drawer')).toBeVisible();
+  });
+
+  test('purchase orders peek drawer opens on row click', async ({ page }) => {
+    await page.getByRole('link', { name: 'Purchase Orders' }).click();
+    const firstRow = page.locator('table tbody tr').first();
+    await firstRow.click({ timeout: 15_000 });
+    await expect(page.getByTestId('right-peek-drawer')).toBeVisible();
+  });
+
+  test('cycle counts uses warehouse floor chrome', async ({ page }) => {
+    await page.getByRole('link', { name: 'Cycle counts' }).click();
+    await expect(page).toHaveURL(/\/cycle-counts/);
+    await expect(page.getByText('Floor ops')).toBeVisible();
+    await expect(page.getByTestId('icon-rail')).toHaveCount(0);
   });
 
   test('settings billing tab shows financing cockpit', async ({ page }) => {
