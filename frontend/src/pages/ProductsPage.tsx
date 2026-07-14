@@ -12,6 +12,8 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
+import { MediaPicker } from '@/components/ui/MediaPicker';
+import { ProductMediaDropZone } from '@/components/ui/ProductMediaDropZone';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -506,6 +508,31 @@ export function ProductsPage() {
       >
         {peekProduct ? (
           <dl className="space-y-3 text-sm">
+            {canManage && (
+              <div data-testid="product-media-picker" className="space-y-3">
+                <dt className="mb-2 text-text-muted">Product photo</dt>
+                <dd className="space-y-3">
+                  <MediaPicker
+                    kind="PRODUCT"
+                    label="Upload product photo"
+                    previewUrl={peekProduct.primaryMediaUrl}
+                    onUploaded={async (result) => {
+                      await apiClient.post(`/api/v1/products/variants/${peekProduct.id}/media`, {
+                        url: result.contentUrl,
+                        isPrimary: true,
+                      });
+                      void queryClient.invalidateQueries({ queryKey: ['products'] });
+                    }}
+                  />
+                  <ProductMediaDropZone
+                    variantId={peekProduct.id}
+                    onUploaded={async () => {
+                      void queryClient.invalidateQueries({ queryKey: ['products'] });
+                    }}
+                  />
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between gap-4">
               <dt className="text-text-muted">Barcode</dt>
               <dd className="font-mono">{peekProduct.barcode ?? '—'}</dd>

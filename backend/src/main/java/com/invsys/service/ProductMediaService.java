@@ -4,6 +4,7 @@ import com.invsys.common.ApiException;
 import com.invsys.domain.ProductMedia;
 import com.invsys.domain.ProductVariant;
 import com.invsys.integration.OutboxService;
+import com.invsys.media.MediaUrlValidator;
 import com.invsys.repository.ProductMediaRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.tenancy.TenantContext;
@@ -22,13 +23,16 @@ public class ProductMediaService {
     private final ProductMediaRepository mediaRepository;
     private final ProductVariantRepository variantRepository;
     private final OutboxService outboxService;
+    private final MediaUrlValidator mediaUrlValidator;
 
     public ProductMediaService(ProductMediaRepository mediaRepository,
                                ProductVariantRepository variantRepository,
-                               OutboxService outboxService) {
+                               OutboxService outboxService,
+                               MediaUrlValidator mediaUrlValidator) {
         this.mediaRepository = mediaRepository;
         this.variantRepository = variantRepository;
         this.outboxService = outboxService;
+        this.mediaUrlValidator = mediaUrlValidator;
     }
 
     @Transactional
@@ -39,10 +43,7 @@ public class ProductMediaService {
         if (!tenantId.equals(variant.getTenantId())) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found");
         }
-        String normalized = url == null ? "" : url.trim();
-        if (normalized.isEmpty() || normalized.length() > 1024) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEDIA_URL", "url is required (max 1024)");
-        }
+        String normalized = mediaUrlValidator.validateAndNormalize(url);
 
         boolean makePrimary = primary || mediaRepository
                 .findFirstByTenantIdAndVariantIdAndPrimaryTrue(tenantId, variantId).isEmpty();
@@ -64,7 +65,8 @@ public class ProductMediaService {
         payload.put("url", media.getUrl());
         payload.put("isPrimary", media.isPrimary());
         payload.put("sku", variant.getSku());
-        outboxService.append("PRODUCT_VARIANT", variantId, "VARIANT_MEDIA_UPDATED", payload);
+        // Catalog media sync pipeline (Shopify GraphQL on virtual-thread outbox workers)
+        outboxService.append("PRODUCT_VARIANT", variantId, "PRODUCT_MEDIA_UPDATED", payload);
 
         return media;
     }

@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { User } from 'lucide-react';
+import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import { cn } from '@/lib/utils';
 
 export interface AvatarProps {
@@ -22,7 +24,8 @@ const iconClass = {
 
 /** Compact avatar with Lucide user fallback (shadcn-style primitive). */
 export function Avatar({ src, alt = 'User', size = 'md', className }: AvatarProps) {
-  const hasImage = !!src?.trim();
+  const [failed, setFailed] = useState(false);
+  const hasImage = !!src?.trim() && !failed;
 
   return (
     <span
@@ -36,22 +39,15 @@ export function Avatar({ src, alt = 'User', size = 'md', className }: AvatarProp
       role="img"
     >
       {hasImage ? (
-        <img
-          src={src!}
+        <AuthenticatedImage
+          src={src}
           alt=""
           className="h-full w-full object-cover"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none';
-            const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-            if (fallback) fallback.hidden = false;
-          }}
+          onError={() => setFailed(true)}
         />
-      ) : null}
-      <User
-        className={iconClass[size]}
-        aria-hidden
-        hidden={hasImage}
-      />
+      ) : (
+        <User className={iconClass[size]} aria-hidden />
+      )}
     </span>
   );
 }

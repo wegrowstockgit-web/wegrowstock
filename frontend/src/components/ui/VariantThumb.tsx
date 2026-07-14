@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Package } from 'lucide-react';
+import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import { cn } from '@/lib/utils';
 
 export interface VariantThumbProps {
@@ -16,7 +18,8 @@ const sizeClass = {
 
 /** Inline product thumbnail with package icon fallback. */
 export function VariantThumb({ url, alt = 'Product', size = 'sm', className }: VariantThumbProps) {
-  const hasImage = !!url?.trim();
+  const [failed, setFailed] = useState(false);
+  const hasImage = !!url?.trim() && !failed;
 
   return (
     <span
@@ -29,14 +32,11 @@ export function VariantThumb({ url, alt = 'Product', size = 'sm', className }: V
       aria-hidden={!hasImage}
     >
       {hasImage ? (
-        <img
-          src={url!}
+        <AuthenticatedImage
+          src={url}
           alt={alt}
           className="h-full w-full object-cover"
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none';
-          }}
+          onError={() => setFailed(true)}
         />
       ) : (
         <Package className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-5 w-5'} />

@@ -29,6 +29,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { MediaPicker } from '@/components/ui/MediaPicker';
 import { Modal } from '@/components/ui/Modal';
 import {
   Table,
@@ -121,6 +122,7 @@ function SavedNote({ show }: { show: boolean }) {
 
 function ProfileTab() {
   const user = useSessionStore((s) => s.user);
+  const setAvatarUrl = useSessionStore((s) => s.setAvatarUrl);
   const settings = useTenantSettings();
   const [currency, setCurrency] = useState('');
 
@@ -135,6 +137,18 @@ function ProfileTab() {
       <Card>
         <CardHeader title="Your account" description="Signed-in user details" />
         <div className="space-y-4">
+          <div data-testid="profile-avatar-picker">
+            <p className="mb-2 text-sm font-medium text-text">Profile photo</p>
+            <MediaPicker
+              kind="AVATAR"
+              label="Upload photo"
+              capture
+              previewUrl={user?.avatarUrl}
+              onUploaded={async (result) => {
+                if (result.contentUrl) setAvatarUrl(result.contentUrl);
+              }}
+            />
+          </div>
           <Input label="Display name" value={user?.displayName ?? ''} disabled />
           <Input label="Email" value={user?.email ?? ''} disabled />
           <Input label="Roles" value={(user?.roles ?? []).join(', ')} disabled />
@@ -506,6 +520,7 @@ function WarehousesTab() {
                 <TableHead>Path</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead>Photo</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -517,6 +532,22 @@ function WarehousesTab() {
                     <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs font-medium text-text-muted">
                       {loc.type}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <MediaPicker
+                      kind="LOCATION"
+                      label="Photo"
+                      capture
+                      className="min-w-[12rem]"
+                      onUploaded={async (result) => {
+                        await apiClient.post('/api/v1/media/attachments', {
+                          mediaObjectId: result.id,
+                          entityType: 'LOCATION',
+                          entityId: loc.id,
+                          purpose: 'LOCATION',
+                        });
+                      }}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

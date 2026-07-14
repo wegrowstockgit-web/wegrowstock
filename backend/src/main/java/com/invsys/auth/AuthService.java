@@ -11,6 +11,7 @@ import com.invsys.common.ApiException;
 import com.invsys.config.JwtProperties;
 import com.invsys.domain.RefreshToken;
 import com.invsys.domain.User;
+import com.invsys.media.MediaUrlValidator;
 import com.invsys.repository.RefreshTokenRepository;
 import com.invsys.repository.TenantRepository;
 import com.invsys.repository.UserRepository;
@@ -46,6 +47,7 @@ public class AuthService {
     private final JwtProperties jwtProperties;
     private final PasswordEncoder passwordEncoder;
     private final VehicleAssignmentRepository vehicleAssignmentRepository;
+    private final MediaUrlValidator mediaUrlValidator;
     private final AuthService self;
 
     public AuthService(TenantOnboardingService onboardingService,
@@ -58,6 +60,7 @@ public class AuthService {
                        JwtProperties jwtProperties,
                        PasswordEncoder passwordEncoder,
                        VehicleAssignmentRepository vehicleAssignmentRepository,
+                       MediaUrlValidator mediaUrlValidator,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
@@ -69,6 +72,7 @@ public class AuthService {
         this.jwtProperties = jwtProperties;
         this.passwordEncoder = passwordEncoder;
         this.vehicleAssignmentRepository = vehicleAssignmentRepository;
+        this.mediaUrlValidator = mediaUrlValidator;
         this.self = self;
     }
 
@@ -257,10 +261,9 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
-        String normalized = avatarUrl == null || avatarUrl.isBlank() ? null : avatarUrl.trim();
-        if (normalized != null && normalized.length() > 1024) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_AVATAR", "avatarUrl must be <= 1024 chars");
-        }
+        String normalized = avatarUrl == null || avatarUrl.isBlank()
+                ? null
+                : mediaUrlValidator.validateAndNormalize(avatarUrl);
         user.setAvatarUrl(normalized);
         return userRepository.save(user);
     }

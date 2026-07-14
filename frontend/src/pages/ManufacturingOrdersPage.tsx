@@ -475,7 +475,9 @@ export function ManufacturingOrdersPage() {
 
                 <TableHead>Product</TableHead>
 
-                <TableHead className="w-12" aria-label="Thumbnail" />
+                <TableHead className="w-12">
+                  <span className="sr-only">Thumbnail</span>
+                </TableHead>
 
                 <TableHead>Status</TableHead>
 

@@ -7,6 +7,7 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { BigButton } from '@/components/ui/BigButton';
+import { MediaPicker } from '@/components/ui/MediaPicker';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import { Card } from '@/components/ui/Card';
 
@@ -132,11 +133,18 @@ function LineConfirmCard({
   onConfirm: () => void;
   loading: boolean;
 }) {
+  const [photoAttached, setPhotoAttached] = useState(false);
+
   return (
-    <div className="rounded-lg border border-border bg-surface-raised p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono font-medium text-text">{line.sku ?? line.productName}</p>
+    <Card padding="md" className={confirmed ? 'border-success/40' : undefined}>
+      <div className="flex items-start gap-3">
+        {confirmed ? (
+          <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+        ) : (
+          <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-text-muted" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-mono font-medium text-text">{line.sku ?? line.productName ?? line.id}</p>
           <p className="text-sm text-text-muted">
             Expected {line.quantityExpected} · Received {line.quantityReceived}
           </p>
@@ -145,18 +153,40 @@ function LineConfirmCard({
               Putaway target: {line.putawayTarget.replace(/\//g, ' / ')}
             </p>
           )}
+          {!confirmed && line.quantityReceived < line.quantityExpected && (
+            <div className="mt-3 space-y-3" data-testid="return-condition-photo">
+              <MediaPicker
+                kind="EVIDENCE"
+                label="Condition photo"
+                capture
+                webrtc
+                presignType="TRANSACTION"
+                onUploaded={async (result) => {
+                  await apiClient.post('/api/v1/media/transactions', {
+                    entityType: 'RETURN_LINE',
+                    entityId: line.id,
+                    url: result.contentUrl,
+                  });
+                  await apiClient.post('/api/v1/media/attachments', {
+                    mediaObjectId: result.id,
+                    entityType: 'RETURN_LINE',
+                    entityId: line.id,
+                    purpose: 'RETURN_CONDITION',
+                  });
+                  setPhotoAttached(true);
+                }}
+              />
+              {photoAttached && (
+                <p className="text-xs text-success">Condition photo saved</p>
+              )}
+              <BigButton variant="success" loading={loading} onClick={onConfirm} className="w-full">
+                Confirm +1
+              </BigButton>
+            </div>
+          )}
+          {confirmed && <p className="mt-2 text-sm text-success">Received</p>}
         </div>
-        {confirmed ? (
-          <CheckCircle className="h-6 w-6 shrink-0 text-success" />
-        ) : (
-          <XCircle className="h-6 w-6 shrink-0 text-text-muted" />
-        )}
       </div>
-      {!confirmed && line.quantityReceived < line.quantityExpected && (
-        <BigButton variant="success" loading={loading} onClick={onConfirm}>
-          Confirm +1
-        </BigButton>
-      )}
-    </div>
+    </Card>
   );
 }

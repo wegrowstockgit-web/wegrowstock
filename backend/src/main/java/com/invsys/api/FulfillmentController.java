@@ -68,6 +68,7 @@ public class FulfillmentController {
             @SuppressWarnings("unchecked")
             Map<String, Object> body = cached.get().body();
             ScanResponse replayed = new ScanResponse(
+                    body.get("variantId") != null ? UUID.fromString(String.valueOf(body.get("variantId"))) : null,
                     (String) body.get("sku"),
                     (String) body.get("name"),
                     Boolean.TRUE.equals(body.get("requiresSerial")),
@@ -106,7 +107,7 @@ public class FulfillmentController {
                         "Blind receiving is disabled for this tenant");
             }
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
-                return new ScanResponse(variant.getSku(), productName, true, "SERIAL_REQUIRED",
+                return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
                         "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
             }
             inventoryService.receive(variant.getId(), request.warehouseId(), null,
@@ -116,7 +117,7 @@ public class FulfillmentController {
                     : "Received 1 unit";
         } else {
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
-                return new ScanResponse(variant.getSku(), productName, true, "SERIAL_REQUIRED",
+                return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
                         "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
             }
             inventoryService.adjust(variant.getId(), request.warehouseId(), null,
@@ -125,7 +126,7 @@ public class FulfillmentController {
                     ? "Picked serial " + request.serialNumber()
                     : "Picked 1 unit";
         }
-        return new ScanResponse(variant.getSku(), productName, false, null, message, putawayTarget, primaryMediaUrl);
+        return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message, putawayTarget, primaryMediaUrl);
     }
 
     private boolean allowBlindReceiving() {
@@ -143,6 +144,7 @@ public class FulfillmentController {
 
     private static Map<String, Object> toMap(ScanResponse response) {
         Map<String, Object> map = new LinkedHashMap<>();
+        map.put("variantId", response.variantId() != null ? response.variantId().toString() : null);
         map.put("sku", response.sku());
         map.put("name", response.name());
         map.put("requiresSerial", response.requiresSerial());
@@ -162,6 +164,7 @@ public class FulfillmentController {
     }
 
     public record ScanResponse(
+            UUID variantId,
             String sku,
             String name,
             boolean requiresSerial,

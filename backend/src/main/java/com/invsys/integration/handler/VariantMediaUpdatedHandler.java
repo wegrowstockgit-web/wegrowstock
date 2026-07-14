@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,7 +28,13 @@ public class VariantMediaUpdatedHandler implements OutboxEventHandler {
 
     @Override
     public String eventType() {
-        return "VARIANT_MEDIA_UPDATED";
+        return "PRODUCT_MEDIA_UPDATED";
+    }
+
+    @Override
+    public List<String> eventTypes() {
+        // PRODUCT_MEDIA_UPDATED is canonical; VARIANT_MEDIA_UPDATED kept for in-flight outbox rows
+        return List.of("PRODUCT_MEDIA_UPDATED", "VARIANT_MEDIA_UPDATED");
     }
 
     @Override
@@ -35,6 +42,6 @@ public class VariantMediaUpdatedHandler implements OutboxEventHandler {
     public void handle(UUID tenantId, UUID aggregateId, String eventType, Map<String, Object> payload) {
         rateLimiter.tryAcquire("SHOPIFY", 1);
         shopifyMediaSyncService.syncVariantMedia(tenantId, aggregateId, payload);
-        log.info("VARIANT_MEDIA_UPDATED processed tenant={} variant={}", tenantId, aggregateId);
+        log.info("{} processed tenant={} variant={}", eventType, tenantId, aggregateId);
     }
 }

@@ -4,6 +4,10 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 16MB
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:invsys}
     username: ${DB_USER:app_user}
@@ -76,6 +80,20 @@ invsys:
       max-retries: 5
       poll-interval-ms: 5000
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  media:
+    # AWS | GCP | AZURE | DIGITALOCEAN | MINIO | CUSTOM — S3-compatible only (no local disk)
+    provider: ${MEDIA_PROVIDER:MINIO}
+    bucket: ${MEDIA_BUCKET:invsys-media}
+    region: ${MEDIA_REGION:us-east-1}
+    endpoint: ${MEDIA_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MEDIA_PUBLIC_ENDPOINT:}
+    access-key: ${MEDIA_ACCESS_KEY:invsys}
+    secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
+    path-style-access: ${MEDIA_PATH_STYLE:true}
+    create-bucket-if-missing: ${MEDIA_CREATE_BUCKET:true}
+    max-bytes: 15728640
+    avatar-max-bytes: 2097152
+    evidence-max-bytes: 10485760
 
 springdoc:
   api-docs:

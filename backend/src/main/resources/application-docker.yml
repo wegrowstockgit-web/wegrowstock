@@ -11,3 +11,13 @@ invsys:
   jwt:
     private-key-file: ${JWT_PRIVATE_KEY_FILE:/run/jwt/dev-private.pem}
     public-key-file: ${JWT_PUBLIC_KEY_FILE:/run/jwt/dev-public.pem}
+  media:
+    provider: MINIO
+    endpoint: http://minio:9000
+    public-endpoint: ${MEDIA_PUBLIC_ENDPOINT:http://localhost:9000}
+    bucket: invsys-media
+    region: us-east-1
+    access-key: ${MEDIA_ACCESS_KEY:invsys}
+    secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
+    path-style-access: true
+    create-bucket-if-missing: true

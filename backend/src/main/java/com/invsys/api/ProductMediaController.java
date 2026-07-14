@@ -1,17 +1,24 @@
 package com.invsys.api;
 
+import com.invsys.domain.MediaObject;
 import com.invsys.domain.ProductMedia;
+import com.invsys.media.MediaAttachmentService;
+import com.invsys.media.MediaUploadService;
 import com.invsys.service.ProductMediaService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -22,9 +29,15 @@ import java.util.UUID;
 public class ProductMediaController {
 
     private final ProductMediaService productMediaService;
+    private final MediaUploadService mediaUploadService;
+    private final MediaAttachmentService mediaAttachmentService;
 
-    public ProductMediaController(ProductMediaService productMediaService) {
+    public ProductMediaController(ProductMediaService productMediaService,
+                                  MediaUploadService mediaUploadService,
+                                  MediaAttachmentService mediaAttachmentService) {
         this.productMediaService = productMediaService;
+        this.mediaUploadService = mediaUploadService;
+        this.mediaAttachmentService = mediaAttachmentService;
     }
 
     @PostMapping("/{id}/media")
@@ -34,6 +47,25 @@ public class ProductMediaController {
                 request.url(),
                 request.isPrimary() != null && request.isPrimary(),
                 request.sortOrder());
+        return toResponse(media);
+    }
+
+    @PostMapping(value = "/{id}/media/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MediaResponse upload(@PathVariable UUID id,
+                                @RequestPart("file") MultipartFile file,
+                                @RequestParam(defaultValue = "true") boolean primary) {
+        MediaObject uploaded = mediaUploadService.upload(file, MediaUploadService.UploadKind.PRODUCT);
+        mediaAttachmentService.attach(
+                uploaded.getId(),
+                "PRODUCT_VARIANT",
+                id,
+                primary ? "PRIMARY" : "GALLERY",
+                0);
+        String url = mediaUploadService.contentPath(uploaded.getId());
+        ProductMedia media = productMediaService.listForVariant(id).stream()
+                .filter(m -> url.equals(m.getUrl()))
+                .findFirst()
+                .orElseThrow();
         return toResponse(media);
     }
 

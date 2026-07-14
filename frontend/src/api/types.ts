@@ -580,6 +580,7 @@ export interface SerialScanResult {
 }
 
 export interface FulfillmentScanResponse {
+  variantId?: string;
   sku: string;
   name: string;
   requiresSerial: boolean;

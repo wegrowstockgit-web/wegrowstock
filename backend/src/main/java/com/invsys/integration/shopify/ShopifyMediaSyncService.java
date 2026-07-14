@@ -2,15 +2,19 @@ package com.invsys.integration.shopify;
 
 import com.invsys.domain.ChannelIntegration;
 import com.invsys.domain.IntegrationSyncLog;
+import com.invsys.domain.MediaObject;
 import com.invsys.integration.CredentialVaultService;
 import com.invsys.integration.repository.IntegrationCredentialRepository;
+import com.invsys.media.ObjectStorage;
 import com.invsys.repository.ChannelIntegrationRepository;
 import com.invsys.repository.IntegrationSyncLogRepository;
+import com.invsys.repository.MediaObjectRepository;
 import com.invsys.tenancy.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,16 +38,22 @@ public class ShopifyMediaSyncService {
     private final IntegrationCredentialRepository credentialRepository;
     private final CredentialVaultService credentialVaultService;
     private final IntegrationSyncLogRepository syncLogRepository;
+    private final MediaObjectRepository mediaObjectRepository;
+    private final ObjectStorage objectStorage;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public ShopifyMediaSyncService(ChannelIntegrationRepository channelIntegrationRepository,
                                    IntegrationCredentialRepository credentialRepository,
                                    CredentialVaultService credentialVaultService,
-                                   IntegrationSyncLogRepository syncLogRepository) {
+                                   IntegrationSyncLogRepository syncLogRepository,
+                                   MediaObjectRepository mediaObjectRepository,
+                                   ObjectStorage objectStorage) {
         this.channelIntegrationRepository = channelIntegrationRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.syncLogRepository = syncLogRepository;
+        this.mediaObjectRepository = mediaObjectRepository;
+        this.objectStorage = objectStorage;
     }
 
     public IntegrationSyncLog syncVariantMedia(UUID tenantId, UUID variantId, Map<String, Object> payload) {
@@ -78,9 +88,7 @@ public class ShopifyMediaSyncService {
             String shop = integration.get().getShopIdentifier();
             String graphqlUrl = "https://" + shop + "/admin/api/" + API_VERSION + "/graphql.json";
 
-            byte[] bytes = httpClient.send(
-                    HttpRequest.newBuilder(URI.create(mediaUrl)).GET().build(),
-                    HttpResponse.BodyHandlers.ofByteArray()).body();
+            byte[] bytes = loadMediaBytes(tenantId, mediaUrl);
             String filename = filenameFromUrl(mediaUrl);
             String mimeType = guessMime(filename);
 
@@ -179,6 +187,43 @@ public class ShopifyMediaSyncService {
             syncLog.setLastError(ex.getMessage());
             log.warn("Shopify media sync failed tenant={} variant={}: {}", tenantId, variantId, ex.getMessage());
             return syncLogRepository.save(syncLog);
+        }
+    }
+
+    private byte[] loadMediaBytes(UUID tenantId, String mediaUrl) throws Exception {
+        Optional<UUID> mediaId = extractFirstPartyMediaId(mediaUrl);
+        if (mediaId.isPresent()) {
+            MediaObject media = mediaObjectRepository.findByTenantIdAndId(tenantId, mediaId.get())
+                    .orElseThrow(() -> new IllegalStateException("Media object not found: " + mediaId.get()));
+            try (InputStream in = objectStorage.open(media.getStorageKey())) {
+                return in.readAllBytes();
+            }
+        }
+        URI uri = URI.create(mediaUrl);
+        if (!uri.isAbsolute()) {
+            throw new IllegalStateException("Cannot fetch relative media URL without first-party media id: " + mediaUrl);
+        }
+        return httpClient.send(
+                HttpRequest.newBuilder(uri).GET().build(),
+                HttpResponse.BodyHandlers.ofByteArray()).body();
+    }
+
+    private static Optional<UUID> extractFirstPartyMediaId(String mediaUrl) {
+        if (mediaUrl == null) {
+            return Optional.empty();
+        }
+        // Matches /api/v1/media/{uuid}/content (absolute or relative)
+        int marker = mediaUrl.indexOf("/api/v1/media/");
+        if (marker < 0) {
+            return Optional.empty();
+        }
+        String rest = mediaUrl.substring(marker + "/api/v1/media/".length());
+        int slash = rest.indexOf('/');
+        String idPart = slash >= 0 ? rest.substring(0, slash) : rest;
+        try {
+            return Optional.of(UUID.fromString(idPart));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
         }
     }
 

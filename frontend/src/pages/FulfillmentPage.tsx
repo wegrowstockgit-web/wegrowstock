@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { LocationBreadcrumb } from '@/components/ui/LocationBreadcrumb';
 import { UndoToast } from '@/components/ui/UndoToast';
+import { MediaPicker } from '@/components/ui/MediaPicker';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
 
@@ -73,6 +74,7 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
 
 interface ScanResult {
   barcode: string;
+  variantId?: string;
   sku?: string;
   name?: string;
   success: boolean;
@@ -215,6 +217,7 @@ export function FulfillmentPage() {
       setHistory((h) => [
         {
           barcode,
+          variantId: result.variantId,
           sku: result.sku,
           name: result.name,
           success: true,
@@ -517,6 +520,30 @@ export function FulfillmentPage() {
         </div>
         {(scanMutation.isPending || serialScanMutation.isPending) && (
           <p className="mt-2 text-sm text-accent">Processing...</p>
+        )}
+        {mode === 'receive' && history[0]?.success && history[0]?.variantId && (
+          <div className="mt-4 text-left" data-testid="receive-qc-photo">
+            <MediaPicker
+              kind="EVIDENCE"
+              label="QC / damage photo"
+              capture
+              webrtc
+              presignType="TRANSACTION"
+              onUploaded={async (result) => {
+                await apiClient.post('/api/v1/media/transactions', {
+                  entityType: 'RECEIPT',
+                  entityId: history[0]!.variantId,
+                  url: result.contentUrl,
+                });
+                await apiClient.post('/api/v1/media/attachments', {
+                  mediaObjectId: result.id,
+                  entityType: 'PRODUCT_VARIANT',
+                  entityId: history[0]!.variantId,
+                  purpose: 'QC_DAMAGE',
+                });
+              }}
+            />
+          </div>
         )}
       </Card>
 

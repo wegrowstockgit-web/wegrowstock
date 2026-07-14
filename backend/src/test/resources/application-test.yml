@@ -19,6 +19,15 @@ invsys:
     access-token-minutes: 15
     terminal-switch-token-minutes: 5
     refresh-token-days: 7
+  media:
+    provider: MINIO
+    bucket: invsys-media-test
+    region: us-east-1
+    path-style-access: true
+    create-bucket-if-missing: true
+    max-bytes: 15728640
+    avatar-max-bytes: 2097152
+    evidence-max-bytes: 10485760
   webhooks:
     accounting-secret: accounting_mock_secret
   integration:

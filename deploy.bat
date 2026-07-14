@@ -28,7 +28,7 @@ exit /b 0
 :undeploy
 echo.
 echo === Undeploying existing InventorySystem stack ===
-for %%c in (invsys-web invsys-api invsys-db) do (
+for %%c in (invsys-web invsys-api invsys-db invsys-minio invsys-minio-init) do (
     docker inspect %%c >nul 2>&1
     if not errorlevel 1 (
         echo   Stopping and removing container %%c ...
