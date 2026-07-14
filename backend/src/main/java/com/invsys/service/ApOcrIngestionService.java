@@ -1,10 +1,14 @@
 package com.invsys.service;
 
 import com.invsys.common.ApiException;
+import com.invsys.domain.ApMatchingLog;
+import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.PurchaseOrder;
 import com.invsys.domain.PurchaseOrderLine;
 import com.invsys.domain.SupplierInvoiceIngestion;
 import com.invsys.integration.OutboxService;
+import com.invsys.repository.ApMatchingLogRepository;
+import com.invsys.repository.InventoryLedgerRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.PurchaseOrderLineRepository;
 import com.invsys.repository.PurchaseOrderRepository;
@@ -22,24 +26,37 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Supplier document ingestion with defensive three-way matching:
+ * PO ordered qty × verified RECEIVE ledger / qty_received × AP invoice costs.
+ */
 @Service
 public class ApOcrIngestionService {
+
+    private static final BigDecimal QTY_TOLERANCE = new BigDecimal("0.01");
+    private static final BigDecimal PRICE_TOLERANCE_PCT = new BigDecimal("5.00");
 
     private final SupplierInvoiceIngestionRepository ingestionRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderLineRepository lineRepository;
     private final ProductVariantRepository variantRepository;
+    private final InventoryLedgerRepository inventoryLedgerRepository;
+    private final ApMatchingLogRepository apMatchingLogRepository;
     private final OutboxService outboxService;
 
     public ApOcrIngestionService(SupplierInvoiceIngestionRepository ingestionRepository,
                                  PurchaseOrderRepository purchaseOrderRepository,
                                  PurchaseOrderLineRepository lineRepository,
                                  ProductVariantRepository variantRepository,
+                                 InventoryLedgerRepository inventoryLedgerRepository,
+                                 ApMatchingLogRepository apMatchingLogRepository,
                                  OutboxService outboxService) {
         this.ingestionRepository = ingestionRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.variantRepository = variantRepository;
+        this.inventoryLedgerRepository = inventoryLedgerRepository;
+        this.apMatchingLogRepository = apMatchingLogRepository;
         this.outboxService = outboxService;
     }
 
@@ -74,6 +91,10 @@ public class ApOcrIngestionService {
         return ingestion;
     }
 
+    /**
+     * Three-way match: (1) PO ordered vs invoice lines, (2) verified RECEIVE, (3) cost boundaries.
+     * Writes {@code ap_matching_logs}. Never marks the PO RECEIVED from invoice alone.
+     */
     @Transactional
     public SupplierInvoiceIngestion reconcile(UUID ingestionId) {
         UUID tenantId = TenantContext.requireTenantId();
@@ -83,20 +104,33 @@ public class ApOcrIngestionService {
         PurchaseOrder po = purchaseOrderRepository.findById(ingestion.getPurchaseOrderId()).orElseThrow();
         List<PurchaseOrderLine> poLines = lineRepository.findByPurchaseOrderId(po.getId());
 
-        ReconciliationResult result = compareExtractedToPo(ingestion.getExtractedData(), poLines);
+        ThreeWayResult result = compareThreeWay(ingestion.getExtractedData(), poLines, tenantId);
         ingestion.setMatchConfidence(result.confidence());
         ingestion.setExtractedData(enrichWithConflicts(ingestion.getExtractedData(), result.conflicts()));
 
         if (result.conflicts().isEmpty()) {
             ingestion.setStatus("RECONCILED");
-            if ("SUBMITTED".equals(po.getStatus())) {
-                po.setStatus("RECEIVED");
-                purchaseOrderRepository.save(po);
-            }
         } else {
             ingestion.setStatus("CONFLICT");
         }
-        return ingestionRepository.save(ingestion);
+        ingestion = ingestionRepository.save(ingestion);
+
+        ApMatchingLog log = new ApMatchingLog();
+        log.setTenantId(tenantId);
+        log.setIngestionId(ingestion.getId());
+        log.setPoId(po.getId());
+        log.setMatchStatus(result.matchStatus());
+        log.setValidationErrors(result.validationErrors());
+        apMatchingLogRepository.save(log);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("ingestionId", ingestion.getId().toString());
+        payload.put("poId", po.getId().toString());
+        payload.put("matchStatus", result.matchStatus());
+        payload.put("conflictCount", result.conflicts().size());
+        outboxService.append("SUPPLIER_INVOICE", ingestion.getId(), "AP_THREE_WAY_MATCH", payload);
+
+        return ingestion;
     }
 
     public List<SupplierInvoiceIngestion> listForTenant() {
@@ -109,14 +143,30 @@ public class ApOcrIngestionService {
     }
 
     @SuppressWarnings("unchecked")
-    private ReconciliationResult compareExtractedToPo(Map<String, Object> extracted, List<PurchaseOrderLine> poLines) {
+    private ThreeWayResult compareThreeWay(Map<String, Object> extracted,
+                                           List<PurchaseOrderLine> poLines,
+                                           UUID tenantId) {
         List<Map<String, Object>> extractedLines = extracted.get("lines") instanceof List<?> list
                 ? (List<Map<String, Object>>) list
                 : List.of();
 
         List<LineConflict> conflicts = new ArrayList<>();
+        List<Map<String, Object>> validationErrors = new ArrayList<>();
         int matched = 0;
         int total = poLines.size();
+        boolean qtyMismatch = false;
+        boolean costMismatch = false;
+        boolean receiptMismatch = false;
+
+        boolean anyPhysicalReceipt = poLines.stream()
+                .anyMatch(l -> l.getQtyReceived() != null && l.getQtyReceived().signum() > 0);
+        if (!anyPhysicalReceipt) {
+            receiptMismatch = true;
+            conflicts.add(new LineConflict("*", "NO_RECEIVE", null, null, null, null));
+            validationErrors.add(Map.of(
+                    "code", "NO_RECEIVE",
+                    "message", "No verified RECEIVE quantity for PO — three-way match blocked"));
+        }
 
         for (PurchaseOrderLine poLine : poLines) {
             String sku = variantRepository.findById(poLine.getVariantId()).map(v -> v.getSku()).orElse("");
@@ -126,26 +176,54 @@ public class ApOcrIngestionService {
                     .orElse(null);
 
             if (extractedLine == null) {
+                qtyMismatch = true;
                 conflicts.add(new LineConflict(sku, "MISSING_LINE", poLine.getQtyOrdered(), null, poLine.getUnitCost(), null));
+                validationErrors.add(Map.of("code", "MISSING_LINE", "sku", sku, "message", "Invoice missing PO line"));
                 continue;
             }
 
             BigDecimal extQty = toDecimal(extractedLine.get("qty"));
             BigDecimal extCost = toDecimal(extractedLine.get("unitCost"));
+            BigDecimal receivedQty = poLine.getQtyReceived() != null ? poLine.getQtyReceived() : BigDecimal.ZERO;
+            BigDecimal ledgerReceived = sumLedgerReceive(tenantId, poLine.getId());
 
-            boolean qtyOk = extQty.compareTo(poLine.getQtyOrdered()) == 0;
+            boolean qtyOk = extQty.subtract(poLine.getQtyOrdered()).abs().compareTo(QTY_TOLERANCE) <= 0;
             boolean costOk = poLine.getUnitCost() == null
                     || poLine.getUnitCost().signum() == 0
-                    || extCost.compareTo(poLine.getUnitCost()) == 0;
+                    || withinPriceBoundary(extCost, poLine.getUnitCost());
+            boolean receiveOk = receivedQty.subtract(poLine.getQtyOrdered()).abs().compareTo(QTY_TOLERANCE) <= 0
+                    && ledgerReceived.subtract(poLine.getQtyOrdered()).abs().compareTo(QTY_TOLERANCE) <= 0;
 
-            if (qtyOk && costOk) {
+            if (qtyOk && costOk && receiveOk) {
                 matched++;
             } else {
                 if (!qtyOk) {
+                    qtyMismatch = true;
                     conflicts.add(new LineConflict(sku, "QTY_MISMATCH", poLine.getQtyOrdered(), extQty, null, null));
+                    validationErrors.add(Map.of(
+                            "code", "QTY_PO_INVOICE",
+                            "sku", sku,
+                            "poOrdered", poLine.getQtyOrdered(),
+                            "invoiceQty", extQty));
                 }
                 if (!costOk) {
+                    costMismatch = true;
                     conflicts.add(new LineConflict(sku, "COST_MISMATCH", null, null, poLine.getUnitCost(), extCost));
+                    validationErrors.add(Map.of(
+                            "code", "PRICE_BOUNDARY",
+                            "sku", sku,
+                            "poUnitCost", poLine.getUnitCost(),
+                            "invoiceUnitCost", extCost));
+                }
+                if (!receiveOk) {
+                    receiptMismatch = true;
+                    conflicts.add(new LineConflict(sku, "RECEIPT_MISMATCH", poLine.getQtyOrdered(), receivedQty, null, null));
+                    validationErrors.add(Map.of(
+                            "code", "QTY_RECEIVE",
+                            "sku", sku,
+                            "poOrdered", poLine.getQtyOrdered(),
+                            "qtyReceived", receivedQty,
+                            "ledgerReceive", ledgerReceived));
                 }
             }
         }
@@ -155,7 +233,51 @@ public class ApOcrIngestionService {
                 : BigDecimal.valueOf(matched).divide(BigDecimal.valueOf(total), 4, RoundingMode.HALF_UP)
                         .multiply(new BigDecimal("100"));
 
-        return new ReconciliationResult(confidence, conflicts);
+        String matchStatus = resolveMatchStatus(conflicts.isEmpty(), qtyMismatch, costMismatch, receiptMismatch);
+        return new ThreeWayResult(confidence, conflicts, validationErrors, matchStatus);
+    }
+
+    private static String resolveMatchStatus(boolean clean,
+                                             boolean qtyMismatch,
+                                             boolean costMismatch,
+                                             boolean receiptMismatch) {
+        if (clean) {
+            return "MATCHED";
+        }
+        int flags = (qtyMismatch ? 1 : 0) + (costMismatch ? 1 : 0) + (receiptMismatch ? 1 : 0);
+        if (flags > 1) {
+            return "PARTIAL";
+        }
+        if (receiptMismatch) {
+            return "RECEIPT_MISMATCH";
+        }
+        if (qtyMismatch) {
+            return "QTY_MISMATCH";
+        }
+        if (costMismatch) {
+            return "COST_MISMATCH";
+        }
+        return "FAILED";
+    }
+
+    private boolean withinPriceBoundary(BigDecimal invoiceCost, BigDecimal poCost) {
+        if (invoiceCost.compareTo(poCost) == 0) {
+            return true;
+        }
+        BigDecimal pct = invoiceCost.subtract(poCost).abs()
+                .multiply(BigDecimal.valueOf(100))
+                .divide(poCost, 4, RoundingMode.HALF_UP);
+        return pct.compareTo(PRICE_TOLERANCE_PCT) <= 0;
+    }
+
+    private BigDecimal sumLedgerReceive(UUID tenantId, UUID purchaseOrderLineId) {
+        return inventoryLedgerRepository
+                .findByTenantIdAndReferenceTypeAndReferenceId(tenantId, "PURCHASE_ORDER_LINE", purchaseOrderLineId)
+                .stream()
+                .filter(e -> "RECEIVE".equals(e.getMovementType()))
+                .map(InventoryLedger::getQuantityDelta)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .abs();
     }
 
     private Map<String, Object> enrichWithConflicts(Map<String, Object> data, List<LineConflict> conflicts) {
@@ -181,7 +303,12 @@ public class ApOcrIngestionService {
         return new BigDecimal(value.toString());
     }
 
-    private record ReconciliationResult(BigDecimal confidence, List<LineConflict> conflicts) {
+    private record ThreeWayResult(
+            BigDecimal confidence,
+            List<LineConflict> conflicts,
+            List<Map<String, Object>> validationErrors,
+            String matchStatus
+    ) {
     }
 
     public record LineConflict(

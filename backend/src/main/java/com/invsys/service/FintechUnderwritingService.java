@@ -117,7 +117,61 @@ public class FintechUnderwritingService {
         CapitalGateway.FactoringPayoutResult payout = capitalGateway.fundFactoring(tenantId, invoiceId, advanceAmount);
         factored.setFundingStatus("FUNDED");
         factored.setEscrowPayoutRef(payout.escrowPayoutRef());
+
+        // Track advanced capital as outstanding so Stripe clearance can amortize payback
+        CapitalCreditLine line = creditLineRepository.findByTenantId(tenantId)
+                .orElseGet(() -> provisionCreditLine(tenantId, computeMetrics(tenantId)));
+        line.setOutstandingBalance(line.getOutstandingBalance().add(advanceAmount));
+        line.setUtilizationStatus("DRAWN");
+        creditLineRepository.save(line);
+
         return factoredInvoiceRepository.save(factored);
+    }
+
+    /**
+     * On inbound Stripe clearance of a factored invoice, siphon fractional amortization
+     * from the capital credit line outstanding balance prior to net merchant payout.
+     *
+     * @return amount applied to outstanding balance (zero if not factored / already settled)
+     */
+    @Transactional
+    public BigDecimal applyFactoringPayback(UUID invoiceId, BigDecimal settlementAmount) {
+        UUID tenantId = TenantContext.requireTenantId();
+        FactoredInvoice factored = factoredInvoiceRepository.findByTenantIdAndInvoiceId(tenantId, invoiceId)
+                .orElse(null);
+        if (factored == null || !"FUNDED".equals(factored.getFundingStatus())) {
+            return BigDecimal.ZERO;
+        }
+
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        if (invoice == null) {
+            return BigDecimal.ZERO;
+        }
+
+        // Fractional payback ≈ advance principal + discount fee on the settled amount
+        BigDecimal advancePrincipal = settlementAmount
+                .multiply(factored.getAdvanceRate())
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        BigDecimal fee = settlementAmount
+                .multiply(factored.getDiscountFeePercent())
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        BigDecimal payback = advancePrincipal.add(fee);
+
+        CapitalCreditLine line = creditLineRepository.findByTenantId(tenantId).orElse(null);
+        if (line != null && line.getOutstandingBalance().signum() > 0) {
+            BigDecimal applied = payback.min(line.getOutstandingBalance());
+            line.setOutstandingBalance(line.getOutstandingBalance().subtract(applied).max(BigDecimal.ZERO));
+            line.setUtilizationStatus(line.getOutstandingBalance().signum() > 0 ? "DRAWN" : "AVAILABLE");
+            creditLineRepository.save(line);
+            factored.setFundingStatus("SETTLED");
+            factoredInvoiceRepository.save(factored);
+            return applied;
+        }
+
+        // No drawn capital — still mark factoring settled after customer clearance
+        factored.setFundingStatus("SETTLED");
+        factoredInvoiceRepository.save(factored);
+        return payback;
     }
 
     @Transactional

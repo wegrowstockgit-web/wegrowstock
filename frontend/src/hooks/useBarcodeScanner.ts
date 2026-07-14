@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useScanBufferStore } from '@/stores/scanBuffer';
+import { parseGs1Barcode } from '@/lib/gs1Barcode';
 
 const SCANNER_MAX_GAP_MS = 35;
 
 export interface BarcodeScannerOptions {
   onScan: (barcode: string) => void;
+  /** Optional GS1-aware callback with structured AI 01/10/17 fields from one capture. */
+  onGs1Scan?: (payload: {
+    raw: string;
+    gtin: string | null;
+    lot: string | null;
+    expiry: string | null;
+    serial: string | null;
+  }) => void;
   prefix?: string;
   suffix?: string;
   captureAll?: boolean;
@@ -83,6 +92,7 @@ const INTENT_EVENT_NAMES = [
  */
 export function useBarcodeScanner({
   onScan,
+  onGs1Scan,
   prefix,
   suffix,
   captureAll = false,
@@ -91,11 +101,16 @@ export function useBarcodeScanner({
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const onScanRef = useRef(onScan);
+  const onGs1ScanRef = useRef(onGs1Scan);
   const { append, reset, commit } = useScanBufferStore();
 
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
+
+  useEffect(() => {
+    onGs1ScanRef.current = onGs1Scan;
+  }, [onGs1Scan]);
 
   const ingestCommitted = useCallback(
     (barcode: string) => {
@@ -103,6 +118,16 @@ export function useBarcodeScanner({
       if (!cleaned) return;
       reset();
       commit(cleaned);
+      const gs1 = parseGs1Barcode(cleaned);
+      if (gs1 && onGs1ScanRef.current) {
+        onGs1ScanRef.current({
+          raw: gs1.raw,
+          gtin: gs1.gtin,
+          lot: gs1.lot,
+          expiry: gs1.expiry,
+          serial: gs1.serial,
+        });
+      }
       onScanRef.current(cleaned);
     },
     [commit, reset]

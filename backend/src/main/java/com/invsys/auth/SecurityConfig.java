@@ -54,7 +54,7 @@ public class SecurityConfig {
                         })
                         .frameOptions(frame -> frame.deny())
                         .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
-                        .permissionsPolicy(p -> p.policy("geolocation=(), microphone=(), camera=()")))
+                        .permissionsPolicy(p -> p.policy("geolocation=(self), microphone=(), camera=()")))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedEntryPoint))
                 .authorizeHttpRequests(auth -> {

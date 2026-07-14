@@ -4,6 +4,7 @@ import com.invsys.api.dto.BomLineResponse;
 import com.invsys.api.dto.BomResponse;
 import com.invsys.domain.Bom;
 import com.invsys.domain.BomLine;
+import com.invsys.domain.BomOutput;
 import com.invsys.repository.BomRepository;
 import com.invsys.service.ManufacturingDtoMapper;
 import com.invsys.service.ManufacturingService;
@@ -73,6 +74,24 @@ public class BomController {
         return dtoMapper.toBomLineResponse(line);
     }
 
+    @GetMapping("/boms/{id}/outputs")
+    public List<BomOutputResponse> listOutputs(@PathVariable UUID id) {
+        return manufacturingService.listBomOutputs(id).stream()
+                .map(o -> new BomOutputResponse(
+                        o.getId(), o.getBomId(), o.getVariantId(), o.getOutputType(),
+                        o.getAllocationRatio(), o.getQtyPerBatch()))
+                .toList();
+    }
+
+    @PostMapping("/boms/{id}/outputs")
+    public BomOutputResponse addOutput(@PathVariable UUID id, @Valid @RequestBody AddBomOutputRequest request) {
+        BomOutput output = manufacturingService.addBomOutput(
+                id, request.variantId(), request.outputType(), request.allocationRatio(), request.qtyPerBatch());
+        return new BomOutputResponse(
+                output.getId(), output.getBomId(), output.getVariantId(), output.getOutputType(),
+                output.getAllocationRatio(), output.getQtyPerBatch());
+    }
+
     public record CreateBomRequest(
             @NotNull UUID parentVariantId,
             @NotBlank String name,
@@ -90,6 +109,24 @@ public class BomController {
     public record AddBomLineRequest(
             @NotNull UUID componentVariantId,
             @NotNull @Positive BigDecimal quantityRequired
+    ) {
+    }
+
+    public record AddBomOutputRequest(
+            @NotNull UUID variantId,
+            @NotBlank String outputType,
+            @NotNull BigDecimal allocationRatio,
+            BigDecimal qtyPerBatch
+    ) {
+    }
+
+    public record BomOutputResponse(
+            UUID id,
+            UUID bomId,
+            UUID variantId,
+            String outputType,
+            BigDecimal allocationRatio,
+            BigDecimal qtyPerBatch
     ) {
     }
 }

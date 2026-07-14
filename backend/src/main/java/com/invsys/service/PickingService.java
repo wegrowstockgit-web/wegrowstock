@@ -197,11 +197,28 @@ public class PickingService {
             if (index >= parts.length) {
                 return 0;
             }
-            return parts[index].chars().sum();
+            String part = parts[index];
+            // Prefer trailing digits (AISLE-12 / BIN-03) for natural aisle/shelf walk order
+            int digits = 0;
+            boolean foundDigit = false;
+            for (int i = 0; i < part.length(); i++) {
+                char c = part.charAt(i);
+                if (c >= '0' && c <= '9') {
+                    digits = digits * 10 + (c - '0');
+                    foundDigit = true;
+                } else if (foundDigit) {
+                    break;
+                }
+            }
+            if (foundDigit) {
+                return digits;
+            }
+            return part.chars().sum();
         }
 
         double distanceTo(PathCoordinate other) {
-            // Prefer sequence_index locality (warehouse walk order) then hierarchical path distance.
+            // Prefer sequence_index locality (warehouse walk order) then hierarchical path distance
+            // zone → aisle → shelf/bin elevation — S-shape aisle bias.
             double seqDelta = Math.abs(sequenceIndex - other.sequenceIndex);
             return seqDelta * 50
                     + Math.abs(warehouse - other.warehouse) * 1000

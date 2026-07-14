@@ -14,7 +14,9 @@ import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
 import com.invsys.domain.Supplier;
 import com.invsys.domain.SupplierInvoiceIngestion;
+import com.invsys.repository.ApMatchingLogRepository;
 import com.invsys.repository.AllocationRepository;
+import com.invsys.repository.CapitalCreditLineRepository;
 import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.DemandForecastRepository;
 import com.invsys.repository.EdiDocumentLogRepository;
@@ -36,6 +38,7 @@ import com.invsys.service.ForecastingInferenceService;
 import com.invsys.service.ForecastingWorker;
 import com.invsys.service.PickingService;
 import com.invsys.service.PickingWaveService;
+import com.invsys.service.PurchaseOrderService;
 import com.invsys.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -70,11 +73,14 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
     @Autowired PurchaseOrderLineRepository purchaseOrderLineRepository;
     @Autowired ApOcrIngestionService apOcrIngestionService;
     @Autowired SupplierInvoiceIngestionRepository ingestionRepository;
+    @Autowired ApMatchingLogRepository apMatchingLogRepository;
+    @Autowired PurchaseOrderService purchaseOrderService;
     @Autowired EdiTranslationEngine ediTranslationEngine;
     @Autowired EdiTradingPartnerRepository partnerRepository;
     @Autowired EdiDocumentLogRepository ediDocumentLogRepository;
     @Autowired InvoiceRepository invoiceRepository;
     @Autowired FintechUnderwritingService fintechUnderwritingService;
+    @Autowired CapitalCreditLineRepository capitalCreditLineRepository;
 
     @AfterEach
     void cleanup() {
@@ -150,7 +156,7 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void apOcrReconcilesMatchingPoLines() {
+    void apOcrThreeWayMatchRequiresPhysicalReceive() {
         UUID tenantId = testDataHelper.createTenant("AP Ent", "apent-" + UUID.randomUUID().toString().substring(0, 8));
         TenantContext.setTenantId(tenantId);
 
@@ -161,6 +167,14 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
 
         Product product = saveProduct(tenantId);
         ProductVariant variant = saveVariant(tenantId, product.getId(), "AP-SKU");
+
+        Location location = new Location();
+        location.setTenantId(tenantId);
+        location.setType("WAREHOUSE");
+        location.setCode("WH-AP");
+        location.setName("AP WH");
+        location.setPath("/WH-AP");
+        location = locationRepository.save(location);
 
         PurchaseOrder po = new PurchaseOrder();
         po.setTenantId(tenantId);
@@ -175,7 +189,7 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
         line.setVariantId(variant.getId());
         line.setQtyOrdered(new BigDecimal("10"));
         line.setUnitCost(new BigDecimal("5.00"));
-        purchaseOrderLineRepository.save(line);
+        line = purchaseOrderLineRepository.save(line);
 
         Map<String, Object> extracted = new LinkedHashMap<>();
         extracted.put("lines", List.of(Map.of("sku", "AP-SKU", "qty", 10, "unitCost", 5.00)));
@@ -183,9 +197,23 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
         SupplierInvoiceIngestion ingestion = apOcrIngestionService.submitDocument(po.getId(), extracted);
         assertThat(ingestion.getStatus()).isEqualTo("PENDING");
 
-        SupplierInvoiceIngestion reconciled = apOcrIngestionService.reconcile(ingestion.getId());
+        // Without RECEIVE — blocked
+        SupplierInvoiceIngestion blocked = apOcrIngestionService.reconcile(ingestion.getId());
+        assertThat(blocked.getStatus()).isEqualTo("CONFLICT");
+        assertThat(apMatchingLogRepository.findByTenantIdAndPoIdOrderByCreatedAtDesc(tenantId, po.getId()))
+                .isNotEmpty()
+                .first()
+                .extracting(log -> log.getMatchStatus())
+                .isIn("RECEIPT_MISMATCH", "PARTIAL");
+
+        // Physical receive then match
+        purchaseOrderService.receiveLine(line.getId(), location.getId(), null, new BigDecimal("10"));
+        SupplierInvoiceIngestion second = apOcrIngestionService.submitDocument(po.getId(), extracted);
+        SupplierInvoiceIngestion reconciled = apOcrIngestionService.reconcile(second.getId());
         assertThat(reconciled.getStatus()).isEqualTo("RECONCILED");
         assertThat(reconciled.getMatchConfidence()).isGreaterThanOrEqualTo(new BigDecimal("100"));
+        assertThat(apMatchingLogRepository.findByTenantIdAndPoIdOrderByCreatedAtDesc(tenantId, po.getId()))
+                .anyMatch(log -> "MATCHED".equals(log.getMatchStatus()));
     }
 
     @Test
@@ -248,8 +276,18 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
         assertThat(factored.getFundingStatus()).isEqualTo("FUNDED");
         assertThat(factored.getEscrowPayoutRef()).isNotBlank();
 
+        var lineAfterFund = capitalCreditLineRepository.findByTenantId(tenantId).orElseThrow();
+        BigDecimal outstandingAfterFund = lineAfterFund.getOutstandingBalance();
+        assertThat(outstandingAfterFund).isGreaterThan(BigDecimal.ZERO);
+
+        BigDecimal payback = fintechUnderwritingService.applyFactoringPayback(invoice.getId(), invoice.getTotal());
+        assertThat(payback).isGreaterThan(BigDecimal.ZERO);
+        var lineAfterPayback = capitalCreditLineRepository.findByTenantId(tenantId).orElseThrow();
+        assertThat(lineAfterPayback.getOutstandingBalance()).isLessThan(outstandingAfterFund);
+
         var line = fintechUnderwritingService.drawCapital(new BigDecimal("1000"));
-        assertThat(line.getOutstandingBalance()).isEqualByComparingTo(new BigDecimal("1000"));
+        assertThat(line.getOutstandingBalance()).isEqualByComparingTo(
+                lineAfterPayback.getOutstandingBalance().add(new BigDecimal("1000")));
     }
 
     private Product saveProduct(UUID tenantId) {

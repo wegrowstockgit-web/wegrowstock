@@ -178,11 +178,23 @@ public class AuthService {
         }
         List<String> roles = userRoleRepository.findRoleCodesByUserId(target.getId());
         List<UUID> warehouseIds = resolveWarehouseIds(tenantId, target.getId(), roles);
+        return buildTerminalSwitchResponse(target, roles, warehouseIds, switchedFrom);
+    }
+
+    public String issueTerminalAccessToken(User user, List<String> roles, List<UUID> warehouseIds) {
+        return jwtService.generateTerminalSwitchToken(user.getId(), user.getTenantId(), roles, warehouseIds);
+    }
+
+    TerminalSwitchResponse buildTerminalSwitchResponse(User target,
+                                                       List<String> roles,
+                                                       List<UUID> warehouseIds,
+                                                       UUID switchedFrom) {
         int ttlMinutes = jwtProperties.getTerminalSwitchTokenMinutes();
-        String access = jwtService.generateTerminalSwitchToken(target.getId(), tenantId, roles, warehouseIds);
+        String access = jwtService.generateTerminalSwitchToken(
+                target.getId(), target.getTenantId(), roles, warehouseIds);
         return new TerminalSwitchResponse(
                 access,
-                tenantId,
+                target.getTenantId(),
                 target.getId(),
                 roles,
                 warehouseIds,
@@ -241,7 +253,7 @@ public class AuthService {
      * OWNER/ADMIN see all tenant warehouses. Localized roles are restricted to user_warehouses mappings.
      * Active vehicle assignments are appended so technicians can scope X-Warehouse-Id to their van.
      */
-    List<UUID> resolveWarehouseIds(UUID tenantId, UUID userId, List<String> roles) {
+    public List<UUID> resolveWarehouseIds(UUID tenantId, UUID userId, List<String> roles) {
         List<UUID> ids = new ArrayList<>(roles.contains("OWNER") || roles.contains("ADMIN")
                 ? bootstrapJdbc.findAllWarehouseIds(tenantId)
                 : bootstrapJdbc.findWarehouseIdsForUser(tenantId, userId));

@@ -5,6 +5,7 @@ import com.invsys.domain.Allocation;
 import com.invsys.domain.Bom;
 import com.invsys.domain.BomLine;
 import com.invsys.domain.BomOperation;
+import com.invsys.domain.BomOutput;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.ManufacturingWorkCenter;
@@ -13,6 +14,7 @@ import com.invsys.domain.ProductionOrder;
 import com.invsys.repository.AllocationRepository;
 import com.invsys.repository.BomLineRepository;
 import com.invsys.repository.BomOperationRepository;
+import com.invsys.repository.BomOutputRepository;
 import com.invsys.repository.BomRepository;
 import com.invsys.repository.InventoryLevelRepository;
 import com.invsys.repository.InventoryLedgerRepository;
@@ -46,6 +48,7 @@ public class ManufacturingService {
     private final DocumentSequenceService sequenceService;
     private final CostingService costingService;
     private final ManufacturingLaborService laborService;
+    private final BomOutputRepository bomOutputRepository;
 
     public ManufacturingService(BomRepository bomRepository,
                               BomLineRepository bomLineRepository,
@@ -59,7 +62,8 @@ public class ManufacturingService {
                               ManufacturingWorkCenterRepository workCenterRepository,
                               DocumentSequenceService sequenceService,
                               CostingService costingService,
-                              ManufacturingLaborService laborService) {
+                              ManufacturingLaborService laborService,
+                              BomOutputRepository bomOutputRepository) {
         this.bomRepository = bomRepository;
         this.bomLineRepository = bomLineRepository;
         this.bomOperationRepository = bomOperationRepository;
@@ -73,6 +77,7 @@ public class ManufacturingService {
         this.sequenceService = sequenceService;
         this.costingService = costingService;
         this.laborService = laborService;
+        this.bomOutputRepository = bomOutputRepository;
     }
 
     @Transactional
@@ -122,6 +127,38 @@ public class ManufacturingService {
         bomLine.setComponentVariantId(componentVariantId);
         bomLine.setQuantityRequired(quantityRequired);
         return bomLineRepository.save(bomLine);
+    }
+
+    @Transactional(readOnly = true)
+    public List<BomOutput> listBomOutputs(UUID bomId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        bomRepository.findById(bomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "BOM not found"));
+        return bomOutputRepository.findByTenantIdAndBomIdOrderByOutputTypeAsc(tenantId, bomId);
+    }
+
+    @Transactional
+    public BomOutput addBomOutput(UUID bomId,
+                                  UUID variantId,
+                                  String outputType,
+                                  BigDecimal allocationRatio,
+                                  BigDecimal qtyPerBatch) {
+        UUID tenantId = TenantContext.requireTenantId();
+        bomRepository.findById(bomId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "BOM not found"));
+        String type = outputType == null ? "" : outputType.trim().toUpperCase();
+        if (!List.of("MAIN", "CO_PRODUCT", "BY_PRODUCT").contains(type)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_OUTPUT_TYPE",
+                    "outputType must be MAIN, CO_PRODUCT, or BY_PRODUCT");
+        }
+        BomOutput output = new BomOutput();
+        output.setTenantId(tenantId);
+        output.setBomId(bomId);
+        output.setVariantId(variantId);
+        output.setOutputType(type);
+        output.setAllocationRatio(allocationRatio != null ? allocationRatio : BigDecimal.ZERO);
+        output.setQtyPerBatch(qtyPerBatch != null && qtyPerBatch.signum() > 0 ? qtyPerBatch : BigDecimal.ONE);
+        return bomOutputRepository.save(output);
     }
 
     @Transactional
@@ -262,21 +299,56 @@ public class ManufacturingService {
 
         BigDecimal laborCost = laborService.totalLaborCost(productionOrderId);
         BigDecimal totalCost = materialCost.add(laborCost);
-        BigDecimal finishedUnitCost = totalCost.divide(qtyToProduce, 4, RoundingMode.HALF_UP);
 
-        InventoryLedger in = new InventoryLedger();
-        in.setTenantId(tenantId);
-        in.setVariantId(order.getParentVariantId());
-        in.setLocationId(outputLocation);
-        in.setMovementType("ASSEMBLY_IN");
-        in.setQuantityDelta(qtyToProduce);
-        in.setUnitCost(finishedUnitCost);
-        in.setReferenceType("PRODUCTION_ORDER");
-        in.setReferenceId(productionOrderId);
-        in.setCreatedBy(TenantContext.getUserId().orElse(null));
-        ledgerRepository.save(in);
+        Bom bom = bomRepository.findByTenantIdAndParentVariantId(tenantId, order.getParentVariantId()).orElse(null);
+        List<BomOutput> outputs = bom == null
+                ? List.of()
+                : bomOutputRepository.findByTenantIdAndBomIdOrderByOutputTypeAsc(tenantId, bom.getId());
 
-        costingService.applyReceiveCost(order.getParentVariantId(), qtyToProduce, finishedUnitCost);
+        if (outputs.isEmpty()) {
+            BigDecimal finishedUnitCost = totalCost.divide(qtyToProduce, 4, RoundingMode.HALF_UP);
+            InventoryLedger in = new InventoryLedger();
+            in.setTenantId(tenantId);
+            in.setVariantId(order.getParentVariantId());
+            in.setLocationId(outputLocation);
+            in.setMovementType("ASSEMBLY_IN");
+            in.setQuantityDelta(qtyToProduce);
+            in.setUnitCost(finishedUnitCost);
+            in.setReferenceType("PRODUCTION_ORDER");
+            in.setReferenceId(productionOrderId);
+            in.setCreatedBy(TenantContext.getUserId().orElse(null));
+            ledgerRepository.save(in);
+            costingService.applyReceiveCost(order.getParentVariantId(), qtyToProduce, finishedUnitCost);
+        } else {
+            BigDecimal ratioSum = outputs.stream()
+                    .map(BomOutput::getAllocationRatio)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (ratioSum.signum() <= 0) {
+                ratioSum = BigDecimal.valueOf(100);
+            }
+            for (BomOutput output : outputs) {
+                BigDecimal share = output.getAllocationRatio().divide(ratioSum, 8, RoundingMode.HALF_UP);
+                BigDecimal outputQty = output.getQtyPerBatch().multiply(qtyToProduce);
+                if (outputQty.signum() <= 0) {
+                    continue;
+                }
+                BigDecimal outputCost = totalCost.multiply(share);
+                BigDecimal unitCost = outputCost.divide(outputQty, 4, RoundingMode.HALF_UP);
+                InventoryLedger in = new InventoryLedger();
+                in.setTenantId(tenantId);
+                in.setVariantId(output.getVariantId());
+                in.setLocationId(outputLocation);
+                in.setMovementType("ASSEMBLY_IN");
+                in.setQuantityDelta(outputQty);
+                in.setUnitCost(unitCost);
+                in.setReferenceType("PRODUCTION_ORDER");
+                in.setReferenceId(productionOrderId);
+                in.setReasonCode(output.getOutputType());
+                in.setCreatedBy(TenantContext.getUserId().orElse(null));
+                ledgerRepository.save(in);
+                costingService.applyReceiveCost(output.getVariantId(), outputQty, unitCost);
+            }
+        }
 
         order.setQtyProduced(order.getQtyProduced().add(qtyToProduce));
         if (order.getQtyProduced().compareTo(order.getQtyTarget()) >= 0) {

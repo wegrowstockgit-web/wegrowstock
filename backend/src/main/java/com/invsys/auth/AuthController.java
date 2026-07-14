@@ -6,10 +6,12 @@ import com.invsys.auth.dto.MagicLoginRequest;
 import com.invsys.auth.dto.RefreshRequest;
 import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.auth.dto.SignupRequest;
+import com.invsys.auth.dto.TerminalBiometricRequest;
 import com.invsys.auth.dto.TerminalSwitchRequest;
 import com.invsys.auth.dto.TerminalSwitchResponse;
 import com.invsys.auth.dto.TokenResponse;
 import com.invsys.common.ApiException;
+import com.invsys.service.TerminalBiometricService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,13 +32,16 @@ public class AuthController {
 
     private final AuthService authService;
     private final MagicLoginService magicLoginService;
+    private final TerminalBiometricService terminalBiometricService;
     private final boolean publicSignupEnabled;
 
     public AuthController(AuthService authService,
                           MagicLoginService magicLoginService,
+                          TerminalBiometricService terminalBiometricService,
                           @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.authService = authService;
         this.magicLoginService = magicLoginService;
+        this.terminalBiometricService = terminalBiometricService;
         this.publicSignupEnabled = publicSignupEnabled;
     }
 
@@ -63,14 +68,23 @@ public class AuthController {
         return magicLoginService.consumeMagicLink(request.token());
     }
 
-    /**
-     * Shared warehouse terminal PIN pad — rotates operator JWT context without
-     * revoking the primary device refresh session.
-     */
     @PostMapping("/terminal-switch")
     @PreAuthorize("isAuthenticated()")
     public TerminalSwitchResponse terminalSwitch(@Valid @RequestBody TerminalSwitchRequest request) {
         return authService.terminalSwitch(request);
+    }
+
+    @PostMapping("/terminal-biometric/options")
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, Object> terminalBiometricOptions() {
+        return terminalBiometricService.createAssertionOptions();
+    }
+
+    @PostMapping("/terminal-biometric")
+    @PreAuthorize("isAuthenticated()")
+    public TerminalSwitchResponse terminalBiometric(@Valid @RequestBody TerminalBiometricRequest request) {
+        return terminalBiometricService.assertTerminal(
+                request.credentialId(), request.challenge(), request.signature());
     }
 
     @PostMapping("/terminal-pin")

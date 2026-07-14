@@ -4,6 +4,7 @@ import com.invsys.auth.AuthService;
 import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.domain.Invitation;
 import com.invsys.repository.UserRoleRepository;
+import com.invsys.service.TerminalBiometricService;
 import com.invsys.service.UserManagementService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -29,13 +31,16 @@ public class UserController {
     private final UserManagementService userManagementService;
     private final UserRoleRepository userRoleRepository;
     private final AuthService authService;
+    private final TerminalBiometricService terminalBiometricService;
 
     public UserController(UserManagementService userManagementService,
                           UserRoleRepository userRoleRepository,
-                          AuthService authService) {
+                          AuthService authService,
+                          TerminalBiometricService terminalBiometricService) {
         this.userManagementService = userManagementService;
         this.userRoleRepository = userRoleRepository;
         this.authService = authService;
+        this.terminalBiometricService = terminalBiometricService;
     }
 
     @GetMapping
@@ -72,10 +77,20 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/terminal-passkey")
+    public Map<String, String> registerPasskey(@PathVariable UUID id,
+                                               @RequestBody(required = false) PasskeyLabelRequest request) {
+        return terminalBiometricService.registerCredential(
+                id, request != null ? request.label() : null);
+    }
+
     public record InviteRequest(@NotBlank @Email String email, @NotBlank String role, UUID customerId) {
     }
 
     public record ChangeRoleRequest(@NotBlank String role) {
+    }
+
+    public record PasskeyLabelRequest(String label) {
     }
 
     public record UserResponse(

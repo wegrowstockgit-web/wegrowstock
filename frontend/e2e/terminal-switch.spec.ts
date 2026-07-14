@@ -18,7 +18,7 @@ test.describe('Terminal PIN context switch', () => {
     await expect(ownerPage.getByTestId('terminal-pin-pad')).toBeVisible();
 
     for (const digit of ['2', '4', '6', '8']) {
-      await ownerPage.getByRole('button', { name: digit, exact: true }).click();
+      await ownerPage.getByTestId('terminal-pin-keys').locator(`[data-pin-key="${digit}"]`).click();
     }
 
     await expect(ownerPage.getByTestId('terminal-restore-primary')).toBeVisible({ timeout: 10_000 });

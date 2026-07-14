@@ -55,6 +55,7 @@ public class InvoicingService {
     private final CreditService creditService;
     private final ShipmentRepository shipmentRepository;
     private final ShipmentLineRepository shipmentLineRepository;
+    private final FintechUnderwritingService fintechUnderwritingService;
 
     public InvoicingService(InvoiceRepository invoiceRepository,
                             InvoiceLineRepository invoiceLineRepository,
@@ -70,7 +71,8 @@ public class InvoicingService {
                             OutboxService outboxService,
                             CreditService creditService,
                             ShipmentRepository shipmentRepository,
-                            ShipmentLineRepository shipmentLineRepository) {
+                            ShipmentLineRepository shipmentLineRepository,
+                            FintechUnderwritingService fintechUnderwritingService) {
         this.invoiceRepository = invoiceRepository;
         this.invoiceLineRepository = invoiceLineRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -86,6 +88,7 @@ public class InvoicingService {
         this.creditService = creditService;
         this.shipmentRepository = shipmentRepository;
         this.shipmentLineRepository = shipmentLineRepository;
+        this.fintechUnderwritingService = fintechUnderwritingService;
     }
 
     @Transactional
@@ -303,8 +306,10 @@ public class InvoicingService {
         Invoice invoice = invoiceRepository.findById(pi.getInvoiceId()).orElseThrow();
         invoice.setStatus("PAID");
         invoiceRepository.save(invoice);
+        BigDecimal payback = fintechUnderwritingService.applyFactoringPayback(invoice.getId(), pi.getAmount());
         outboxService.append("INVOICE", invoice.getId(), "INVOICE_PAID", Map.of(
-                "invoiceId", invoice.getId().toString()));
+                "invoiceId", invoice.getId().toString(),
+                "factoringPayback", payback));
         creditService.replenishCredit(invoice.getCustomerId(), pi.getAmount());
     }
 }
