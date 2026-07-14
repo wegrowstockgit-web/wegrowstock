@@ -29,10 +29,10 @@ test.describe('Multi-tenant slugless login matrix', () => {
     await expect(page).toHaveURL(/\/fulfillment/, { timeout: 15_000 });
     await expect(page.getByText('Floor ops')).toBeVisible();
 
-    const select = page.getByLabel('Active warehouse');
-    await expect(select).toBeVisible();
-    const labels = await select.locator('option').allTextContents();
-    expect(labels.some((t) => /Seattle|SEA/i.test(t))).toBeTruthy();
-    expect(labels.some((t) => /Chicago|CHI|Atlanta|ATL/i.test(t))).toBeFalsy();
+    // Single warehouse claim → terminal lockdown (no switcher)
+    await expect(page.getByLabel('Active warehouse')).toHaveCount(0);
+    const locked = page.locator('[data-terminal-locked="true"]');
+    await expect(locked).toBeVisible();
+    await expect(locked).toContainText(/Seattle|SEA/i);
   });
 });

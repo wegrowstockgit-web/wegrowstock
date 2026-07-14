@@ -23,6 +23,15 @@ public class TenantSsoConfig extends TenantScopedEntity {
     @Column(name = "force_sso", nullable = false)
     private boolean forceSso;
 
+    @Column(nullable = false)
+    private String protocol = "OIDC";
+
+    @Column(name = "saml_metadata_url")
+    private String samlMetadataUrl;
+
+    @Column(name = "saml_entity_id")
+    private String samlEntityId;
+
     public String getIssuerUrl() {
         return issuerUrl;
     }
@@ -61,5 +70,29 @@ public class TenantSsoConfig extends TenantScopedEntity {
 
     public void setForceSso(boolean forceSso) {
         this.forceSso = forceSso;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public String getSamlMetadataUrl() {
+        return samlMetadataUrl;
+    }
+
+    public void setSamlMetadataUrl(String samlMetadataUrl) {
+        this.samlMetadataUrl = samlMetadataUrl;
+    }
+
+    public String getSamlEntityId() {
+        return samlEntityId;
+    }
+
+    public void setSamlEntityId(String samlEntityId) {
+        this.samlEntityId = samlEntityId;
     }
 }

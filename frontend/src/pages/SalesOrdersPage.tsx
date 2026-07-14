@@ -292,16 +292,22 @@ function RowActions({ order }: { order: SalesOrder }) {
           Allocate
         </Button>
       )}
-      {canInvoice && (order.status === 'ALLOCATED' || order.status === 'SHIPPED') && (
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={action.isPending}
-          onClick={() => action.mutate(`/api/v1/invoices/from-sales-order/${order.id}`)}
-        >
-          Invoice
-        </Button>
-      )}
+      {canInvoice &&
+        (order.status === 'ALLOCATED' ||
+          order.status === 'PARTIALLY_SHIPPED' ||
+          order.status === 'SHIPPED') &&
+        (order.billingStatus === 'INVOICED' ? (
+          <span className="text-xs font-medium text-text-muted">Invoiced</span>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={action.isPending}
+            onClick={() => action.mutate(`/api/v1/invoices/from-sales-order/${order.id}`)}
+          >
+            {order.billingStatus === 'PARTIAL' ? 'Invoice remaining' : 'Invoice'}
+          </Button>
+        ))}
       {canManage && (order.status === 'DRAFT' || order.status === 'CONFIRMED') && (
         <Button
           variant="ghost"

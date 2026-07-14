@@ -39,9 +39,11 @@ function CreateInvoiceModal({ open, onClose }: { open: boolean; onClose: () => v
     enabled: open,
   });
 
-  // Invoices are generated from fulfilled or allocated orders
-  const invoiceable = orders.filter((o) =>
-    ['ALLOCATED', 'PARTIALLY_SHIPPED', 'SHIPPED', 'CLOSED'].includes(o.status)
+  // Invoices are generated from fulfilled or allocated orders that still have billable qty
+  const invoiceable = orders.filter(
+    (o) =>
+      ['ALLOCATED', 'PARTIALLY_SHIPPED', 'SHIPPED', 'CLOSED'].includes(o.status) &&
+      o.billingStatus !== 'INVOICED'
   );
 
   const mutation = useMutation({

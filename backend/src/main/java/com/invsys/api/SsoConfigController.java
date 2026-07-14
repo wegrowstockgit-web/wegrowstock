@@ -1,7 +1,6 @@
 package com.invsys.api;
 
 import com.invsys.service.SsoConfigService;
-import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -34,16 +33,22 @@ public class SsoConfigController {
                 request.clientId(),
                 request.clientSecret(),
                 request.enabled(),
-                request.forceSso()
+                request.forceSso(),
+                request.protocol(),
+                request.samlMetadataUrl(),
+                request.samlEntityId()
         )));
     }
 
     public record UpsertSsoRequest(
-            @NotBlank String issuerUrl,
-            @NotBlank String clientId,
+            String issuerUrl,
+            String clientId,
             String clientSecret,
             boolean enabled,
-            boolean forceSso
+            boolean forceSso,
+            String protocol,
+            String samlMetadataUrl,
+            String samlEntityId
     ) {
     }
 
@@ -52,7 +57,10 @@ public class SsoConfigController {
             String clientId,
             boolean enabled,
             boolean forceSso,
-            boolean configured
+            boolean configured,
+            String protocol,
+            String samlMetadataUrl,
+            String samlEntityId
     ) {
         static SsoConfigResponse from(SsoConfigService.SsoConfigView view) {
             return new SsoConfigResponse(
@@ -60,12 +68,15 @@ public class SsoConfigController {
                     view.clientId(),
                     view.enabled(),
                     view.forceSso(),
-                    view.hasSecret()
+                    view.hasSecret(),
+                    view.protocol(),
+                    view.samlMetadataUrl(),
+                    view.samlEntityId()
             );
         }
 
         static SsoConfigResponse empty() {
-            return new SsoConfigResponse("", "", false, false, false);
+            return new SsoConfigResponse("", "", false, false, false, "OIDC", null, null);
         }
     }
 }

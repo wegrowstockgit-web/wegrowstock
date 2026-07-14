@@ -108,7 +108,8 @@ public class BootstrapJdbc {
     public Optional<SsoBootstrapRow> findSsoConfigByTenantId(UUID tenantId) {
         return jdbc.query(
                 """
-                SELECT issuer_url, client_id, encrypted_client_secret, enabled, force_sso
+                SELECT issuer_url, client_id, encrypted_client_secret, enabled, force_sso,
+                       COALESCE(protocol, 'OIDC') AS protocol, saml_metadata_url, saml_entity_id
                 FROM tenant_sso_configs WHERE tenant_id = ?
                 """,
                 rs -> {
@@ -120,10 +121,65 @@ public class BootstrapJdbc {
                             rs.getString("client_id"),
                             rs.getBytes("encrypted_client_secret"),
                             rs.getBoolean("enabled"),
-                            rs.getBoolean("force_sso")
+                            rs.getBoolean("force_sso"),
+                            rs.getString("protocol"),
+                            rs.getString("saml_metadata_url"),
+                            rs.getString("saml_entity_id")
                     ));
                 },
                 tenantId);
+    }
+
+    public Optional<MagicLoginTokenRow> findMagicLoginTokenByHash(String tokenHash) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, user_id, expires_at, consumed_at
+                FROM magic_login_tokens WHERE token_hash = ?
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new MagicLoginTokenRow(
+                            UUID.fromString(rs.getString("id")),
+                            UUID.fromString(rs.getString("tenant_id")),
+                            UUID.fromString(rs.getString("user_id")),
+                            rs.getTimestamp("expires_at").toInstant(),
+                            rs.getTimestamp("consumed_at") != null
+                                    ? rs.getTimestamp("consumed_at").toInstant() : null));
+                },
+                tokenHash);
+    }
+
+    public Optional<InvoiceBootstrapRow> findInvoiceByNumberOrId(String numberOrId) {
+        if (numberOrId == null || numberOrId.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = numberOrId.trim();
+        try {
+            UUID id = UUID.fromString(trimmed);
+            Optional<InvoiceBootstrapRow> byId = jdbc.query(
+                    "SELECT id, tenant_id, number, status FROM invoices WHERE id = ?",
+                    rs -> rs.next() ? Optional.of(new InvoiceBootstrapRow(
+                            UUID.fromString(rs.getString("id")),
+                            UUID.fromString(rs.getString("tenant_id")),
+                            rs.getString("number"),
+                            rs.getString("status"))) : Optional.empty(),
+                    id);
+            if (byId.isPresent()) {
+                return byId;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // treat as invoice number
+        }
+        return jdbc.query(
+                "SELECT id, tenant_id, number, status FROM invoices WHERE number = ? LIMIT 1",
+                rs -> rs.next() ? Optional.of(new InvoiceBootstrapRow(
+                        UUID.fromString(rs.getString("id")),
+                        UUID.fromString(rs.getString("tenant_id")),
+                        rs.getString("number"),
+                        rs.getString("status"))) : Optional.empty(),
+                trimmed);
     }
 
     public record UserAuthRow(UUID id, String passwordHash, String status) {}
@@ -133,7 +189,15 @@ public class BootstrapJdbc {
     public record RefreshTokenRow(UUID tenantId, UUID userId, java.time.Instant expiresAt, java.time.Instant revokedAt) {}
 
     public record SsoBootstrapRow(String issuerUrl, String clientId, byte[] encryptedClientSecret,
-                                 boolean enabled, boolean forceSso) {
+                                 boolean enabled, boolean forceSso, String protocol,
+                                 String samlMetadataUrl, String samlEntityId) {
+    }
+
+    public record MagicLoginTokenRow(UUID id, UUID tenantId, UUID userId,
+                                     java.time.Instant expiresAt, java.time.Instant consumedAt) {
+    }
+
+    public record InvoiceBootstrapRow(UUID id, UUID tenantId, String number, String status) {
     }
 
     public void upsertCurrencyRate(String fromCurrency, String toCurrency, java.math.BigDecimal rate, java.time.Instant asOf) {

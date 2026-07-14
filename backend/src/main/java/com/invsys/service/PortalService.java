@@ -5,12 +5,15 @@ import com.invsys.api.dto.PortalInvoiceResponse;
 import com.invsys.api.dto.PortalOrderResponse;
 import com.invsys.common.ApiException;
 import com.invsys.domain.Customer;
+import com.invsys.domain.CustomerCatalogRestriction;
 import com.invsys.domain.CustomerPriceTier;
 import com.invsys.domain.Invoice;
 import com.invsys.domain.Product;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
+import com.invsys.domain.VolumePriceBreak;
+import com.invsys.repository.CustomerCatalogRestrictionRepository;
 import com.invsys.repository.CustomerPriceTierRepository;
 import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.InvoiceRepository;
@@ -19,6 +22,7 @@ import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
 import com.invsys.repository.TenantSettingsRepository;
+import com.invsys.repository.VolumePriceBreakRepository;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -43,6 +49,8 @@ public class PortalService {
     private final DocumentSequenceService sequenceService;
     private final TenantSettingsRepository tenantSettingsRepository;
     private final CreditService creditService;
+    private final CustomerCatalogRestrictionRepository catalogRestrictionRepository;
+    private final VolumePriceBreakRepository volumePriceBreakRepository;
 
     public PortalService(ProductVariantRepository variantRepository,
                          ProductRepository productRepository,
@@ -53,7 +61,9 @@ public class PortalService {
                          InvoiceRepository invoiceRepository,
                          DocumentSequenceService sequenceService,
                          TenantSettingsRepository tenantSettingsRepository,
-                         CreditService creditService) {
+                         CreditService creditService,
+                         CustomerCatalogRestrictionRepository catalogRestrictionRepository,
+                         VolumePriceBreakRepository volumePriceBreakRepository) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
@@ -64,16 +74,23 @@ public class PortalService {
         this.sequenceService = sequenceService;
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.creditService = creditService;
+        this.catalogRestrictionRepository = catalogRestrictionRepository;
+        this.volumePriceBreakRepository = volumePriceBreakRepository;
     }
 
     public List<PortalCatalogItemResponse> catalog() {
         UUID tenantId = TenantContext.requireTenantId();
         UUID customerId = TenantContext.requireCustomerId();
-        BigDecimal discount = resolveDiscount(customerId);
+        BigDecimal tierDiscount = resolveDiscount(customerId);
+        CatalogFilter filter = catalogFilter(tenantId, customerId);
 
         List<PortalCatalogItemResponse> items = new ArrayList<>();
         for (Product product : productRepository.findByTenantIdAndDeletedAtIsNullOrderByNameAsc(tenantId)) {
             for (ProductVariant variant : variantRepository.findByTenantIdAndProductId(tenantId, product.getId())) {
+                if (!filter.allows(product.getId(), variant.getId())) {
+                    continue;
+                }
+                BigDecimal discount = resolveEffectiveDiscount(tenantId, variant.getId(), BigDecimal.ONE, tierDiscount);
                 BigDecimal discounted = applyDiscount(variant.getPrice(), discount);
                 items.add(new PortalCatalogItemResponse(
                         variant.getId(),
@@ -97,7 +114,8 @@ public class PortalService {
                                            java.time.Instant requestedShipDate) {
         UUID tenantId = TenantContext.requireTenantId();
         UUID customerId = TenantContext.requireCustomerId();
-        BigDecimal discount = resolveDiscount(customerId);
+        BigDecimal tierDiscount = resolveDiscount(customerId);
+        CatalogFilter filter = catalogFilter(tenantId, customerId);
 
         SalesOrder order = new SalesOrder();
         order.setTenantId(tenantId);
@@ -118,6 +136,11 @@ public class PortalService {
         for (PortalOrderLineInput line : lines) {
             ProductVariant variant = variantRepository.findById(line.variantId())
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found"));
+            if (!filter.allows(variant.getProductId(), variant.getId())) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "CATALOG_RESTRICTED",
+                        "Variant is not available in this customer catalog");
+            }
+            BigDecimal discount = resolveEffectiveDiscount(tenantId, variant.getId(), line.quantity(), tierDiscount);
             BigDecimal unitPrice = applyDiscount(variant.getPrice(), discount);
             currency = variant.getCurrency();
             SalesOrderLine sol = new SalesOrderLine();
@@ -236,6 +259,33 @@ public class PortalService {
                 invoice.getDueAt());
     }
 
+    private CatalogFilter catalogFilter(UUID tenantId, UUID customerId) {
+        List<CustomerCatalogRestriction> restrictions =
+                catalogRestrictionRepository.findByTenantIdAndCustomerId(tenantId, customerId);
+        if (restrictions.isEmpty()) {
+            return CatalogFilter.unrestricted();
+        }
+        Set<UUID> productIds = new HashSet<>();
+        Set<UUID> variantIds = new HashSet<>();
+        for (CustomerCatalogRestriction restriction : restrictions) {
+            if ("PRODUCT".equalsIgnoreCase(restriction.getTargetType())) {
+                productIds.add(restriction.getTargetId());
+            } else if ("VARIANT".equalsIgnoreCase(restriction.getTargetType())) {
+                variantIds.add(restriction.getTargetId());
+            }
+        }
+        return new CatalogFilter(true, productIds, variantIds);
+    }
+
+    private BigDecimal resolveEffectiveDiscount(UUID tenantId, UUID variantId, BigDecimal quantity,
+                                                BigDecimal tierDiscount) {
+        return volumePriceBreakRepository
+                .findFirstByTenantIdAndVariantIdAndMinQuantityLessThanEqualOrderByMinQuantityDesc(
+                        tenantId, variantId, quantity)
+                .map(VolumePriceBreak::getDiscountPercent)
+                .orElse(tierDiscount);
+    }
+
     private BigDecimal resolveDiscount(UUID customerId) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Customer not found"));
@@ -251,6 +301,19 @@ public class PortalService {
         BigDecimal factor = BigDecimal.ONE.subtract(
                 discountPercent.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
         return price.multiply(factor).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private record CatalogFilter(boolean restricted, Set<UUID> productIds, Set<UUID> variantIds) {
+        static CatalogFilter unrestricted() {
+            return new CatalogFilter(false, Set.of(), Set.of());
+        }
+
+        boolean allows(UUID productId, UUID variantId) {
+            if (!restricted) {
+                return true;
+            }
+            return variantIds.contains(variantId) || productIds.contains(productId);
+        }
     }
 
     public record PortalOrderLineInput(UUID variantId, BigDecimal quantity) {

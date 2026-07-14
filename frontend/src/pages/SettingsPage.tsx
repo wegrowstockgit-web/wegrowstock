@@ -6,7 +6,9 @@ import { apiClient } from '@/api/client';
 import type {
   AccountMapping,
   ChannelIntegration,
+  CostCenter,
   Customer,
+  InternalRequisition,
   OutboxEventItem,
   PlatformAlertItem,
   AuditLogItem,
@@ -53,6 +55,7 @@ const TABS = [
   { id: 'accounting', label: 'Accounting Sync' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'operations', label: 'Operations' },
+  { id: 'costCenters', label: 'Cost Centers & Requisitions' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -476,6 +479,8 @@ function InventoryRulesTab() {
   const settings = useTenantSettings();
   const queryClient = useQueryClient();
   const [allowNegative, setAllowNegative] = useState(false);
+  const [allowBlindReceiving, setAllowBlindReceiving] = useState(false);
+  const [overReceiptTolerance, setOverReceiptTolerance] = useState('0');
   const [barcodePrefix, setBarcodePrefix] = useState('');
   const [reorderPoint, setReorderPoint] = useState('');
   const [taxName, setTaxName] = useState('');
@@ -513,6 +518,10 @@ function InventoryRulesTab() {
     const s = settings.data;
     if (!s) return;
     setAllowNegative(Boolean(s.allow_negative_inventory));
+    setAllowBlindReceiving(Boolean(s.allow_blind_receiving));
+    if (s.over_receipt_tolerance_percent != null) {
+      setOverReceiptTolerance(String(s.over_receipt_tolerance_percent));
+    }
     if (typeof s.barcode_prefix_strip === 'string') setBarcodePrefix(s.barcode_prefix_strip);
     if (s.default_reorder_point != null) setReorderPoint(String(s.default_reorder_point));
   }, [settings.data]);
@@ -526,6 +535,8 @@ function InventoryRulesTab() {
             e.preventDefault();
             settings.patch.mutate({
               allow_negative_inventory: allowNegative,
+              allow_blind_receiving: allowBlindReceiving,
+              over_receipt_tolerance_percent: Number(overReceiptTolerance) || 0,
               barcode_prefix_strip: barcodePrefix,
               default_reorder_point: reorderPoint ? Number(reorderPoint) : 0,
             });
@@ -541,6 +552,24 @@ function InventoryRulesTab() {
             />
             <span className="text-sm text-text">Allow negative inventory</span>
           </label>
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={allowBlindReceiving}
+              onChange={(e) => setAllowBlindReceiving(e.target.checked)}
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            <span className="text-sm text-text">Allow blind scan receiving (no PO)</span>
+          </label>
+          <Input
+            label="Over-receipt tolerance (%)"
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            value={overReceiptTolerance}
+            onChange={(e) => setOverReceiptTolerance(e.target.value)}
+          />
           <Input
             label="Barcode prefix to strip"
             value={barcodePrefix}
@@ -910,6 +939,9 @@ function SecuritySsoTab() {
   const [clientSecret, setClientSecret] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [forceSso, setForceSso] = useState(false);
+  const [protocol, setProtocol] = useState<'OIDC' | 'SAML'>('OIDC');
+  const [samlMetadataUrl, setSamlMetadataUrl] = useState('');
+  const [samlEntityId, setSamlEntityId] = useState('');
   const [error, setError] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -924,6 +956,9 @@ function SecuritySsoTab() {
     setClientId(data.clientId);
     setEnabled(data.enabled);
     setForceSso(data.forceSso);
+    setProtocol(data.protocol === 'SAML' ? 'SAML' : 'OIDC');
+    setSamlMetadataUrl(data.samlMetadataUrl ?? '');
+    setSamlEntityId(data.samlEntityId ?? '');
   }, [data]);
 
   const saveMutation = useMutation({
@@ -934,6 +969,9 @@ function SecuritySsoTab() {
         clientSecret: clientSecret || undefined,
         enabled,
         forceSso,
+        protocol,
+        samlMetadataUrl: samlMetadataUrl || undefined,
+        samlEntityId: samlEntityId || undefined,
       });
     },
     onSuccess: () => {
@@ -950,7 +988,7 @@ function SecuritySsoTab() {
     <Card>
       <CardHeader
         title="Security & SSO"
-        description="Configure OIDC single sign-on (Okta, Azure AD, Google Workspace)"
+        description="OIDC or SAML routing for Okta, Azure AD / Entra ID"
       />
       <form
         onSubmit={(e) => {
@@ -960,18 +998,44 @@ function SecuritySsoTab() {
         }}
         className="space-y-4"
       >
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-text">Protocol</span>
+          <select
+            value={protocol}
+            onChange={(e) => setProtocol(e.target.value === 'SAML' ? 'SAML' : 'OIDC')}
+            className="h-10 w-full rounded-md border border-border bg-surface-raised px-3 text-sm"
+          >
+            <option value="OIDC">OIDC (OAuth2)</option>
+            <option value="SAML">SAML 2.0</option>
+          </select>
+        </label>
         <Input
           label="Issuer URL"
           value={issuerUrl}
           onChange={(e) => setIssuerUrl(e.target.value)}
           placeholder="https://your-org.okta.com/oauth2/default"
-          required
+          required={protocol === 'OIDC'}
         />
+        {protocol === 'SAML' && (
+          <>
+            <Input
+              label="SAML metadata URL"
+              value={samlMetadataUrl}
+              onChange={(e) => setSamlMetadataUrl(e.target.value)}
+              placeholder="https://login.microsoftonline.com/.../federationmetadata/..."
+            />
+            <Input
+              label="SAML entity ID"
+              value={samlEntityId}
+              onChange={(e) => setSamlEntityId(e.target.value)}
+            />
+          </>
+        )}
         <Input
           label="Client ID"
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
-          required
+          required={protocol === 'OIDC'}
         />
         <Input
           label="Client secret"
@@ -1766,6 +1830,189 @@ function OperationsConsoleTab() {
 
 /* ------------------------------------- Page ------------------------------------- */
 
+function CostCentersRequisitionsTab() {
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [budget, setBudget] = useState('');
+  const [costCenterId, setCostCenterId] = useState('');
+  const [variantId, setVariantId] = useState('');
+  const [qty, setQty] = useState('1');
+
+  const { data: costCenters = [], isLoading: loadingCc } = useQuery({
+    queryKey: ['cost-centers'],
+    queryFn: async () => (await apiClient.get<CostCenter[]>('/api/v1/cost-centers')).data,
+    retry: false,
+  });
+
+  const { data: requisitions = [], isLoading: loadingReq } = useQuery({
+    queryKey: ['internal-requisitions', 'settings'],
+    queryFn: async () =>
+      (await apiClient.get<InternalRequisition[]>('/api/v1/internal-requisitions')).data,
+    retry: false,
+  });
+
+  const createCc = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/api/v1/cost-centers', {
+        code,
+        name,
+        budget: budget ? Number(budget) : null,
+      });
+    },
+    onSuccess: () => {
+      setCode('');
+      setName('');
+      setBudget('');
+      void queryClient.invalidateQueries({ queryKey: ['cost-centers'] });
+    },
+  });
+
+  const createReq = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/api/v1/internal-requisitions', {
+        costCenterId,
+        lines: [{ variantId, qtyRequested: Number(qty) }],
+      });
+    },
+    onSuccess: () => {
+      setVariantId('');
+      setQty('1');
+      void queryClient.invalidateQueries({ queryKey: ['internal-requisitions'] });
+    },
+  });
+
+  const approveReq = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.post(`/api/v1/internal-requisitions/${id}/approve`);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['internal-requisitions'] });
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader title="Cost centers" description="Departments that consume internal stock" />
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <Input placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} />
+          <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            placeholder="Budget"
+            type="number"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+          />
+        </div>
+        <Button
+          size="sm"
+          disabled={!code.trim() || !name.trim() || createCc.isPending}
+          onClick={() => createCc.mutate()}
+        >
+          Add cost center
+        </Button>
+        <div className="mt-4">
+          {loadingCc ? (
+            <TableSkeleton rows={3} cols={3} />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Budget</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {costCenters.map((cc) => (
+                  <TableRow key={cc.id}>
+                    <TableCell mono>{cc.code}</TableCell>
+                    <TableCell>{cc.name}</TableCell>
+                    <TableCell>{cc.budget ?? '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Internal requisitions"
+          description="Create and approve stockroom requisitions"
+        />
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <Select
+            value={costCenterId}
+            onChange={(e) => setCostCenterId(e.target.value)}
+            aria-label="Cost center"
+          >
+            <option value="">Select cost center</option>
+            {costCenters.map((cc) => (
+              <option key={cc.id} value={cc.id}>
+                {cc.code} — {cc.name}
+              </option>
+            ))}
+          </Select>
+          <Input
+            placeholder="Variant ID"
+            value={variantId}
+            onChange={(e) => setVariantId(e.target.value)}
+          />
+          <Input
+            type="number"
+            min={1}
+            placeholder="Qty"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
+        </div>
+        <Button
+          size="sm"
+          disabled={!costCenterId || !variantId || createReq.isPending}
+          onClick={() => createReq.mutate()}
+        >
+          Create requisition
+        </Button>
+        <div className="mt-4">
+          {loadingReq ? (
+            <TableSkeleton rows={4} cols={4} />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Cost center</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead align="right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {requisitions.map((req) => (
+                  <TableRow key={req.id}>
+                    <TableCell mono>{req.requisitionNumber}</TableCell>
+                    <TableCell>{req.costCenterCode ?? req.costCenterId}</TableCell>
+                    <TableCell>{req.status}</TableCell>
+                    <TableCell>
+                      {req.status === 'DRAFT' && (
+                        <Button size="sm" variant="secondary" onClick={() => approveReq.mutate(req.id)}>
+                          Approve
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
 
@@ -1811,6 +2058,7 @@ export function SettingsPage() {
           {activeTab === 'accounting' && <AccountingSyncTab />}
           {activeTab === 'integrations' && <IntegrationsTab />}
           {activeTab === 'operations' && <OperationsConsoleTab />}
+          {activeTab === 'costCenters' && <CostCentersRequisitionsTab />}
         </div>
       </div>
     </div>

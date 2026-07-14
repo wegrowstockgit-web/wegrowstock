@@ -18,6 +18,8 @@ invsys:
   jwt:
     access-token-minutes: 15
     refresh-token-days: 7
+  webhooks:
+    accounting-secret: accounting_mock_secret
   integration:
     accounting:
       mock: true

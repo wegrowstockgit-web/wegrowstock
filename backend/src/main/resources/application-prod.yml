@@ -28,6 +28,7 @@ invsys:
   webhooks:
     shopify-secret: ${SHOPIFY_WEBHOOK_SECRET}
     easypost-secret: ${EASYPOST_WEBHOOK_SECRET}
+    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET}
   jwt:
     private-key-pem: ${JWT_PRIVATE_KEY}
     public-key-pem: ${JWT_PUBLIC_KEY}

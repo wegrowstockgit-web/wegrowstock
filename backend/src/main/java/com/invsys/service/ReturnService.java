@@ -233,11 +233,12 @@ public class ReturnService {
         UUID variantId = sol.getVariantId();
 
         switch (disposition) {
-            case "QUARANTINE" -> inventoryService.quarantineReceive(
-                    variantId, locationId, null, qty, "RETURN", line.getId(), sol.getId());
-            case "RESTOCK" -> inventoryService.receive(variantId, locationId, null, qty, "RETURN", line.getId());
+            case "QUARANTINE", "RESTOCK", "REPAIR" -> {
+                UUID quarantineLocationId = resolveQuarantineLocationId();
+                inventoryService.quarantineReceive(
+                        variantId, quarantineLocationId, null, qty, "RETURN", line.getId(), sol.getId());
+            }
             case "SCRAP" -> inventoryService.adjust(variantId, locationId, null, qty.negate(), "RMA_SCRAP");
-            case "REPAIR" -> { /* status only */ }
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
         }
     }
@@ -246,6 +247,22 @@ public class ReturnService {
         UUID tenantId = TenantContext.requireTenantId();
         return returnOrderRepository.findByTenantIdAndNumber(tenantId, barcode)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "RMA not found"));
+    }
+
+    private UUID resolveQuarantineLocationId() {
+        UUID tenantId = TenantContext.requireTenantId();
+        List<Location> quarantine = locationRepository.findByTenantIdAndType(tenantId, "QUARANTINE");
+        if (!quarantine.isEmpty()) {
+            return quarantine.getFirst().getId();
+        }
+        List<Location> warehouses = locationRepository.findByTenantIdAndType(tenantId, "WAREHOUSE");
+        if (!warehouses.isEmpty()) {
+            return warehouses.getFirst().getId();
+        }
+        return locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+                .findFirst()
+                .map(Location::getId)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "NO_LOCATION", "No warehouse configured"));
     }
 
     private UUID resolveLocationId(UUID locationId) {

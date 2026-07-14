@@ -3,14 +3,17 @@ package com.invsys.service;
 import com.invsys.common.ApiException;
 import com.invsys.domain.PurchaseOrder;
 import com.invsys.domain.PurchaseOrderLine;
+import com.invsys.domain.TenantSettings;
 import com.invsys.repository.PurchaseOrderLineRepository;
 import com.invsys.repository.PurchaseOrderRepository;
+import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,15 +24,18 @@ public class PurchaseOrderService {
     private final PurchaseOrderLineRepository lineRepository;
     private final InventoryService inventoryService;
     private final UomConversionService uomConversionService;
+    private final TenantSettingsRepository tenantSettingsRepository;
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderLineRepository lineRepository,
                                 InventoryService inventoryService,
-                                UomConversionService uomConversionService) {
+                                UomConversionService uomConversionService,
+                                TenantSettingsRepository tenantSettingsRepository) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.inventoryService = inventoryService;
         this.uomConversionService = uomConversionService;
+        this.tenantSettingsRepository = tenantSettingsRepository;
     }
 
     @Transactional
@@ -64,8 +70,12 @@ public class PurchaseOrderService {
                     "Receiving requires SUBMITTED, IN_TRANSIT, or PARTIALLY_RECEIVED status");
         }
         BigDecimal remaining = line.getQtyOrdered().subtract(line.getQtyReceived());
-        if (quantity.compareTo(remaining) > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "OVER_RECEIVE", "Cannot receive more than ordered");
+        BigDecimal tolerancePercent = overReceiptTolerancePercent();
+        BigDecimal maxAllowed = remaining.multiply(
+                BigDecimal.ONE.add(tolerancePercent.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP)));
+        if (quantity.compareTo(maxAllowed) > 0) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "OVER_RECEIPT_TOLERANCE",
+                    "Quantity exceeds over-receipt tolerance");
         }
         BigDecimal standardQty = uomConversionService.toStandardQuantity(
                 line.getVariantId(), quantity, "PURCHASING");
@@ -85,6 +95,16 @@ public class PurchaseOrderService {
         }
         purchaseOrderRepository.save(po);
         return line;
+    }
+
+    private BigDecimal overReceiptTolerancePercent() {
+        return tenantSettingsRepository.findByTenantId(TenantContext.requireTenantId())
+                .map(TenantSettings::getSettings)
+                .map(settings -> settings.get("over_receipt_tolerance_percent"))
+                .filter(Number.class::isInstance)
+                .map(Number.class::cast)
+                .map(n -> BigDecimal.valueOf(n.doubleValue()))
+                .orElse(BigDecimal.ZERO);
     }
 
     private PurchaseOrder requirePo(UUID purchaseOrderId) {

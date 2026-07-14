@@ -197,6 +197,33 @@ public class InventoryService {
         return groupId;
     }
 
+    /**
+     * Consume stock for internal requisition issue. Appends ADJUST only (ledger is immutable).
+     */
+    @Transactional
+    public InventoryLedger consumeInternal(UUID variantId, UUID locationId, UUID lotId, BigDecimal quantity,
+                                           UUID referenceId) {
+        BigDecimal qty = quantity.abs();
+        validateNegative(qty.negate(), variantId, locationId, lotId);
+        BigDecimal unitCost = costingService.snapshotShipCost(variantId);
+        return appendMovement("ADJUST", variantId, locationId, lotId, qty.negate(),
+                "INTERNAL_CONSUMPTION", "INTERNAL_REQUISITION_LINE", referenceId, null, unitCost, null);
+    }
+
+    /**
+     * Consume stock from a technician van with a free-form service reason.
+     */
+    @Transactional
+    public InventoryLedger consumeService(UUID variantId, UUID locationId, UUID lotId, BigDecimal quantity,
+                                          String reasonCode) {
+        BigDecimal qty = quantity.abs();
+        validateNegative(qty.negate(), variantId, locationId, lotId);
+        BigDecimal unitCost = costingService.snapshotShipCost(variantId);
+        String reason = reasonCode != null && !reasonCode.isBlank() ? reasonCode : "SERVICE_CONSUMPTION";
+        return appendMovement("ADJUST", variantId, locationId, lotId, qty.negate(),
+                reason, null, null, null, unitCost, null);
+    }
+
     @Transactional
     public InventoryLedger ship(Allocation allocation, BigDecimal quantity) {
         return ship(allocation, quantity, null);

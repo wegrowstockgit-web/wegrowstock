@@ -61,11 +61,12 @@ public class SecurityConfig {
                     if (publicSignupEnabled) {
                         auth.requestMatchers("/api/v1/auth/signup").permitAll();
                     }
-                    auth.requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                    auth.requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh",
+                                    "/api/v1/auth/magic-login", "/api/v1/auth/magic-login/consume").permitAll()
                             .requestMatchers("/api/v1/invitations/accept").permitAll()
                             .requestMatchers("/api/v1/webhooks/**").permitAll()
                             .requestMatchers("/api/v1/public/**").permitAll()
-                            .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                            .requestMatchers("/oauth2/**", "/login/oauth2/**", "/saml2/**").permitAll()
                             .requestMatchers("/actuator/health").permitAll()
                             .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll();
                     if (!prod) {

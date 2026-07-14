@@ -114,13 +114,14 @@ Useful frontend scripts: `npm run build`, `npm test` (Vitest), `npm run test:e2e
 
 ## Architecture
 
-- **Backend:** Java 21, Spring Boot 3.3, JPA + Flyway (through `V033`), RS256 JWT, virtual threads, Actuator/Prometheus
+- **Backend:** Java 21, Spring Boot 3.3, JPA + Flyway (through `V036`), RS256 JWT, virtual threads, Actuator/Prometheus
 - **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels`
 - **Frontend:** React 19, TypeScript, Vite, Tailwind design tokens (Surface A office / Surface B warehouse), TanStack Query + persist, Zustand, Lucide
-- **Surfaces:** Office shell (expandable icon rail + ⌘K palette), warehouse floor ops (HID scan, waves, cycle counts), B2B showroom (`/showroom`)
+- **Surfaces:** Office shell (expandable icon rail + ⌘K palette), warehouse floor ops (HID scan, waves, cycle counts, issue supplies, van truck), B2B showroom (`/showroom`)
+- **Pillars:** Stockroom internal consumption (`INTERNAL_CONSUMPTION`), lot genealogy `/compliance/lot-trace`, field van-stock (`locations.type=VEHICLE`)
 - **Offline:** IndexedDB mutation outbox + service-worker-friendly scan queue; JWT refresh only when access token is near expiry; 403 is RBAC (does not sign out)
 - **Tenancy:** Slugless login resolves `tenant_id` from globally unique email via `BootstrapJdbc`; RLS uses `set_config('app.current_tenant', ...)` per transaction (fail-closed)
-- **LBAC:** `user_warehouses` + JWT `warehouse_ids` claim + `X-Warehouse-Id` header enforced by `WarehouseAccessFilter` (403 on forged warehouse context)
+- **LBAC:** `user_warehouses` + JWT `warehouse_ids` (includes active van location for technicians) + `X-Warehouse-Id` enforced by `WarehouseAccessFilter`
 - **Integrations:** Stripe / Shopify / EasyPost webhook stubs, channel + EDI hooks, AP invoice ingestion, supplier portal tokens
 
 ## Demo Seed Data

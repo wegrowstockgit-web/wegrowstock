@@ -196,6 +196,44 @@ public class InvoicingService {
         return invoice;
     }
 
+    /**
+     * NONE — no invoices yet (still invoiceable from the sales order).
+     * PARTIAL — invoices exist but shipped qty remains to invoice.
+     * INVOICED — all shipped quantities are already covered (or fully billed on first invoice).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, String> billingStatusBySalesOrderId(UUID tenantId) {
+        List<Invoice> invoices = invoiceRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
+        Map<UUID, List<Invoice>> byOrder = new HashMap<>();
+        for (Invoice invoice : invoices) {
+            if (invoice.getSalesOrderId() == null) {
+                continue;
+            }
+            byOrder.computeIfAbsent(invoice.getSalesOrderId(), ignored -> new java.util.ArrayList<>()).add(invoice);
+        }
+
+        Map<UUID, String> result = new HashMap<>();
+        for (Map.Entry<UUID, List<Invoice>> entry : byOrder.entrySet()) {
+            result.put(entry.getKey(), resolveBillingStatus(entry.getKey(), entry.getValue()));
+        }
+        return result;
+    }
+
+    private String resolveBillingStatus(UUID salesOrderId, List<Invoice> existing) {
+        if (existing == null || existing.isEmpty()) {
+            return "NONE";
+        }
+        Map<UUID, BigDecimal> alreadyInvoiced = invoicedQtyBySalesOrderLine(existing);
+        for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(salesOrderId)) {
+            BigDecimal invoiced = alreadyInvoiced.getOrDefault(line.getId(), BigDecimal.ZERO);
+            BigDecimal remaining = line.getQtyShipped().subtract(invoiced);
+            if (remaining.signum() > 0) {
+                return "PARTIAL";
+            }
+        }
+        return "INVOICED";
+    }
+
     private Map<UUID, BigDecimal> invoicedQtyBySalesOrderLine(List<Invoice> invoices) {
         Map<UUID, BigDecimal> result = new HashMap<>();
         for (Invoice invoice : invoices) {
@@ -265,6 +303,8 @@ public class InvoicingService {
         Invoice invoice = invoiceRepository.findById(pi.getInvoiceId()).orElseThrow();
         invoice.setStatus("PAID");
         invoiceRepository.save(invoice);
+        outboxService.append("INVOICE", invoice.getId(), "INVOICE_PAID", Map.of(
+                "invoiceId", invoice.getId().toString()));
         creditService.replenishCredit(invoice.getCustomerId(), pi.getAmount());
     }
 }

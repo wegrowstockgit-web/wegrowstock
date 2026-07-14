@@ -4,15 +4,15 @@ const WH_01 = 'a0000000-0000-4000-8000-000000000601';
 const WH_02 = 'a0000000-0000-4000-8000-000000000611';
 
 test.describe('LBAC warehouse boundaries', () => {
-  test('picker warehouse dropdown only lists authorized facility', async ({ pickerPage }) => {
+  test('picker warehouse is terminal-locked to authorized facility', async ({ pickerPage }) => {
     await pickerPage.goto('/fulfillment');
     await expect(pickerPage.getByText('Floor ops')).toBeVisible();
 
-    const select = pickerPage.getByLabel('Active warehouse');
-    await expect(select).toBeVisible();
-    const options = select.locator('option');
-    await expect(options).toHaveCount(1);
-    await expect(options.first()).toHaveAttribute('value', WH_01);
+    // Single warehouse_ids claim → no switcher dropdown (kiosk lockdown)
+    await expect(pickerPage.getByLabel('Active warehouse')).toHaveCount(0);
+    const locked = pickerPage.locator('[data-terminal-locked="true"]');
+    await expect(locked).toBeVisible();
+    await expect(locked).toContainText(/Main Warehouse|WH-01|Warehouse/i);
   });
 
   test('picker forging X-Warehouse-Id for WH-02 is forbidden', async ({ pickerPage }) => {
@@ -42,10 +42,8 @@ test.describe('LBAC warehouse boundaries', () => {
 
   test('owner can switch to Overflow Warehouse', async ({ ownerPage }) => {
     await ownerPage.goto('/dashboard');
-    await expect(ownerPage.getByText(/Good (morning|afternoon|evening)/i)).toBeVisible({
-      timeout: 15_000,
-    });
     const select = ownerPage.getByLabel('Active warehouse');
+    await expect(select).toBeVisible({ timeout: 15_000 });
     await expect(select.locator(`option[value="${WH_02}"]`)).toHaveCount(1);
     await select.selectOption(WH_02);
     await expect(select).toHaveValue(WH_02);

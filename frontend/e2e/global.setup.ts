@@ -22,6 +22,7 @@ interface TokenResponse {
   tenantId: string;
   userId: string;
   roles: string[];
+  warehouseIds?: string[];
 }
 
 function authPath(key: string): string {
@@ -72,6 +73,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
                   email,
                   displayName,
                   roles: t.roles,
+                  warehouseIds: t.warehouseIds ?? [],
                 },
                 lastRequestId: null,
               },
@@ -89,6 +91,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
           {
             email: role.email,
             roles: tokens.roles,
+            warehouseIds: tokens.warehouseIds ?? [],
             tenantId: tokens.tenantId,
             userId: tokens.userId,
           },

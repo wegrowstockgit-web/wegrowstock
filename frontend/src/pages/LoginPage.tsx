@@ -16,6 +16,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('owner@demo.test');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [magicSent, setMagicSent] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('sso') === '1') {
@@ -63,6 +64,44 @@ export function LoginPage() {
       setError('Invalid email or password. Try owner@demo.test / password123');
     },
   });
+
+  const magicConsumeMutation = useMutation({
+    mutationFn: async (token: string) => {
+      const res = await apiClient.post<TokenResponse>('/api/v1/auth/magic-login/consume', { token });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setSessionFromToken(data, email);
+      navigate('/fulfillment');
+    },
+    onError: () => setError('Magic link expired or already used.'),
+  });
+
+  const magicRequestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post<{ status: string; magicToken?: string }>(
+        '/api/v1/auth/magic-login',
+        { email }
+      );
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setMagicSent(true);
+      setError('');
+      if (data.magicToken) {
+        magicConsumeMutation.mutate(data.magicToken);
+      }
+    },
+    onError: () => setError('Could not send a magic link for that email.'),
+  });
+
+  useEffect(() => {
+    const token = searchParams.get('magic');
+    if (token) {
+      magicConsumeMutation.mutate(token);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +193,11 @@ export function LoginPage() {
                   {error}
                 </p>
               )}
+              {magicSent && !error && (
+                <p className="rounded-lg border border-[#55ACEE]/40 bg-[#55ACEE]/10 px-3 py-2 text-sm text-[#7ec8f7]">
+                  Magic link sent — check console/email, or it will sign in automatically in demo mode.
+                </p>
+              )}
 
               <Button
                 type="submit"
@@ -162,6 +206,19 @@ export function LoginPage() {
                 loading={loginMutation.isPending}
               >
                 Sign in
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full border-white/15 bg-transparent text-white hover:bg-white/5"
+                loading={magicRequestMutation.isPending || magicConsumeMutation.isPending}
+                onClick={() => {
+                  setError('');
+                  setMagicSent(false);
+                  magicRequestMutation.mutate();
+                }}
+              >
+                Email magic link
               </Button>
             </form>
 

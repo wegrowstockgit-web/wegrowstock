@@ -101,7 +101,10 @@ export function useSessionHydrated(): boolean {
       setHydrated(true);
       return;
     }
-    return useSessionStore.persist.onFinishHydration(() => setHydrated(true));
+    const unsub = useSessionStore.persist.onFinishHydration(() => setHydrated(true));
+    // Playwright storageState can race hydration — force a rehydrate pass.
+    void useSessionStore.persist.rehydrate();
+    return unsub;
   }, []);
 
   return hydrated;

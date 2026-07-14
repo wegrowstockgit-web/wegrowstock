@@ -1,9 +1,11 @@
 package com.invsys.api;
 
+import com.invsys.common.ApiException;
 import com.invsys.domain.WebhookEvent;
 import com.invsys.integration.outbox.ChannelOrderWebhookHandler;
 import com.invsys.integration.shopify.ShopifyWebhookValidator;
 import com.invsys.integration.webhooks.EasyPostWebhookValidator;
+import com.invsys.service.AccountingPaymentWebhookService;
 import com.invsys.service.PublicWebhookService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -15,7 +17,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -30,21 +38,27 @@ public class PublicWebhookController {
     private final ChannelOrderWebhookHandler channelOrderWebhookHandler;
     private final ShopifyWebhookValidator shopifyWebhookValidator;
     private final EasyPostWebhookValidator easyPostWebhookValidator;
+    private final AccountingPaymentWebhookService accountingPaymentWebhookService;
     private final String shopifyWebhookSecret;
     private final String easyPostWebhookSecret;
+    private final String accountingWebhookSecret;
 
     public PublicWebhookController(PublicWebhookService publicWebhookService,
                                    ChannelOrderWebhookHandler channelOrderWebhookHandler,
                                    ShopifyWebhookValidator shopifyWebhookValidator,
                                    EasyPostWebhookValidator easyPostWebhookValidator,
+                                   AccountingPaymentWebhookService accountingPaymentWebhookService,
                                    @Value("${invsys.webhooks.shopify-secret}") String shopifyWebhookSecret,
-                                   @Value("${invsys.webhooks.easypost-secret}") String easyPostWebhookSecret) {
+                                   @Value("${invsys.webhooks.easypost-secret}") String easyPostWebhookSecret,
+                                   @Value("${invsys.webhooks.accounting-secret:accounting_mock_secret}") String accountingWebhookSecret) {
         this.publicWebhookService = publicWebhookService;
         this.channelOrderWebhookHandler = channelOrderWebhookHandler;
         this.shopifyWebhookValidator = shopifyWebhookValidator;
         this.easyPostWebhookValidator = easyPostWebhookValidator;
+        this.accountingPaymentWebhookService = accountingPaymentWebhookService;
         this.shopifyWebhookSecret = shopifyWebhookSecret;
         this.easyPostWebhookSecret = easyPostWebhookSecret;
+        this.accountingWebhookSecret = accountingWebhookSecret;
     }
 
     @PostMapping("/channels/{platform}")
@@ -96,5 +110,39 @@ public class PublicWebhookController {
         }
         publicWebhookService.ingestEasyPost(id.toString(), payload);
         return ResponseEntity.ok(Map.of("status", "accepted"));
+    }
+
+    @PostMapping("/accounting/{provider}")
+    public ResponseEntity<Map<String, String>> accountingWebhook(
+            @PathVariable String provider,
+            @RequestHeader(value = "X-Accounting-Signature", required = false) String signature,
+            @RequestBody String rawBody) {
+        if (!isValidAccountingSignature(rawBody, signature)) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_SIGNATURE", "Invalid accounting webhook signature");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = com.invsys.common.JsonMaps.parse(rawBody);
+        return ResponseEntity.ok(accountingPaymentWebhookService.handlePayment(provider, payload));
+    }
+
+    private boolean isValidAccountingSignature(String rawBody, String signatureHeader) {
+        if (rawBody == null || signatureHeader == null || accountingWebhookSecret == null
+                || accountingWebhookSecret.isBlank()) {
+            return false;
+        }
+        String provided = signatureHeader.trim();
+        if (provided.equals(accountingWebhookSecret)) {
+            return true;
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(accountingWebhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            String computed = HexFormat.of().formatHex(mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8)));
+            return MessageDigest.isEqual(
+                    computed.getBytes(StandardCharsets.US_ASCII),
+                    provided.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.US_ASCII));
+        } catch (Exception ex) {
+            return false;
+        }
     }
 }

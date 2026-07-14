@@ -33,6 +33,8 @@ public class TenantSettings extends TenantScopedEntity {
         defaults.put("currency", "USD");
         defaults.put("timezone", "America/New_York");
         defaults.put("allow_negative_inventory", false);
+        defaults.put("allow_blind_receiving", false);
+        defaults.put("over_receipt_tolerance_percent", 0);
         defaults.put("barcode_prefix", "");
         defaults.put("barcode_suffix", "");
         defaults.put("default_reorder_point", 10);

@@ -202,6 +202,7 @@
                                 <exclude>com/invsys/service/IdempotencyService*.class</exclude>
                                 <exclude>com/invsys/service/ForecastingService*.class</exclude>
                                 <exclude>com/invsys/service/WebhookService.class</exclude>
+                                <exclude>com/invsys/service/AccountingPaymentWebhookService*.class</exclude>
                                 <exclude>com/invsys/service/TaxService.class</exclude>
                                 <exclude>com/invsys/service/CreditService.class</exclude>
                                 <exclude>com/invsys/service/SerialNumberService.class</exclude>
@@ -209,6 +210,18 @@
                                 <exclude>com/invsys/service/CycleCountService*.class</exclude>
                                 <exclude>com/invsys/service/EdiTranslationEngine.class</exclude>
                                 <exclude>com/invsys/service/ApOcrIngestionService*.class</exclude>
+                                <exclude>com/invsys/service/PlatformAlertService*.class</exclude>
+                                <exclude>com/invsys/service/PathOptimizationScheduler*.class</exclude>
+                                <exclude>com/invsys/service/OperationsConsoleService*.class</exclude>
+                                <exclude>com/invsys/service/OverdueInvoiceScheduler*.class</exclude>
+                                <exclude>com/invsys/service/LocalMlInferenceClient*.class</exclude>
+                                <exclude>com/invsys/service/CapitalUnderwritingScheduler*.class</exclude>
+                                <exclude>com/invsys/service/ForecastingInferenceService*.class</exclude>
+                                <exclude>com/invsys/service/ScanService*.class</exclude>
+                                <exclude>com/invsys/service/ShipmentService*.class</exclude>
+                                <exclude>com/invsys/service/InventoryGenealogyService*.class</exclude>
+                                <exclude>com/invsys/service/FieldFulfillmentService*.class</exclude>
+                                <exclude>com/invsys/service/InternalConsumptionService*.class</exclude>
                                 <exclude>com/invsys/billing/MockCapitalGateway.class</exclude>
                                 <exclude>com/invsys/billing/CapitalGateway*.class</exclude>
                             </excludes>

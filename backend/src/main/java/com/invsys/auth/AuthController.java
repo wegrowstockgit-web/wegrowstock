@@ -1,6 +1,8 @@
 package com.invsys.auth;
 
 import com.invsys.auth.dto.LoginRequest;
+import com.invsys.auth.dto.MagicLoginConsumeRequest;
+import com.invsys.auth.dto.MagicLoginRequest;
 import com.invsys.auth.dto.RefreshRequest;
 import com.invsys.auth.dto.SignupRequest;
 import com.invsys.auth.dto.TokenResponse;
@@ -16,16 +18,21 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private final AuthService authService;
+    private final MagicLoginService magicLoginService;
     private final boolean publicSignupEnabled;
 
     public AuthController(AuthService authService,
+                          MagicLoginService magicLoginService,
                           @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.authService = authService;
+        this.magicLoginService = magicLoginService;
         this.publicSignupEnabled = publicSignupEnabled;
     }
 
@@ -40,6 +47,16 @@ public class AuthController {
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/magic-login")
+    public Map<String, Object> requestMagicLogin(@Valid @RequestBody MagicLoginRequest request) {
+        return magicLoginService.requestMagicLink(request.email());
+    }
+
+    @PostMapping("/magic-login/consume")
+    public TokenResponse consumeMagicLogin(@Valid @RequestBody MagicLoginConsumeRequest request) {
+        return magicLoginService.consumeMagicLink(request.token());
     }
 
     @PostMapping("/refresh")

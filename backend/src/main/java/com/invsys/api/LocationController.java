@@ -42,7 +42,7 @@ public class LocationController {
             locations = locationRepository.findByTenantIdOrderByPathAsc(tenantId);
         }
 
-        if ("WAREHOUSE".equalsIgnoreCase(type) && !isElevated()) {
+        if (("WAREHOUSE".equalsIgnoreCase(type) || "VEHICLE".equalsIgnoreCase(type)) && !isElevated()) {
             Set<UUID> allowed = TenantContext.getAuthorizedWarehouseIds().stream().collect(Collectors.toSet());
             return locations.stream().filter(loc -> allowed.contains(loc.getId())).toList();
         }

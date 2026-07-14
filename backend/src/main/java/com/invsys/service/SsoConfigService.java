@@ -37,13 +37,33 @@ public class SsoConfigService {
             created.setTenantId(tenantId);
             return created;
         });
-        config.setIssuerUrl(request.issuerUrl().trim());
-        config.setClientId(request.clientId().trim());
+        String protocol = request.protocol() != null && !request.protocol().isBlank()
+                ? request.protocol().trim().toUpperCase()
+                : "OIDC";
+        config.setProtocol(protocol);
+        config.setSamlMetadataUrl(blankToNull(request.samlMetadataUrl()));
+        config.setSamlEntityId(blankToNull(request.samlEntityId()));
+
+        if (request.issuerUrl() != null && !request.issuerUrl().isBlank()) {
+            config.setIssuerUrl(request.issuerUrl().trim());
+        } else if (config.getIssuerUrl() == null) {
+            config.setIssuerUrl("SAML".equals(protocol) ? "saml://placeholder" : "");
+        }
+        if (request.clientId() != null && !request.clientId().isBlank()) {
+            config.setClientId(request.clientId().trim());
+        } else if (config.getClientId() == null) {
+            config.setClientId("SAML".equals(protocol) ? "saml-placeholder" : "");
+        }
         if (request.clientSecret() != null && !request.clientSecret().isBlank()) {
             config.setEncryptedClientSecret(
                     credentialVaultService.encrypt(request.clientSecret().getBytes(StandardCharsets.UTF_8)));
         } else if (config.getEncryptedClientSecret() == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Client secret is required");
+            if ("SAML".equals(protocol)) {
+                config.setEncryptedClientSecret(
+                        credentialVaultService.encrypt("saml-placeholder".getBytes(StandardCharsets.UTF_8)));
+            } else {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Client secret is required");
+            }
         }
         config.setEnabled(request.enabled());
         config.setForceSso(request.forceSso());
@@ -59,7 +79,10 @@ public class SsoConfigService {
                         config.getClientId(),
                         new String(credentialVaultService.decrypt(config.getEncryptedClientSecret()),
                                 StandardCharsets.UTF_8),
-                        config.isForceSso()
+                        config.isForceSso(),
+                        config.getProtocol() != null ? config.getProtocol() : "OIDC",
+                        config.getSamlMetadataUrl(),
+                        config.getSamlEntityId()
                 ));
     }
 
@@ -69,19 +92,33 @@ public class SsoConfigService {
                 config.getClientId(),
                 config.isEnabled(),
                 config.isForceSso(),
-                config.getEncryptedClientSecret() != null
+                config.getEncryptedClientSecret() != null,
+                config.getProtocol() != null ? config.getProtocol() : "OIDC",
+                config.getSamlMetadataUrl(),
+                config.getSamlEntityId()
         );
     }
 
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     public record UpsertRequest(String issuerUrl, String clientId, String clientSecret,
-                              boolean enabled, boolean forceSso) {
+                              boolean enabled, boolean forceSso,
+                              String protocol, String samlMetadataUrl, String samlEntityId) {
+        public UpsertRequest(String issuerUrl, String clientId, String clientSecret,
+                             boolean enabled, boolean forceSso) {
+            this(issuerUrl, clientId, clientSecret, enabled, forceSso, "OIDC", null, null);
+        }
     }
 
     public record SsoConfigView(String issuerUrl, String clientId, boolean enabled,
-                                boolean forceSso, boolean hasSecret) {
+                                boolean forceSso, boolean hasSecret,
+                                String protocol, String samlMetadataUrl, String samlEntityId) {
     }
 
     public record ResolvedSsoConfig(UUID tenantId, String issuerUrl, String clientId,
-                                   String clientSecret, boolean forceSso) {
+                                   String clientSecret, boolean forceSso,
+                                   String protocol, String samlMetadataUrl, String samlEntityId) {
     }
 }

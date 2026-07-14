@@ -20,6 +20,15 @@ public class BomOperation extends TenantScopedEntity {
     @Column(name = "estimated_hours", nullable = false)
     private BigDecimal estimatedHours = BigDecimal.ZERO;
 
+    @Column(name = "sequence_order", nullable = false)
+    private int sequenceOrder;
+
+    @Column(name = "work_center_id")
+    private UUID workCenterId;
+
+    @Column(name = "depends_on_operation_id")
+    private UUID dependsOnOperationId;
+
     public UUID getBomId() {
         return bomId;
     }
@@ -42,5 +51,29 @@ public class BomOperation extends TenantScopedEntity {
 
     public void setEstimatedHours(BigDecimal estimatedHours) {
         this.estimatedHours = estimatedHours;
+    }
+
+    public int getSequenceOrder() {
+        return sequenceOrder;
+    }
+
+    public void setSequenceOrder(int sequenceOrder) {
+        this.sequenceOrder = sequenceOrder;
+    }
+
+    public UUID getWorkCenterId() {
+        return workCenterId;
+    }
+
+    public void setWorkCenterId(UUID workCenterId) {
+        this.workCenterId = workCenterId;
+    }
+
+    public UUID getDependsOnOperationId() {
+        return dependsOnOperationId;
+    }
+
+    public void setDependsOnOperationId(UUID dependsOnOperationId) {
+        this.dependsOnOperationId = dependsOnOperationId;
     }
 }

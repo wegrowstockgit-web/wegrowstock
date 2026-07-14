@@ -12,6 +12,7 @@ import com.invsys.repository.RefreshTokenRepository;
 import com.invsys.repository.TenantRepository;
 import com.invsys.repository.UserRepository;
 import com.invsys.repository.UserRoleRepository;
+import com.invsys.repository.VehicleAssignmentRepository;
 import com.invsys.service.TenantOnboardingService;
 import com.invsys.tenancy.BootstrapJdbc;
 import com.invsys.tenancy.TenantContext;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -40,6 +42,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final PasswordEncoder passwordEncoder;
+    private final VehicleAssignmentRepository vehicleAssignmentRepository;
     private final AuthService self;
 
     public AuthService(TenantOnboardingService onboardingService,
@@ -51,6 +54,7 @@ public class AuthService {
                        JwtService jwtService,
                        JwtProperties jwtProperties,
                        PasswordEncoder passwordEncoder,
+                       VehicleAssignmentRepository vehicleAssignmentRepository,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
@@ -61,6 +65,7 @@ public class AuthService {
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.passwordEncoder = passwordEncoder;
+        this.vehicleAssignmentRepository = vehicleAssignmentRepository;
         this.self = self;
     }
 
@@ -77,9 +82,13 @@ public class AuthService {
 
         bootstrapJdbc.findSsoConfigByTenantId(tenantId).ifPresent(sso -> {
             if (sso.enabled() && sso.forceSso()) {
+                String protocol = sso.protocol() != null ? sso.protocol() : "OIDC";
+                String ssoUrl = "SAML".equalsIgnoreCase(protocol)
+                        ? "/saml2/authenticate/" + tenantId
+                        : "/oauth2/authorization/" + tenantId;
                 throw new ApiException(HttpStatus.FORBIDDEN, "SSO_REQUIRED",
                         "Corporate SSO is required for this tenant")
-                        .withProperty("ssoAuthorizationUrl", "/oauth2/authorization/" + tenantId);
+                        .withProperty("ssoAuthorizationUrl", ssoUrl);
             }
         });
 
@@ -164,12 +173,20 @@ public class AuthService {
 
     /**
      * OWNER/ADMIN see all tenant warehouses. Localized roles are restricted to user_warehouses mappings.
+     * Active vehicle assignments are appended so technicians can scope X-Warehouse-Id to their van.
      */
     List<UUID> resolveWarehouseIds(UUID tenantId, UUID userId, List<String> roles) {
-        if (roles.contains("OWNER") || roles.contains("ADMIN")) {
-            return bootstrapJdbc.findAllWarehouseIds(tenantId);
-        }
-        return bootstrapJdbc.findWarehouseIdsForUser(tenantId, userId);
+        List<UUID> ids = new ArrayList<>(roles.contains("OWNER") || roles.contains("ADMIN")
+                ? bootstrapJdbc.findAllWarehouseIds(tenantId)
+                : bootstrapJdbc.findWarehouseIdsForUser(tenantId, userId));
+        vehicleAssignmentRepository
+                .findByTenantIdAndTechnicianUserIdAndReturnedAtIsNull(tenantId, userId)
+                .ifPresent(assignment -> {
+                    if (!ids.contains(assignment.getLocationId())) {
+                        ids.add(assignment.getLocationId());
+                    }
+                });
+        return ids;
     }
 
     static String hashToken(String token) {

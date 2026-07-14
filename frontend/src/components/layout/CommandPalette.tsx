@@ -6,6 +6,7 @@ import { globalSearch } from '@/api/globalSearch';
 import {
   LayoutDashboard,
   Package,
+  PackageCheck,
   ScanLine,
   Settings,
   ShoppingCart,
@@ -17,6 +18,7 @@ import {
   Factory,
   Layers,
   RotateCcw,
+  GitBranch,
   Search,
   Loader2,
 } from 'lucide-react';
@@ -44,6 +46,32 @@ const commands: CommandItem[] = [
     keywords: ['scan', 'pick', 'warehouse', 'ship'],
     roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
     hideForViewer: true,
+  },
+  {
+    id: 'issue-supplies',
+    label: 'Issue Supplies',
+    icon: PackageCheck,
+    path: '/issue-supplies',
+    keywords: ['requisition', 'stockroom', 'issue'],
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
+    hideForViewer: true,
+  },
+  {
+    id: 'field-truck',
+    label: 'Technician Truck',
+    icon: Truck,
+    path: '/field/truck',
+    keywords: ['van', 'field', 'technician'],
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
+    hideForViewer: true,
+  },
+  {
+    id: 'lot-trace',
+    label: 'Lot Trace',
+    icon: GitBranch,
+    path: '/compliance/lot-trace',
+    keywords: ['genealogy', 'recall', 'compliance', 'lot'],
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER'],
   },
   {
     id: 'manufacturing-boms',

@@ -49,7 +49,9 @@ class OutboxDispatcherTest extends AbstractIntegrationTest {
         TenantContext.clear();
 
         JdbcTemplate jdbc = new JdbcTemplate(bootstrapDataSource);
-        for (int attempt = 0; attempt < 50; attempt++) {
+        // Shared Testcontainers DB can retain pending events from earlier tests;
+        // keep dispatching until *this* event is published (or give up).
+        for (int attempt = 0; attempt < 500; attempt++) {
             transactionTemplate.executeWithoutResult(status -> outboxDispatcher.dispatchNext());
             Integer publishedCount = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM outbox_events WHERE id = ? AND published_at IS NOT NULL AND status = 'PUBLISHED'",
@@ -64,6 +66,8 @@ class OutboxDispatcherTest extends AbstractIntegrationTest {
                 "SELECT COUNT(*) FROM outbox_events WHERE id = ? AND published_at IS NOT NULL AND status = 'PUBLISHED'",
                 Integer.class,
                 eventId);
-        assertThat(publishedCount).isEqualTo(1);
+        assertThat(publishedCount)
+                .as("expected outbox event %s to be published", eventId)
+                .isEqualTo(1);
     }
 }

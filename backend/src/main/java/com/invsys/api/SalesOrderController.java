@@ -10,6 +10,7 @@ import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
+import com.invsys.service.InvoicingService;
 import com.invsys.service.SalesOrderService;
 import com.invsys.service.TaxService;
 import com.invsys.tenancy.TenantContext;
@@ -37,6 +38,7 @@ public class SalesOrderController {
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderLineRepository lineRepository;
     private final SalesOrderService salesOrderService;
+    private final InvoicingService invoicingService;
     private final TaxService taxService;
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
@@ -45,6 +47,7 @@ public class SalesOrderController {
                                 SalesOrderRepository salesOrderRepository,
                                 SalesOrderLineRepository lineRepository,
                                 SalesOrderService salesOrderService,
+                                InvoicingService invoicingService,
                                 TaxService taxService,
                                 ProductVariantRepository variantRepository,
                                 ProductRepository productRepository) {
@@ -52,6 +55,7 @@ public class SalesOrderController {
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
         this.salesOrderService = salesOrderService;
+        this.invoicingService = invoicingService;
         this.taxService = taxService;
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
@@ -78,17 +82,20 @@ public class SalesOrderController {
     @GetMapping("/sales-orders")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
     public List<SalesOrderResponse> listSalesOrders() {
+        UUID tenantId = TenantContext.requireTenantId();
         Map<UUID, String> customerNames = customerRepository
-                .findByTenantIdOrderByNameAsc(TenantContext.requireTenantId()).stream()
+                .findByTenantIdOrderByNameAsc(tenantId).stream()
                 .collect(java.util.stream.Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
-        return salesOrderRepository.findByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId()).stream()
+        Map<UUID, String> billingByOrder = invoicingService.billingStatusBySalesOrderId(tenantId);
+        return salesOrderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .map(order -> new SalesOrderResponse(
                         order.getId(),
                         order.getNumber(),
                         customerNames.getOrDefault(order.getCustomerId(), "—"),
                         order.getStatus(),
                         order.getChannel(),
-                        order.getCreatedAt()))
+                        order.getCreatedAt(),
+                        billingByOrder.getOrDefault(order.getId(), "NONE")))
                 .toList();
     }
 
@@ -199,7 +206,8 @@ public class SalesOrderController {
             String customerName,
             String status,
             String channel,
-            java.time.Instant createdAt
+            java.time.Instant createdAt,
+            String billingStatus
     ) {
     }
 

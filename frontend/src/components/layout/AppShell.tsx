@@ -18,7 +18,9 @@ function isWarehouseRoute(pathname: string): boolean {
     pathname.startsWith('/fulfillment') ||
     pathname.startsWith('/cycle-counts') ||
     pathname.startsWith('/manufacturing/terminal') ||
-    pathname.startsWith('/returns/receive')
+    pathname.startsWith('/returns/receive') ||
+    pathname.startsWith('/issue-supplies') ||
+    pathname.startsWith('/field/truck')
   );
 }
 
@@ -29,9 +31,12 @@ export function AppShell() {
   const { open, close, toggle } = useCommandPalette();
   const authenticated = useIsAuthenticated();
   const user = useSessionStore((s) => s.user);
+  const sessionWarehouseIds = useSessionStore((s) => s.user?.warehouseIds ?? []);
   const { warehouse, setWarehouse } = useActiveWarehouseStore();
 
   const isWarehouseView = isWarehouseRoute(location.pathname);
+  /** Kiosk / terminal lockdown: JWT has exactly one warehouse — no switcher. */
+  const terminalLocked = sessionWarehouseIds.length === 1;
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -52,6 +57,18 @@ export function AppShell() {
 
   useEffect(() => {
     if (warehouses.length === 0) return;
+
+    if (terminalLocked) {
+      const lockedId = sessionWarehouseIds[0];
+      const locked = warehouses.find((item) => item.id === lockedId) ?? warehouses[0];
+      if (warehouse?.id !== locked.id) {
+        setWarehouse(locked);
+      } else if (locked.name !== warehouse.name || locked.code !== warehouse.code) {
+        setWarehouse(locked);
+      }
+      return;
+    }
+
     const matched = warehouse?.id
       ? warehouses.find((item) => item.id === warehouse.id)
       : null;
@@ -62,7 +79,7 @@ export function AppShell() {
       return;
     }
     setWarehouse(warehouses[0]);
-  }, [warehouse, warehouses, setWarehouse]);
+  }, [warehouse, warehouses, setWarehouse, terminalLocked, sessionWarehouseIds]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -113,27 +130,41 @@ export function AppShell() {
               <p className="text-sm font-semibold tracking-wide text-text">Floor ops</p>
             )}
 
-            {warehouses.length > 0 && (
-              <div className="relative" title="Active warehouse for fulfillment and scanning">
-                <select
-                  value={warehouse?.id ?? ''}
-                  onChange={(e) => handleWarehouseChange(e.target.value)}
-                  aria-label="Active warehouse"
+            {warehouses.length > 0 &&
+              (terminalLocked ? (
+                <div
                   className={cn(
-                    'h-9 appearance-none rounded-md border border-border bg-surface-raised pl-9 pr-8 text-sm text-text',
-                    isWarehouseView && 'h-11 min-w-[10rem] text-base'
+                    'flex h-9 items-center gap-2 rounded-md border border-border bg-surface-overlay/60 pl-2.5 pr-3 text-sm text-text',
+                    isWarehouseView && 'h-11 text-base'
                   )}
+                  title="Warehouse locked by terminal assignment"
+                  aria-label={`Locked warehouse ${warehouse?.name ?? ''}`.trim()}
+                  data-terminal-locked="true"
                 >
-                  {warehouses.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-                <Warehouse className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-              </div>
-            )}
+                  <Warehouse className="h-4 w-4 shrink-0 text-text-muted" />
+                  <span className="font-medium">{warehouse?.name ?? 'Warehouse'}</span>
+                </div>
+              ) : (
+                <div className="relative" title="Active warehouse for fulfillment and scanning">
+                  <select
+                    value={warehouse?.id ?? ''}
+                    onChange={(e) => handleWarehouseChange(e.target.value)}
+                    aria-label="Active warehouse"
+                    className={cn(
+                      'h-9 appearance-none rounded-md border border-border bg-surface-raised pl-9 pr-8 text-sm text-text',
+                      isWarehouseView && 'h-11 min-w-[10rem] text-base'
+                    )}
+                  >
+                    {warehouses.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Warehouse className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                </div>
+              ))}
           </div>
 
           <div className="flex items-center gap-3">

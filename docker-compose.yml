@@ -42,6 +42,7 @@ services:
       STRIPE_WEBHOOK_SECRET: whsec_mock_secret
       SHOPIFY_WEBHOOK_SECRET: shopify_mock_secret
       EASYPOST_WEBHOOK_SECRET: easypost_mock_secret
+      ACCOUNTING_WEBHOOK_SECRET: accounting_mock_secret
       PUBLIC_SIGNUP_ENABLED: "true"
     ports:
       - "8080:8080"

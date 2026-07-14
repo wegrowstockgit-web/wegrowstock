@@ -26,6 +26,8 @@ import java.util.UUID;
  * Validates optional {@code X-Warehouse-Id} against JWT warehouse_ids (LBAC).
  * OWNER/ADMIN may select any warehouse present in their authorized claim list
  * (populated with all tenant warehouses at login). Localized roles may only use mapped facilities.
+ * When a localized user has exactly one authorized warehouse and no header is sent,
+ * that warehouse is applied automatically (terminal lockdown).
  */
 @Component
 @Order(Ordered.LOWEST_PRECEDENCE - 50)
@@ -42,13 +44,23 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String raw = request.getHeader(HEADER);
+        List<UUID> authorized = TenantContext.getAuthorizedWarehouseIds();
+        boolean elevated = auth != null && auth.isAuthenticated() && auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(a -> "ROLE_OWNER".equals(a) || "ROLE_ADMIN".equals(a));
+
         if (raw == null || raw.isBlank()) {
+            if (auth != null && auth.isAuthenticated() && !elevated && authorized.size() == 1) {
+                UUID warehouseId = authorized.getFirst();
+                TenantContext.setWarehouseId(warehouseId);
+                MDC.put("warehouseId", warehouseId.toString());
+            }
             chain.doFilter(request, response);
             return;
         }
 
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
             chain.doFilter(request, response);
             return;
@@ -61,11 +73,6 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
             writeForbidden(response, "Invalid X-Warehouse-Id");
             return;
         }
-
-        List<UUID> authorized = TenantContext.getAuthorizedWarehouseIds();
-        boolean elevated = auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(a -> "ROLE_OWNER".equals(a) || "ROLE_ADMIN".equals(a));
 
         if (!elevated && (authorized.isEmpty() || !authorized.contains(warehouseId))) {
             writeForbidden(response, "Warehouse context not authorized for this user");

@@ -23,7 +23,11 @@ export function ProtectedRoute({
   const location = useLocation();
 
   if (!hydrated) {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface text-sm text-text-muted">
+        Loading session…
+      </div>
+    );
   }
 
   if (!authenticated) {

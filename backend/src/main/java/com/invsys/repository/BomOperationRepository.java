@@ -8,4 +8,6 @@ import java.util.UUID;
 
 public interface BomOperationRepository extends JpaRepository<BomOperation, UUID> {
     List<BomOperation> findByTenantIdAndBomId(UUID tenantId, UUID bomId);
+
+    List<BomOperation> findByTenantIdAndBomIdOrderBySequenceOrderAsc(UUID tenantId, UUID bomId);
 }

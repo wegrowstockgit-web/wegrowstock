@@ -414,6 +414,8 @@ export interface SalesOrder {
   sourceLocationId?: string;
   customerPoNumber?: string;
   requestedShipDate?: string;
+  /** NONE | PARTIAL | INVOICED — from server billing coverage */
+  billingStatus?: 'NONE' | 'PARTIAL' | 'INVOICED' | string;
 }
 
 export interface PackLabelResponse {
@@ -586,7 +588,11 @@ export interface SsoConfig {
   clientId: string;
   enabled: boolean;
   forceSso: boolean;
-  configured: boolean;
+  configured?: boolean;
+  hasSecret?: boolean;
+  protocol?: 'OIDC' | 'SAML' | string;
+  samlMetadataUrl?: string | null;
+  samlEntityId?: string | null;
 }
 
 export interface InventoryValuationRow {
@@ -722,4 +728,65 @@ export interface ReturnsAnalysisReport {
   returnsByStatus: ReportChartPoint[];
   dispositionBreakdown: ReportChartPoint[];
   rows: ReturnsAnalysisRow[];
+}
+
+export interface CostCenter {
+  id: string;
+  code: string;
+  name: string;
+  budget?: number | null;
+  createdAt?: string;
+}
+
+export interface InternalRequisitionLine {
+  id: string;
+  variantId: string;
+  sku?: string | null;
+  qtyRequested: number;
+  qtyIssued: number;
+}
+
+export interface InternalRequisition {
+  id: string;
+  requisitionNumber: string;
+  costCenterId: string;
+  costCenterCode?: string | null;
+  requestedByUserId?: string | null;
+  status: 'DRAFT' | 'APPROVED' | 'ISSUED' | 'CANCELLED' | string;
+  createdAt?: string;
+  lines?: InternalRequisitionLine[];
+}
+
+export interface GenealogyNode {
+  id: string;
+  type: string;
+  label: string;
+  detail?: string | null;
+  children?: GenealogyNode[];
+}
+
+export interface LotTraceResponse {
+  lotId: string;
+  lotNumber: string;
+  upstream: GenealogyNode;
+  downstream: GenealogyNode;
+}
+
+export interface VehicleAssignment {
+  id: string;
+  locationId: string;
+  locationCode?: string | null;
+  locationName?: string | null;
+  technicianUserId: string;
+  assignedAt: string;
+  returnedAt?: string | null;
+}
+
+export interface VanStockLevel {
+  variantId: string;
+  sku?: string | null;
+  lotId?: string | null;
+  onHand: number;
+  allocated: number;
+  available: number;
 }

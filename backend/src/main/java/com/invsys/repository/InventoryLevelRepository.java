@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface InventoryLevelRepository extends JpaRepository<InventoryLevel, UUID> {
     List<InventoryLevel> findByTenantIdAndVariantId(UUID tenantId, UUID variantId);
 
+    List<InventoryLevel> findByTenantIdAndLocationId(UUID tenantId, UUID locationId);
+
     @Query(value = """
             SELECT il.* FROM inventory_levels il
             WHERE il.tenant_id = :tenantId
@@ -28,10 +30,12 @@ public interface InventoryLevelRepository extends JpaRepository<InventoryLevel, 
 
     @Query(value = """
             SELECT il.* FROM inventory_levels il
+            JOIN locations loc ON loc.id = il.location_id
             LEFT JOIN lots l ON il.lot_id = l.id
             WHERE il.tenant_id = :tenantId
               AND il.variant_id = :variantId
               AND il.location_id IN (:locationIds)
+              AND loc.type <> 'QUARANTINE'
               AND (il.on_hand - il.allocated) > 0
             ORDER BY l.expires_at NULLS LAST, il.created_at
             FOR UPDATE OF il SKIP LOCKED

@@ -44,6 +44,12 @@ import { ReturnsReceivePage } from '@/pages/ReturnsReceivePage';
 
 import { ReportsPage } from '@/pages/ReportsPage';
 
+import { IssueSuppliesPage } from '@/pages/IssueSuppliesPage';
+
+import { LotTracePage } from '@/pages/LotTracePage';
+
+import { TechnicianTruckPage } from '@/pages/TechnicianTruckPage';
+
 import { ShowroomLayout } from '@/pages/showroom/ShowroomLayout';
 
 import { ShowroomCatalogPage } from '@/pages/showroom/ShowroomCatalogPage';
@@ -239,6 +245,36 @@ export function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
                 <ReturnsReceivePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="issue-supplies"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
+                <IssueSuppliesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="compliance/lot-trace"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER']}
+                officeOnly
+              >
+                <LotTracePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="field/truck"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
+                <TechnicianTruckPage />
               </ProtectedRoute>
             }
           />

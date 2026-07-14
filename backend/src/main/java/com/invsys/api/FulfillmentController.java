@@ -3,8 +3,10 @@ package com.invsys.api;
 import com.invsys.common.ApiException;
 import com.invsys.domain.Product;
 import com.invsys.domain.ProductVariant;
+import com.invsys.domain.TenantSettings;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
+import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.service.IdempotencyService;
 import com.invsys.service.InventoryService;
 import com.invsys.service.ScanService;
@@ -36,17 +38,20 @@ public class FulfillmentController {
     private final InventoryService inventoryService;
     private final ScanService scanService;
     private final IdempotencyService idempotencyService;
+    private final TenantSettingsRepository tenantSettingsRepository;
 
     public FulfillmentController(ProductVariantRepository variantRepository,
                                  ProductRepository productRepository,
                                  InventoryService inventoryService,
                                  ScanService scanService,
-                                 IdempotencyService idempotencyService) {
+                                 IdempotencyService idempotencyService,
+                                 TenantSettingsRepository tenantSettingsRepository) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
         this.scanService = scanService;
         this.idempotencyService = idempotencyService;
+        this.tenantSettingsRepository = tenantSettingsRepository;
     }
 
     @PostMapping("/scan")
@@ -94,6 +99,10 @@ public class FulfillmentController {
 
         String message;
         if ("receive".equalsIgnoreCase(request.mode())) {
+            if (!allowBlindReceiving()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "BLIND_RECEIVING_DISABLED",
+                        "Blind receiving is disabled for this tenant");
+            }
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getSku(), productName, true, "SERIAL_REQUIRED",
                         "Scan serial numbers one at a time", putawayTarget);
@@ -115,6 +124,19 @@ public class FulfillmentController {
                     : "Picked 1 unit";
         }
         return new ScanResponse(variant.getSku(), productName, false, null, message, putawayTarget);
+    }
+
+    private boolean allowBlindReceiving() {
+        return tenantSettingsRepository.findByTenantId(TenantContext.requireTenantId())
+                .map(TenantSettings::getSettings)
+                .map(settings -> settings.get("allow_blind_receiving"))
+                .map(value -> {
+                    if (value instanceof Boolean b) {
+                        return b;
+                    }
+                    return Boolean.parseBoolean(String.valueOf(value));
+                })
+                .orElse(false);
     }
 
     private static Map<String, Object> toMap(ScanResponse response) {

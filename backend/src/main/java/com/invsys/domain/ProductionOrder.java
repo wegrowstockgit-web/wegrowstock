@@ -26,6 +26,9 @@ public class ProductionOrder extends TenantScopedEntity {
     @Column(nullable = false)
     private String status = "DRAFT";
 
+    @Column(name = "current_work_center_id")
+    private UUID currentWorkCenterId;
+
     public String getNumber() {
         return number;
     }
@@ -64,5 +67,13 @@ public class ProductionOrder extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public UUID getCurrentWorkCenterId() {
+        return currentWorkCenterId;
+    }
+
+    public void setCurrentWorkCenterId(UUID currentWorkCenterId) {
+        this.currentWorkCenterId = currentWorkCenterId;
     }
 }
