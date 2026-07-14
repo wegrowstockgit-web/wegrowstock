@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,10 +48,16 @@ public class ManufacturingWorkCenterController {
         center.setTenantId(tenantId);
         center.setCode(request.code().trim());
         center.setName(request.name().trim());
-        center.setOperationalStatus(request.operationalStatus() != null && !request.operationalStatus().isBlank()
-                ? request.operationalStatus().trim().toUpperCase()
+        String status = request.status() != null && !request.status().isBlank()
+                ? request.status()
+                : request.operationalStatus();
+        center.setOperationalStatus(status != null && !status.isBlank()
+                ? status.trim().toUpperCase()
                 : "ACTIVE");
         center.setLocationId(request.locationId());
+        if (request.capacity() != null) {
+            center.setCapacity(request.capacity());
+        }
         return WorkCenterResponse.from(workCenterRepository.save(center));
     }
 
@@ -58,7 +65,9 @@ public class ManufacturingWorkCenterController {
             @NotBlank String code,
             @NotBlank String name,
             String operationalStatus,
-            UUID locationId
+            String status,
+            UUID locationId,
+            BigDecimal capacity
     ) {
     }
 
@@ -67,7 +76,9 @@ public class ManufacturingWorkCenterController {
             String code,
             String name,
             String operationalStatus,
-            UUID locationId
+            String status,
+            UUID locationId,
+            BigDecimal capacity
     ) {
         static WorkCenterResponse from(ManufacturingWorkCenter center) {
             return new WorkCenterResponse(
@@ -75,7 +86,9 @@ public class ManufacturingWorkCenterController {
                     center.getCode(),
                     center.getName(),
                     center.getOperationalStatus(),
-                    center.getLocationId());
+                    center.getStatus(),
+                    center.getLocationId(),
+                    center.getCapacity());
         }
     }
 }

@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByTenantIdAndEmail(UUID tenantId, String email);
+    Optional<User> findByTenantIdAndTerminalPinHash(UUID tenantId, String terminalPinHash);
     List<User> findByTenantIdOrderByEmailAsc(UUID tenantId);
     boolean existsByTenantIdAndEmail(UUID tenantId, String email);
 }

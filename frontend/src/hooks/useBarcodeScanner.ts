@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 
 const SCANNER_MAX_GAP_MS = 35;
@@ -33,6 +34,53 @@ function stripAffixes(
   return result;
 }
 
+/**
+ * Extract barcode payload from enterprise scanner intent / custom-event shapes
+ * (Zebra DataWedge, Honeywell Enterprise Browser, Capacitor bridges).
+ */
+export function extractIntentBarcode(detail: unknown): string | null {
+  if (detail == null) return null;
+  if (typeof detail === 'string') {
+    const trimmed = detail.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof detail !== 'object') return null;
+  const obj = detail as Record<string, unknown>;
+  const candidates = [
+    obj.barcode,
+    obj.data,
+    obj.scanData,
+    obj.barcodedata,
+    obj.barcodeData,
+    obj.com_symbol_datawedge_api_data_string,
+    obj['com.symbol.datawedge.data_string'],
+    obj.dataString,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  const extras = obj.extras ?? (obj.intent as Record<string, unknown> | undefined)?.extras;
+  if (extras && typeof extras === 'object') {
+    return extractIntentBarcode(extras);
+  }
+  return null;
+}
+
+const INTENT_EVENT_NAMES = [
+  'hardwareScan',
+  'datawedge_barcode',
+  'datawedge',
+  'BarcodeScanned',
+  'honeywell.barcodeScanned',
+  'scan',
+] as const;
+
+/**
+ * HID keyboard wedge + background intent broadcasting (DataWedge / Honeywell).
+ * Intent listeners do not require focused input elements — glove-friendly floor ops.
+ */
 export function useBarcodeScanner({
   onScan,
   prefix,
@@ -49,6 +97,17 @@ export function useBarcodeScanner({
     onScanRef.current = onScan;
   }, [onScan]);
 
+  const ingestCommitted = useCallback(
+    (barcode: string) => {
+      const cleaned = barcode.trim();
+      if (!cleaned) return;
+      reset();
+      commit(cleaned);
+      onScanRef.current(cleaned);
+    },
+    [commit, reset]
+  );
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!enabled) return;
@@ -64,9 +123,7 @@ export function useBarcodeScanner({
           const raw = bufferRef.current;
           const barcode = stripAffixes(raw, prefix, suffix);
           bufferRef.current = '';
-          reset();
-          commit(barcode);
-          onScanRef.current(barcode);
+          ingestCommitted(barcode);
         }
         return;
       }
@@ -83,12 +140,48 @@ export function useBarcodeScanner({
         append(event.key);
       }
     },
-    [enabled, captureAll, prefix, suffix, append, reset, commit]
+    [enabled, captureAll, prefix, suffix, append, reset, ingestCommitted]
+  );
+
+  const handleNativeScan = useCallback(
+    (event: Event) => {
+      if (!enabled) return;
+      const custom = event as CustomEvent<unknown>;
+      const barcode = extractIntentBarcode(custom.detail) ?? extractIntentBarcode((event as MessageEvent).data);
+      if (barcode) {
+        ingestCommitted(stripAffixes(barcode, prefix, suffix));
+      }
+    },
+    [enabled, ingestCommitted, prefix, suffix]
+  );
+
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      if (!enabled) return;
+      const barcode = extractIntentBarcode(event.data);
+      if (barcode) {
+        ingestCommitted(stripAffixes(barcode, prefix, suffix));
+      }
+    },
+    [enabled, ingestCommitted, prefix, suffix]
   );
 
   useEffect(() => {
     if (!enabled) return;
     window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [enabled, handleKeyDown]);
+    for (const name of INTENT_EVENT_NAMES) {
+      window.addEventListener(name, handleNativeScan as EventListener);
+    }
+    window.addEventListener('message', handleMessage);
+    if (Capacitor.isNativePlatform()) {
+      // hardwareScan already registered above for Capacitor bridges
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      for (const name of INTENT_EVENT_NAMES) {
+        window.removeEventListener(name, handleNativeScan as EventListener);
+      }
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [enabled, handleKeyDown, handleNativeScan, handleMessage]);
 }

@@ -421,6 +421,9 @@ function AddWarehouseModal({ open, onClose }: { open: boolean; onClose: () => vo
 
 function WarehousesTab() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [ssid, setSsid] = useState('Warehouse-Floor-A');
+  const [ruleLocationId, setRuleLocationId] = useState('');
+  const queryClient = useQueryClient();
 
   const { data: locations = [], isLoading } = useQuery({
     queryKey: ['locations'],
@@ -428,48 +431,186 @@ function WarehousesTab() {
     retry: false,
   });
 
+  const warehouses = locations.filter((l) => l.type === 'WAREHOUSE' || l.type === 'VEHICLE');
+
+  const { data: contextRules = [] } = useQuery({
+    queryKey: ['warehouse-context-rules'],
+    queryFn: async () =>
+      (
+        await apiClient.get<
+          Array<{
+            id: string;
+            locationId: string;
+            matchType: string;
+            ssid?: string;
+            latitude?: number;
+            longitude?: number;
+            radiusMeters?: number;
+            priority: number;
+            enabled: boolean;
+            label?: string;
+          }>
+        >('/api/v1/warehouse-context-rules')
+      ).data,
+    retry: false,
+  });
+
+  const createRule = useMutation({
+    mutationFn: async () => {
+      const locationId = ruleLocationId || warehouses[0]?.id;
+      if (!locationId || !ssid.trim()) throw new Error('SSID and warehouse required');
+      await apiClient.post('/api/v1/warehouse-context-rules', {
+        locationId,
+        matchType: 'WIFI_SSID',
+        ssid: ssid.trim(),
+        priority: 10,
+        enabled: true,
+        label: `SSID ${ssid.trim()}`,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['warehouse-context-rules'] });
+    },
+  });
+
+  const deleteRule = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/api/v1/warehouse-context-rules/${id}`);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['warehouse-context-rules'] });
+    },
+  });
+
   return (
-    <Card>
-      <CardHeader
-        title="Warehouses & locations"
-        description="Warehouse hierarchy: warehouses, zones, aisles, and bins"
-        action={
-          <Button size="sm" onClick={() => setModalOpen(true)}>
-            <WarehouseIcon className="h-4 w-4" />
-            Add warehouse
-          </Button>
-        }
-      />
-      {isLoading ? (
-        <TableSkeleton rows={6} cols={3} />
-      ) : locations.length === 0 ? (
-        <p className="text-sm text-text-muted">No locations yet. Add your first warehouse to get started.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Path</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {locations.map((loc) => (
-              <TableRow key={loc.id}>
-                <TableCell mono>{loc.path}</TableCell>
-                <TableCell>{loc.name}</TableCell>
-                <TableCell>
-                  <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs font-medium text-text-muted">
-                    {loc.type}
-                  </span>
-                </TableCell>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader
+          title="Warehouses & locations"
+          description="Warehouse hierarchy: warehouses, zones, aisles, and bins"
+          action={
+            <Button size="sm" onClick={() => setModalOpen(true)}>
+              <WarehouseIcon className="h-4 w-4" />
+              Add warehouse
+            </Button>
+          }
+        />
+        {isLoading ? (
+          <TableSkeleton rows={6} cols={3} />
+        ) : locations.length === 0 ? (
+          <p className="text-sm text-text-muted">No locations yet. Add your first warehouse to get started.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Path</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-      <AddWarehouseModal open={modalOpen} onClose={() => setModalOpen(false)} />
-    </Card>
+            </TableHeader>
+            <TableBody>
+              {locations.map((loc) => (
+                <TableRow key={loc.id}>
+                  <TableCell mono>{loc.path}</TableCell>
+                  <TableCell>{loc.name}</TableCell>
+                  <TableCell>
+                    <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs font-medium text-text-muted">
+                      {loc.type}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        <AddWarehouseModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Terminal context gate"
+          description="Auto-assign warehouse from Wi-Fi SSID or GPS geofence — hides the switcher when matched"
+        />
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-text-muted">Wi-Fi SSID</span>
+            <input
+              className="h-9 w-full rounded-md border border-border bg-surface-raised px-2 text-sm"
+              value={ssid}
+              onChange={(e) => setSsid(e.target.value)}
+              aria-label="Wi-Fi SSID"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-text-muted">Warehouse</span>
+            <select
+              className="h-9 w-full rounded-md border border-border bg-surface-raised px-2 text-sm"
+              value={ruleLocationId || warehouses[0]?.id || ''}
+              onChange={(e) => setRuleLocationId(e.target.value)}
+              aria-label="Context warehouse"
+            >
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-end">
+            <Button
+              size="sm"
+              disabled={createRule.isPending || warehouses.length === 0}
+              onClick={() => createRule.mutate()}
+            >
+              Add SSID rule
+            </Button>
+          </div>
+        </div>
+        {contextRules.length === 0 ? (
+          <p className="text-sm text-text-muted">
+            No rules yet. Map floor WLAN SSIDs or yard geofences so handhelds lock to the right facility on boot.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Match</TableHead>
+                <TableHead>Warehouse</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {contextRules.map((rule) => {
+                const loc = locations.find((l) => l.id === rule.locationId);
+                return (
+                  <TableRow key={rule.id}>
+                    <TableCell>{rule.matchType}</TableCell>
+                    <TableCell mono>
+                      {rule.matchType === 'WIFI_SSID'
+                        ? rule.ssid
+                        : `${rule.latitude}, ${rule.longitude} ±${rule.radiusMeters}m`}
+                    </TableCell>
+                    <TableCell>{loc?.name ?? rule.locationId}</TableCell>
+                    <TableCell>{rule.priority}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteRule.mutate(rule.id)}
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+    </div>
   );
 }
 

@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -21,6 +22,9 @@ public class ManufacturingWorkCenter extends TenantScopedEntity {
 
     @Column(name = "location_id")
     private UUID locationId;
+
+    @Column(nullable = false)
+    private BigDecimal capacity = BigDecimal.ONE;
 
     public String getCode() {
         return code;
@@ -52,5 +56,18 @@ public class ManufacturingWorkCenter extends TenantScopedEntity {
 
     public void setLocationId(UUID locationId) {
         this.locationId = locationId;
+    }
+
+    public BigDecimal getCapacity() {
+        return capacity;
+    }
+
+    public void setCapacity(BigDecimal capacity) {
+        this.capacity = capacity;
+    }
+
+    /** Spec alias for operational_status (ACTIVE / MAINTENANCE / OFFLINE). */
+    public String getStatus() {
+        return operationalStatus;
     }
 }

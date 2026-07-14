@@ -1,11 +1,14 @@
 package com.invsys.api;
 
+import com.invsys.auth.AuthService;
+import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.domain.Invitation;
 import com.invsys.repository.UserRoleRepository;
 import com.invsys.service.UserManagementService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -25,11 +28,14 @@ public class UserController {
 
     private final UserManagementService userManagementService;
     private final UserRoleRepository userRoleRepository;
+    private final AuthService authService;
 
     public UserController(UserManagementService userManagementService,
-                          UserRoleRepository userRoleRepository) {
+                          UserRoleRepository userRoleRepository,
+                          AuthService authService) {
         this.userManagementService = userManagementService;
         this.userRoleRepository = userRoleRepository;
+        this.authService = authService;
     }
 
     @GetMapping
@@ -57,6 +63,13 @@ public class UserController {
     @PostMapping("/{id}/deactivate")
     public void deactivate(@PathVariable UUID id) {
         userManagementService.deactivate(id);
+    }
+
+    @PostMapping("/{id}/terminal-pin")
+    public ResponseEntity<Void> setTerminalPin(@PathVariable UUID id,
+                                               @Valid @RequestBody SetTerminalPinRequest request) {
+        authService.setTerminalPin(id, request.pin());
+        return ResponseEntity.noContent().build();
     }
 
     public record InviteRequest(@NotBlank @Email String email, @NotBlank String role, UUID customerId) {

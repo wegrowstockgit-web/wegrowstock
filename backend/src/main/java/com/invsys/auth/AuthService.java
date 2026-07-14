@@ -3,6 +3,9 @@ package com.invsys.auth;
 import com.invsys.auth.dto.LoginRequest;
 import com.invsys.auth.dto.RefreshRequest;
 import com.invsys.auth.dto.SignupRequest;
+import com.invsys.auth.dto.SetTerminalPinRequest;
+import com.invsys.auth.dto.TerminalSwitchRequest;
+import com.invsys.auth.dto.TerminalSwitchResponse;
 import com.invsys.auth.dto.TokenResponse;
 import com.invsys.common.ApiException;
 import com.invsys.config.JwtProperties;
@@ -156,6 +159,69 @@ public class AuthService {
             token.setRevokedAt(Instant.now());
             refreshTokenRepository.save(token);
         });
+    }
+
+    /**
+     * Shared-terminal PIN pad: swap operator JWT context without issuing a new refresh token
+     * (primary device session remains intact on the client).
+     */
+    @Transactional(readOnly = true)
+    public TerminalSwitchResponse terminalSwitch(TerminalSwitchRequest request) {
+        UUID tenantId = TenantContext.requireTenantId();
+        UUID switchedFrom = TenantContext.getUserId().orElse(null);
+        String pinHash = hashTerminalPin(tenantId, request.pin());
+        User target = userRepository.findByTenantIdAndTerminalPinHash(tenantId, pinHash)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN",
+                        "Invalid terminal PIN"));
+        if (!"ACTIVE".equals(target.getStatus())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_INACTIVE", "User is inactive");
+        }
+        List<String> roles = userRoleRepository.findRoleCodesByUserId(target.getId());
+        List<UUID> warehouseIds = resolveWarehouseIds(tenantId, target.getId(), roles);
+        int ttlMinutes = jwtProperties.getTerminalSwitchTokenMinutes();
+        String access = jwtService.generateTerminalSwitchToken(target.getId(), tenantId, roles, warehouseIds);
+        return new TerminalSwitchResponse(
+                access,
+                tenantId,
+                target.getId(),
+                roles,
+                warehouseIds,
+                ttlMinutes * 60,
+                "TERMINAL_SWITCH",
+                switchedFrom);
+    }
+
+    @Transactional
+    public void setOwnTerminalPin(SetTerminalPinRequest request) {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        setTerminalPin(userId, request.pin());
+    }
+
+    @Transactional
+    public void setTerminalPin(UUID userId, String pin) {
+        UUID tenantId = TenantContext.requireTenantId();
+        if (pin == null || !pin.matches("^\\d{4}$")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PIN", "PIN must be exactly 4 digits");
+        }
+        String pinHash = hashTerminalPin(tenantId, pin);
+        userRepository.findByTenantIdAndTerminalPinHash(tenantId, pinHash).ifPresent(existing -> {
+            if (!existing.getId().equals(userId)) {
+                throw new ApiException(HttpStatus.CONFLICT, "PIN_IN_USE",
+                        "This terminal PIN is already assigned to another operator");
+            }
+        });
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        if (!tenantId.equals(user.getTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found");
+        }
+        user.setTerminalPinHash(pinHash);
+        userRepository.save(user);
+    }
+
+    public static String hashTerminalPin(UUID tenantId, String pin) {
+        return hashToken(tenantId + ":" + pin);
     }
 
     private TokenResponse issueTokens(User user, List<String> roles) {

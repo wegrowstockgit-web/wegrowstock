@@ -76,20 +76,45 @@ public class JwtService {
     }
 
     public String generateAccessToken(UUID userId, UUID tenantId, List<String> roles, List<UUID> warehouseIds) {
+        return generateAccessToken(userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L, null);
+    }
+
+    /**
+     * Short-lived JWT for shared-terminal PIN context swap. Does not issue a refresh token;
+     * the primary device session remains intact on the client.
+     */
+    public String generateTerminalSwitchToken(UUID userId, UUID tenantId, List<String> roles, List<UUID> warehouseIds) {
+        return generateAccessToken(
+                userId,
+                tenantId,
+                roles,
+                warehouseIds,
+                properties.getTerminalSwitchTokenMinutes() * 60L,
+                "TERMINAL_SWITCH");
+    }
+
+    private String generateAccessToken(UUID userId,
+                                       UUID tenantId,
+                                       List<String> roles,
+                                       List<UUID> warehouseIds,
+                                       long ttlSeconds,
+                                       String tokenType) {
         try {
             Instant now = Instant.now();
             List<String> warehouseClaim = warehouseIds == null
                     ? List.of()
                     : warehouseIds.stream().map(UUID::toString).toList();
-            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+            JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
                     .subject(userId.toString())
                     .claim("tenant_id", tenantId.toString())
                     .claim("roles", roles)
                     .claim("warehouse_ids", warehouseClaim)
                     .issueTime(Date.from(now))
-                    .expirationTime(Date.from(now.plusSeconds(properties.getAccessTokenMinutes() * 60L)))
-                    .build();
-            SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims);
+                    .expirationTime(Date.from(now.plusSeconds(ttlSeconds)));
+            if (tokenType != null) {
+                builder.claim("token_type", tokenType);
+            }
+            SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), builder.build());
             jwt.sign(new RSASSASigner(privateKey));
             return jwt.serialize();
         } catch (JOSEException e) {

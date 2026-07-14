@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "invsys.jwt")
 public class JwtProperties {
     private int accessTokenMinutes = 15;
+    private int terminalSwitchTokenMinutes = 5;
     private int refreshTokenDays = 7;
     private String privateKeyPem;
     private String publicKeyPem;
@@ -17,6 +18,14 @@ public class JwtProperties {
 
     public void setAccessTokenMinutes(int accessTokenMinutes) {
         this.accessTokenMinutes = accessTokenMinutes;
+    }
+
+    public int getTerminalSwitchTokenMinutes() {
+        return terminalSwitchTokenMinutes;
+    }
+
+    public void setTerminalSwitchTokenMinutes(int terminalSwitchTokenMinutes) {
+        this.terminalSwitchTokenMinutes = terminalSwitchTokenMinutes;
     }
 
     public int getRefreshTokenDays() {

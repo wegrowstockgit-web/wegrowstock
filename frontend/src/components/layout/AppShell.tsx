@@ -2,12 +2,14 @@ import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, LogOut, Search, Warehouse } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { TerminalPinPad } from './TerminalPinPad';
 import { Sidebar } from './Sidebar';
 import { CommandPalette, useCommandPalette } from './CommandPalette';
 import { Button } from '@/components/ui/Button';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import type { Warehouse as WarehouseType } from '@/api/types';
@@ -32,11 +34,16 @@ export function AppShell() {
   const authenticated = useIsAuthenticated();
   const user = useSessionStore((s) => s.user);
   const sessionWarehouseIds = useSessionStore((s) => s.user?.warehouseIds ?? []);
-  const { warehouse, setWarehouse } = useActiveWarehouseStore();
+  const warehouse = useActiveWarehouseStore((s) => s.warehouse);
+  const setWarehouse = useActiveWarehouseStore((s) => s.setWarehouse);
+  const lockFromJwtSingle = useActiveWarehouseStore((s) => s.lockFromJwtSingle);
+  const contextLocked = useActiveWarehouseStore((s) => s.contextLocked);
+  const lockReason = useActiveWarehouseStore((s) => s.lockReason);
 
   const isWarehouseView = isWarehouseRoute(location.pathname);
   /** Kiosk / terminal lockdown: JWT has exactly one warehouse — no switcher. */
-  const terminalLocked = sessionWarehouseIds.length === 1;
+  const jwtTerminalLocked = sessionWarehouseIds.length === 1;
+  const hideSwitcher = jwtTerminalLocked || contextLocked;
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -55,16 +62,22 @@ export function AppShell() {
     retry: false,
   });
 
+  useWarehouseContextGate(warehouses, jwtTerminalLocked);
+
   useEffect(() => {
     if (warehouses.length === 0) return;
 
-    if (terminalLocked) {
+    if (jwtTerminalLocked) {
       const lockedId = sessionWarehouseIds[0];
       const locked = warehouses.find((item) => item.id === lockedId) ?? warehouses[0];
-      if (warehouse?.id !== locked.id) {
-        setWarehouse(locked);
-      } else if (locked.name !== warehouse.name || locked.code !== warehouse.code) {
-        setWarehouse(locked);
+      lockFromJwtSingle(locked);
+      return;
+    }
+
+    if (contextLocked && warehouse) {
+      const stillValid = warehouses.find((item) => item.id === warehouse.id);
+      if (stillValid && (stillValid.name !== warehouse.name || stillValid.code !== warehouse.code)) {
+        setWarehouse(stillValid, { force: true, lockReason: lockReason ?? undefined });
       }
       return;
     }
@@ -79,7 +92,16 @@ export function AppShell() {
       return;
     }
     setWarehouse(warehouses[0]);
-  }, [warehouse, warehouses, setWarehouse, terminalLocked, sessionWarehouseIds]);
+  }, [
+    warehouse,
+    warehouses,
+    setWarehouse,
+    jwtTerminalLocked,
+    sessionWarehouseIds,
+    lockFromJwtSingle,
+    contextLocked,
+    lockReason,
+  ]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -87,12 +109,20 @@ export function AppShell() {
   };
 
   const handleWarehouseChange = (warehouseId: string) => {
+    if (hideSwitcher) return;
     const selected = warehouses.find((item) => item.id === warehouseId);
     if (!selected || selected.id === warehouse?.id) return;
     setWarehouse(selected);
     void queryClient.invalidateQueries({ queryKey: ['picking'] });
     void queryClient.invalidateQueries({ queryKey: ['warehouses'] });
   };
+
+  const lockTitle =
+    lockReason === 'HARDWARE_SSID'
+      ? 'Warehouse locked by Wi-Fi SSID'
+      : lockReason === 'HARDWARE_GEOFENCE'
+        ? 'Warehouse locked by geofence'
+        : 'Warehouse locked by terminal assignment';
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-surface">
@@ -131,15 +161,16 @@ export function AppShell() {
             )}
 
             {warehouses.length > 0 &&
-              (terminalLocked ? (
+              (hideSwitcher ? (
                 <div
                   className={cn(
                     'flex h-9 items-center gap-2 rounded-md border border-border bg-surface-overlay/60 pl-2.5 pr-3 text-sm text-text',
                     isWarehouseView && 'h-11 text-base'
                   )}
-                  title="Warehouse locked by terminal assignment"
+                  title={lockTitle}
                   aria-label={`Locked warehouse ${warehouse?.name ?? ''}`.trim()}
                   data-terminal-locked="true"
+                  data-lock-reason={lockReason ?? 'JWT_SINGLE'}
                 >
                   <Warehouse className="h-4 w-4 shrink-0 text-text-muted" />
                   <span className="font-medium">{warehouse?.name ?? 'Warehouse'}</span>
@@ -168,6 +199,7 @@ export function AppShell() {
           </div>
 
           <div className="flex items-center gap-3">
+            {isWarehouseView && <TerminalPinPad warehouseSized />}
             {!isWarehouseView && (
               <span className="hidden text-sm text-text-muted sm:inline">
                 {user?.displayName ?? user?.email}

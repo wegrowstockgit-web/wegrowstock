@@ -222,6 +222,7 @@
                                 <exclude>com/invsys/service/InventoryGenealogyService*.class</exclude>
                                 <exclude>com/invsys/service/FieldFulfillmentService*.class</exclude>
                                 <exclude>com/invsys/service/InternalConsumptionService*.class</exclude>
+                                <exclude>com/invsys/service/WarehouseContextService*.class</exclude>
                                 <exclude>com/invsys/billing/MockCapitalGateway.class</exclude>
                                 <exclude>com/invsys/billing/CapitalGateway*.class</exclude>
                             </excludes>

@@ -121,9 +121,14 @@ public class ReturnService {
             throw new ApiException(HttpStatus.CONFLICT, "ALREADY_RECEIVED", "Line already fully received");
         }
 
+        UUID destination = locationId;
+        if ("QUARANTINE".equals(disposition)) {
+            destination = enforceQuarantineDestination(locationId);
+        }
+
         line.setDisposition(disposition);
         line.setQuantityReceived(line.getQuantityExpected());
-        applyReceiptMovement(line, locationId, remaining, disposition);
+        applyReceiptMovement(line, destination, remaining, disposition);
         returnLineRepository.save(line);
         updateReturnStatus(returnOrder);
         return line;
@@ -233,7 +238,12 @@ public class ReturnService {
         UUID variantId = sol.getVariantId();
 
         switch (disposition) {
-            case "QUARANTINE", "RESTOCK", "REPAIR" -> {
+            case "QUARANTINE" -> {
+                UUID quarantineLocationId = locationId != null ? locationId : resolveQuarantineLocationId();
+                inventoryService.quarantineReceive(
+                        variantId, quarantineLocationId, null, qty, "RETURN", line.getId(), sol.getId());
+            }
+            case "RESTOCK", "REPAIR" -> {
                 UUID quarantineLocationId = resolveQuarantineLocationId();
                 inventoryService.quarantineReceive(
                         variantId, quarantineLocationId, null, qty, "RETURN", line.getId(), sol.getId());
@@ -255,14 +265,24 @@ public class ReturnService {
         if (!quarantine.isEmpty()) {
             return quarantine.getFirst().getId();
         }
-        List<Location> warehouses = locationRepository.findByTenantIdAndType(tenantId, "WAREHOUSE");
-        if (!warehouses.isEmpty()) {
-            return warehouses.getFirst().getId();
+        throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUARANTINE_LOCATION_REQUIRED",
+                "A QUARANTINE location must exist before receiving inspection returns");
+    }
+
+    /**
+     * Inspection receipts must land in a quarantine zone — never a pickable bin.
+     */
+    private UUID enforceQuarantineDestination(UUID locationId) {
+        if (locationId == null) {
+            return resolveQuarantineLocationId();
         }
-        return locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
-                .findFirst()
-                .map(Location::getId)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "NO_LOCATION", "No warehouse configured"));
+        Location location = locationRepository.findById(locationId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Location not found"));
+        if (!"QUARANTINE".equals(location.getType())) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUARANTINE_LOCATION_REQUIRED",
+                    "Inspection returns must be routed to a QUARANTINE location");
+        }
+        return location.getId();
     }
 
     private UUID resolveLocationId(UUID locationId) {

@@ -119,4 +119,14 @@ class OverReceiptToleranceTest extends AbstractIntegrationTest {
         assertThat(overWithinTolerance.getQtyReceived()).isEqualByComparingTo("105");
         assertThat(overWithinTolerance.getQtyOrdered()).isEqualByComparingTo("100");
     }
+
+    @Test
+    void tenantDefaultsDisableBlindReceivingAndSetOverReceiptTolerance() {
+        UUID tenantId = testDataHelper.createTenant("Blind Co", "bld-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+        TenantSettings settings = tenantSettingsRepository.findByTenantId(tenantId)
+                .orElseGet(() -> tenantSettingsRepository.save(TenantSettings.withDefaults(tenantId)));
+        assertThat(settings.getSettings().get("allow_blind_receiving")).isEqualTo(false);
+        assertThat(settings.getSettings().get("over_receipt_tolerance_percent")).isNotNull();
+    }
 }

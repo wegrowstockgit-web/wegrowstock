@@ -52,6 +52,7 @@ management:
 invsys:
   jwt:
     access-token-minutes: 15
+    terminal-switch-token-minutes: 5
     refresh-token-days: 7
     private-key-pem: ${JWT_PRIVATE_KEY:}
     public-key-pem: ${JWT_PUBLIC_KEY:}

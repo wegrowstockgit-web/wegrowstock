@@ -20,6 +20,9 @@ public class User extends TenantScopedEntity {
     @Column(nullable = false)
     private String status = "ACTIVE";
 
+    @Column(name = "terminal_pin_hash", length = 64)
+    private String terminalPinHash;
+
     public String getEmail() {
         return email;
     }
@@ -50,5 +53,13 @@ public class User extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getTerminalPinHash() {
+        return terminalPinHash;
+    }
+
+    public void setTerminalPinHash(String terminalPinHash) {
+        this.terminalPinHash = terminalPinHash;
     }
 }

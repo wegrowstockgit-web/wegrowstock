@@ -2,13 +2,33 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useEffect, useState } from 'react';
 import type { User, TokenResponse } from '@/api/types';
+
+interface PrimarySessionSnapshot {
+  accessToken: string;
+  refreshToken: string | null;
+  user: User;
+}
+
+interface TerminalSwitchPayload {
+  accessToken: string;
+  tenantId: string;
+  userId: string;
+  roles: string[];
+  warehouseIds?: string[];
+}
+
 interface SessionState {
   accessToken: string | null;
   refreshToken: string | null;
   user: User | null;
   lastRequestId: string | null;
+  /** Device login preserved while a short-lived terminal PIN JWT is active. */
+  primarySession: PrimarySessionSnapshot | null;
   setSessionFromToken: (token: TokenResponse, email: string, displayName?: string) => void;
   updateTokens: (accessToken: string, refreshToken?: string) => void;
+  applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
+  restorePrimarySession: () => void;
+  isTerminalSwitchActive: () => boolean;
   setLastRequestId: (requestId: string) => void;
   clearSession: () => void;
   isAuthenticated: () => boolean;
@@ -26,11 +46,13 @@ export const useSessionStore = create<SessionState>()(
       refreshToken: null,
       user: null,
       lastRequestId: null,
+      primarySession: null,
 
       setSessionFromToken: (token, email, displayName) =>
         set({
           accessToken: token.accessToken,
           refreshToken: token.refreshToken,
+          primarySession: null,
           user: {
             id: token.userId,
             email,
@@ -46,10 +68,53 @@ export const useSessionStore = create<SessionState>()(
           refreshToken: refreshToken ?? state.refreshToken,
         })),
 
+      applyTerminalSwitch: (token, emailHint) => {
+        const state = get();
+        if (!state.accessToken || !state.user) return;
+        const primary =
+          state.primarySession ??
+          ({
+            accessToken: state.accessToken,
+            refreshToken: state.refreshToken,
+            user: state.user,
+          } satisfies PrimarySessionSnapshot);
+        set({
+          primarySession: primary,
+          accessToken: token.accessToken,
+          // Keep primary refresh token — do not kill the station session.
+          refreshToken: primary.refreshToken,
+          user: {
+            id: token.userId,
+            email: emailHint ?? state.user.email,
+            displayName: emailHint?.split('@')[0] ?? 'Operator',
+            roles: token.roles,
+            warehouseIds: token.warehouseIds ?? [],
+          },
+        });
+      },
+
+      restorePrimarySession: () => {
+        const primary = get().primarySession;
+        if (!primary) return;
+        set({
+          accessToken: primary.accessToken,
+          refreshToken: primary.refreshToken,
+          user: primary.user,
+          primarySession: null,
+        });
+      },
+
+      isTerminalSwitchActive: () => !!get().primarySession,
+
       setLastRequestId: (requestId) => set({ lastRequestId: requestId }),
 
       clearSession: () =>
-        set({ accessToken: null, refreshToken: null, user: null }),
+        set({
+          accessToken: null,
+          refreshToken: null,
+          user: null,
+          primarySession: null,
+        }),
 
       isAuthenticated: () => !!get().accessToken && !!get().user,
 
@@ -82,6 +147,7 @@ export const useSessionStore = create<SessionState>()(
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         user: state.user,
+        primarySession: state.primarySession,
       }),
     }
   )

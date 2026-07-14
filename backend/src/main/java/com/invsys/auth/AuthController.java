@@ -4,12 +4,16 @@ import com.invsys.auth.dto.LoginRequest;
 import com.invsys.auth.dto.MagicLoginConsumeRequest;
 import com.invsys.auth.dto.MagicLoginRequest;
 import com.invsys.auth.dto.RefreshRequest;
+import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.auth.dto.SignupRequest;
+import com.invsys.auth.dto.TerminalSwitchRequest;
+import com.invsys.auth.dto.TerminalSwitchResponse;
 import com.invsys.auth.dto.TokenResponse;
 import com.invsys.common.ApiException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -57,6 +61,23 @@ public class AuthController {
     @PostMapping("/magic-login/consume")
     public TokenResponse consumeMagicLogin(@Valid @RequestBody MagicLoginConsumeRequest request) {
         return magicLoginService.consumeMagicLink(request.token());
+    }
+
+    /**
+     * Shared warehouse terminal PIN pad — rotates operator JWT context without
+     * revoking the primary device refresh session.
+     */
+    @PostMapping("/terminal-switch")
+    @PreAuthorize("isAuthenticated()")
+    public TerminalSwitchResponse terminalSwitch(@Valid @RequestBody TerminalSwitchRequest request) {
+        return authService.terminalSwitch(request);
+    }
+
+    @PostMapping("/terminal-pin")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> setOwnTerminalPin(@Valid @RequestBody SetTerminalPinRequest request) {
+        authService.setOwnTerminalPin(request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/refresh")
