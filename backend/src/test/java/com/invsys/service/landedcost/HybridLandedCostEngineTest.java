@@ -92,7 +92,7 @@ class HybridLandedCostEngineTest {
         assertThat(shares.get(lineC.getId()).toBigDecimal()).isEqualByComparingTo("30.0000");
         Money dimTotal = shares.get(lineA.getId()).add(shares.get(lineB.getId()));
         assertThat(dimTotal.toBigDecimal()).isEqualByComparingTo("60.0000");
-        // Heavier A (4) vs category median B (2) → 40 / 20 of the 60
+        // Heavier A (4) vs category median B (2) â†’ 40 / 20 of the 60
         assertThat(shares.get(lineA.getId()).toBigDecimal()).isEqualByComparingTo("40.0000");
         assertThat(shares.get(lineB.getId()).toBigDecimal()).isEqualByComparingTo("20.0000");
         // No line received $0
@@ -111,7 +111,7 @@ class HybridLandedCostEngineTest {
                 "WEIGHT",
                 HybridLandedCostEngine.CostEventType.FREIGHT);
 
-        // Cascade to quantity — full 50, not $0
+        // Cascade to quantity â€” full 50, not $0
         assertThat(shares.get(line.getId()).toBigDecimal()).isEqualByComparingTo("50.0000");
     }
 

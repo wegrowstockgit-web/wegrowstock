@@ -197,7 +197,7 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
         SupplierInvoiceIngestion ingestion = apOcrIngestionService.submitDocument(po.getId(), extracted);
         assertThat(ingestion.getStatus()).isEqualTo("PENDING");
 
-        // Without RECEIVE — blocked
+        // Without RECEIVE â€” blocked
         SupplierInvoiceIngestion blocked = apOcrIngestionService.reconcile(ingestion.getId());
         assertThat(blocked.getStatus()).isEqualTo("CONFLICT");
         assertThat(apMatchingLogRepository.findByTenantIdAndPoIdOrderByCreatedAtDesc(tenantId, po.getId()))

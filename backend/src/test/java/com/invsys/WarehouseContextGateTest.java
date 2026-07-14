@@ -22,7 +22,7 @@ import com.invsys.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -126,7 +126,7 @@ class WarehouseContextGateTest extends AbstractIntegrationTest {
         ruleRepository.save(rule);
         TenantContext.clear();
 
-        // ~120m from center — inside
+        // ~120m from center â€” inside
         mockMvc.perform(post("/api/v1/terminals/resolve-context")
                         .header("Authorization", "Bearer " + owner.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -136,7 +136,7 @@ class WarehouseContextGateTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.matchType").value("GEOFENCE"))
                 .andExpect(jsonPath("$.warehouseId").value(wh01.getId().toString()));
 
-        // Far away — outside
+        // Far away â€” outside
         mockMvc.perform(post("/api/v1/terminals/resolve-context")
                         .header("Authorization", "Bearer " + owner.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -181,7 +181,7 @@ class WarehouseContextGateTest extends AbstractIntegrationTest {
                 new LoginRequest("picker@" + slug + ".test", "password123"));
         assertThat(pickerTokens.warehouseIds()).containsExactly(wh01.getId());
 
-        // No X-Warehouse-Id — filter should auto-apply sole warehouse (must not 403)
+        // No X-Warehouse-Id â€” filter should auto-apply sole warehouse (must not 403)
         mockMvc.perform(get("/api/v1/locations")
                         .param("type", "WAREHOUSE")
                         .header("Authorization", "Bearer " + pickerTokens.accessToken()))
@@ -259,7 +259,7 @@ class WarehouseContextGateTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matchType").value("GEOFENCE"));
 
-        // Re-create SSID rule on WH-02 — picker authorized only for WH-01 must not match
+        // Re-create SSID rule on WH-02 â€” picker authorized only for WH-01 must not match
         mockMvc.perform(post("/api/v1/warehouse-context-rules")
                         .header("Authorization", "Bearer " + owner.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)

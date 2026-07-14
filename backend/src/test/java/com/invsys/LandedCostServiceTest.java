@@ -135,7 +135,7 @@ class LandedCostServiceTest extends AbstractIntegrationTest {
 
         assertThat(result.strategy()).isEqualTo("CUSTOMS");
         assertThat(result.lines()).hasSize(2);
-        // Value basis: A=100, B=300 → 25% / 75% of freight
+        // Value basis: A=100, B=300 â†’ 25% / 75% of freight
         assertThat(new BigDecimal(result.lines().get(0).get("allocatedFreight").toString())
                 .add(new BigDecimal(result.lines().get(1).get("allocatedFreight").toString())))
                 .isEqualByComparingTo("100.00");
@@ -231,7 +231,7 @@ class LandedCostServiceTest extends AbstractIntegrationTest {
 
         assertThat(result.strategy()).isEqualTo("BY_VOLUME");
         assertThat(result.lines()).hasSize(2);
-        // Volume 4 vs median 2 → 40 / 20 of 60
+        // Volume 4 vs median 2 â†’ 40 / 20 of 60
         Map<String, BigDecimal> bySku = new LinkedHashMap<>();
         for (Map<String, Object> row : result.lines()) {
             bySku.put(row.get("sku").toString(), new BigDecimal(row.get("allocatedFreight").toString()));

@@ -1,6 +1,6 @@
 package com.invsys.integration.accounting;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.invsys.domain.IntegrationSyncLog;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.integration.CredentialVaultService;
