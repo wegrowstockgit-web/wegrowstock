@@ -1,0 +1,405 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ClipboardList, Plus, Trash2 } from 'lucide-react';
+import { apiClient } from '@/api/client';
+import type { PaginatedResponse, ProductVariant, PurchaseOrder, Supplier, SupplierInvoiceIngestion, TenantLocation } from '@/api/types';
+import { Card, CardHeader } from '@/components/ui/Card';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Modal } from '@/components/ui/Modal';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
+import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { useSessionStore } from '@/stores/session';
+
+const STATUS_STYLES: Record<string, string> = {
+  DRAFT: 'bg-surface-overlay text-text-muted',
+  SUBMITTED: 'bg-accent-muted text-accent',
+  PARTIALLY_RECEIVED: 'bg-warning/10 text-warning',
+  RECEIVED: 'bg-success/10 text-success',
+  CLOSED: 'bg-success/10 text-success',
+  CANCELLED: 'bg-danger/10 text-danger',
+};
+
+interface DraftLine {
+  variantId: string;
+  qtyOrdered: string;
+  unitCost: string;
+}
+
+function CreatePoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [supplierId, setSupplierId] = useState('');
+  const [destinationLocationId, setDestinationLocationId] = useState('');
+  const [freightAmount, setFreightAmount] = useState('');
+  const [lines, setLines] = useState<DraftLine[]>([{ variantId: '', qtyOrdered: '1', unitCost: '' }]);
+  const [error, setError] = useState('');
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: async () => (await apiClient.get<Supplier[]>('/api/v1/suppliers')).data,
+    enabled: open,
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['locations', 'warehouse'],
+    queryFn: async () =>
+      (await apiClient.get<TenantLocation[]>('/api/v1/locations', { params: { type: 'WAREHOUSE' } })).data,
+    enabled: open,
+  });
+
+  const { data: variantsPage } = useQuery({
+    queryKey: ['variants', 'all'],
+    queryFn: async () =>
+      (await apiClient.get<PaginatedResponse<ProductVariant>>('/api/v1/variants?limit=200')).data,
+    enabled: open,
+  });
+  const variants = variantsPage?.items ?? [];
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/api/v1/purchase-orders', {
+        supplierId,
+        number: `PO-${Date.now()}`,
+        destinationLocationId: destinationLocationId || undefined,
+        freightAmount: freightAmount ? Number(freightAmount) : undefined,
+        lines: lines
+          .filter((l) => l.variantId && Number(l.qtyOrdered) > 0)
+          .map((l) => ({
+            variantId: l.variantId,
+            qtyOrdered: Number(l.qtyOrdered),
+            unitCost: l.unitCost ? Number(l.unitCost) : undefined,
+          })),
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      setSupplierId('');
+      setDestinationLocationId('');
+      setFreightAmount('');
+      setLines([{ variantId: '', qtyOrdered: '1', unitCost: '' }]);
+      onClose();
+    },
+    onError: () => setError('Could not create the purchase order. Check the fields and try again.'),
+  });
+
+  const updateLine = (index: number, patch: Partial<DraftLine>) => {
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  };
+
+  const validLines = lines.filter((l) => l.variantId && Number(l.qtyOrdered) > 0);
+
+  return (
+    <Modal open={open} onClose={onClose} title="New purchase order" description="PO number is assigned automatically">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError('');
+          mutation.mutate();
+        }}
+        className="space-y-4"
+      >
+        <Select
+          label="Supplier"
+          value={supplierId}
+          onChange={(e) => setSupplierId(e.target.value)}
+          required
+        >
+          <option value="" disabled>
+            Select a supplier…
+          </option>
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          label="Destination warehouse"
+          value={destinationLocationId}
+          onChange={(e) => setDestinationLocationId(e.target.value)}
+        >
+          <option value="">Default receiving location</option>
+          {warehouses.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </Select>
+
+        <Input
+          label="Freight amount"
+          type="number"
+          min="0"
+          step="0.01"
+          value={freightAmount}
+          onChange={(e) => setFreightAmount(e.target.value)}
+          placeholder="0.00"
+        />
+
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-text">Lines</p>
+          {lines.map((line, index) => (
+            <div key={index} className="flex items-end gap-2">
+              <div className="flex-1">
+                <Select
+                  aria-label="Product variant"
+                  value={line.variantId}
+                  onChange={(e) => updateLine(index, { variantId: e.target.value })}
+                  required
+                >
+                  <option value="" disabled>
+                    Select item…
+                  </option>
+                  {variants.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.sku} — {v.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="w-20">
+                <Input
+                  aria-label="Quantity"
+                  type="number"
+                  min="1"
+                  value={line.qtyOrdered}
+                  onChange={(e) => updateLine(index, { qtyOrdered: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="w-24">
+                <Input
+                  aria-label="Unit cost"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Cost"
+                  value={line.unitCost}
+                  onChange={(e) => updateLine(index, { unitCost: e.target.value })}
+                />
+              </div>
+              {lines.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Remove line"
+                  onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setLines((prev) => [...prev, { variantId: '', qtyOrdered: '1', unitCost: '' }])}
+          >
+            <Plus className="h-4 w-4" />
+            Add line
+          </Button>
+        </div>
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={mutation.isPending} disabled={!supplierId || validLines.length === 0}>
+            Create PO
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] }) {
+  const queryClient = useQueryClient();
+  const [poId, setPoId] = useState('');
+  const [jsonPayload, setJsonPayload] = useState(
+    '{\n  "lines": [\n    { "sku": "WIDGET-S", "qty": 100, "unitCost": 5.00 }\n  ]\n}'
+  );
+
+  const { data: ingestions = [] } = useQuery({
+    queryKey: ['ap', 'ingestions'],
+    queryFn: async () =>
+      (await apiClient.get<SupplierInvoiceIngestion[]>('/api/v1/ap/ingestions')).data,
+    retry: false,
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const extractedData = JSON.parse(jsonPayload) as Record<string, unknown>;
+      await apiClient.post('/api/v1/ap/ingestions', {
+        purchaseOrderId: poId,
+        extractedData,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['ap', 'ingestions'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+  });
+
+  return (
+    <Card className="mt-8">
+      <CardHeader
+        title="AP invoice ingestion"
+        description="Drop supplier invoice OCR payloads and reconcile against PO lines"
+      />
+      <div className="space-y-4 p-4">
+        <Select
+          label="Purchase order"
+          value={poId}
+          onChange={(e) => setPoId(e.target.value)}
+        >
+          <option value="">Select PO…</option>
+          {purchaseOrders.map((po) => (
+            <option key={po.id} value={po.id}>
+              {po.number}
+            </option>
+          ))}
+        </Select>
+        <label className="block text-sm font-medium text-text">
+          Extracted invoice JSON
+          <textarea
+            className="mt-1 w-full rounded-lg border border-border bg-surface p-3 font-mono text-sm text-text"
+            rows={6}
+            value={jsonPayload}
+            onChange={(e) => setJsonPayload(e.target.value)}
+          />
+        </label>
+        <Button
+          onClick={() => submitMutation.mutate()}
+          loading={submitMutation.isPending}
+          disabled={!poId}
+        >
+          Upload & reconcile
+        </Button>
+        {ingestions.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-text">Recent ingestions</p>
+            {ingestions.slice(0, 5).map((ing) => (
+              <div
+                key={ing.id}
+                className={cn(
+                  'rounded-lg border p-3 text-sm',
+                  ing.status === 'CONFLICT' ? 'border-warning bg-warning/10' : 'border-border'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{ing.status}</span>
+                  <span className="text-text-muted">{ing.matchConfidence.toFixed(0)}% match</span>
+                </div>
+                {ing.status === 'CONFLICT' && (
+                  <p className="mt-1 text-xs text-warning">Line conflicts require review</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+export function PurchaseOrdersPage() {
+  const hasRole = useSessionStore((s) => s.hasRole);
+  const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const { data, isLoading, isError, error, refetch } =
+    useListQuery<PurchaseOrder>(['purchase-orders'], '/api/v1/purchase-orders');
+
+  return (
+    <div className="p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text">Purchase Orders</h1>
+          <p className="mt-1 text-sm text-text-muted">Inbound supply chain</p>
+        </div>
+        {canCreate && (
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New PO
+          </Button>
+        )}
+      </div>
+
+      <ListPageState
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        data={data}
+        refetch={refetch}
+        emptyIcon={ClipboardList}
+        emptyTitle="No purchase orders yet"
+        emptyDescription={
+          canCreate
+            ? 'Create a purchase order to start receiving inventory.'
+            : 'Purchase orders will appear here once created by a manager.'
+        }
+        emptyAction={
+          canCreate ? (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create purchase order
+            </Button>
+          ) : undefined
+        }
+      >
+        {(items) => (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Number</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Expected</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((po) => (
+                <TableRow key={po.id}>
+                  <TableCell mono>{po.number}</TableCell>
+                  <TableCell>{po.supplierName}</TableCell>
+                  <TableCell>
+                    <span
+                      className={cn(
+                        'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                        STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted'
+                      )}
+                    >
+                      {po.status.replaceAll('_', ' ')}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-text-muted">
+                    {po.expectedAt ? new Date(po.expectedAt).toLocaleDateString() : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </ListPageState>
+
+      {canCreate && <ApIngestionPanel purchaseOrders={data ?? []} />}
+
+      <CreatePoModal open={modalOpen} onClose={() => setModalOpen(false)} />
+    </div>
+  );
+}

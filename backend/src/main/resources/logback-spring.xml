@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <springProperty name="APP_NAME" source="spring.application.name" defaultValue="invsys-api"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{ISO8601} [%thread] %-5level %logger{36} tenant=%X{tenantId} req=%X{requestId} user=%X{userId} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- One-line JSON for Docker → Fluent Bit / Loki / CloudWatch -->
+    <appender name="JSON_PATTERN" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>{"ts":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSX}","level":"%level","logger":"%logger{36}","tenant":"%X{tenantId}","requestId":"%X{requestId}","userId":"%X{userId}","msg":"%replace(%replace(%msg){'\\','\\\\'}){'\"','\\\"'}","app":"${APP_NAME}"}%n</pattern>
+        </encoder>
+    </appender>
+
+    <springProfile name="docker | prod">
+        <root level="INFO">
+            <appender-ref ref="JSON_PATTERN"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!(docker | prod)">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>

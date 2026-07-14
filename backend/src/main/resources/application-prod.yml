@@ -1,0 +1,36 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+    prometheus:
+      enabled: true
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+invsys:
+  security:
+    public-signup-enabled: ${PUBLIC_SIGNUP_ENABLED:false}
+  stripe:
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+  webhooks:
+    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET}
+    easypost-secret: ${EASYPOST_WEBHOOK_SECRET}
+  jwt:
+    private-key-pem: ${JWT_PRIVATE_KEY}
+    public-key-pem: ${JWT_PUBLIC_KEY}
+  integration:
+    master-key: ${INTEGRATION_MASTER_KEY}
+  frontend-url: ${FRONTEND_URL}

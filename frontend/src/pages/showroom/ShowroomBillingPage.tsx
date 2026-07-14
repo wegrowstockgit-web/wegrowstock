@@ -1,0 +1,176 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { CreditCard, FileText, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { apiClient } from '@/api/client';
+import type { PortalCatalogItem, PortalCreditSummary, PortalInvoice, PortalReorderLine } from '@/api/types';
+import { mapPortalCatalog, type PortalCatalogItemRaw } from '@/api/portal';
+import { Card, CardHeader } from '@/components/ui/Card';
+import { TableSkeleton } from '@/components/ui/Skeleton';
+import { Button } from '@/components/ui/Button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
+import { cn } from '@/lib/utils';
+import { useShowroomCart } from '@/showroom/useShowroomCart';
+
+export function ShowroomBillingPage() {
+  const navigate = useNavigate();
+  const { addLines } = useShowroomCart();
+  const { data: credit, isLoading: creditLoading } = useQuery({
+    queryKey: ['portal', 'credit'],
+    queryFn: async () => {
+      const res = await apiClient.get<PortalCreditSummary>('/api/v1/portal/credit');
+      return res.data;
+    },
+    retry: false,
+  });
+
+  const { data: invoices = [], isLoading: invoicesLoading } = useQuery({
+    queryKey: ['portal', 'invoices'],
+    queryFn: async () => {
+      const res = await apiClient.get<PortalInvoice[]>('/api/v1/portal/invoices');
+      return res.data;
+    },
+    retry: false,
+  });
+
+  if (creditLoading) {
+    return <TableSkeleton rows={4} cols={3} />;
+  }
+
+  const limit = Number(credit?.creditLimit ?? 0);
+  const available = Number(credit?.availableCredit ?? 0);
+  const used = limit > 0 ? limit - available : 0;
+  const utilization = limit > 0 ? (used / limit) * 100 : 0;
+  const openInvoices = invoices.filter((inv) => inv.status === 'OPEN' || inv.status === 'PARTIALLY_PAID');
+
+  const duplicateMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const [linesRes, catalogRes] = await Promise.all([
+        apiClient.get<PortalReorderLine[]>(`/api/v1/portal/invoices/${invoiceId}/reorder-lines`),
+        apiClient.get<PortalCatalogItemRaw[]>('/api/v1/portal/catalog'),
+      ]);
+      const catalog = mapPortalCatalog(catalogRes.data);
+      const catalogById = new Map(catalog.map((c) => [c.id, c]));
+      return linesRes.data.map((line) => ({
+        variantId: line.variantId,
+        quantity: Number(line.quantity),
+        catalogItem: catalogById.get(line.variantId),
+      }));
+    },
+    onSuccess: (lines) => {
+      addLines(lines.filter((l) => l.catalogItem) as Array<{ variantId: string; quantity: number; catalogItem: PortalCatalogItem }>);
+      navigate('/showroom/catalog');
+    },
+  });
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-text">Billing & Credit</h1>
+        <p className="mt-1 text-sm text-text-muted">NET terms credit line and outstanding invoices</p>
+      </div>
+
+      <Card className="mb-6">
+        <CardHeader title="Credit utilization" description={`Status: ${credit?.status ?? '—'}`} />
+        <div className="mb-2 flex justify-between text-sm">
+          <span className="text-text-muted">Used</span>
+          <span className="font-mono font-medium text-text">
+            {used.toLocaleString(undefined, { style: 'currency', currency: 'USD' })} /{' '}
+            {limit.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+          </span>
+        </div>
+        <div className="h-3 overflow-hidden rounded-full bg-surface-overlay">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all',
+              utilization > 80 ? 'bg-warning' : 'bg-accent'
+            )}
+            style={{ width: `${Math.min(100, utilization)}%` }}
+          />
+        </div>
+        <p className="mt-3 text-sm text-text-muted">
+          Available:{' '}
+          <span className="font-mono font-semibold text-text">
+            {available.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+          </span>
+        </p>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Outstanding invoices"
+          description="Pay balance to restore available credit"
+          action={
+            openInvoices.length > 0 ? (
+              <span className="flex items-center gap-1 text-sm text-accent">
+                <CreditCard className="h-4 w-4" />
+                Contact AR to pay
+              </span>
+            ) : undefined
+          }
+        />
+        {invoicesLoading ? (
+          <TableSkeleton rows={4} cols={4} />
+        ) : invoices.length === 0 ? (
+          <p className="text-sm text-text-muted">No invoices yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Number</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead align="right">Total</TableHead>
+                <TableHead>Due</TableHead>
+                <TableHead align="right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoices.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell mono>{inv.number}</TableCell>
+                  <TableCell>{inv.status}</TableCell>
+                  <TableCell align="right" mono>
+                    {Number(inv.total).toLocaleString(undefined, {
+                      style: 'currency',
+                      currency: inv.currency,
+                    })}
+                  </TableCell>
+                  <TableCell>
+                    {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : '—'}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={duplicateMutation.isPending}
+                      onClick={() => duplicateMutation.mutate(inv.id)}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Duplicate to cart
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      {openInvoices.length > 0 && (
+        <Card className="mt-6 flex items-center gap-3 p-4">
+          <FileText className="h-5 w-5 text-accent" />
+          <p className="text-sm text-text-muted">
+            {openInvoices.length} open invoice{openInvoices.length === 1 ? '' : 's'} — payment
+            restores your credit line automatically.
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+}

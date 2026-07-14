@@ -1,0 +1,92 @@
+package com.invsys.service;
+
+import com.invsys.api.dto.BomLineResponse;
+import com.invsys.api.dto.BomResponse;
+import com.invsys.api.dto.ProductionOrderResponse;
+import com.invsys.domain.Bom;
+import com.invsys.domain.BomLine;
+import com.invsys.domain.Product;
+import com.invsys.domain.ProductVariant;
+import com.invsys.domain.ProductionOrder;
+import com.invsys.repository.BomLineRepository;
+import com.invsys.repository.ProductRepository;
+import com.invsys.repository.ProductVariantRepository;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.UUID;
+
+@Component
+public class ManufacturingDtoMapper {
+
+    private final ProductVariantRepository variantRepository;
+    private final ProductRepository productRepository;
+    private final BomLineRepository bomLineRepository;
+
+    public ManufacturingDtoMapper(ProductVariantRepository variantRepository,
+                                  ProductRepository productRepository,
+                                  BomLineRepository bomLineRepository) {
+        this.variantRepository = variantRepository;
+        this.productRepository = productRepository;
+        this.bomLineRepository = bomLineRepository;
+    }
+
+    public BomResponse toBomResponse(Bom bom) {
+        VariantInfo parent = resolveVariant(bom.getParentVariantId());
+        List<BomLineResponse> lines = bomLineRepository.findByBomId(bom.getId()).stream()
+                .map(this::toBomLineResponse)
+                .toList();
+        return new BomResponse(
+                bom.getId(),
+                bom.getParentVariantId(),
+                parent.sku(),
+                parent.name(),
+                bom.getName(),
+                bom.isActive(),
+                bom.isAutoAssemble(),
+                lines,
+                bom.getCreatedAt()
+        );
+    }
+
+    public BomLineResponse toBomLineResponse(BomLine line) {
+        VariantInfo component = resolveVariant(line.getComponentVariantId());
+        return new BomLineResponse(
+                line.getId(),
+                line.getComponentVariantId(),
+                component.sku(),
+                component.name(),
+                line.getQuantityRequired()
+        );
+    }
+
+    public ProductionOrderResponse toProductionOrderResponse(ProductionOrder order) {
+        VariantInfo parent = resolveVariant(order.getParentVariantId());
+        return new ProductionOrderResponse(
+                order.getId(),
+                order.getNumber(),
+                order.getParentVariantId(),
+                parent.sku(),
+                parent.name(),
+                order.getQtyTarget(),
+                order.getQtyProduced(),
+                order.getStatus(),
+                order.getCreatedAt()
+        );
+    }
+
+    private VariantInfo resolveVariant(UUID variantId) {
+        return variantRepository.findById(variantId)
+                .map(variant -> new VariantInfo(variant.getSku(), resolveProductName(variant)))
+                .orElse(new VariantInfo(null, null));
+    }
+
+    private String resolveProductName(ProductVariant variant) {
+        return productRepository.findById(variant.getProductId())
+                .map(Product::getName)
+                .orElse(variant.getSku());
+    }
+
+    private record VariantInfo(String sku, String name) {
+    }
+}

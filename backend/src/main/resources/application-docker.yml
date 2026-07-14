@@ -1,0 +1,13 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://db:5432/invsys
+  flyway:
+    url: jdbc:postgresql://db:5432/invsys
+
+invsys:
+  jwt:
+    private-key-file: ${JWT_PRIVATE_KEY_FILE:/run/jwt/dev-private.pem}
+    public-key-file: ${JWT_PUBLIC_KEY_FILE:/run/jwt/dev-public.pem}

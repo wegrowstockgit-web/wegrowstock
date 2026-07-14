@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: invsys-db
+    environment:
+      POSTGRES_DB: invsys
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - invsys_pgdata:/var/lib/postgresql/data
+      - ./ops/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./ops/demo_seed.sql:/seed/demo_seed.sql:ro
+      - ./ops/fix_passwords.sql:/seed/fix_passwords.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d invsys"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: invsys-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: invsys
+      DB_USER: app_user
+      DB_PASSWORD: app_user_secret
+      FLYWAY_USER: app_owner
+      FLYWAY_PASSWORD: app_owner_secret
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      STRIPE_WEBHOOK_SECRET: whsec_mock_secret
+      SHOPIFY_WEBHOOK_SECRET: shopify_mock_secret
+      EASYPOST_WEBHOOK_SECRET: easypost_mock_secret
+      PUBLIC_SIGNUP_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./ops/jwt:/run/jwt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: invsys-web
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
+volumes:
+  invsys_pgdata:

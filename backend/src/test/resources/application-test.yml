@@ -1,0 +1,30 @@
+spring:
+  flyway:
+    enabled: true
+    user: app_owner
+    password: app_owner_secret
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        type:
+          preferred_uuid_jdbc_type: UUID
+  task:
+    scheduling:
+      enabled: false
+
+invsys:
+  jwt:
+    access-token-minutes: 15
+    refresh-token-days: 7
+  integration:
+    accounting:
+      mock: true
+    outbox:
+      dispatcher-enabled: false
+  observability:
+    alert-scan-interval-ms: 3600000
+  security:
+    public-signup-enabled: true
+    cors-allowed-origins: http://localhost:5173,http://localhost:3000
