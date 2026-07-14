@@ -8,6 +8,7 @@ export interface PortalCatalogItemRaw {
   productName: string;
   unitPrice: number;
   currency: string;
+  primaryMediaUrl?: string | null;
 }
 
 export function mapPortalCatalogItem(raw: PortalCatalogItemRaw): PortalCatalogItem {
@@ -17,6 +18,7 @@ export function mapPortalCatalogItem(raw: PortalCatalogItemRaw): PortalCatalogIt
     name: raw.productName,
     unitPrice: Number(raw.unitPrice),
     currency: raw.currency,
+    primaryMediaUrl: raw.primaryMediaUrl ?? null,
   };
 }
 

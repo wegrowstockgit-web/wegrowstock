@@ -114,7 +114,7 @@ Useful frontend scripts: `npm run build`, `npm test` (Vitest), `npm run test:e2e
 
 ## Architecture
 
-- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V043`), RS256 JWT, virtual threads, Actuator/Prometheus
+- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V044`), RS256 JWT, virtual threads, Actuator/Prometheus
 - **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels`
 - **Frontend:** React 19.2 (latest stable), TypeScript, Vite, Tailwind design tokens (Surface A office / Surface B warehouse), TanStack Query + persist, Zustand, Lucide
 - **Surfaces:** Office shell (expandable icon rail + ⌘K palette), warehouse floor ops (HID scan, waves, cycle counts, issue supplies, van truck), B2B showroom (`/showroom`)

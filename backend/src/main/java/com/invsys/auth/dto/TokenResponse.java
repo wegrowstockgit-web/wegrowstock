@@ -9,9 +9,15 @@ public record TokenResponse(
         UUID tenantId,
         UUID userId,
         List<String> roles,
-        List<UUID> warehouseIds
+        List<UUID> warehouseIds,
+        String avatarUrl
 ) {
     public TokenResponse(String accessToken, String refreshToken, UUID tenantId, UUID userId, List<String> roles) {
-        this(accessToken, refreshToken, tenantId, userId, roles, List.of());
+        this(accessToken, refreshToken, tenantId, userId, roles, List.of(), null);
+    }
+
+    public TokenResponse(String accessToken, String refreshToken, UUID tenantId, UUID userId,
+                         List<String> roles, List<UUID> warehouseIds) {
+        this(accessToken, refreshToken, tenantId, userId, roles, warehouseIds, null);
     }
 }

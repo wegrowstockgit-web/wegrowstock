@@ -25,6 +25,7 @@ interface SessionState {
   /** Device login preserved while a short-lived terminal PIN JWT is active. */
   primarySession: PrimarySessionSnapshot | null;
   setSessionFromToken: (token: TokenResponse, email: string, displayName?: string) => void;
+  setAvatarUrl: (avatarUrl: string | null) => void;
   updateTokens: (accessToken: string, refreshToken?: string) => void;
   applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
   restorePrimarySession: () => void;
@@ -59,8 +60,24 @@ export const useSessionStore = create<SessionState>()(
             displayName: displayName ?? email.split('@')[0],
             roles: token.roles,
             warehouseIds: token.warehouseIds ?? [],
+            avatarUrl: token.avatarUrl ?? null,
           },
         }),
+
+      setAvatarUrl: (avatarUrl) =>
+        set((state) =>
+          state.user
+            ? {
+                user: { ...state.user, avatarUrl },
+                primarySession: state.primarySession
+                  ? {
+                      ...state.primarySession,
+                      user: { ...state.primarySession.user, avatarUrl },
+                    }
+                  : state.primarySession,
+              }
+            : state
+        ),
 
       updateTokens: (accessToken, refreshToken) =>
         set((state) => ({

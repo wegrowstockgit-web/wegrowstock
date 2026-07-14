@@ -147,7 +147,8 @@ public class AuthService {
         replacement = refreshTokenRepository.save(replacement);
         tokenEntity.setReplacedBy(replacement.getId());
         refreshTokenRepository.save(tokenEntity);
-        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds);
+        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
+                user.getAvatarUrl());
     }
 
     @Transactional
@@ -246,7 +247,22 @@ public class AuthService {
         entity.setTokenHash(hashToken(refresh));
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
         refreshTokenRepository.save(entity);
-        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds);
+        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
+                user.getAvatarUrl());
+    }
+
+    @Transactional
+    public User updateMyAvatar(String avatarUrl) {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        String normalized = avatarUrl == null || avatarUrl.isBlank() ? null : avatarUrl.trim();
+        if (normalized != null && normalized.length() > 1024) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_AVATAR", "avatarUrl must be <= 1024 chars");
+        }
+        user.setAvatarUrl(normalized);
+        return userRepository.save(user);
     }
 
     /**

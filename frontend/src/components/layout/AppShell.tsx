@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TerminalPinPad } from './TerminalPinPad';
 import { Sidebar } from './Sidebar';
 import { CommandPalette, useCommandPalette } from './CommandPalette';
+import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
@@ -198,11 +199,18 @@ export function AppShell() {
 
           <div className="flex items-center gap-3">
             {isWarehouseView && <TerminalPinPad warehouseSized />}
-            {!isWarehouseView && (
-              <span className="hidden text-sm text-text-muted sm:inline">
-                {user?.displayName ?? user?.email}
-              </span>
-            )}
+            <div className="flex items-center gap-2" data-testid="header-user">
+              <Avatar
+                src={user?.avatarUrl}
+                alt={user?.displayName ?? user?.email ?? 'User'}
+                size={isWarehouseView ? 'lg' : 'md'}
+              />
+              {!isWarehouseView && (
+                <span className="hidden text-sm text-text-muted sm:inline">
+                  {user?.displayName ?? user?.email}
+                </span>
+              )}
+            </div>
             <Button variant="ghost" size="sm" onClick={() => void handleSignOut()}>
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">Sign out</span>

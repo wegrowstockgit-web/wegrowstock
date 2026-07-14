@@ -9,6 +9,7 @@ import com.invsys.domain.CustomerCatalogRestriction;
 import com.invsys.domain.CustomerPriceTier;
 import com.invsys.domain.Invoice;
 import com.invsys.domain.Product;
+import com.invsys.domain.ProductMedia;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
@@ -17,6 +18,7 @@ import com.invsys.repository.CustomerCatalogRestrictionRepository;
 import com.invsys.repository.CustomerPriceTierRepository;
 import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.InvoiceRepository;
+import com.invsys.repository.ProductMediaRepository;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
@@ -33,8 +35,10 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class PortalService {
@@ -51,6 +55,7 @@ public class PortalService {
     private final CreditService creditService;
     private final CustomerCatalogRestrictionRepository catalogRestrictionRepository;
     private final VolumePriceBreakRepository volumePriceBreakRepository;
+    private final ProductMediaRepository productMediaRepository;
 
     public PortalService(ProductVariantRepository variantRepository,
                          ProductRepository productRepository,
@@ -63,7 +68,8 @@ public class PortalService {
                          TenantSettingsRepository tenantSettingsRepository,
                          CreditService creditService,
                          CustomerCatalogRestrictionRepository catalogRestrictionRepository,
-                         VolumePriceBreakRepository volumePriceBreakRepository) {
+                         VolumePriceBreakRepository volumePriceBreakRepository,
+                         ProductMediaRepository productMediaRepository) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
@@ -76,6 +82,7 @@ public class PortalService {
         this.creditService = creditService;
         this.catalogRestrictionRepository = catalogRestrictionRepository;
         this.volumePriceBreakRepository = volumePriceBreakRepository;
+        this.productMediaRepository = productMediaRepository;
     }
 
     public List<PortalCatalogItemResponse> catalog() {
@@ -84,22 +91,35 @@ public class PortalService {
         BigDecimal tierDiscount = resolveDiscount(customerId);
         CatalogFilter filter = catalogFilter(tenantId, customerId);
 
-        List<PortalCatalogItemResponse> items = new ArrayList<>();
+        List<ProductVariant> allowedVariants = new ArrayList<>();
         for (Product product : productRepository.findByTenantIdAndDeletedAtIsNullOrderByNameAsc(tenantId)) {
             for (ProductVariant variant : variantRepository.findByTenantIdAndProductId(tenantId, product.getId())) {
-                if (!filter.allows(product.getId(), variant.getId())) {
-                    continue;
+                if (filter.allows(product.getId(), variant.getId())) {
+                    allowedVariants.add(variant);
                 }
-                BigDecimal discount = resolveEffectiveDiscount(tenantId, variant.getId(), BigDecimal.ONE, tierDiscount);
-                BigDecimal discounted = applyDiscount(variant.getPrice(), discount);
-                items.add(new PortalCatalogItemResponse(
-                        variant.getId(),
-                        product.getId(),
-                        variant.getSku(),
-                        product.getName(),
-                        discounted,
-                        variant.getCurrency()));
             }
+        }
+        Map<UUID, String> primaryMedia = productMediaRepository
+                .findByTenantIdAndVariantIdInAndPrimaryTrue(
+                        tenantId, allowedVariants.stream().map(ProductVariant::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(ProductMedia::getVariantId, ProductMedia::getUrl, (a, b) -> a));
+        Map<UUID, String> productNames = productRepository.findByTenantIdAndDeletedAtIsNullOrderByNameAsc(tenantId)
+                .stream()
+                .collect(Collectors.toMap(Product::getId, Product::getName, (a, b) -> a));
+
+        List<PortalCatalogItemResponse> items = new ArrayList<>();
+        for (ProductVariant variant : allowedVariants) {
+            BigDecimal discount = resolveEffectiveDiscount(tenantId, variant.getId(), BigDecimal.ONE, tierDiscount);
+            BigDecimal discounted = applyDiscount(variant.getPrice(), discount);
+            items.add(new PortalCatalogItemResponse(
+                    variant.getId(),
+                    variant.getProductId(),
+                    variant.getSku(),
+                    productNames.getOrDefault(variant.getProductId(), variant.getSku()),
+                    discounted,
+                    variant.getCurrency(),
+                    primaryMedia.get(variant.getId())));
         }
         return items;
     }

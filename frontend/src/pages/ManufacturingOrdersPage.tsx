@@ -36,6 +36,8 @@ import {
 
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 
+import { VariantThumb } from '@/components/ui/VariantThumb';
+
 import { useSessionStore } from '@/stores/session';
 
 import { cn } from '@/lib/utils';
@@ -473,6 +475,8 @@ export function ManufacturingOrdersPage() {
 
                 <TableHead>Product</TableHead>
 
+                <TableHead className="w-12" aria-label="Thumbnail" />
+
                 <TableHead>Status</TableHead>
 
                 <TableHead align="right">Target</TableHead>
@@ -494,6 +498,14 @@ export function ManufacturingOrdersPage() {
                   <TableCell mono>{order.number}</TableCell>
 
                   <TableCell>{order.parentSku ?? order.parentName ?? order.parentVariantId}</TableCell>
+
+                  <TableCell>
+                    <VariantThumb
+                      url={order.primaryMediaUrl}
+                      alt={order.parentName ?? order.parentSku ?? 'Finished good'}
+                      size="sm"
+                    />
+                  </TableCell>
 
                   <TableCell>
 

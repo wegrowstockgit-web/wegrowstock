@@ -4,6 +4,7 @@ export interface User {
   displayName: string;
   roles: string[];
   warehouseIds?: string[];
+  avatarUrl?: string | null;
 }
 
 export interface AuthTokens {
@@ -23,6 +24,7 @@ export interface TokenResponse {
   userId: string;
   roles: string[];
   warehouseIds?: string[];
+  avatarUrl?: string | null;
 }
 
 /** @deprecated use TokenResponse */
@@ -92,6 +94,7 @@ export interface ProductVariant {
   dims?: Record<string, unknown>;
   reorderPoint?: number;
   reorderQty?: number;
+  primaryMediaUrl?: string | null;
 }
 
 export interface VariantUomConversion {
@@ -223,6 +226,7 @@ export interface ProductionOrder {
   status: 'DRAFT' | 'COMPONENTS_ALLOCATED' | 'WIP' | 'COMPLETED' | 'CANCELLED' | string;
   createdAt?: string;
   updatedAt?: string;
+  primaryMediaUrl?: string | null;
 }
 
 export interface ReturnLine {
@@ -258,6 +262,7 @@ export interface PortalCatalogItem {
   currency: string;
   atp?: number;
   category?: string;
+  primaryMediaUrl?: string | null;
 }
 
 export interface PortalOrder {
@@ -581,6 +586,7 @@ export interface FulfillmentScanResponse {
   serialPrompt?: string | null;
   message: string;
   putawayTarget?: string | null;
+  primaryMediaUrl?: string | null;
 }
 
 export interface SsoConfig {

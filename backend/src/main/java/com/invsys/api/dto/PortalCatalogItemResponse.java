@@ -9,6 +9,7 @@ public record PortalCatalogItemResponse(
         String sku,
         String productName,
         BigDecimal unitPrice,
-        String currency
+        String currency,
+        String primaryMediaUrl
 ) {
 }

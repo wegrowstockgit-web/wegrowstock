@@ -18,6 +18,8 @@ import { Input } from '@/components/ui/Input';
 
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
+import { VariantThumb } from '@/components/ui/VariantThumb';
+
 import { useShowroomCart } from '@/showroom/useShowroomCart';
 
 
@@ -187,6 +189,10 @@ export function ShowroomCatalogPage() {
             return (
 
               <Card key={item.id}>
+
+                <div className="mb-3">
+                  <VariantThumb url={item.primaryMediaUrl} alt={item.name} size="lg" className="rounded-lg" />
+                </div>
 
                 <p className="font-mono text-xs text-text-muted">{item.sku}</p>
 

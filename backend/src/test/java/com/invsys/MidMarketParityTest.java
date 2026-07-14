@@ -122,6 +122,7 @@ class MidMarketParityTest extends AbstractIntegrationTest {
         ScanLookupResponse result = scanService.lookup("9900222233331");
         assertThat(result.defaultLocationId()).isEqualTo(bin.getId());
         assertThat(result.defaultLocationPath()).isEqualTo("WH-01/Z-A/A-4/B");
+        assertThat(result.primaryMediaUrl()).isNull();
     }
 
     @Test

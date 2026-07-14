@@ -13,6 +13,7 @@ public record ProductionOrderResponse(
         BigDecimal qtyTarget,
         BigDecimal qtyProduced,
         String status,
-        Instant createdAt
+        Instant createdAt,
+        String primaryMediaUrl
 ) {
 }

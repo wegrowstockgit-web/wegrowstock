@@ -23,6 +23,9 @@ public class User extends TenantScopedEntity {
     @Column(name = "terminal_pin_hash", length = 64)
     private String terminalPinHash;
 
+    @Column(name = "avatar_url", length = 1024)
+    private String avatarUrl;
+
     public String getEmail() {
         return email;
     }
@@ -61,5 +64,13 @@ public class User extends TenantScopedEntity {
 
     public void setTerminalPinHash(String terminalPinHash) {
         this.terminalPinHash = terminalPinHash;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 }

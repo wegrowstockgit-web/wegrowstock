@@ -17,12 +17,26 @@ public record ScanLookupResponse(
         String lotNumber,
         LocalDate expiryDate,
         String serialNumber,
-        Map<String, String> gs1Elements
+        Map<String, String> gs1Elements,
+        String primaryMediaUrl
 ) {
     public ScanLookupResponse(ProductVariant variant,
                               List<InventoryLevel> levels,
                               UUID defaultLocationId,
                               String defaultLocationPath) {
-        this(variant, levels, defaultLocationId, defaultLocationPath, null, null, null, null, Map.of());
+        this(variant, levels, defaultLocationId, defaultLocationPath, null, null, null, null, Map.of(), null);
+    }
+
+    public ScanLookupResponse(ProductVariant variant,
+                              List<InventoryLevel> levels,
+                              UUID defaultLocationId,
+                              String defaultLocationPath,
+                              String gtin,
+                              String lotNumber,
+                              LocalDate expiryDate,
+                              String serialNumber,
+                              Map<String, String> gs1Elements) {
+        this(variant, levels, defaultLocationId, defaultLocationPath, gtin, lotNumber, expiryDate, serialNumber,
+                gs1Elements, null);
     }
 }

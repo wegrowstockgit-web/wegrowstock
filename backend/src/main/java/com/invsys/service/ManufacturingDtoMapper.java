@@ -6,9 +6,11 @@ import com.invsys.api.dto.ProductionOrderResponse;
 import com.invsys.domain.Bom;
 import com.invsys.domain.BomLine;
 import com.invsys.domain.Product;
+import com.invsys.domain.ProductMedia;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.ProductionOrder;
 import com.invsys.repository.BomLineRepository;
+import com.invsys.repository.ProductMediaRepository;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import org.springframework.stereotype.Component;
@@ -22,13 +24,16 @@ public class ManufacturingDtoMapper {
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
     private final BomLineRepository bomLineRepository;
+    private final ProductMediaRepository productMediaRepository;
 
     public ManufacturingDtoMapper(ProductVariantRepository variantRepository,
                                   ProductRepository productRepository,
-                                  BomLineRepository bomLineRepository) {
+                                  BomLineRepository bomLineRepository,
+                                  ProductMediaRepository productMediaRepository) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.bomLineRepository = bomLineRepository;
+        this.productMediaRepository = productMediaRepository;
     }
 
     public BomResponse toBomResponse(Bom bom) {
@@ -62,6 +67,10 @@ public class ManufacturingDtoMapper {
 
     public ProductionOrderResponse toProductionOrderResponse(ProductionOrder order) {
         VariantInfo parent = resolveVariant(order.getParentVariantId());
+        String mediaUrl = productMediaRepository
+                .findFirstByTenantIdAndVariantIdAndPrimaryTrue(order.getTenantId(), order.getParentVariantId())
+                .map(ProductMedia::getUrl)
+                .orElse(null);
         return new ProductionOrderResponse(
                 order.getId(),
                 order.getNumber(),
@@ -71,7 +80,8 @@ public class ManufacturingDtoMapper {
                 order.getQtyTarget(),
                 order.getQtyProduced(),
                 order.getStatus(),
-                order.getCreatedAt()
+                order.getCreatedAt(),
+                mediaUrl
         );
     }
 

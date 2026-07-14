@@ -4,8 +4,10 @@ import com.invsys.api.dto.VariantListItemResponse;
 import com.invsys.common.PageResponse;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.Product;
+import com.invsys.domain.ProductMedia;
 import com.invsys.domain.ProductVariant;
 import com.invsys.repository.InventoryLevelRepository;
+import com.invsys.repository.ProductMediaRepository;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.tenancy.TenantContext;
@@ -24,17 +26,20 @@ public class VariantCatalogService {
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
     private final InventoryLevelRepository levelRepository;
+    private final ProductMediaRepository productMediaRepository;
 
     public VariantCatalogService(ProductVariantRepository variantRepository,
                                  ProductRepository productRepository,
-                                 InventoryLevelRepository levelRepository) {
+                                 InventoryLevelRepository levelRepository,
+                                 ProductMediaRepository productMediaRepository) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.levelRepository = levelRepository;
+        this.productMediaRepository = productMediaRepository;
     }
 
     public PageResponse<VariantListItemResponse> list(String query, String cursor, int limit) {
-        TenantContext.requireTenantId();
+        UUID tenantId = TenantContext.requireTenantId();
         int pageSize = Math.min(Math.max(limit, 1), 200);
 
         Map<UUID, String> productNames = productRepository.findAll().stream()
@@ -54,9 +59,16 @@ public class VariantCatalogService {
 
         String q = query != null ? query.trim().toLowerCase() : "";
 
+        Map<UUID, String> primaryMediaByVariant = productMediaRepository
+                .findByTenantIdAndVariantIdInAndPrimaryTrue(
+                        tenantId,
+                        variantRepository.findAll().stream().map(ProductVariant::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(ProductMedia::getVariantId, ProductMedia::getUrl, (a, b) -> a));
+
         List<VariantListItemResponse> all = variantRepository.findAll().stream()
                 .sorted(Comparator.comparing(ProductVariant::getSku))
-                .map(variant -> toItem(variant, productNames, onHandByVariant, allocatedByVariant))
+                .map(variant -> toItem(variant, productNames, onHandByVariant, allocatedByVariant, primaryMediaByVariant))
                 .filter(item -> matchesQuery(item, q))
                 .toList();
 
@@ -90,7 +102,8 @@ public class VariantCatalogService {
             ProductVariant variant,
             Map<UUID, String> productNames,
             Map<UUID, BigDecimal> onHandByVariant,
-            Map<UUID, BigDecimal> allocatedByVariant) {
+            Map<UUID, BigDecimal> allocatedByVariant,
+            Map<UUID, String> primaryMediaByVariant) {
         BigDecimal onHand = onHandByVariant.getOrDefault(variant.getId(), BigDecimal.ZERO);
         BigDecimal allocated = allocatedByVariant.getOrDefault(variant.getId(), BigDecimal.ZERO);
         return new VariantListItemResponse(
@@ -109,6 +122,7 @@ public class VariantCatalogService {
                 variant.getDefaultSupplierId(),
                 variant.getSupplierLeadTimeDays(),
                 variant.getReorderPoint(),
-                variant.getReorderQty());
+                variant.getReorderQty(),
+                primaryMediaByVariant.get(variant.getId()));
     }
 }

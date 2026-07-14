@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { LocationBreadcrumb } from '@/components/ui/LocationBreadcrumb';
 import { UndoToast } from '@/components/ui/UndoToast';
+import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
 
 function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
@@ -77,6 +78,7 @@ interface ScanResult {
   success: boolean;
   message: string;
   putawayTarget?: string;
+  primaryMediaUrl?: string | null;
   timestamp: number;
 }
 
@@ -95,6 +97,7 @@ export function FulfillmentPage() {
   const lastScan = useScanBufferStore((s) => s.lastScan);
   const { flash, triggerSuccess, triggerError } = useScanFeedback();
   const [history, setHistory] = useState<ScanResult[]>([]);
+  const [lastThumbUrl, setLastThumbUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<'pick' | 'receive'>('pick');
   const [batchMode, setBatchMode] = useState(false);
   const [serialCapture, setSerialCapture] = useState<SerialCaptureState | null>(null);
@@ -208,6 +211,7 @@ export function FulfillmentPage() {
       if (batchMode && nextTask) {
         pickTaskMutation.mutate(nextTask.id);
       }
+      setLastThumbUrl(result.primaryMediaUrl ?? null);
       setHistory((h) => [
         {
           barcode,
@@ -216,6 +220,7 @@ export function FulfillmentPage() {
           success: true,
           message: result.message,
           putawayTarget: result.putawayTarget ?? undefined,
+          primaryMediaUrl: result.primaryMediaUrl ?? null,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -224,6 +229,7 @@ export function FulfillmentPage() {
     },
     onError: (_err, barcode) => {
       triggerError();
+      setLastThumbUrl(null);
       setHistory((h) => [
         {
           barcode,
@@ -247,6 +253,7 @@ export function FulfillmentPage() {
       triggerSuccess();
       if ('vibrate' in navigator) navigator.vibrate([40, 30, 40, 30, 40]);
       const serial = serialCapture.captured.length + 1;
+      setLastThumbUrl(result.primaryMediaUrl ?? null);
       setHistory((h) => [
         {
           barcode: serialCapture.barcode,
@@ -254,6 +261,7 @@ export function FulfillmentPage() {
           name: result.name,
           success: true,
           message: `Serial captured (${serial})`,
+          primaryMediaUrl: result.primaryMediaUrl ?? null,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -493,11 +501,20 @@ export function FulfillmentPage() {
         </>
       )}
 
-      <Card className="mb-6 text-center" padding="lg">
+      <Card className="mb-6 text-center" padding="lg" data-testid="scan-buffer-card">
         <p className="text-sm text-text-muted">Last scan</p>
-        <p className="mt-1 font-mono text-2xl font-bold text-text">
-          {lastScan ?? 'Ready to scan'}
-        </p>
+        <div className="mt-3 flex items-center justify-center gap-4">
+          {(lastThumbUrl || history[0]?.success) && (
+            <VariantThumb
+              url={lastThumbUrl ?? history[0]?.primaryMediaUrl}
+              alt={history[0]?.name ?? history[0]?.sku ?? 'Scanned item'}
+              size="lg"
+            />
+          )}
+          <p className="font-mono text-2xl font-bold text-text">
+            {lastScan ?? 'Ready to scan'}
+          </p>
+        </div>
         {(scanMutation.isPending || serialScanMutation.isPending) && (
           <p className="mt-2 text-sm text-accent">Processing...</p>
         )}
@@ -518,13 +535,14 @@ export function FulfillmentPage() {
                   : 'border-danger/30 bg-danger/5'
               )}
             >
-              <div
-                className={cn(
-                  'h-2.5 w-2.5 shrink-0 rounded-full',
-                  item.success ? 'bg-success' : 'bg-danger'
-                )}
-                aria-hidden
-              />
+              {item.success ? (
+                <VariantThumb url={item.primaryMediaUrl} alt={item.name ?? item.sku ?? item.barcode} size="md" />
+              ) : (
+                <div
+                  className="h-2.5 w-2.5 shrink-0 rounded-full bg-danger"
+                  aria-hidden
+                />
+              )}
               <div className="min-w-0 flex-1">
                 <p className="truncate font-mono font-medium text-text">{item.sku ?? item.barcode}</p>
                 {item.name && <p className="truncate text-sm text-text-muted">{item.name}</p>}

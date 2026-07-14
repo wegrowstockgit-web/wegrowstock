@@ -73,7 +73,8 @@ public class FulfillmentController {
                     Boolean.TRUE.equals(body.get("requiresSerial")),
                     (String) body.get("serialPrompt"),
                     (String) body.get("message"),
-                    (String) body.get("putawayTarget"));
+                    (String) body.get("putawayTarget"),
+                    (String) body.get("primaryMediaUrl"));
             return ResponseEntity.status(cached.get().status()).body(replayed);
         }
 
@@ -96,6 +97,7 @@ public class FulfillmentController {
                 .map(Product::getName)
                 .orElse(variant.getSku());
         String putawayTarget = scanService.resolvePutawayPath(variant);
+        String primaryMediaUrl = scanService.primaryMediaUrl(variant.getId());
 
         String message;
         if ("receive".equalsIgnoreCase(request.mode())) {
@@ -105,7 +107,7 @@ public class FulfillmentController {
             }
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getSku(), productName, true, "SERIAL_REQUIRED",
-                        "Scan serial numbers one at a time", putawayTarget);
+                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
             }
             inventoryService.receive(variant.getId(), request.warehouseId(), null,
                     BigDecimal.ONE, "SCAN_RECEIVE", null, null, request.serialNumber());
@@ -115,7 +117,7 @@ public class FulfillmentController {
         } else {
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getSku(), productName, true, "SERIAL_REQUIRED",
-                        "Scan serial numbers one at a time", putawayTarget);
+                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
             }
             inventoryService.adjust(variant.getId(), request.warehouseId(), null,
                     BigDecimal.ONE.negate(), "SCAN_PICK", request.serialNumber());
@@ -123,7 +125,7 @@ public class FulfillmentController {
                     ? "Picked serial " + request.serialNumber()
                     : "Picked 1 unit";
         }
-        return new ScanResponse(variant.getSku(), productName, false, null, message, putawayTarget);
+        return new ScanResponse(variant.getSku(), productName, false, null, message, putawayTarget, primaryMediaUrl);
     }
 
     private boolean allowBlindReceiving() {
@@ -147,6 +149,7 @@ public class FulfillmentController {
         map.put("serialPrompt", response.serialPrompt());
         map.put("message", response.message());
         map.put("putawayTarget", response.putawayTarget());
+        map.put("primaryMediaUrl", response.primaryMediaUrl());
         return map;
     }
 
@@ -164,7 +167,8 @@ public class FulfillmentController {
             boolean requiresSerial,
             String serialPrompt,
             String message,
-            String putawayTarget
+            String putawayTarget,
+            String primaryMediaUrl
     ) {
     }
 }

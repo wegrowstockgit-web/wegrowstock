@@ -12,6 +12,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
+import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
 
@@ -25,10 +26,10 @@ function qty(value: number | null | undefined): string {
 function productsGridClass(canManage: boolean, syncSupported: boolean) {
   return cn(
     'grid w-full items-center gap-x-2 px-4',
-    canManage && syncSupported && 'grid-cols-[minmax(6.5rem,1.1fr)_minmax(7rem,1.4fr)_minmax(5.5rem,1fr)_repeat(4,minmax(4.25rem,0.7fr))_3.25rem_3.5rem]',
-    canManage && !syncSupported && 'grid-cols-[minmax(6.5rem,1.2fr)_minmax(7rem,1.5fr)_minmax(5.5rem,1.1fr)_repeat(4,minmax(4.25rem,0.75fr))_3.25rem]',
-    !canManage && syncSupported && 'grid-cols-[minmax(6.5rem,1.1fr)_minmax(7rem,1.4fr)_minmax(5.5rem,1fr)_repeat(4,minmax(4.25rem,0.7fr))_3.5rem]',
-    !canManage && !syncSupported && 'grid-cols-[minmax(6.5rem,1.2fr)_minmax(7rem,1.6fr)_minmax(5.5rem,1.1fr)_repeat(4,minmax(4.5rem,0.8fr))]'
+    canManage && syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.1fr)_minmax(7rem,1.4fr)_minmax(5.5rem,1fr)_repeat(4,minmax(4.25rem,0.7fr))_3.25rem_3.5rem]',
+    canManage && !syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.2fr)_minmax(7rem,1.5fr)_minmax(5.5rem,1.1fr)_repeat(4,minmax(4.25rem,0.75fr))_3.25rem]',
+    !canManage && syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.1fr)_minmax(7rem,1.4fr)_minmax(5.5rem,1fr)_repeat(4,minmax(4.25rem,0.7fr))_3.5rem]',
+    !canManage && !syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.2fr)_minmax(7rem,1.6fr)_minmax(5.5rem,1.1fr)_repeat(4,minmax(4.5rem,0.8fr))]'
   );
 }
 
@@ -378,6 +379,7 @@ export function ProductsPage() {
             )}
             role="row"
           >
+            <div aria-hidden />
             <div>SKU</div>
             <div>Name</div>
             <div>Barcode</div>
@@ -419,6 +421,9 @@ export function ProductsPage() {
                     role="row"
                     onClick={() => setPeekProductId(product.id)}
                   >
+                    <div className="flex justify-center">
+                      <VariantThumb url={product.primaryMediaUrl} alt={product.name} size="sm" />
+                    </div>
                     <div className="truncate font-mono text-text">{product.sku}</div>
                     <div className="truncate text-text">{product.name}</div>
                     <div className="truncate font-mono text-text-muted">

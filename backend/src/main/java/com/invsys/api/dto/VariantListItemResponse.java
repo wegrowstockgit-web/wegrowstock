@@ -19,6 +19,7 @@ public record VariantListItemResponse(
         UUID defaultSupplierId,
         int supplierLeadTimeDays,
         BigDecimal reorderPoint,
-        BigDecimal reorderQty
+        BigDecimal reorderQty,
+        String primaryMediaUrl
 ) {
 }
