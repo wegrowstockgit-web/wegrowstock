@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ScanLine, Scale } from 'lucide-react';
 import { apiClient } from '@/api/client';
-import type { FulfillmentScanResponse, PackLabelResponse, PickingTask, SalesOrder } from '@/api/types';
+import type {
+  FulfillmentScanResponse,
+  PackLabelResponse,
+  PaginatedResponse,
+  PickingTask,
+  ProductVariant,
+  SalesOrder,
+} from '@/api/types';
 import { useBluetoothScale } from '@/hooks/useBluetoothScale';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
@@ -11,8 +18,10 @@ import { useScanBufferStore } from '@/stores/scanBuffer';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useSessionStore } from '@/stores/session';
 import { useOfflineStore } from '@/stores/offlineStore';
+import { useVariantCacheStore } from '@/stores/variantCacheStore';
 import { cn, generateIdempotencyKey } from '@/lib/utils';
-import type { ParsedBarcode } from '@/utils/gs1Parser';
+import { evaluateLotGrace, type ParsedBarcode } from '@/utils/gs1Parser';
+import { enqueueMutation } from '@/offline/mutationQueue';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
@@ -134,6 +143,7 @@ export interface FulfillmentScanPayload {
   quantity?: number;
   isGs1?: boolean;
   rawBarcode?: string;
+  metadata?: Record<string, string>;
 }
 
 export function FulfillmentPage() {
@@ -141,7 +151,9 @@ export function FulfillmentPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const warehouse = useActiveWarehouseStore((s) => s.warehouse);
   const lastScan = useScanBufferStore((s) => s.lastScan);
-  const { flash, triggerSuccess, triggerError } = useScanFeedback();
+  const clearScanCard = useScanBufferStore((s) => s.clearScanCard);
+  const { flash, triggerSuccess, triggerError, triggerExceptionHaptic } = useScanFeedback();
+  const [skipFlagPending, setSkipFlagPending] = useState(false);
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
   const [history, setHistory] = useState<ScannerHistoryItem[]>([]);
   const [lastThumbUrl, setLastThumbUrl] = useState<string | null>(null);
@@ -154,12 +166,33 @@ export function FulfillmentPage() {
   const [showQuarantine, setShowQuarantine] = useState(false);
   const [gs1Fields, setGs1Fields] = useState<Gs1FieldState>(EMPTY_GS1);
   const [gs1Active, setGs1Active] = useState(false);
+  const [lotLoggedNotTracked, setLotLoggedNotTracked] = useState(false);
   const lastParsedRef = useRef<ParsedBarcode | null>(null);
   const gs1FeedbackPendingRef = useRef(false);
   const scale = useBluetoothScale();
   const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
   const bufferMisScan = useWarehouseUXStore((s) => s.bufferMisScan);
   const undoMisScan = useWarehouseUXStore((s) => s.undoMisScan);
+  const upsertVariants = useVariantCacheStore((s) => s.upsertMany);
+  const upsertVariant = useVariantCacheStore((s) => s.upsert);
+  const lookupVariant = useVariantCacheStore((s) => s.lookup);
+
+  useQuery({
+    queryKey: ['variants', 'lot-cache'],
+    queryFn: async () => {
+      const res = await apiClient.get<PaginatedResponse<ProductVariant>>('/api/v1/variants?limit=200');
+      upsertVariants(
+        (res.data.items ?? []).map((v) => ({
+          id: v.id,
+          sku: v.sku,
+          barcode: v.barcode,
+          isLotTracked: !!v.isLotTracked,
+        })),
+      );
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     if (searchParams.get('quarantine') === '1') {
@@ -208,6 +241,19 @@ export function FulfillmentPage() {
 
   const nextTask = batchTasks.find((t) => t.status === 'PENDING');
 
+  const lotMissingForTrackedPick = (() => {
+    if (mode !== 'pick' || !batchMode || !nextTask?.allocationId) return false;
+    const cached = nextTask.variantId ? lookupVariant(nextTask.variantId) : undefined;
+    const requiresLot = nextTask.isLotTracked === true || cached?.isLotTracked === true;
+    if (!requiresLot) return false;
+    const lotFromFields = gs1Fields.lotNumber.trim();
+    const lotFromParse = lastParsedRef.current?.lotNumber?.trim() ?? '';
+    // Show after any scan attempt on this stop, or when GS1 decoded without AI 10.
+    const attempted =
+      !!lastScan || gs1Active || (lastParsedRef.current != null && lastParsedRef.current.isGs1);
+    return attempted && !lotFromFields && !lotFromParse;
+  })();
+
   const pickTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       await apiClient.post(`/api/v1/picking/tasks/${taskId}/pick`);
@@ -235,6 +281,20 @@ export function FulfillmentPage() {
       if (lot) payload.lotNumber = lot;
       if (expiry) payload.expiryDate = expiry;
       if (quantity != null) payload.quantity = quantity;
+
+      const cached =
+        lookupVariant(parsed?.sku) ?? lookupVariant(barcode) ?? lookupVariant(payload.gtin);
+      const grace = evaluateLotGrace(
+        {
+          sku: parsed?.sku ?? barcode,
+          lotNumber: lot,
+          isGs1: true,
+        },
+        cached?.isLotTracked,
+      );
+      if (grace.metadata) {
+        payload.metadata = { ...payload.metadata, ...grace.metadata };
+      }
     }
     return payload;
   };
@@ -292,6 +352,16 @@ export function FulfillmentPage() {
       if (batchMode && nextTask) {
         pickTaskMutation.mutate(nextTask.id);
       }
+      if (result.variantId) {
+        upsertVariant({
+          id: result.variantId,
+          sku: result.sku,
+          barcode,
+          isLotTracked: !!result.isLotTracked,
+        });
+      }
+      const logged = !!result.lotLoggedNotTracked;
+      if (logged) setLotLoggedNotTracked(true);
       setLastThumbUrl(result.primaryMediaUrl ?? null);
       setHistory((h) => [
         {
@@ -306,6 +376,7 @@ export function FulfillmentPage() {
           lotNumber: gs1Fields.lotNumber || undefined,
           expiryDate: gs1Fields.expiryDate || undefined,
           quantity: gs1Fields.quantity ? Number(gs1Fields.quantity) : undefined,
+          lotLoggedNotTracked: logged,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -357,6 +428,63 @@ export function FulfillmentPage() {
     onError: () => triggerError(),
   });
 
+  const handleSkipFlag = async () => {
+    if (!nextTask?.allocationId || skipFlagPending) return;
+    const allocationId = nextTask.allocationId;
+    const taskId = nextTask.id;
+    setSkipFlagPending(true);
+
+    // Optimistic: advance pick path immediately.
+    void queryClient.setQueryData<PickingTask[]>(['picking', 'batch-tasks'], (prev) =>
+      (prev ?? []).map((t) => (t.id === taskId ? { ...t, status: 'SKIPPED' } : t)),
+    );
+    clearScanCard();
+    setGs1Active(false);
+    setGs1Fields(EMPTY_GS1);
+    setLotLoggedNotTracked(false);
+    lastParsedRef.current = null;
+    triggerExceptionHaptic();
+    setHistory((h) => [
+      {
+        barcode: lastScan ?? 'EXCEPTION',
+        success: false,
+        message: 'Skipped — damaged barcode flagged for office',
+        timestamp: Date.now(),
+      },
+      ...h.slice(0, 19),
+    ]);
+
+    const body = {
+      allocationId,
+      metadata: {
+        reason: 'DAMAGED_BARCODE',
+        taskId,
+        locationPath: nextTask.locationPath,
+      },
+    };
+    const idempotencyKey = generateIdempotencyKey();
+
+    try {
+      if (!navigator.onLine) {
+        await enqueueMutation({
+          idempotencyKey,
+          method: 'POST',
+          url: '/api/v1/fulfillment/exceptions/report',
+          body,
+        });
+      } else {
+        await apiClient.post('/api/v1/fulfillment/exceptions/report', body, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+        });
+      }
+      void refetchTasks();
+    } catch {
+      void refetchTasks();
+    } finally {
+      setSkipFlagPending(false);
+    }
+  };
+
   useHardwareScanner({
     enabled: true,
     captureAll: true,
@@ -368,7 +496,10 @@ export function FulfillmentPage() {
         expiryDate: parsed.expiryDate ?? '',
         quantity: parsed.quantity != null ? String(parsed.quantity) : '',
       });
-      // Instant offline-capable feedback: 50ms vibrate + green flash (useScanFeedback contract).
+      const cached = lookupVariant(parsed.sku);
+      const grace = evaluateLotGrace(parsed, cached?.isLotTracked);
+      setLotLoggedNotTracked(grace.lotLoggedNotTracked);
+      // Instant offline-capable feedback: never block velocity for unexpected lot AI.
       gs1FeedbackPendingRef.current = true;
       triggerSuccess();
     },
@@ -378,6 +509,7 @@ export function FulfillmentPage() {
         lastParsedRef.current = null;
         setGs1Active(false);
         setGs1Fields(EMPTY_GS1);
+        setLotLoggedNotTracked(false);
         gs1FeedbackPendingRef.current = false;
       }
       if (serialCapture) {
@@ -636,9 +768,14 @@ export function FulfillmentPage() {
         history={history}
         scanning={scanMutation.isPending || serialScanMutation.isPending}
         mode={mode}
+        feedbackFlash={flash}
         gs1Active={gs1Active}
         gs1Fields={gs1Fields}
         onGs1FieldsChange={setGs1Fields}
+        lotLoggedNotTracked={lotLoggedNotTracked}
+        showSkipFlag={lotMissingForTrackedPick}
+        skipFlagPending={skipFlagPending}
+        onSkipFlag={() => void handleSkipFlag()}
         onThumbCaptured={(url, variantId) => {
           setLastThumbUrl(url);
           setHistory((h) =>

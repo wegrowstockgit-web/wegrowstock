@@ -7,6 +7,7 @@ import com.invsys.domain.ProductVariant;
 import com.invsys.domain.VariantBarcode;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.VariantBarcodeRepository;
+import com.invsys.service.SkuMaskService;
 import com.invsys.service.UomConversionService;
 import com.invsys.service.VariantCatalogService;
 import com.invsys.tenancy.TenantContext;
@@ -15,6 +16,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -38,15 +40,18 @@ public class ProductVariantController {
     private final VariantCatalogService variantCatalogService;
     private final UomConversionService uomConversionService;
     private final VariantBarcodeRepository variantBarcodeRepository;
+    private final SkuMaskService skuMaskService;
 
     public ProductVariantController(ProductVariantRepository variantRepository,
                                     VariantCatalogService variantCatalogService,
                                     UomConversionService uomConversionService,
-                                    VariantBarcodeRepository variantBarcodeRepository) {
+                                    VariantBarcodeRepository variantBarcodeRepository,
+                                    SkuMaskService skuMaskService) {
         this.variantRepository = variantRepository;
         this.variantCatalogService = variantCatalogService;
         this.uomConversionService = uomConversionService;
         this.variantBarcodeRepository = variantBarcodeRepository;
+        this.skuMaskService = skuMaskService;
     }
 
     @GetMapping
@@ -66,12 +71,18 @@ public class ProductVariantController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    @Transactional
     public ProductVariant create(@Valid @RequestBody CreateVariantRequest request) {
         ProductVariant variant = new ProductVariant();
         variant.setTenantId(TenantContext.requireTenantId());
         variant.setProductId(request.productId());
-        variant.setSku(request.sku());
-        variant.setBarcode(request.barcode());
+        String skuTemplate = request.skuTemplate();
+        variant.setSkuTemplate(skuTemplate);
+        variant.setSku(skuMaskService.mintSku(request.sku(), skuTemplate));
+        String barcode = request.barcode() != null && !request.barcode().isBlank()
+                ? request.barcode().trim()
+                : null;
+        variant.setBarcode(barcode);
         variant.setAttributes(request.attributes() != null ? request.attributes() : Map.of());
         variant.setPrice(request.price() != null ? request.price() : BigDecimal.ZERO);
         variant.setCurrency(request.currency() != null ? request.currency() : "USD");
@@ -80,11 +91,11 @@ public class ProductVariantController {
         variant = variantRepository.save(variant);
         uomConversionService.saveForVariant(variant.getId(), List.of(
                 new UomConversionService.UomConversionRequest("STANDARD", "EA", BigDecimal.ONE)));
-        if (request.barcode() != null && !request.barcode().isBlank()) {
+        if (barcode != null) {
             VariantBarcode primary = new VariantBarcode();
             primary.setTenantId(TenantContext.requireTenantId());
             primary.setVariantId(variant.getId());
-            primary.setBarcode(request.barcode().trim());
+            primary.setBarcode(barcode);
             primary.setSymbology("UPC");
             primary.setPrimary(true);
             variantBarcodeRepository.save(primary);
@@ -105,6 +116,9 @@ public class ProductVariantController {
         }
         if (request.isKit() != null) {
             variant.setKit(request.isKit());
+        }
+        if (request.isLotTracked() != null) {
+            variant.setLotTracked(request.isLotTracked());
         }
         if (request.dims() != null) {
             variant.setDims(request.dims());
@@ -187,7 +201,8 @@ public class ProductVariantController {
 
     public record CreateVariantRequest(
             @NotNull UUID productId,
-            @NotBlank String sku,
+            String sku,
+            String skuTemplate,
             String barcode,
             Map<String, Object> attributes,
             BigDecimal price,
@@ -205,6 +220,7 @@ public class ProductVariantController {
             Boolean externalSyncEnabled,
             UUID defaultLocationId,
             Boolean isKit,
+            Boolean isLotTracked,
             Map<String, Object> dims,
             BigDecimal reorderPoint,
             BigDecimal reorderQty,

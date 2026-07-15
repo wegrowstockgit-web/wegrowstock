@@ -3,8 +3,12 @@ package com.invsys.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -52,6 +56,10 @@ public class InventoryLedger extends TenantScopedEntity {
 
     @Column(name = "serial_number_id")
     private UUID serialNumberId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public UUID getVariantId() {
         return variantId;
@@ -163,5 +171,13 @@ public class InventoryLedger extends TenantScopedEntity {
 
     public void setSerialNumberId(UUID serialNumberId) {
         this.serialNumberId = serialNumberId;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata != null ? metadata : new LinkedHashMap<>();
     }
 }

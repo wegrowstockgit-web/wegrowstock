@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { useSessionStore } from '@/stores/session';
 
 function AddCustomerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -84,6 +85,8 @@ export function CustomersPage() {
           </Button>
         )}
       </div>
+
+      <DataListToolbar />
 
       <ListPageState
         isLoading={isLoading}

@@ -1,6 +1,10 @@
 package com.invsys.api;
 
+import com.invsys.domain.Allocation;
 import com.invsys.domain.PickingTask;
+import com.invsys.domain.ProductVariant;
+import com.invsys.repository.AllocationRepository;
+import com.invsys.repository.ProductVariantRepository;
 import com.invsys.service.PickingWaveService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,9 +24,15 @@ import java.util.UUID;
 public class PickingController {
 
     private final PickingWaveService pickingWaveService;
+    private final AllocationRepository allocationRepository;
+    private final ProductVariantRepository variantRepository;
 
-    public PickingController(PickingWaveService pickingWaveService) {
+    public PickingController(PickingWaveService pickingWaveService,
+                             AllocationRepository allocationRepository,
+                             ProductVariantRepository variantRepository) {
         this.pickingWaveService = pickingWaveService;
+        this.allocationRepository = allocationRepository;
+        this.variantRepository = variantRepository;
     }
 
     @PostMapping("/waves/generate")
@@ -46,28 +57,63 @@ public class PickingController {
         return new ClaimWaveResponse(result.waveId(), result.assignedToUserId(), result.allocationsClaimed());
     }
 
+    @GetMapping("/waves/{waveId}/picks")
+    public List<PickResponse> wavePicks(@PathVariable UUID waveId) {
+        return pickingWaveService.listPicksByPath(waveId).stream()
+                .map(p -> new PickResponse(
+                        p.taskId(),
+                        p.allocationId(),
+                        p.variantId(),
+                        p.locationId(),
+                        p.quantity(),
+                        p.locationPath(),
+                        resolveZone(p.locationPath()),
+                        p.sequenceOrder(),
+                        p.status()))
+                .toList();
+    }
+
     @GetMapping("/batches/current/tasks")
     public List<TaskResponse> currentTasks() {
         return pickingWaveService.currentBatchTasks().stream()
-                .map(t -> new TaskResponse(t.getId(), t.getAllocationId(), t.getLocationPath(),
-                        resolveZone(t.getLocationPath()), t.getSequenceOrder(), t.getStatus()))
+                .map(this::toTaskResponse)
                 .toList();
     }
 
     @PostMapping("/tasks/{taskId}/pick")
     public TaskResponse pickTask(@PathVariable UUID taskId) {
-        PickingTask task = pickingWaveService.markTaskPicked(taskId);
-        return new TaskResponse(task.getId(), task.getAllocationId(), task.getLocationPath(),
-                resolveZone(task.getLocationPath()), task.getSequenceOrder(), task.getStatus());
+        return toTaskResponse(pickingWaveService.markTaskPicked(taskId));
     }
 
     private GenerateWaveResponse toGenerateResponse(PickingWaveService.WaveResult result) {
         List<TaskResponse> tasks = result.tasks().stream()
-                .map(t -> new TaskResponse(t.getId(), t.getAllocationId(), t.getLocationPath(),
-                        resolveZone(t.getLocationPath()), t.getSequenceOrder(), t.getStatus()))
+                .map(this::toTaskResponse)
                 .toList();
         UUID batchId = result.batch() != null ? result.batch().getId() : null;
         return new GenerateWaveResponse(result.wave().getId(), batchId, result.wave().getStatus(), tasks);
+    }
+
+    private TaskResponse toTaskResponse(PickingTask task) {
+        UUID variantId = null;
+        boolean lotTracked = false;
+        if (task.getAllocationId() != null) {
+            Allocation allocation = allocationRepository.findById(task.getAllocationId()).orElse(null);
+            if (allocation != null) {
+                variantId = allocation.getVariantId();
+                lotTracked = variantRepository.findById(variantId)
+                        .map(ProductVariant::isLotTracked)
+                        .orElse(false);
+            }
+        }
+        return new TaskResponse(
+                task.getId(),
+                task.getAllocationId(),
+                variantId,
+                lotTracked,
+                task.getLocationPath(),
+                resolveZone(task.getLocationPath()),
+                task.getSequenceOrder(),
+                task.getStatus());
     }
 
     private static String resolveZone(String path) {
@@ -87,7 +133,28 @@ public class PickingController {
     public record ClaimWaveResponse(UUID waveId, UUID assignedToUserId, int allocationsClaimed) {
     }
 
-    public record TaskResponse(UUID id, UUID allocationId, String locationPath, String zone,
-                               int sequenceOrder, String status) {
+    public record TaskResponse(
+            UUID id,
+            UUID allocationId,
+            UUID variantId,
+            boolean isLotTracked,
+            String locationPath,
+            String zone,
+            int sequenceOrder,
+            String status
+    ) {
+    }
+
+    public record PickResponse(
+            UUID taskId,
+            UUID allocationId,
+            UUID variantId,
+            UUID locationId,
+            BigDecimal quantity,
+            String locationPath,
+            String zone,
+            int sequenceOrder,
+            String status
+    ) {
     }
 }

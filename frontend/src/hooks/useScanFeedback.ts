@@ -6,6 +6,8 @@ interface ScanFeedbackState {
   flash: ScanFeedbackType;
   triggerSuccess: () => void;
   triggerError: () => void;
+  /** Distinctive 200ms double buzz for exception shunt (damaged barcode). */
+  triggerExceptionHaptic: () => void;
 }
 
 let audioContext: AudioContext | null = null;
@@ -82,11 +84,19 @@ export function useScanFeedback(): ScanFeedbackState {
     clearFlash();
   }, [unlockAudio, clearFlash]);
 
+  const triggerExceptionHaptic = useCallback(() => {
+    unlockAudio();
+    vibrate([200, 80, 200]);
+    playTone(180, 100);
+    setFlash('error');
+    clearFlash();
+  }, [unlockAudio, clearFlash]);
+
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
 
-  return { flash, triggerSuccess, triggerError };
+  return { flash, triggerSuccess, triggerError, triggerExceptionHaptic };
 }

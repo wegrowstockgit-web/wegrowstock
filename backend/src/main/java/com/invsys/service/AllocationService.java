@@ -184,6 +184,11 @@ public class AllocationService {
                     "allocationId", allocation.getId().toString(),
                     "status", status);
         }
+        if (FulfillmentExceptionService.STATUS_EXCEPTION.equals(status)) {
+            throw conflict("ALLOCATION_EXCEPTION", "Allocation shunted as damaged barcode exception",
+                    "allocationId", allocation.getId().toString(),
+                    "status", status);
+        }
         if (!"ACTIVE".equals(status)) {
             throw conflict("ALLOCATION_NOT_ACTIVE", "Allocation is not ACTIVE (" + status + ")",
                     "allocationId", allocation.getId().toString());

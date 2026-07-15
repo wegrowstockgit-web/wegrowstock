@@ -188,3 +188,31 @@ function findNextAi(s: string, from: number): number {
 export function gs1LookupSku(raw: string): string {
   return parseGs1(raw).sku;
 }
+
+export interface LotGraceResult {
+  /** True when lot AI is present but the cached variant is not lot-tracked. */
+  lotLoggedNotTracked: boolean;
+  /** Offline / API metadata sink for discarded vendor lots. */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Graceful degradation: lot AI present + tracking disabled → do not block the scan;
+ * capture the lot string into metadata for ledger sinking.
+ */
+export function evaluateLotGrace(
+  parsed: ParsedBarcode,
+  isLotTracked: boolean | undefined,
+): LotGraceResult {
+  const lot = parsed.lotNumber?.trim();
+  if (!lot) {
+    return { lotLoggedNotTracked: false };
+  }
+  if (isLotTracked === false) {
+    return {
+      lotLoggedNotTracked: true,
+      metadata: { vendor_lot_captured: lot },
+    };
+  }
+  return { lotLoggedNotTracked: false };
+}

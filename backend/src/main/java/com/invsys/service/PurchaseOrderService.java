@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -62,6 +63,12 @@ public class PurchaseOrderService {
 
     @Transactional
     public PurchaseOrderLine receiveLine(UUID lineId, UUID locationId, UUID lotId, BigDecimal quantity) {
+        return receiveLine(lineId, locationId, lotId, quantity, null);
+    }
+
+    @Transactional
+    public PurchaseOrderLine receiveLine(UUID lineId, UUID locationId, UUID lotId, BigDecimal quantity,
+                                         BigDecimal landedCostSurcharge) {
         PurchaseOrderLine line = lineRepository.findById(lineId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found"));
         PurchaseOrder po = requirePo(line.getPurchaseOrderId());
@@ -79,11 +86,87 @@ public class PurchaseOrderService {
         }
         BigDecimal standardQty = uomConversionService.toStandardQuantity(
                 line.getVariantId(), quantity, "PURCHASING");
+        BigDecimal unitCost = applySurchargeToUnitCost(line.getUnitCost(), quantity, landedCostSurcharge);
         inventoryService.receive(line.getVariantId(), locationId, lotId, standardQty,
-                "PURCHASE_ORDER_LINE", line.getId(), line.getUnitCost());
+                "PURCHASE_ORDER_LINE", line.getId(), unitCost);
         line.setQtyReceived(line.getQtyReceived().add(quantity));
         lineRepository.save(line);
+        refreshPoStatus(po);
+        return line;
+    }
 
+    /**
+     * Multi-line receive with optional freight/customs surcharge distributed by line value
+     * (qty × unit cost), falling back to quantity when all line values are zero.
+     */
+    @Transactional
+    public List<PurchaseOrderLine> receiveWithLandedCost(UUID purchaseOrderId,
+                                                         UUID locationId,
+                                                         BigDecimal landedCostSurcharge,
+                                                         List<ReceiveLineInput> lines) {
+        if (lines == null || lines.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one receive line is required");
+        }
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if (!List.of("SUBMITTED", "IN_TRANSIT", "PARTIALLY_RECEIVED").contains(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Receiving requires SUBMITTED, IN_TRANSIT, or PARTIALLY_RECEIVED status");
+        }
+
+        List<PreparedReceive> prepared = new ArrayList<>();
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        boolean useValue = false;
+        for (ReceiveLineInput input : lines) {
+            PurchaseOrderLine line = lineRepository.findById(input.lineId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found"));
+            if (!po.getId().equals(line.getPurchaseOrderId())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Line does not belong to purchase order");
+            }
+            BigDecimal remaining = line.getQtyOrdered().subtract(line.getQtyReceived());
+            BigDecimal tolerancePercent = overReceiptTolerancePercent();
+            BigDecimal maxAllowed = remaining.multiply(
+                    BigDecimal.ONE.add(tolerancePercent.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP)));
+            if (input.quantity().compareTo(maxAllowed) > 0) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "OVER_RECEIPT_TOLERANCE",
+                        "Quantity exceeds over-receipt tolerance");
+            }
+            BigDecimal lineValue = line.getUnitCost().multiply(input.quantity());
+            if (lineValue.signum() > 0) {
+                useValue = true;
+            }
+            prepared.add(new PreparedReceive(line, input.quantity(), input.lotId(), lineValue));
+        }
+        for (PreparedReceive row : prepared) {
+            BigDecimal weight = useValue ? row.lineValue() : row.quantity();
+            totalWeight = totalWeight.add(weight);
+        }
+        if (totalWeight.signum() <= 0) {
+            totalWeight = BigDecimal.valueOf(prepared.size());
+        }
+
+        BigDecimal surcharge = landedCostSurcharge != null ? landedCostSurcharge : BigDecimal.ZERO;
+        List<PurchaseOrderLine> updated = new ArrayList<>();
+        for (PreparedReceive row : prepared) {
+            BigDecimal weight = useValue ? row.lineValue() : row.quantity();
+            if (weight.signum() <= 0) {
+                weight = BigDecimal.ONE;
+            }
+            BigDecimal share = surcharge.signum() > 0
+                    ? surcharge.multiply(weight).divide(totalWeight, 6, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+            BigDecimal unitCost = applySurchargeToUnitCost(row.line().getUnitCost(), row.quantity(), share);
+            BigDecimal standardQty = uomConversionService.toStandardQuantity(
+                    row.line().getVariantId(), row.quantity(), "PURCHASING");
+            inventoryService.receive(row.line().getVariantId(), locationId, row.lotId(), standardQty,
+                    "PURCHASE_ORDER_LINE", row.line().getId(), unitCost);
+            row.line().setQtyReceived(row.line().getQtyReceived().add(row.quantity()));
+            updated.add(lineRepository.save(row.line()));
+        }
+        refreshPoStatus(po);
+        return updated;
+    }
+
+    private void refreshPoStatus(PurchaseOrder po) {
         boolean fullyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
                 .allMatch(l -> l.getQtyReceived().compareTo(l.getQtyOrdered()) >= 0);
         boolean anyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
@@ -94,7 +177,20 @@ public class PurchaseOrderService {
             po.setStatus("PARTIALLY_RECEIVED");
         }
         purchaseOrderRepository.save(po);
-        return line;
+    }
+
+    static BigDecimal applySurchargeToUnitCost(BigDecimal baseUnitCost, BigDecimal quantity, BigDecimal surcharge) {
+        if (surcharge == null || surcharge.signum() <= 0 || quantity == null || quantity.signum() <= 0) {
+            return baseUnitCost;
+        }
+        BigDecimal perUnit = surcharge.divide(quantity, 6, RoundingMode.HALF_UP);
+        return baseUnitCost.add(perUnit);
+    }
+
+    public record ReceiveLineInput(UUID lineId, BigDecimal quantity, UUID lotId) {
+    }
+
+    private record PreparedReceive(PurchaseOrderLine line, BigDecimal quantity, UUID lotId, BigDecimal lineValue) {
     }
 
     private BigDecimal overReceiptTolerancePercent() {

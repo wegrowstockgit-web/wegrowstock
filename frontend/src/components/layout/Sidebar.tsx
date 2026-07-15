@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
+  AlertTriangle,
   Boxes,
   ClipboardList,
   Factory,
   FileBarChart,
   FileText,
+  FileUp,
   GitBranch,
   LayoutDashboard,
   Layers,
@@ -41,6 +43,22 @@ const navItems: NavItem[] = [
     label: 'Fulfillment',
     icon: ScanLine,
     roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
+    hideForViewer: true,
+  },
+  {
+    to: '/exceptions',
+    label: 'Exceptions',
+    icon: AlertTriangle,
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+    hideForPicker: true,
+    hideForViewer: true,
+  },
+  {
+    to: '/import',
+    label: 'Import',
+    icon: FileUp,
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+    hideForPicker: true,
     hideForViewer: true,
   },
   {

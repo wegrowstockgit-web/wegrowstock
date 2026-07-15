@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Link2, Plus, RefreshCw, Trash2, UserPlus, Warehouse as WarehouseIcon } from 'lucide-react';
+import { Link2, Plus, RefreshCw, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
   AccountMapping,
@@ -17,6 +17,7 @@ import type {
   StripeBillingStatus,
   SyncLog,
   TaxRate,
+  TaxScheme,
   TenantEmailDomain,
   TenantLocation,
   TenantSettingsMap,
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { FinancingCockpit } from '@/components/fintech/FinancingCockpit';
+import { WarehouseVisualizer } from '@/features/settings/WarehouseVisualizer';
 import { useToast } from '@/components/ui/Toast';
 
 const TABS = [
@@ -500,59 +502,16 @@ function WarehousesTab() {
     <div className="space-y-6">
       <Card>
         <CardHeader
-          title="Warehouses & locations"
-          description="Warehouse hierarchy: warehouses, zones, aisles, and bins"
-          action={
-            <Button size="sm" onClick={() => setModalOpen(true)}>
-              <WarehouseIcon className="h-4 w-4" />
-              Add warehouse
-            </Button>
-          }
+          title="Warehouse layout"
+          description="Spatial hierarchy — warehouses, zones, aisles, and bins"
         />
         {isLoading ? (
           <TableSkeleton rows={6} cols={3} />
-        ) : locations.length === 0 ? (
-          <p className="text-sm text-text-muted">No locations yet. Add your first warehouse to get started.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Path</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Photo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {locations.map((loc) => (
-                <TableRow key={loc.id}>
-                  <TableCell mono>{loc.path}</TableCell>
-                  <TableCell>{loc.name}</TableCell>
-                  <TableCell>
-                    <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs font-medium text-text-muted">
-                      {loc.type}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <MediaPicker
-                      kind="LOCATION"
-                      label="Photo"
-                      capture
-                      className="min-w-[12rem]"
-                      onUploaded={async (result) => {
-                        await apiClient.post('/api/v1/media/attachments', {
-                          mediaObjectId: result.id,
-                          entityType: 'LOCATION',
-                          entityId: loc.id,
-                          purpose: 'LOCATION',
-                        });
-                      }}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <WarehouseVisualizer
+            locations={locations}
+            onAddWarehouse={() => setModalOpen(true)}
+          />
         )}
         <AddWarehouseModal open={modalOpen} onClose={() => setModalOpen(false)} />
       </Card>
@@ -655,12 +614,25 @@ function InventoryRulesTab() {
   const [overReceiptTolerance, setOverReceiptTolerance] = useState('0');
   const [barcodePrefix, setBarcodePrefix] = useState('');
   const [reorderPoint, setReorderPoint] = useState('');
+  const [costingMethod, setCostingMethod] = useState('MOVING_AVERAGE');
   const [taxName, setTaxName] = useState('');
   const [taxRate, setTaxRate] = useState('');
+  const [schemeName, setSchemeName] = useState('');
+  const [schemeInclusive, setSchemeInclusive] = useState(false);
+  const [primaryRateName, setPrimaryRateName] = useState('Primary');
+  const [primaryRate, setPrimaryRate] = useState('0.05');
+  const [secondaryRateName, setSecondaryRateName] = useState('Secondary');
+  const [secondaryRate, setSecondaryRate] = useState('0.02');
 
   const { data: taxRates = [] } = useQuery({
     queryKey: ['tax-rates'],
     queryFn: async () => (await apiClient.get<TaxRate[]>('/api/v1/settings/taxes')).data,
+    retry: false,
+  });
+
+  const { data: taxSchemes = [] } = useQuery({
+    queryKey: ['tax-schemes'],
+    queryFn: async () => (await apiClient.get<TaxScheme[]>('/api/v1/settings/tax-schemes')).data,
     retry: false,
   });
 
@@ -686,6 +658,39 @@ function InventoryRulesTab() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tax-rates'] }),
   });
 
+  const createSchemeMutation = useMutation({
+    mutationFn: async () => {
+      const rates = [
+        { name: primaryRateName || 'Primary', rate: Number(primaryRate) || 0, sortOrder: 0 },
+      ];
+      if (secondaryRate && Number(secondaryRate) > 0) {
+        rates.push({
+          name: secondaryRateName || 'Secondary',
+          rate: Number(secondaryRate),
+          sortOrder: 1,
+        });
+      }
+      await apiClient.post('/api/v1/settings/tax-schemes', {
+        name: schemeName,
+        taxInclusive: schemeInclusive,
+        rates,
+      });
+    },
+    onSuccess: () => {
+      setSchemeName('');
+      void queryClient.invalidateQueries({ queryKey: ['tax-schemes'] });
+    },
+  });
+
+  const deactivateSchemeMutation = useMutation({
+    mutationFn: async (scheme: TaxScheme) => {
+      await apiClient.put(`/api/v1/settings/tax-schemes/${scheme.id}`, {
+        active: false,
+      });
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tax-schemes'] }),
+  });
+
   useEffect(() => {
     const s = settings.data;
     if (!s) return;
@@ -696,6 +701,7 @@ function InventoryRulesTab() {
     }
     if (typeof s.barcode_prefix_strip === 'string') setBarcodePrefix(s.barcode_prefix_strip);
     if (s.default_reorder_point != null) setReorderPoint(String(s.default_reorder_point));
+    if (typeof s.costing_method === 'string') setCostingMethod(s.costing_method);
   }, [settings.data]);
 
   return (
@@ -711,6 +717,7 @@ function InventoryRulesTab() {
               over_receipt_tolerance_percent: Number(overReceiptTolerance) || 0,
               barcode_prefix_strip: barcodePrefix,
               default_reorder_point: reorderPoint ? Number(reorderPoint) : 0,
+              costing_method: costingMethod,
             });
           }}
           className="space-y-4"
@@ -756,6 +763,17 @@ function InventoryRulesTab() {
             onChange={(e) => setReorderPoint(e.target.value)}
             placeholder="10"
           />
+          <Select
+            label="Costing method"
+            value={costingMethod}
+            onChange={(e) => setCostingMethod(e.target.value)}
+          >
+            <option value="MOVING_AVERAGE">Moving average</option>
+            <option value="FIFO">FIFO</option>
+          </Select>
+          <p className="text-xs text-text-muted">
+            Changing costing method queues an async append-only re-cost of avg_cost from ledger history.
+          </p>
           <div className="flex items-center gap-3">
             <Button type="submit" loading={settings.patch.isPending}>
               Save rules
@@ -766,7 +784,114 @@ function InventoryRulesTab() {
       </Card>
 
       <Card>
-        <CardHeader title="Tax configuration" description="Default tax applied to new sales order lines" />
+        <CardHeader
+          title="Stacked tax schemes"
+          description="Compound primary + secondary rates (Total tax = Σ P×Q×Rate_i)"
+        />
+        <form
+          className="mb-4 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createSchemeMutation.mutate();
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Scheme name"
+              value={schemeName}
+              onChange={(e) => setSchemeName(e.target.value)}
+              placeholder="CA GST+PST"
+              required
+            />
+            <label className="flex items-end gap-3 pb-2">
+              <input
+                type="checkbox"
+                checked={schemeInclusive}
+                onChange={(e) => setSchemeInclusive(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              <span className="text-sm text-text">Tax inclusive pricing</span>
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Primary rate name"
+              value={primaryRateName}
+              onChange={(e) => setPrimaryRateName(e.target.value)}
+            />
+            <Input
+              label="Primary rate (decimal)"
+              type="number"
+              step="0.0001"
+              min="0"
+              value={primaryRate}
+              onChange={(e) => setPrimaryRate(e.target.value)}
+              required
+            />
+            <Input
+              label="Secondary rate name"
+              value={secondaryRateName}
+              onChange={(e) => setSecondaryRateName(e.target.value)}
+            />
+            <Input
+              label="Secondary rate (decimal)"
+              type="number"
+              step="0.0001"
+              min="0"
+              value={secondaryRate}
+              onChange={(e) => setSecondaryRate(e.target.value)}
+            />
+          </div>
+          <Button type="submit" loading={createSchemeMutation.isPending}>
+            <Plus className="h-4 w-4" />
+            Add stacked scheme
+          </Button>
+        </form>
+        {taxSchemes.length === 0 ? (
+          <p className="text-sm text-text-muted">No stacked tax schemes yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Rates</TableHead>
+                <TableHead>Inclusive</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead align="right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {taxSchemes.map((scheme) => (
+                <TableRow key={scheme.id}>
+                  <TableCell>{scheme.name}</TableCell>
+                  <TableCell>
+                    {scheme.rates
+                      .map((r) => `${r.name} ${(Number(r.rate) * 100).toFixed(2)}%`)
+                      .join(' + ') || '—'}
+                  </TableCell>
+                  <TableCell>{scheme.taxInclusive ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{statusChip(scheme.active ? 'ACTIVE' : 'SKIPPED')}</TableCell>
+                  <TableCell align="right">
+                    {scheme.active && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deactivateSchemeMutation.mutate(scheme)}
+                        loading={deactivateSchemeMutation.isPending}
+                      >
+                        Deactivate
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader title="Legacy single tax rates" description="Default tax applied to new sales order lines" />
         <form
           className="mb-4 grid gap-4 sm:grid-cols-3"
           onSubmit={(e) => {
@@ -838,6 +963,9 @@ function DocumentsTab() {
   const [invoiceFormat, setInvoiceFormat] = useState('INV-{YYYY}-{seq:5}');
   const [soFormat, setSoFormat] = useState('SO-{YYYY}-{seq:5}');
   const [poFormat, setPoFormat] = useState('PO-{YYYY}-{seq:5}');
+  const [skuTemplate, setSkuTemplate] = useState('SKU-{PREFIX}-{ID:5}');
+  const [barcodeTemplate, setBarcodeTemplate] = useState('BC-{ID:8}');
+  const [skuPrefix, setSkuPrefix] = useState('INV');
 
   useEffect(() => {
     const s = settings.data;
@@ -845,33 +973,81 @@ function DocumentsTab() {
     if (typeof s.invoice_number_format === 'string') setInvoiceFormat(s.invoice_number_format);
     if (typeof s.sales_order_number_format === 'string') setSoFormat(s.sales_order_number_format);
     if (typeof s.purchase_order_number_format === 'string') setPoFormat(s.purchase_order_number_format);
+    if (typeof s.sku_template === 'string') setSkuTemplate(s.sku_template);
+    if (typeof s.barcode_template === 'string') setBarcodeTemplate(s.barcode_template);
+    if (typeof s.sku_prefix === 'string') setSkuPrefix(s.sku_prefix);
   }, [settings.data]);
 
   return (
-    <Card>
-      <CardHeader title="Document numbering" description="Invoice and order number formats" />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          settings.patch.mutate({
-            invoice_number_format: invoiceFormat,
-            sales_order_number_format: soFormat,
-            purchase_order_number_format: poFormat,
-          });
-        }}
-        className="space-y-4"
-      >
-        <Input label="Invoice format" value={invoiceFormat} onChange={(e) => setInvoiceFormat(e.target.value)} />
-        <Input label="Sales order format" value={soFormat} onChange={(e) => setSoFormat(e.target.value)} />
-        <Input label="Purchase order format" value={poFormat} onChange={(e) => setPoFormat(e.target.value)} />
-        <div className="flex items-center gap-3">
-          <Button type="submit" loading={settings.patch.isPending}>
-            Save formats
-          </Button>
-          <SavedNote show={settings.patch.isSuccess && !settings.patch.isPending} />
-        </div>
-      </form>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader title="Document numbering" description="Invoice and order number formats" />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            settings.patch.mutate({
+              invoice_number_format: invoiceFormat,
+              sales_order_number_format: soFormat,
+              purchase_order_number_format: poFormat,
+            });
+          }}
+          className="space-y-4"
+        >
+          <Input label="Invoice format" value={invoiceFormat} onChange={(e) => setInvoiceFormat(e.target.value)} />
+          <Input label="Sales order format" value={soFormat} onChange={(e) => setSoFormat(e.target.value)} />
+          <Input label="Purchase order format" value={poFormat} onChange={(e) => setPoFormat(e.target.value)} />
+          <div className="flex items-center gap-3">
+            <Button type="submit" loading={settings.patch.isPending}>
+              Save formats
+            </Button>
+            <SavedNote show={settings.patch.isSuccess && !settings.patch.isPending} />
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="SKU & barcode masks"
+          description="Auto-mint templates when SKU is omitted on variant create. Tokens: {PREFIX}, {YYYY}, {ID:N}"
+        />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            settings.patch.mutate({
+              sku_template: skuTemplate,
+              barcode_template: barcodeTemplate,
+              sku_prefix: skuPrefix,
+            });
+          }}
+          className="space-y-4"
+        >
+          <Input
+            label="SKU prefix"
+            value={skuPrefix}
+            onChange={(e) => setSkuPrefix(e.target.value)}
+            placeholder="INV"
+          />
+          <Input
+            label="SKU template"
+            value={skuTemplate}
+            onChange={(e) => setSkuTemplate(e.target.value)}
+            placeholder="SKU-{PREFIX}-{ID:5}"
+          />
+          <Input
+            label="Barcode template"
+            value={barcodeTemplate}
+            onChange={(e) => setBarcodeTemplate(e.target.value)}
+            placeholder="BC-{ID:8}"
+          />
+          <div className="flex items-center gap-3">
+            <Button type="submit" loading={settings.patch.isPending}>
+              Save masks
+            </Button>
+            <SavedNote show={settings.patch.isSuccess && !settings.patch.isPending} />
+          </div>
+        </form>
+      </Card>
+    </div>
   );
 }
 

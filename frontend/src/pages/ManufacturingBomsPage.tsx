@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { cn } from '@/lib/utils';
 
 interface DraftLine {
@@ -272,6 +273,8 @@ export function ManufacturingBomsPage() {
           New BOM
         </Button>
       </div>
+
+      <DataListToolbar />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card padding="none">

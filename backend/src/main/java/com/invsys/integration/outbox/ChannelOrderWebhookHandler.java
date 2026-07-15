@@ -6,16 +6,15 @@ import com.invsys.domain.IntegrationSyncLog;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
-import com.invsys.domain.SoftKitComponent;
 import com.invsys.domain.WebhookEvent;
 import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.IntegrationSyncLogRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
-import com.invsys.repository.SoftKitComponentRepository;
 import com.invsys.repository.WebhookEventRepository;
 import com.invsys.service.DocumentSequenceService;
+import com.invsys.service.SoftKitExplosionService;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -34,7 +33,7 @@ public class ChannelOrderWebhookHandler {
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderLineRepository salesOrderLineRepository;
     private final ProductVariantRepository variantRepository;
-    private final SoftKitComponentRepository softKitComponentRepository;
+    private final SoftKitExplosionService softKitExplosionService;
     private final CustomerRepository customerRepository;
     private final IntegrationSyncLogRepository syncLogRepository;
     private final DocumentSequenceService sequenceService;
@@ -43,7 +42,7 @@ public class ChannelOrderWebhookHandler {
                                       SalesOrderRepository salesOrderRepository,
                                       SalesOrderLineRepository salesOrderLineRepository,
                                       ProductVariantRepository variantRepository,
-                                      SoftKitComponentRepository softKitComponentRepository,
+                                      SoftKitExplosionService softKitExplosionService,
                                       CustomerRepository customerRepository,
                                       IntegrationSyncLogRepository syncLogRepository,
                                       DocumentSequenceService sequenceService) {
@@ -51,7 +50,7 @@ public class ChannelOrderWebhookHandler {
         this.salesOrderRepository = salesOrderRepository;
         this.salesOrderLineRepository = salesOrderLineRepository;
         this.variantRepository = variantRepository;
-        this.softKitComponentRepository = softKitComponentRepository;
+        this.softKitExplosionService = softKitExplosionService;
         this.customerRepository = customerRepository;
         this.syncLogRepository = syncLogRepository;
         this.sequenceService = sequenceService;
@@ -124,30 +123,24 @@ public class ChannelOrderWebhookHandler {
                     continue;
                 }
                 ProductVariant variant = variantOpt.get();
-                if (variant.isSoftKit()) {
-                    List<SoftKitComponent> components = softKitComponentRepository
-                            .findByTenantIdAndParentKitIdOrderByCreatedAtAsc(event.getTenantId(), variant.getId());
-                    if (components.isEmpty()) {
-                        needsReview = true;
-                        continue;
-                    }
-                    // Explode soft kit into raw pickable components (skip parent bundle line).
-                    for (SoftKitComponent component : components) {
-                        SalesOrderLine line = new SalesOrderLine();
-                        line.setTenantId(event.getTenantId());
-                        line.setSalesOrderId(order.getId());
-                        line.setVariantId(component.getComponentId());
-                        line.setQtyOrdered(qty.multiply(component.getQuantity()));
-                        line.setUnitPrice(BigDecimal.ZERO);
-                        salesOrderLineRepository.save(line);
-                    }
-                } else {
+                List<SoftKitExplosionService.ExplodedLine> exploded = softKitExplosionService.explode(
+                        event.getTenantId(),
+                        variant.getId(),
+                        qty,
+                        unitPrice,
+                        false,
+                        false);
+                if (variant.isSoftKit() && exploded.isEmpty()) {
+                    needsReview = true;
+                    continue;
+                }
+                for (SoftKitExplosionService.ExplodedLine component : exploded) {
                     SalesOrderLine line = new SalesOrderLine();
                     line.setTenantId(event.getTenantId());
                     line.setSalesOrderId(order.getId());
-                    line.setVariantId(variant.getId());
-                    line.setQtyOrdered(qty);
-                    line.setUnitPrice(unitPrice);
+                    line.setVariantId(component.variantId());
+                    line.setQtyOrdered(component.quantity());
+                    line.setUnitPrice(component.unitPrice());
                     salesOrderLineRepository.save(line);
                 }
             }

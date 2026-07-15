@@ -16,6 +16,10 @@ import { ProductsPage } from '@/pages/ProductsPage';
 
 import { FulfillmentPage } from '@/pages/FulfillmentPage';
 
+import { ExceptionsPage } from '@/pages/ExceptionsPage';
+
+import { ImportPage } from '@/pages/ImportPage';
+
 import { CycleCountsPage } from '@/pages/CycleCountsPage';
 
 import { SupplierPortalPage } from '@/pages/SupplierPortalPage';
@@ -172,6 +176,24 @@ export function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
                 <FulfillmentPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="exceptions"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <ExceptionsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="import"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <ImportPage />
               </ProtectedRoute>
             }
           />

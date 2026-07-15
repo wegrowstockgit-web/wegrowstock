@@ -1,8 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ClipboardList, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
-import type { PaginatedResponse, ProductVariant, PurchaseOrder, Supplier, SupplierInvoiceIngestion, TenantLocation } from '@/api/types';
+import type {
+  PaginatedResponse,
+  ProductVariant,
+  PurchaseOrder,
+  PurchaseOrderDetail,
+  Supplier,
+  SupplierInvoiceIngestion,
+  TenantLocation,
+} from '@/api/types';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -18,8 +26,11 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useSessionStore } from '@/stores/session';
+
+const RECEIVABLE = new Set(['SUBMITTED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED']);
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
@@ -228,6 +239,188 @@ function CreatePoModal({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
+function ReceivePoModal({
+  open,
+  poId,
+  onClose,
+}: {
+  open: boolean;
+  poId: string | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [locationId, setLocationId] = useState('');
+  const [surchargeOpen, setSurchargeOpen] = useState(false);
+  const [landedCostSurcharge, setLandedCostSurcharge] = useState('');
+  const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
+  const [error, setError] = useState('');
+
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ['purchase-orders', poId],
+    queryFn: async () =>
+      (await apiClient.get<PurchaseOrderDetail>(`/api/v1/purchase-orders/${poId}`)).data,
+    enabled: open && !!poId,
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['locations', 'warehouse'],
+    queryFn: async () =>
+      (await apiClient.get<TenantLocation[]>('/api/v1/locations', { params: { type: 'WAREHOUSE' } })).data,
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (!detail) return;
+    setLocationId(detail.destinationLocationId ?? '');
+    const next: Record<string, string> = {};
+    for (const line of detail.lines) {
+      const remaining = Math.max(0, Number(line.qtyOrdered) - Number(line.qtyReceived));
+      next[line.id] = remaining > 0 ? String(remaining) : '';
+    }
+    setQtyByLine(next);
+    setLandedCostSurcharge('');
+    setSurchargeOpen(false);
+    setError('');
+  }, [detail]);
+
+  const receiveMutation = useMutation({
+    mutationFn: async () => {
+      if (!detail || !locationId) throw new Error('Location required');
+      const lines = detail.lines
+        .map((line) => ({
+          lineId: line.id,
+          quantity: Number(qtyByLine[line.id] || 0),
+        }))
+        .filter((l) => l.quantity > 0);
+      if (lines.length === 0) throw new Error('Enter a quantity to receive');
+      const surcharge = landedCostSurcharge.trim() ? Number(landedCostSurcharge) : undefined;
+      await apiClient.post('/api/v1/purchasing/receive', {
+        purchaseOrderId: detail.id,
+        locationId,
+        landedCostSurcharge: surcharge,
+        lines,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      onClose();
+    },
+    onError: () => setError('Could not receive this purchase order. Check quantities and try again.'),
+  });
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Receive purchase order"
+      description={detail ? `${detail.number} · ${detail.supplierName}` : 'Load lines and put stock away'}
+    >
+      {isLoading || !detail ? (
+        <p className="text-sm text-text-muted">Loading lines…</p>
+      ) : (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError('');
+            receiveMutation.mutate();
+          }}
+        >
+          <Select
+            label="Receive into location"
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            required
+          >
+            <option value="" disabled>
+              Select location…
+            </option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </Select>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-text">Lines</p>
+            {detail.lines.map((line) => {
+              const remaining = Math.max(0, Number(line.qtyOrdered) - Number(line.qtyReceived));
+              return (
+                <div
+                  key={line.id}
+                  className="flex flex-wrap items-end gap-3 rounded-lg border border-border/70 p-3"
+                >
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="font-mono text-text">{line.variantId.slice(0, 8)}…</p>
+                    <p className="text-text-muted">
+                      Ordered {line.qtyOrdered} · Received {line.qtyReceived} · Remaining {remaining}
+                    </p>
+                  </div>
+                  <Input
+                    label="Qty"
+                    type="number"
+                    min={0}
+                    step="any"
+                    className="w-28"
+                    value={qtyByLine[line.id] ?? ''}
+                    onChange={(e) =>
+                      setQtyByLine((prev) => ({ ...prev, [line.id]: e.target.value }))
+                    }
+                    disabled={remaining <= 0}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="rounded-lg border border-border/70">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-medium text-text hover:bg-surface-overlay"
+              aria-expanded={surchargeOpen}
+              onClick={() => setSurchargeOpen((o) => !o)}
+            >
+              Add Freight/Customs Surcharges
+              <ChevronDown
+                className={cn('h-4 w-4 text-text-muted transition-transform', surchargeOpen && 'rotate-180')}
+              />
+            </button>
+            {surchargeOpen && (
+              <div className="border-t border-border/70 px-3 py-3">
+                <Input
+                  label="Landed cost surcharge"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={landedCostSurcharge}
+                  onChange={(e) => setLandedCostSurcharge(e.target.value)}
+                  placeholder="0.00"
+                  data-testid="landed-cost-surcharge"
+                />
+                <p className="mt-1.5 text-xs text-text-muted">
+                  Distributed across received lines by value and folded into unit cost for COGS.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-danger">{error}</p>}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={receiveMutation.isPending} disabled={!locationId}>
+              Receive
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] }) {
   const queryClient = useQueryClient();
   const [poId, setPoId] = useState('');
@@ -332,8 +525,10 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
 export function PurchaseOrdersPage() {
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
+  const canReceive = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER');
   const [modalOpen, setModalOpen] = useState(false);
   const [peekPoId, setPeekPoId] = useState<string | null>(null);
+  const [receivePoId, setReceivePoId] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } =
     useListQuery<PurchaseOrder>(['purchase-orders'], '/api/v1/purchase-orders');
@@ -353,6 +548,10 @@ export function PurchaseOrdersPage() {
             New PO
           </Button>
         )}
+      </div>
+
+      <div className="shrink-0 px-6 pt-4">
+        <DataListToolbar />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
@@ -431,6 +630,11 @@ export function PurchaseOrdersPage() {
       </div>
 
       <CreatePoModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <ReceivePoModal
+        open={!!receivePoId}
+        poId={receivePoId}
+        onClose={() => setReceivePoId(null)}
+      />
 
       <RightPeekDrawer
         open={!!peekPoId}
@@ -443,43 +647,57 @@ export function PurchaseOrdersPage() {
         }
       >
         {peekPo ? (
-          <dl className="space-y-3 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Supplier</dt>
-              <dd className="font-medium text-text">{peekPo.supplierName}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Status</dt>
-              <dd>
-                <span
-                  className={cn(
-                    'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                    STATUS_STYLES[peekPo.status] ?? 'bg-surface-overlay text-text-muted'
-                  )}
-                >
-                  {peekPo.status.replaceAll('_', ' ')}
-                </span>
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Expected</dt>
-              <dd>
-                {peekPo.expectedAt ? new Date(peekPo.expectedAt).toLocaleDateString() : '—'}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Freight</dt>
-              <dd className="font-mono tabular-nums">
-                {peekPo.freightAmount != null ? peekPo.freightAmount.toFixed(2) : '—'}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Duties</dt>
-              <dd className="font-mono tabular-nums">
-                {peekPo.dutiesAmount != null ? peekPo.dutiesAmount.toFixed(2) : '—'}
-              </dd>
-            </div>
-          </dl>
+          <div className="space-y-4">
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Supplier</dt>
+                <dd className="font-medium text-text">{peekPo.supplierName}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Status</dt>
+                <dd>
+                  <span
+                    className={cn(
+                      'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                      STATUS_STYLES[peekPo.status] ?? 'bg-surface-overlay text-text-muted'
+                    )}
+                  >
+                    {peekPo.status.replaceAll('_', ' ')}
+                  </span>
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Expected</dt>
+                <dd>
+                  {peekPo.expectedAt ? new Date(peekPo.expectedAt).toLocaleDateString() : '—'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Freight</dt>
+                <dd className="font-mono tabular-nums">
+                  {peekPo.freightAmount != null ? peekPo.freightAmount.toFixed(2) : '—'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Duties</dt>
+                <dd className="font-mono tabular-nums">
+                  {peekPo.dutiesAmount != null ? peekPo.dutiesAmount.toFixed(2) : '—'}
+                </dd>
+              </div>
+            </dl>
+            {canReceive && RECEIVABLE.has(peekPo.status) && (
+              <Button
+                className="w-full"
+                data-testid="open-receive-po"
+                onClick={() => {
+                  setReceivePoId(peekPo.id);
+                  setPeekPoId(null);
+                }}
+              >
+                Receive stock
+              </Button>
+            )}
+          </div>
         ) : (
           <p className="text-sm text-text-muted">Loading…</p>
         )}

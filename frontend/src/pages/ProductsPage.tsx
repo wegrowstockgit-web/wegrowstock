@@ -1,6 +1,5 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { Package, Plus, Search, Settings2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PaginatedResponse, ProductVariant, VariantUomConversion } from '@/api/types';
@@ -10,29 +9,21 @@ import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { MediaPicker } from '@/components/ui/MediaPicker';
 import { ProductMediaDropZone } from '@/components/ui/ProductMediaDropZone';
+import {
+  VirtualizedTable,
+  type VirtualizedColumnDef,
+} from '@/components/ui/primitives/VirtualizedTable';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useSessionStore } from '@/stores/session';
-import { cn } from '@/lib/utils';
-
-const ROW_HEIGHT = 48;
 
 function qty(value: number | null | undefined): string {
   if (value == null || Number.isNaN(Number(value))) return '—';
   return String(value);
-}
-
-function productsGridClass(canManage: boolean, syncSupported: boolean) {
-  return cn(
-    'grid w-full items-center gap-x-2 px-4',
-    canManage && syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.1fr)_minmax(7rem,1.4fr)_minmax(5.5rem,1fr)_repeat(4,minmax(4.25rem,0.7fr))_3.25rem_3.5rem]',
-    canManage && !syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.2fr)_minmax(7rem,1.5fr)_minmax(5.5rem,1.1fr)_repeat(4,minmax(4.25rem,0.75fr))_3.25rem]',
-    !canManage && syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.1fr)_minmax(7rem,1.4fr)_minmax(5.5rem,1fr)_repeat(4,minmax(4.25rem,0.7fr))_3.5rem]',
-    !canManage && !syncSupported && 'grid-cols-[2.5rem_minmax(6.5rem,1.2fr)_minmax(7rem,1.6fr)_minmax(5.5rem,1.1fr)_repeat(4,minmax(4.5rem,0.8fr))]'
-  );
 }
 
 function AddProductModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -223,7 +214,6 @@ export function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [uomVariant, setUomVariant] = useState<ProductVariant | null>(null);
   const [peekProductId, setPeekProductId] = useState<string | null>(null);
-  const parentRef = useRef<HTMLDivElement>(null);
 
   const {
     data,
@@ -288,12 +278,158 @@ export function ProductsPage() {
     },
   });
 
-  const virtualizer = useVirtualizer({
-    count: displayed.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
-  });
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  const columns = useMemo((): VirtualizedColumnDef<ProductVariant>[] => {
+    const cols: VirtualizedColumnDef<ProductVariant>[] = [
+      {
+        id: 'thumb',
+        header: '',
+        width: 48,
+        hideable: false,
+        align: 'center',
+        cell: (product) => (
+          <div className="flex justify-center">
+            <VariantThumb url={product.primaryMediaUrl} alt={product.name} size="sm" />
+          </div>
+        ),
+      },
+      {
+        id: 'sku',
+        header: 'SKU',
+        width: 128,
+        cell: (product) => (
+          <span className="truncate font-mono text-text">{product.sku}</span>
+        ),
+      },
+      {
+        id: 'name',
+        header: 'Name',
+        width: 180,
+        cell: (product) => <span className="truncate text-text">{product.name}</span>,
+      },
+      {
+        id: 'barcode',
+        header: 'Barcode',
+        width: 120,
+        cell: (product) => (
+          <span className="truncate font-mono text-text-muted">{product.barcode ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'onHand',
+        header: 'On hand',
+        width: 88,
+        align: 'right',
+        cell: (product) => (
+          <span className="font-mono tabular-nums text-text">{qty(product.onHand)}</span>
+        ),
+      },
+      {
+        id: 'allocated',
+        header: 'Allocated',
+        width: 88,
+        align: 'right',
+        cell: (product) => (
+          <span className="font-mono tabular-nums text-text-muted">{qty(product.allocated)}</span>
+        ),
+      },
+      {
+        id: 'atp',
+        header: 'ATP',
+        width: 80,
+        align: 'right',
+        cell: (product) => (
+          <span className="font-mono font-medium tabular-nums text-text">{qty(product.atp)}</span>
+        ),
+      },
+      {
+        id: 'reorder',
+        header: 'Reorder',
+        width: 96,
+        align: 'right',
+        cell: (product) =>
+          canManage ? (
+            <span onClick={(e) => e.stopPropagation()}>
+              <InlineEditableCell
+                value={product.reorderPoint ?? 0}
+                inputType="number"
+                onSave={async (val) => {
+                  await reorderMutation.mutateAsync({
+                    id: product.id,
+                    reorderPoint: Number(val),
+                  });
+                }}
+              />
+            </span>
+          ) : (
+            <span className="font-mono tabular-nums">{qty(product.reorderPoint)}</span>
+          ),
+      },
+    ];
+
+    if (canManage) {
+      cols.push({
+        id: 'uom',
+        header: 'UoM',
+        width: 56,
+        align: 'center',
+        cell: (product) => (
+          <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setUomVariant(product)}
+              className="inline-flex items-center justify-center rounded p-1 text-text-muted hover:bg-surface-overlay hover:text-accent"
+              aria-label={`Edit UoM for ${product.sku}`}
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+          </div>
+        ),
+      });
+    }
+
+    if (syncSupported) {
+      cols.push({
+        id: 'channelSync',
+        header: 'Channel sync',
+        width: 88,
+        align: 'center',
+        cell: (product) => (
+          <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+            {canManage ? (
+              <ExternalSyncToggle
+                variantId={product.id}
+                enabled={product.externalSyncEnabled ?? true}
+                supported={product.externalSyncEnabled !== undefined}
+              />
+            ) : (
+              <span className="text-xs text-text-muted">
+                {product.externalSyncEnabled ? 'On' : 'Off'}
+              </span>
+            )}
+          </div>
+        ),
+      });
+    }
+
+    return cols;
+  }, [canManage, reorderMutation, syncSupported]);
+
+  const columnItems = useMemo(
+    () =>
+      columns
+        .filter((c) => c.hideable !== false && c.id !== 'thumb')
+        .map((c) => ({
+          id: c.id,
+          label: typeof c.header === 'string' && c.header ? c.header : c.id,
+        })),
+    [columns],
+  );
 
   if (isLoading) {
     return (
@@ -345,155 +481,48 @@ export function ProductsPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-      <SavedFilterViews
-        storageKey="products-filters"
-        activeFilters={{ lowStock: lowStockOnly ? '1' : '' }}
-        onApply={(f) => setLowStockOnly(f.lowStock === '1')}
-        defaultPresets={[
-          { id: 'all', label: 'All', filters: {} },
-          { id: 'low', label: 'Low stock', filters: { lowStock: '1' } },
-        ]}
-      />
+        <DataListToolbar columnItems={columnItems}>
+          <SavedFilterViews
+            className="mb-0"
+            storageKey="products-filters"
+            activeFilters={{ lowStock: lowStockOnly ? '1' : '' }}
+            onApply={(f) => setLowStockOnly(f.lowStock === '1')}
+            defaultPresets={[
+              { id: 'all', label: 'All', filters: {} },
+              { id: 'low', label: 'Low stock', filters: { lowStock: '1' } },
+            ]}
+          />
+        </DataListToolbar>
       </div>
 
-      {displayed.length === 0 ? (
-        <div className="p-6">
-        <EmptyState
-          icon={Package}
-          title="No products yet"
-          description="Add your first product to start receiving and selling stock."
-          action={
-            canManage ? (
-              <Button onClick={() => setModalOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Add your first product
-              </Button>
-            ) : undefined
-          }
-        />
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-hidden bg-surface-raised">
-          <div
-            className={cn(
-              productsGridClass(canManage, syncSupported),
-              'sticky top-0 z-10 h-11 border-b border-border bg-surface-overlay px-4 text-xs font-medium uppercase tracking-wide text-text-muted'
-            )}
-            role="row"
-          >
-            <div aria-hidden />
-            <div>SKU</div>
-            <div>Name</div>
-            <div>Barcode</div>
-            <div className="text-right">On hand</div>
-            <div className="text-right">Allocated</div>
-            <div className="text-right">ATP</div>
-            <div className="text-right">Reorder</div>
-            {canManage && <div className="text-center">UoM</div>}
-            {syncSupported && <div className="text-center">Channel sync</div>}
+      <VirtualizedTable
+        columns={columns}
+        rows={displayed}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => setPeekProductId(row.id)}
+        onEndReached={loadMore}
+        empty={
+          <div className="p-6">
+            <EmptyState
+              icon={Package}
+              title="No products yet"
+              description="Add your first product to start receiving and selling stock."
+              action={
+                canManage ? (
+                  <Button onClick={() => setModalOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add your first product
+                  </Button>
+                ) : undefined
+              }
+            />
           </div>
+        }
+      />
 
-          <div ref={parentRef} className="h-[calc(100vh-16rem)] overflow-auto">
-            <div
-              style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}
-            >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const product = displayed[virtualRow.index];
-                if (!product) return null;
-
-                if (
-                  virtualRow.index >= displayed.length - 5 &&
-                  hasNextPage &&
-                  !isFetchingNextPage
-                ) {
-                  void fetchNextPage();
-                }
-
-                return (
-                  <div
-                    key={product.id}
-                    className={cn(
-                      productsGridClass(canManage, syncSupported),
-                      'absolute left-0 top-0 cursor-pointer border-b border-border text-sm hover:bg-surface-overlay'
-                    )}
-                    style={{
-                      height: `${virtualRow.size}px`,
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    role="row"
-                    onClick={() => setPeekProductId(product.id)}
-                  >
-                    <div className="flex justify-center">
-                      <VariantThumb url={product.primaryMediaUrl} alt={product.name} size="sm" />
-                    </div>
-                    <div className="truncate font-mono text-text">{product.sku}</div>
-                    <div className="truncate text-text">{product.name}</div>
-                    <div className="truncate font-mono text-text-muted">
-                      {product.barcode ?? '—'}
-                    </div>
-                    <div className="text-right font-mono tabular-nums text-text">
-                      {qty(product.onHand)}
-                    </div>
-                    <div className="text-right font-mono tabular-nums text-text-muted">
-                      {qty(product.allocated)}
-                    </div>
-                    <div className="text-right font-mono text-sm font-medium tabular-nums text-text">
-                      {qty(product.atp)}
-                    </div>
-                    <div className="text-right" onClick={(e) => e.stopPropagation()}>
-                      {canManage ? (
-                        <InlineEditableCell
-                          value={product.reorderPoint ?? 0}
-                          inputType="number"
-                          onSave={async (val) => {
-                            await reorderMutation.mutateAsync({
-                              id: product.id,
-                              reorderPoint: Number(val),
-                            });
-                          }}
-                        />
-                      ) : (
-                        <span className="font-mono tabular-nums">{qty(product.reorderPoint)}</span>
-                      )}
-                    </div>
-                    {canManage && (
-                      <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => setUomVariant(product)}
-                          className="inline-flex items-center justify-center rounded p-1 text-text-muted hover:bg-surface-overlay hover:text-accent"
-                          aria-label={`Edit UoM for ${product.sku}`}
-                        >
-                          <Settings2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
-                    {syncSupported && (
-                      <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
-                        {canManage ? (
-                          <ExternalSyncToggle
-                            variantId={product.id}
-                            enabled={product.externalSyncEnabled ?? true}
-                            supported={product.externalSyncEnabled !== undefined}
-                          />
-                        ) : (
-                          <span className="text-xs text-text-muted">
-                            {product.externalSyncEnabled ? 'On' : 'Off'}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {isFetchingNextPage && (
-            <div className="border-t border-border p-3 text-center text-sm text-text-muted">
-              Loading more...
-            </div>
-          )}
+      {isFetchingNextPage && (
+        <div className="border-t border-border p-3 text-center text-sm text-text-muted">
+          Loading more...
         </div>
       )}
 

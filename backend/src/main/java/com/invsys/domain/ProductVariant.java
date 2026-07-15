@@ -87,6 +87,12 @@ public class ProductVariant extends TenantScopedEntity {
     @Column(name = "is_soft_kit", nullable = false)
     private boolean softKit;
 
+    @Column(name = "is_lot_tracked", nullable = false)
+    private boolean lotTracked;
+
+    @Column(name = "sku_template")
+    private String skuTemplate;
+
     public UUID getProductId() {
         return productId;
     }
@@ -285,5 +291,21 @@ public class ProductVariant extends TenantScopedEntity {
 
     public void setSoftKit(boolean softKit) {
         this.softKit = softKit;
+    }
+
+    public boolean isLotTracked() {
+        return lotTracked;
+    }
+
+    public void setLotTracked(boolean lotTracked) {
+        this.lotTracked = lotTracked;
+    }
+
+    public String getSkuTemplate() {
+        return skuTemplate;
+    }
+
+    public void setSkuTemplate(String skuTemplate) {
+        this.skuTemplate = skuTemplate;
     }
 }

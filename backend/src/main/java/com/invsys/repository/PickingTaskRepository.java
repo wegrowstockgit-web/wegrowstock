@@ -10,4 +10,6 @@ public interface PickingTaskRepository extends JpaRepository<PickingTask, UUID> 
     List<PickingTask> findByBatchIdOrderBySequenceOrderAsc(UUID batchId);
 
     List<PickingTask> findByBatchIdAndStatusOrderBySequenceOrderAsc(UUID batchId, String status);
+
+    List<PickingTask> findByTenantIdAndAllocationId(UUID tenantId, UUID allocationId);
 }

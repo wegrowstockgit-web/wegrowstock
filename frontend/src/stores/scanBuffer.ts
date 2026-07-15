@@ -7,6 +7,8 @@ interface ScanBufferState {
   append: (char: string) => void;
   reset: () => void;
   commit: (value: string) => void;
+  /** Clear wedge buffer + last-scan card after exception shunt. */
+  clearScanCard: () => void;
 }
 
 export const useScanBufferStore = create<ScanBufferState>((set) => ({
@@ -24,5 +26,12 @@ export const useScanBufferStore = create<ScanBufferState>((set) => ({
       buffer: '',
       lastScan: value,
       lastScanAt: Date.now(),
+    }),
+
+  clearScanCard: () =>
+    set({
+      buffer: '',
+      lastScan: null,
+      lastScanAt: null,
     }),
 }));

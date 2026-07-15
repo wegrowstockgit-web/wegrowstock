@@ -91,6 +91,7 @@ export interface ProductVariant {
   supplierLeadTimeDays?: number;
   defaultLocationId?: string;
   isKit?: boolean;
+  isLotTracked?: boolean;
   dims?: Record<string, unknown>;
   reorderPoint?: number;
   reorderQty?: number;
@@ -344,6 +345,21 @@ export interface TaxRate {
   isDefault: boolean;
 }
 
+export interface TaxSchemeRate {
+  id: string;
+  name: string;
+  rate: number;
+  sortOrder: number;
+}
+
+export interface TaxScheme {
+  id: string;
+  name: string;
+  taxInclusive: boolean;
+  active: boolean;
+  rates: TaxSchemeRate[];
+}
+
 export interface StripeBillingStatus {
   connectedAccountId?: string | null;
   onboardingStatus: string;
@@ -409,6 +425,18 @@ export interface PurchaseOrder {
   dutiesAmount?: number;
 }
 
+export interface PurchaseOrderLineDetail {
+  id: string;
+  variantId: string;
+  qtyOrdered: number;
+  qtyReceived: number;
+  unitCost: number;
+}
+
+export interface PurchaseOrderDetail extends PurchaseOrder {
+  lines: PurchaseOrderLineDetail[];
+}
+
 export interface SalesOrder {
   id: string;
   number: string;
@@ -454,10 +482,23 @@ export interface SalesOrderDetail {
 export interface PickingTask {
   id: string;
   allocationId: string;
+  variantId?: string;
+  isLotTracked?: boolean;
   locationPath: string;
   zone?: string;
   sequenceOrder: number;
   status: string;
+}
+
+export interface FulfillmentException {
+  id: string;
+  allocationId: string;
+  reportedBy: string;
+  warehouseId: string;
+  resolutionStatus: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DemandChartPoint {
@@ -588,6 +629,8 @@ export interface FulfillmentScanResponse {
   message: string;
   putawayTarget?: string | null;
   primaryMediaUrl?: string | null;
+  isLotTracked?: boolean;
+  lotLoggedNotTracked?: boolean;
 }
 
 export interface SsoConfig {

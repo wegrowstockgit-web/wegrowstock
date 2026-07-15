@@ -65,6 +65,8 @@ class InventoryGenealogyServiceTest extends AbstractIntegrationTest {
         variant.setTenantId(tenantId);
         variant.setProductId(product.getId());
         variant.setSku("LOT-1");
+        // Genealogy traces ledger rows by lot_id; graceful lot handling nulls lot when untracked.
+        variant.setLotTracked(true);
         variant = variantRepository.save(variant);
 
         Location warehouse = new Location();

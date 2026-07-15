@@ -16,6 +16,7 @@ interface SavedFilterViewsProps {
   activeFilters: Record<string, string>;
   onApply: (filters: Record<string, string>) => void;
   defaultPresets?: FilterPreset[];
+  className?: string;
 }
 
 const DEFAULT_PRESETS: FilterPreset[] = [
@@ -27,6 +28,7 @@ export function SavedFilterViews({
   activeFilters,
   onApply,
   defaultPresets = DEFAULT_PRESETS,
+  className,
 }: SavedFilterViewsProps) {
   const { toast } = useToast();
   const [presets, setPresets] = useState<FilterPreset[]>(defaultPresets);
@@ -77,7 +79,7 @@ export function SavedFilterViews({
   };
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
+    <div className={cn('mb-4 flex flex-wrap items-center gap-2', className)}>
       <div
         className="inline-flex flex-wrap gap-1 rounded-lg border border-border bg-surface-overlay p-1"
         role="tablist"

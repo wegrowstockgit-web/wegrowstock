@@ -40,6 +40,10 @@ public class TenantSettings extends TenantScopedEntity {
         defaults.put("default_reorder_point", 10);
         defaults.put("default_reorder_qty", 50);
         defaults.put("invoice_number_format", "INV-{YYYY}-{seq:5}");
+        defaults.put("sku_template", "SKU-{PREFIX}-{ID:5}");
+        defaults.put("barcode_template", "BC-{ID:8}");
+        defaults.put("sku_prefix", "INV");
+        defaults.put("costing_method", "MOVING_AVERAGE");
         defaults.put("platform_fee_percent", 0.4);
         defaults.put("payment_terms_days", 30);
         ts.setSettings(defaults);

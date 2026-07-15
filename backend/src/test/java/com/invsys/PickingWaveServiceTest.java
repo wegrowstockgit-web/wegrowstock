@@ -120,5 +120,10 @@ class PickingWaveServiceTest extends AbstractIntegrationTest {
         assertThat(result.wave().getStatus()).isEqualTo("RELEASED");
         assertThat(paths).hasSize(2);
         assertThat(paths).containsExactly("WH-01/A-1", "WH-01/B-1");
+
+        List<PickingWaveService.WavePick> picks = pickingWaveService.listPicksByPath(result.wave().getId());
+        assertThat(picks).hasSize(2);
+        assertThat(picks.stream().map(PickingWaveService.WavePick::locationPath).toList())
+                .containsExactly("WH-01/A-1", "WH-01/B-1");
     }
 }

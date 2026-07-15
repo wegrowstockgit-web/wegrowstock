@@ -123,6 +123,7 @@ public class VariantCatalogService {
                 variant.getSupplierLeadTimeDays(),
                 variant.getReorderPoint(),
                 variant.getReorderQty(),
-                primaryMediaByVariant.get(variant.getId()));
+                primaryMediaByVariant.get(variant.getId()),
+                variant.isLotTracked());
     }
 }

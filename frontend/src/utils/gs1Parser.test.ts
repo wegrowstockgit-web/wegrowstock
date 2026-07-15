@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gs1LookupSku, parseGs1 } from '@/utils/gs1Parser';
+import { evaluateLotGrace, gs1LookupSku, parseGs1 } from '@/utils/gs1Parser';
 
 describe('parseGs1', () => {
   it('parses concatenated AI 01 / 17 / 10', () => {
@@ -51,3 +51,23 @@ describe('parseGs1', () => {
     expect(parsed.lotNumber).toBe('LOTZ');
   });
 });
+
+describe('evaluateLotGrace', () => {
+  it('sinks lot into metadata when tracking is disabled', () => {
+    const parsed = parseGs1('(01)01234567890128(10)LOT123');
+    const grace = evaluateLotGrace(parsed, false);
+    expect(grace.lotLoggedNotTracked).toBe(true);
+    expect(grace.metadata).toEqual({ vendor_lot_captured: 'LOT123' });
+  });
+
+  it('does not warn when lot tracking is enabled', () => {
+    const parsed = parseGs1('(01)01234567890128(10)LOT123');
+    expect(evaluateLotGrace(parsed, true).lotLoggedNotTracked).toBe(false);
+  });
+
+  it('does not warn on cache miss', () => {
+    const parsed = parseGs1('(01)01234567890128(10)LOT123');
+    expect(evaluateLotGrace(parsed, undefined).lotLoggedNotTracked).toBe(false);
+  });
+});
+

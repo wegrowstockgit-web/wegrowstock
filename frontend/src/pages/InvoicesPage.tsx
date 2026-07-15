@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
@@ -150,12 +151,15 @@ export function InvoicesPage() {
         )}
       </div>
 
-      <SavedFilterViews
-        storageKey="invoices-filters"
-        activeFilters={{ status: statusFilter }}
-        onApply={(f) => setStatusFilter(f.status ?? '')}
-        defaultPresets={invoicePresets}
-      />
+      <DataListToolbar>
+        <SavedFilterViews
+          className="mb-0"
+          storageKey="invoices-filters"
+          activeFilters={{ status: statusFilter }}
+          onApply={(f) => setStatusFilter(f.status ?? '')}
+          defaultPresets={invoicePresets}
+        />
+      </DataListToolbar>
 
       <ListPageState
         isLoading={isLoading}

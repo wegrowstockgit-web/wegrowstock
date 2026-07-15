@@ -20,6 +20,7 @@ public record VariantListItemResponse(
         int supplierLeadTimeDays,
         BigDecimal reorderPoint,
         BigDecimal reorderQty,
-        String primaryMediaUrl
+        String primaryMediaUrl,
+        boolean isLotTracked
 ) {
 }

@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react';
-import { Camera, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlertTriangle, Camera, Loader2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -8,7 +8,7 @@ import { MediaPicker } from '@/components/ui/MediaPicker';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { uploadViaPresign } from '@/lib/mediaPresign';
 import { compressImageForUpload } from '@/utils/imageCompression';
-import { useScanFeedback } from '@/hooks/useScanFeedback';
+import { useScanFeedback, type ScanFeedbackType } from '@/hooks/useScanFeedback';
 import { cn } from '@/lib/utils';
 
 export interface ScannerHistoryItem {
@@ -23,6 +23,8 @@ export interface ScannerHistoryItem {
   lotNumber?: string;
   expiryDate?: string;
   quantity?: number;
+  /** GS1 lot present but variant is not lot-tracked — logged to ledger metadata. */
+  lotLoggedNotTracked?: boolean;
   timestamp: number;
 }
 
@@ -44,6 +46,16 @@ interface ScannerViewProps {
   gs1Fields?: Gs1FieldState;
   onGs1FieldsChange?: (fields: Gs1FieldState) => void;
   gs1Active?: boolean;
+  /** Transient non-blocking warning when lot AI is sunk (not tracked). */
+  lotLoggedNotTracked?: boolean;
+  /**
+   * Lot-tracked pick where GS1 failed to yield a lot — show Skip & Flag (56px+ glove target).
+   */
+  showSkipFlag?: boolean;
+  skipFlagPending?: boolean;
+  onSkipFlag?: () => void;
+  /** Parent-driven acoustic/haptic flash — drives success enter / error shake. */
+  feedbackFlash?: ScanFeedbackType;
 }
 
 /**
@@ -61,16 +73,31 @@ export function ScannerView({
   gs1Fields,
   onGs1FieldsChange,
   gs1Active = false,
+  lotLoggedNotTracked = false,
+  showSkipFlag = false,
+  skipFlagPending = false,
+  onSkipFlag,
+  feedbackFlash = null,
 }: ScannerViewProps) {
   const captureRef = useRef<HTMLInputElement>(null);
   const { triggerSuccess, triggerError } = useScanFeedback();
   const [capturing, setCapturing] = useState(false);
   const [phase, setPhase] = useState<'compressing' | 'uploading' | null>(null);
+  const [motion, setMotion] = useState<'success' | 'error' | null>(null);
+  const motionKeyRef = useRef(0);
   const latest = history[0];
   const needsCapture =
     !!latest?.success &&
     !!latest.variantId &&
     !(lastThumbUrl ?? latest.primaryMediaUrl);
+
+  useEffect(() => {
+    if (!feedbackFlash) return;
+    motionKeyRef.current += 1;
+    setMotion(feedbackFlash);
+    const clear = window.setTimeout(() => setMotion(null), 320);
+    return () => window.clearTimeout(clear);
+  }, [feedbackFlash, latest?.timestamp]);
 
   const handleCapture = async (file: File | undefined) => {
     if (!file || !latest?.variantId) return;
@@ -101,10 +128,25 @@ export function ScannerView({
     onGs1FieldsChange({ ...gs1Fields, ...patch });
   };
 
+  const deckMotionClass =
+    motion === 'success'
+      ? 'scan-success-enter'
+      : motion === 'error'
+        ? 'scan-error-shake'
+        : undefined;
+
   return (
-    <Card className="mb-6 text-center" padding="lg" data-testid="scan-buffer-card">
+    <Card className="mb-6 text-center" padding="lg" data-testid="scan-buffer-card" data-motion={motion ?? undefined}>
+      <div
+        key={motion ? `${motion}-${motionKeyRef.current}` : 'deck'}
+        className={cn(deckMotionClass)}
+        data-testid="scan-verification-deck"
+      >
       <p className="text-sm text-text-muted">Last scan</p>
-      <div className="mt-3 flex items-center justify-center gap-4">
+      <div
+        className="mt-3 flex items-center justify-center gap-4"
+        data-testid="scan-detail-target"
+      >
         {(lastThumbUrl || latest?.success) && (
           <VariantThumb
             url={lastThumbUrl ?? latest?.primaryMediaUrl}
@@ -121,9 +163,19 @@ export function ScannerView({
           className="mt-5 rounded-lg border-2 border-success/40 bg-success/10 p-4 text-left"
           data-testid="gs1-fields-card"
         >
-          <p className="text-xs font-bold uppercase tracking-wide text-success">
-            GS1 composite decoded
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-bold uppercase tracking-wide text-success">
+              GS1 composite decoded
+            </p>
+            {lotLoggedNotTracked && (
+              <span
+                data-testid="lot-logged-badge"
+                className="inline-flex items-center rounded-md border border-warning/50 bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning"
+              >
+                Lot Data Logged (Not Tracked)
+              </span>
+            )}
+          </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-text">Lot</span>
@@ -197,6 +249,32 @@ export function ScannerView({
         </div>
       )}
 
+      {showSkipFlag && onSkipFlag && (
+        <div className="mt-4">
+          <button
+            type="button"
+            data-testid="skip-flag-barcode"
+            disabled={skipFlagPending}
+            onClick={onSkipFlag}
+            className={cn(
+              'flex w-full min-h-14 items-center justify-center gap-2 rounded-lg border-2 border-danger',
+              'bg-danger px-4 py-3 text-base font-bold text-white shadow-sm',
+              'active:scale-[0.98] disabled:opacity-60',
+            )}
+          >
+            {skipFlagPending ? (
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            ) : (
+              <AlertTriangle className="h-5 w-5" aria-hidden />
+            )}
+            Skip &amp; Flag Barcode
+          </button>
+          <p className="mt-1.5 text-xs text-text-muted">
+            Damaged or unreadable lot label — shunt to office queue without dropping inventory.
+          </p>
+        </div>
+      )}
+
       {mode === 'receive' && receiveQcSlot}
 
       <div className="mt-6 flex-1 space-y-2 text-left">
@@ -226,6 +304,14 @@ export function ScannerView({
               <div className="min-w-0 flex-1">
                 <p className="truncate font-mono font-medium text-text">{item.sku ?? item.barcode}</p>
                 {item.name && <p className="truncate text-sm text-text-muted">{item.name}</p>}
+                {item.lotLoggedNotTracked && (
+                  <span
+                    data-testid="history-lot-logged-badge"
+                    className="mt-1 inline-flex rounded-md border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[11px] font-semibold text-warning"
+                  >
+                    Lot Data Logged (Not Tracked)
+                  </span>
+                )}
                 {(item.lotNumber || item.expiryDate || item.quantity != null) && (
                   <p className="mt-0.5 font-mono text-xs text-text-muted">
                     {[
@@ -249,6 +335,7 @@ export function ScannerView({
             </div>
           ))
         )}
+      </div>
       </div>
     </Card>
   );

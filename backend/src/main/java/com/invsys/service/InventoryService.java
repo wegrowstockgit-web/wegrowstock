@@ -4,12 +4,14 @@ import com.invsys.common.ApiException;
 import com.invsys.domain.Allocation;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.InventoryLevel;
+import com.invsys.domain.Lot;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.TenantSettings;
 import com.invsys.integration.OutboxService;
 import com.invsys.repository.AllocationRepository;
 import com.invsys.repository.InventoryLedgerRepository;
 import com.invsys.repository.InventoryLevelRepository;
+import com.invsys.repository.LotRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SerialNumberRepository;
 import com.invsys.repository.TenantSettingsRepository;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +35,7 @@ public class InventoryService {
     private final TenantSettingsRepository settingsRepository;
     private final AllocationRepository allocationRepository;
     private final ProductVariantRepository variantRepository;
+    private final LotRepository lotRepository;
     private final CostingService costingService;
     private final OutboxService outboxService;
     private final SerialNumberService serialNumberService;
@@ -43,6 +47,7 @@ public class InventoryService {
                             TenantSettingsRepository settingsRepository,
                             AllocationRepository allocationRepository,
                             ProductVariantRepository variantRepository,
+                            LotRepository lotRepository,
                             CostingService costingService,
                             OutboxService outboxService,
                             SerialNumberService serialNumberService,
@@ -53,11 +58,43 @@ public class InventoryService {
         this.settingsRepository = settingsRepository;
         this.allocationRepository = allocationRepository;
         this.variantRepository = variantRepository;
+        this.lotRepository = lotRepository;
         this.costingService = costingService;
         this.outboxService = outboxService;
         this.serialNumberService = serialNumberService;
         this.serialNumberRepository = serialNumberRepository;
         this.cycleCountService = cycleCountService;
+    }
+
+    /**
+     * Graceful lot resolution: when {@code is_lot_tracked} is false, force {@code lot_id = null}
+     * and sink any vendor lot string into ledger metadata ({@code vendor_lot_captured}).
+     */
+    public ResolvedLot resolveLot(ProductVariant variant,
+                                  UUID lotId,
+                                  String lotNumber,
+                                  Map<String, Object> clientMetadata) {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        if (clientMetadata != null) {
+            meta.putAll(clientMetadata);
+        }
+        if (!variant.isLotTracked()) {
+            String captured = firstNonBlank(lotNumber, lookupLotNumber(lotId));
+            if (captured != null) {
+                meta.putIfAbsent("vendor_lot_captured", captured);
+            }
+            return new ResolvedLot(null, meta, captured != null);
+        }
+        if (lotId != null) {
+            return new ResolvedLot(lotId, meta, false);
+        }
+        if (lotNumber != null && !lotNumber.isBlank()) {
+            return new ResolvedLot(findOrCreateLot(variant.getId(), lotNumber.trim()), meta, false);
+        }
+        return new ResolvedLot(null, meta, false);
+    }
+
+    public record ResolvedLot(UUID lotId, Map<String, Object> metadata, boolean lotLoggedNotTracked) {
     }
 
     @Transactional
@@ -76,6 +113,14 @@ public class InventoryService {
     public InventoryLedger receive(UUID variantId, UUID locationId, UUID lotId, BigDecimal quantity,
                                    String referenceType, UUID referenceId, BigDecimal unitCost,
                                    String serialCode) {
+        return receive(variantId, locationId, lotId, null, quantity, referenceType, referenceId,
+                unitCost, serialCode, null);
+    }
+
+    @Transactional
+    public InventoryLedger receive(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
+                                   BigDecimal quantity, String referenceType, UUID referenceId,
+                                   BigDecimal unitCost, String serialCode, Map<String, Object> metadata) {
         ProductVariant variant = serialNumberService.requireVariant(variantId);
         serialNumberService.validateSerializedQuantity(variant, quantity);
         UUID serialId = null;
@@ -86,9 +131,10 @@ public class InventoryService {
             }
             serialId = serialNumberService.receiveSerial(variantId, serialCode.trim()).getId();
         }
+        ResolvedLot resolved = resolveLot(variant, lotId, lotNumber, metadata);
         costingService.applyReceiveCost(variantId, quantity.abs(), unitCost);
-        InventoryLedger entry = appendMovement("RECEIVE", variantId, locationId, lotId, quantity.abs(),
-                null, referenceType, referenceId, null, unitCost, serialId);
+        InventoryLedger entry = appendMovement("RECEIVE", variantId, locationId, resolved.lotId(), quantity.abs(),
+                null, referenceType, referenceId, null, unitCost, serialId, resolved.metadata());
         emitIntegrationEvents(entry, variantId);
         return entry;
     }
@@ -105,15 +151,16 @@ public class InventoryService {
         serialNumberService.validateSerializedQuantity(variant, quantity);
         BigDecimal qty = quantity.abs();
         costingService.applyReceiveCost(variantId, qty, null);
-        InventoryLedger entry = appendMovement("RECEIVE", variantId, locationId, lotId, qty,
-                "RMA_QUARANTINE", referenceType, referenceId, null, null, null);
+        ResolvedLot resolved = resolveLot(variant, lotId, null, null);
+        InventoryLedger entry = appendMovement("RECEIVE", variantId, locationId, resolved.lotId(), qty,
+                "RMA_QUARANTINE", referenceType, referenceId, null, null, null, resolved.metadata());
 
         Allocation hold = new Allocation();
         hold.setTenantId(TenantContext.requireTenantId());
         hold.setSalesOrderLineId(salesOrderLineId);
         hold.setVariantId(variantId);
         hold.setLocationId(locationId);
-        hold.setLotId(lotId);
+        hold.setLotId(resolved.lotId());
         hold.setQuantity(qty);
         hold.setStatus("ACTIVE");
         allocationRepository.save(hold);
@@ -171,6 +218,13 @@ public class InventoryService {
     @Transactional
     public InventoryLedger adjust(UUID variantId, UUID locationId, UUID lotId, BigDecimal delta,
                                   String reasonCode, String serialCode) {
+        return adjust(variantId, locationId, lotId, null, delta, reasonCode, serialCode, null);
+    }
+
+    @Transactional
+    public InventoryLedger adjust(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
+                                  BigDecimal delta, String reasonCode, String serialCode,
+                                  Map<String, Object> metadata) {
         ProductVariant variant = serialNumberService.requireVariant(variantId);
         serialNumberService.validateSerializedQuantity(variant, delta);
         UUID serialId = null;
@@ -185,7 +239,9 @@ public class InventoryService {
                 serialId = serialNumberService.consumeSerial(variantId, serialCode.trim()).getId();
             }
         }
-        return appendMovement("ADJUST", variantId, locationId, lotId, delta, reasonCode, null, null, null, null, serialId);
+        ResolvedLot resolved = resolveLot(variant, lotId, lotNumber, metadata);
+        return appendMovement("ADJUST", variantId, locationId, resolved.lotId(), delta, reasonCode,
+                null, null, null, null, serialId, resolved.metadata());
     }
 
     /**
@@ -287,13 +343,14 @@ public class InventoryService {
             }
             allocation.setSerialNumberId(serialId);
         }
-        validateNegative(quantity.negate(), allocation.getVariantId(), allocation.getLocationId(), allocation.getLotId());
+        ResolvedLot resolved = resolveLot(variant, allocation.getLotId(), null, null);
+        validateNegative(quantity.negate(), allocation.getVariantId(), allocation.getLocationId(), resolved.lotId());
         allocation.setStatus("CONSUMED");
         allocationRepository.save(allocation);
         BigDecimal unitCost = costingService.snapshotShipCost(allocation.getVariantId());
         InventoryLedger entry = appendMovement("SHIP", allocation.getVariantId(), allocation.getLocationId(),
-                allocation.getLotId(), quantity.negate(), null, "SALES_ORDER_LINE", allocation.getSalesOrderLineId(),
-                null, unitCost, serialId);
+                resolved.lotId(), quantity.negate(), null, "SALES_ORDER_LINE", allocation.getSalesOrderLineId(),
+                null, unitCost, serialId, resolved.metadata());
         emitIntegrationEvents(entry, allocation.getVariantId());
         return entry;
     }
@@ -301,6 +358,14 @@ public class InventoryService {
     private InventoryLedger appendMovement(String type, UUID variantId, UUID locationId, UUID lotId,
                                            BigDecimal delta, String reasonCode, String refType, UUID refId,
                                            UUID transferGroupId, BigDecimal unitCost, UUID serialNumberId) {
+        return appendMovement(type, variantId, locationId, lotId, delta, reasonCode, refType, refId,
+                transferGroupId, unitCost, serialNumberId, null);
+    }
+
+    private InventoryLedger appendMovement(String type, UUID variantId, UUID locationId, UUID lotId,
+                                           BigDecimal delta, String reasonCode, String refType, UUID refId,
+                                           UUID transferGroupId, BigDecimal unitCost, UUID serialNumberId,
+                                           Map<String, Object> metadata) {
         InventoryLedger entry = new InventoryLedger();
         entry.setTenantId(TenantContext.requireTenantId());
         entry.setVariantId(variantId);
@@ -314,12 +379,44 @@ public class InventoryService {
         entry.setTransferGroupId(transferGroupId);
         entry.setUnitCost(unitCost);
         entry.setSerialNumberId(serialNumberId);
+        entry.setMetadata(metadata != null ? metadata : Map.of());
         entry.setCreatedBy(TenantContext.getUserId().orElse(null));
         InventoryLedger saved = ledgerRepository.save(entry);
         if ("ADJUST".equals(type) || "TRANSFER_OUT".equals(type) || "TRANSFER_IN".equals(type) || "SHIP".equals(type)) {
             cycleCountService.evaluateLocationVelocity(locationId);
         }
         return saved;
+    }
+
+    private UUID findOrCreateLot(UUID variantId, String lotNumber) {
+        UUID tenantId = TenantContext.requireTenantId();
+        return lotRepository.findByTenantIdAndVariantIdAndLotNumber(tenantId, variantId, lotNumber)
+                .map(Lot::getId)
+                .orElseGet(() -> {
+                    Lot lot = new Lot();
+                    lot.setTenantId(tenantId);
+                    lot.setVariantId(variantId);
+                    lot.setLotNumber(lotNumber);
+                    lot.setReceivedAt(Instant.now());
+                    return lotRepository.save(lot).getId();
+                });
+    }
+
+    private String lookupLotNumber(UUID lotId) {
+        if (lotId == null) {
+            return null;
+        }
+        return lotRepository.findById(lotId).map(Lot::getLotNumber).orElse(null);
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) {
+            return a.trim();
+        }
+        if (b != null && !b.isBlank()) {
+            return b.trim();
+        }
+        return null;
     }
 
     private void emitIntegrationEvents(InventoryLedger entry, UUID variantId) {

@@ -56,6 +56,7 @@ public class PortalService {
     private final CustomerCatalogRestrictionRepository catalogRestrictionRepository;
     private final VolumePriceBreakRepository volumePriceBreakRepository;
     private final ProductMediaRepository productMediaRepository;
+    private final SoftKitExplosionService softKitExplosionService;
 
     public PortalService(ProductVariantRepository variantRepository,
                          ProductRepository productRepository,
@@ -69,7 +70,8 @@ public class PortalService {
                          CreditService creditService,
                          CustomerCatalogRestrictionRepository catalogRestrictionRepository,
                          VolumePriceBreakRepository volumePriceBreakRepository,
-                         ProductMediaRepository productMediaRepository) {
+                         ProductMediaRepository productMediaRepository,
+                         SoftKitExplosionService softKitExplosionService) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
@@ -83,6 +85,7 @@ public class PortalService {
         this.catalogRestrictionRepository = catalogRestrictionRepository;
         this.volumePriceBreakRepository = volumePriceBreakRepository;
         this.productMediaRepository = productMediaRepository;
+        this.softKitExplosionService = softKitExplosionService;
     }
 
     public List<PortalCatalogItemResponse> catalog() {
@@ -129,6 +132,7 @@ public class PortalService {
         return createOrder(lines, null, null);
     }
 
+    @Transactional
     public PortalOrderResponse createOrder(List<PortalOrderLineInput> lines,
                                            String customerPoNumber,
                                            java.time.Instant requestedShipDate) {
@@ -163,13 +167,18 @@ public class PortalService {
             BigDecimal discount = resolveEffectiveDiscount(tenantId, variant.getId(), line.quantity(), tierDiscount);
             BigDecimal unitPrice = applyDiscount(variant.getPrice(), discount);
             currency = variant.getCurrency();
-            SalesOrderLine sol = new SalesOrderLine();
-            sol.setTenantId(tenantId);
-            sol.setSalesOrderId(order.getId());
-            sol.setVariantId(variant.getId());
-            sol.setQtyOrdered(line.quantity());
-            sol.setUnitPrice(unitPrice);
-            salesOrderLineRepository.save(sol);
+            List<SoftKitExplosionService.ExplodedLine> exploded = softKitExplosionService.explode(
+                    tenantId, variant.getId(), line.quantity(), unitPrice, true, true);
+            for (SoftKitExplosionService.ExplodedLine component : exploded) {
+                SalesOrderLine sol = new SalesOrderLine();
+                sol.setTenantId(tenantId);
+                sol.setSalesOrderId(order.getId());
+                sol.setVariantId(component.variantId());
+                sol.setQtyOrdered(component.quantity());
+                sol.setUnitPrice(component.unitPrice());
+                salesOrderLineRepository.save(sol);
+            }
+            // Kit sell price stays on the parent quantity × unit price (attached to first component).
             orderTotal = orderTotal.add(unitPrice.multiply(line.quantity()));
         }
 

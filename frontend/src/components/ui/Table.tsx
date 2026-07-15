@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useDensity } from '@/hooks/useDensity';
 import { cn } from '@/lib/utils';
 
 interface TableProps {
@@ -7,9 +8,10 @@ interface TableProps {
 }
 
 export function Table({ children, className }: TableProps) {
+  const { tableClass } = useDensity();
   return (
     <div className="w-full overflow-auto rounded-lg border border-border">
-      <table className={cn('w-full text-sm', className)}>{children}</table>
+      <table className={cn('w-full', tableClass, className)}>{children}</table>
     </div>
   );
 }
@@ -35,10 +37,12 @@ export function TableRow({
   className?: string;
   onClick?: () => void;
 }) {
+  const { rowClass } = useDensity();
   return (
     <tr
       className={cn(
         'bg-surface-raised transition-colors hover:bg-surface-overlay',
+        rowClass,
         onClick && 'cursor-pointer',
         className
       )}
@@ -58,6 +62,7 @@ export function TableHead({
   className?: string;
   align?: 'left' | 'right' | 'center';
 }) {
+  const { headClass } = useDensity();
   const alignClass = {
     left: 'text-left',
     right: 'text-right',
@@ -67,7 +72,8 @@ export function TableHead({
   return (
     <th
       className={cn(
-        'px-4 py-3 font-medium text-text-muted',
+        'font-medium text-text-muted',
+        headClass,
         alignClass[align],
         className
       )}
@@ -88,6 +94,7 @@ export function TableCell({
   align?: 'left' | 'right' | 'center';
   mono?: boolean;
 }) {
+  const { cellClass } = useDensity();
   const alignClass = {
     left: 'text-left',
     right: 'text-right',
@@ -97,7 +104,8 @@ export function TableCell({
   return (
     <td
       className={cn(
-        'px-4 py-3 text-text',
+        'text-text',
+        cellClass,
         alignClass[align],
         mono && 'font-mono tabular-nums',
         className

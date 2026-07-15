@@ -1,9 +1,13 @@
 package com.invsys.api;
 
+import com.invsys.domain.PurchaseOrderLine;
 import com.invsys.service.LandedCostService;
+import com.invsys.service.PurchaseOrderService;
 import com.invsys.service.landedcost.HybridLandedCostEngine;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,9 +27,29 @@ import java.util.UUID;
 public class LandedCostController {
 
     private final LandedCostService landedCostService;
+    private final PurchaseOrderService purchaseOrderService;
 
-    public LandedCostController(LandedCostService landedCostService) {
+    public LandedCostController(LandedCostService landedCostService,
+                                PurchaseOrderService purchaseOrderService) {
         this.landedCostService = landedCostService;
+        this.purchaseOrderService = purchaseOrderService;
+    }
+
+    /**
+     * Receive PO lines with optional freight/customs surcharge folded into RECEIVE unit_cost
+     * for moving-average COGS accuracy.
+     */
+    @PostMapping("/receive")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public List<PurchaseOrderLine> receive(@Valid @RequestBody PurchasingReceiveRequest request) {
+        List<PurchaseOrderService.ReceiveLineInput> lines = request.lines().stream()
+                .map(l -> new PurchaseOrderService.ReceiveLineInput(l.lineId(), l.quantity(), l.lotId()))
+                .toList();
+        return purchaseOrderService.receiveWithLandedCost(
+                request.purchaseOrderId(),
+                request.locationId(),
+                request.landedCostSurcharge(),
+                lines);
     }
 
     @PostMapping("/invoices/{id}/landed-costs")
@@ -82,6 +106,21 @@ public class LandedCostController {
             String eventType,
             String strategy,
             List<Map<String, Object>> lines
+    ) {
+    }
+
+    public record PurchasingReceiveRequest(
+            @NotNull UUID purchaseOrderId,
+            @NotNull UUID locationId,
+            @PositiveOrZero BigDecimal landedCostSurcharge,
+            @NotEmpty List<PurchasingReceiveLine> lines
+    ) {
+    }
+
+    public record PurchasingReceiveLine(
+            @NotNull UUID lineId,
+            @NotNull @Positive BigDecimal quantity,
+            UUID lotId
     ) {
     }
 }

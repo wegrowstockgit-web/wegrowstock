@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { DensityToggle } from '@/components/ui/DensityToggle';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
 
@@ -221,7 +222,8 @@ export function ReturnsPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
         {STATUSES.map((status) => (
           <button
             key={status}
@@ -237,6 +239,8 @@ export function ReturnsPage() {
             {status === 'ALL' ? 'All' : status}
           </button>
         ))}
+        </div>
+        <DensityToggle />
       </div>
 
       <ListPageState

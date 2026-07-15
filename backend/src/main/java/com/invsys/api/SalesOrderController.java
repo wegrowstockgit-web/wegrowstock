@@ -12,6 +12,7 @@ import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
 import com.invsys.service.InvoicingService;
 import com.invsys.service.SalesOrderService;
+import com.invsys.service.SoftKitExplosionService;
 import com.invsys.service.TaxService;
 import com.invsys.tenancy.TenantContext;
 import jakarta.validation.Valid;
@@ -42,6 +43,7 @@ public class SalesOrderController {
     private final TaxService taxService;
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
+    private final SoftKitExplosionService softKitExplosionService;
 
     public SalesOrderController(CustomerRepository customerRepository,
                                 SalesOrderRepository salesOrderRepository,
@@ -50,7 +52,8 @@ public class SalesOrderController {
                                 InvoicingService invoicingService,
                                 TaxService taxService,
                                 ProductVariantRepository variantRepository,
-                                ProductRepository productRepository) {
+                                ProductRepository productRepository,
+                                SoftKitExplosionService softKitExplosionService) {
         this.customerRepository = customerRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
@@ -59,6 +62,7 @@ public class SalesOrderController {
         this.taxService = taxService;
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
+        this.softKitExplosionService = softKitExplosionService;
     }
 
     @GetMapping("/customers")
@@ -118,18 +122,28 @@ public class SalesOrderController {
             order.setRequestedShipDate(request.requestedShipDate());
         }
         order = salesOrderRepository.save(order);
+        UUID tenantId = TenantContext.requireTenantId();
         Map<String, Object> defaultTax = taxService.defaultTaxPayload();
         for (CreateLineRequest line : request.lines()) {
-            SalesOrderLine sol = new SalesOrderLine();
-            sol.setTenantId(TenantContext.requireTenantId());
-            sol.setSalesOrderId(order.getId());
-            sol.setVariantId(line.variantId());
-            sol.setQtyOrdered(line.qtyOrdered());
-            sol.setUnitPrice(line.unitPrice() != null ? line.unitPrice() : BigDecimal.ZERO);
-            if (!defaultTax.isEmpty()) {
-                sol.setTax(defaultTax);
+            List<SoftKitExplosionService.ExplodedLine> exploded = softKitExplosionService.explode(
+                    tenantId,
+                    line.variantId(),
+                    line.qtyOrdered(),
+                    line.unitPrice() != null ? line.unitPrice() : BigDecimal.ZERO,
+                    true,
+                    true);
+            for (SoftKitExplosionService.ExplodedLine component : exploded) {
+                SalesOrderLine sol = new SalesOrderLine();
+                sol.setTenantId(tenantId);
+                sol.setSalesOrderId(order.getId());
+                sol.setVariantId(component.variantId());
+                sol.setQtyOrdered(component.quantity());
+                sol.setUnitPrice(component.unitPrice());
+                if (!defaultTax.isEmpty()) {
+                    sol.setTax(defaultTax);
+                }
+                lineRepository.save(sol);
             }
-            lineRepository.save(sol);
         }
         return order;
     }

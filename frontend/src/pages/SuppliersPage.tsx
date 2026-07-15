@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { useSessionStore } from '@/stores/session';
 
 function AddSupplierModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -91,6 +92,8 @@ export function SuppliersPage() {
           </Button>
         )}
       </div>
+
+      <DataListToolbar />
 
       <ListPageState
         isLoading={isLoading}

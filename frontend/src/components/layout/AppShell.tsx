@@ -8,6 +8,7 @@ import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useWarehouseStore } from '@/stores/warehouseStore';
+import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
@@ -54,12 +55,18 @@ export function AppShell() {
   const jwtTerminalLocked = sessionWarehouseIds.length === 1;
   const hideSwitcher = jwtTerminalLocked || contextLocked || switcherDisabled;
 
+  const densityMode = usePreferencesStore((s) => s.densityMode);
+
   useEffect(() => {
     document.documentElement.setAttribute(
       'data-theme',
       isWarehouseView ? 'warehouse' : 'office',
     );
   }, [isWarehouseView]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-density', densityMode);
+  }, [densityMode]);
 
   useQuery({
     queryKey: ['auth', 'me'],

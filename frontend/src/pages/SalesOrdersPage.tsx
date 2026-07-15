@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
+import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
@@ -368,12 +369,15 @@ export function SalesOrdersPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-      <SavedFilterViews
-        storageKey="sales-orders-filters"
-        activeFilters={{ status: statusFilter }}
-        onApply={(f) => setStatusFilter(f.status ?? '')}
-        defaultPresets={orderPresets}
-      />
+        <DataListToolbar>
+          <SavedFilterViews
+            className="mb-0"
+            storageKey="sales-orders-filters"
+            activeFilters={{ status: statusFilter }}
+            onApply={(f) => setStatusFilter(f.status ?? '')}
+            defaultPresets={orderPresets}
+          />
+        </DataListToolbar>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">

@@ -36,6 +36,8 @@ import {
 
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 
+import { DensityToggle } from '@/components/ui/DensityToggle';
+
 import { VariantThumb } from '@/components/ui/VariantThumb';
 
 import { useSessionStore } from '@/stores/session';
@@ -392,6 +394,8 @@ export function ManufacturingOrdersPage() {
         </div>
 
         <div className="flex gap-3">
+
+          <DensityToggle />
 
           <Button variant="secondary" onClick={() => navigate('/manufacturing/terminal')}>
 

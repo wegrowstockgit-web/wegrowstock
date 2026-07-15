@@ -12,6 +12,10 @@ import java.util.UUID;
 public interface InventoryLedgerRepository extends JpaRepository<InventoryLedger, UUID> {
     List<InventoryLedger> findByTenantIdAndVariantIdOrderByCreatedAtDesc(UUID tenantId, UUID variantId);
 
+    List<InventoryLedger> findByTenantIdAndVariantIdOrderByCreatedAtAsc(UUID tenantId, UUID variantId);
+
+    List<InventoryLedger> findByTenantIdOrderByCreatedAtAsc(UUID tenantId);
+
     List<InventoryLedger> findByTenantIdAndReferenceTypeAndReferenceId(
             UUID tenantId, String referenceType, UUID referenceId);
 

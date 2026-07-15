@@ -144,6 +144,7 @@ describe('mutationQueue secure offline engine', () => {
       quantity: 4,
       isGs1: true,
       rawBarcode: '(01)01234567890128(10)BATCH-E2E(17)251231(30)4',
+      metadata: { vendor_lot_captured: 'BATCH-E2E' },
     };
     await enqueueMutation({
       idempotencyKey: 'idem-gs1',
@@ -161,6 +162,7 @@ describe('mutationQueue secure offline engine', () => {
           lotNumber: 'BATCH-E2E',
           quantity: 4,
           isGs1: true,
+          metadata: { vendor_lot_captured: 'BATCH-E2E' },
         }),
       }),
     );

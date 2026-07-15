@@ -9,6 +9,11 @@ export default {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       colors: {
+        background: 'var(--color-surface-raised)',
+        muted: {
+          DEFAULT: 'var(--color-surface-overlay)',
+          foreground: 'var(--color-text-muted)',
+        },
         surface: {
           DEFAULT: 'var(--color-surface)',
           raised: 'var(--color-surface-raised)',
@@ -49,6 +54,8 @@ export default {
       animation: {
         'flash-success': 'flash-success 150ms ease-out',
         'flash-error': 'flash-error 200ms ease-out',
+        'scan-success-enter': 'scan-success-enter 220ms cubic-bezier(0.23, 1, 0.32, 1) both',
+        'scan-error-shake': 'scan-error-shake 280ms cubic-bezier(0.22, 1, 0.36, 1) both',
       },
       keyframes: {
         'flash-success': {
@@ -58,6 +65,17 @@ export default {
         'flash-error': {
           '0%': { backgroundColor: 'rgba(239, 68, 68, 0.4)' },
           '100%': { backgroundColor: 'transparent' },
+        },
+        'scan-success-enter': {
+          '0%': { opacity: '0', transform: 'scale(0.98)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'scan-error-shake': {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '20%': { transform: 'translateX(-6px)' },
+          '40%': { transform: 'translateX(6px)' },
+          '60%': { transform: 'translateX(-4px)' },
+          '80%': { transform: 'translateX(4px)' },
         },
       },
     },

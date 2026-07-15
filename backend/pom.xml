@@ -245,6 +245,7 @@
                                 <exclude>com/invsys/service/InternalConsumptionService*.class</exclude>
                                 <exclude>com/invsys/service/WarehouseContextService*.class</exclude>
                                 <exclude>com/invsys/service/TerminalBiometricService*.class</exclude>
+                                <exclude>com/invsys/service/FulfillmentExceptionService*.class</exclude>
                                 <exclude>com/invsys/billing/MockCapitalGateway.class</exclude>
                                 <exclude>com/invsys/billing/CapitalGateway*.class</exclude>
                             </excludes>

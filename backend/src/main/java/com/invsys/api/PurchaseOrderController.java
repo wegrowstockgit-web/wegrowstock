@@ -128,10 +128,32 @@ public class PurchaseOrderController {
         return supplierPortalService.sendMagicLink(id);
     }
 
+    @GetMapping("/purchase-orders/{id}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER','PICKER')")
+    public PurchaseOrderDetailResponse getPurchaseOrder(@PathVariable UUID id) {
+        PurchaseOrder po = purchaseOrderRepository.findById(id)
+                .orElseThrow(() -> new com.invsys.common.ApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Purchase order not found"));
+        if (!po.getTenantId().equals(TenantContext.requireTenantId())) {
+            throw new com.invsys.common.ApiException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Purchase order not found");
+        }
+        String supplierName = supplierRepository.findById(po.getSupplierId())
+                .map(Supplier::getName).orElse("—");
+        List<PurchaseOrderLineDetail> lines = lineRepository.findByPurchaseOrderId(id).stream()
+                .map(l -> new PurchaseOrderLineDetail(
+                        l.getId(), l.getVariantId(), l.getQtyOrdered(), l.getQtyReceived(), l.getUnitCost()))
+                .toList();
+        return new PurchaseOrderDetailResponse(
+                po.getId(), po.getNumber(), supplierName, po.getStatus(), po.getExpectedAt(),
+                po.getDestinationLocationId(), po.getFreightAmount(), po.getDutiesAmount(), lines);
+    }
+
     @PostMapping("/purchase-orders/lines/{lineId}/receive")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
     public PurchaseOrderLine receive(@PathVariable UUID lineId, @Valid @RequestBody ReceiveLineRequest request) {
-        return purchaseOrderService.receiveLine(lineId, request.locationId(), request.lotId(), request.quantity());
+        return purchaseOrderService.receiveLine(
+                lineId, request.locationId(), request.lotId(), request.quantity(), request.landedCostSurcharge());
     }
 
     public record CreateSupplierRequest(@NotBlank String name, Map<String, Object> contact, String paymentTerms) {
@@ -150,7 +172,12 @@ public class PurchaseOrderController {
     public record CreateLineRequest(@NotNull UUID variantId, @NotNull BigDecimal qtyOrdered, BigDecimal unitCost) {
     }
 
-    public record ReceiveLineRequest(@NotNull UUID locationId, UUID lotId, @NotNull BigDecimal quantity) {
+    public record ReceiveLineRequest(
+            @NotNull UUID locationId,
+            UUID lotId,
+            @NotNull BigDecimal quantity,
+            BigDecimal landedCostSurcharge
+    ) {
     }
 
     public record PurchaseOrderResponse(
@@ -159,6 +186,28 @@ public class PurchaseOrderController {
             String supplierName,
             String status,
             java.time.Instant expectedAt
+    ) {
+    }
+
+    public record PurchaseOrderLineDetail(
+            UUID id,
+            UUID variantId,
+            BigDecimal qtyOrdered,
+            BigDecimal qtyReceived,
+            BigDecimal unitCost
+    ) {
+    }
+
+    public record PurchaseOrderDetailResponse(
+            UUID id,
+            String number,
+            String supplierName,
+            String status,
+            java.time.Instant expectedAt,
+            UUID destinationLocationId,
+            BigDecimal freightAmount,
+            BigDecimal dutiesAmount,
+            List<PurchaseOrderLineDetail> lines
     ) {
     }
 }

@@ -12,6 +12,9 @@ import com.invsys.repository.PickingBatchRepository;
 import com.invsys.repository.PickingTaskRepository;
 import com.invsys.repository.PickingWaveRepository;
 import com.invsys.tenancy.TenantContext;
+import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.Result;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +37,7 @@ public class PickingWaveService {
     private final PickingService pickingService;
     private final CrossDockService crossDockService;
     private final AllocationService allocationService;
+    private final DSLContext dsl;
 
     public PickingWaveService(PickingWaveRepository waveRepository,
                               PickingBatchRepository batchRepository,
@@ -42,7 +46,8 @@ public class PickingWaveService {
                               LocationRepository locationRepository,
                               PickingService pickingService,
                               CrossDockService crossDockService,
-                              AllocationService allocationService) {
+                              AllocationService allocationService,
+                              DSLContext dsl) {
         this.waveRepository = waveRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
@@ -51,6 +56,7 @@ public class PickingWaveService {
         this.pickingService = pickingService;
         this.crossDockService = crossDockService;
         this.allocationService = allocationService;
+        this.dsl = dsl;
     }
 
     /**
@@ -167,6 +173,52 @@ public class PickingWaveService {
                 .orElse(List.of());
     }
 
+    /**
+     * Path-optimized pick list for a wave: allocations sorted by {@code locations.path ASC}
+     * so operators walk a deterministic physical loop.
+     */
+    @Transactional(readOnly = true)
+    public List<WavePick> listPicksByPath(UUID waveId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        PickingWave wave = waveRepository.findById(waveId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found"));
+        if (!tenantId.equals(wave.getTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found");
+        }
+
+        Result<Record> rows = dsl.fetch("""
+                SELECT pt.id AS task_id,
+                       pt.allocation_id AS allocation_id,
+                       a.variant_id AS variant_id,
+                       a.location_id AS location_id,
+                       a.quantity AS quantity,
+                       l.path AS location_path,
+                       pt.sequence_order AS sequence_order,
+                       pt.status AS status
+                FROM picking_tasks pt
+                JOIN picking_batches pb ON pb.id = pt.batch_id AND pb.tenant_id = pt.tenant_id
+                JOIN allocations a ON a.id = pt.allocation_id AND a.tenant_id = pt.tenant_id
+                JOIN locations l ON l.id = a.location_id AND l.tenant_id = pt.tenant_id
+                WHERE pt.tenant_id = ?
+                  AND pb.wave_id = ?
+                ORDER BY l.path ASC, pt.sequence_order ASC
+                """, tenantId, waveId);
+
+        List<WavePick> picks = new ArrayList<>(rows.size());
+        for (Record row : rows) {
+            picks.add(new WavePick(
+                    row.get("task_id", UUID.class),
+                    row.get("allocation_id", UUID.class),
+                    row.get("variant_id", UUID.class),
+                    row.get("location_id", UUID.class),
+                    row.get("quantity", java.math.BigDecimal.class),
+                    row.get("location_path", String.class),
+                    row.get("sequence_order", Integer.class),
+                    row.get("status", String.class)));
+        }
+        return picks;
+    }
+
     @Transactional
     public PickingTask markTaskPicked(UUID taskId) {
         PickingTask task = taskRepository.findById(taskId).orElseThrow();
@@ -207,5 +259,17 @@ public class PickingWaveService {
     }
 
     public record ClaimResult(UUID waveId, UUID assignedToUserId, int allocationsClaimed) {
+    }
+
+    public record WavePick(
+            UUID taskId,
+            UUID allocationId,
+            UUID variantId,
+            UUID locationId,
+            java.math.BigDecimal quantity,
+            String locationPath,
+            int sequenceOrder,
+            String status
+    ) {
     }
 }

@@ -9,6 +9,7 @@ import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.service.AllocationService;
+import com.invsys.service.FulfillmentExceptionService;
 import com.invsys.service.IdempotencyService;
 import com.invsys.service.InventoryService;
 import com.invsys.service.ScanService;
@@ -42,6 +43,7 @@ public class FulfillmentController {
     private final IdempotencyService idempotencyService;
     private final TenantSettingsRepository tenantSettingsRepository;
     private final AllocationService allocationService;
+    private final FulfillmentExceptionService fulfillmentExceptionService;
 
     public FulfillmentController(ProductVariantRepository variantRepository,
                                  ProductRepository productRepository,
@@ -49,7 +51,8 @@ public class FulfillmentController {
                                  ScanService scanService,
                                  IdempotencyService idempotencyService,
                                  TenantSettingsRepository tenantSettingsRepository,
-                                 AllocationService allocationService) {
+                                 AllocationService allocationService,
+                                 FulfillmentExceptionService fulfillmentExceptionService) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
@@ -57,6 +60,20 @@ public class FulfillmentController {
         this.idempotencyService = idempotencyService;
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.allocationService = allocationService;
+        this.fulfillmentExceptionService = fulfillmentExceptionService;
+    }
+
+    @PostMapping("/exceptions/report")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public ExceptionReportResponse reportException(@Valid @RequestBody ExceptionReportRequest request) {
+        FulfillmentExceptionService.ReportResult result = fulfillmentExceptionService.reportDamagedBarcode(
+                request.allocationId(), request.metadata());
+        return new ExceptionReportResponse(
+                result.exceptionId(),
+                result.allocationId(),
+                result.resolutionStatus(),
+                result.alreadyReported(),
+                FulfillmentExceptionService.STATUS_EXCEPTION);
     }
 
     @PostMapping("/scan")
@@ -80,7 +97,9 @@ public class FulfillmentController {
                     (String) body.get("serialPrompt"),
                     (String) body.get("message"),
                     (String) body.get("putawayTarget"),
-                    (String) body.get("primaryMediaUrl"));
+                    (String) body.get("primaryMediaUrl"),
+                    Boolean.TRUE.equals(body.get("isLotTracked")),
+                    Boolean.TRUE.equals(body.get("lotLoggedNotTracked")));
             return ResponseEntity.status(cached.get().status()).body(replayed);
         }
 
@@ -128,23 +147,31 @@ public class FulfillmentController {
             }
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
-                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
+                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl,
+                        variant.isLotTracked(), false);
             }
-            inventoryService.receive(variant.getId(), request.warehouseId(), null,
-                    qty, "SCAN_RECEIVE", null, null, request.serialNumber());
+            InventoryService.ResolvedLot preview = inventoryService.resolveLot(
+                    variant, null, request.lotNumber(), request.metadata());
+            inventoryService.receive(variant.getId(), request.warehouseId(), null, request.lotNumber(),
+                    qty, "SCAN_RECEIVE", null, null, request.serialNumber(), request.metadata());
             message = request.serialNumber() != null
                     ? "Received serial " + request.serialNumber()
                     : "Received " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
+            return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message,
+                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked());
         } else {
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
-                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
+                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl,
+                        variant.isLotTracked(), false);
             }
             Allocation allocation = allocationService.assertPickableForCurrentUser(
                     variant.getId(), request.allocationId());
+            InventoryService.ResolvedLot preview = inventoryService.resolveLot(
+                    variant, null, request.lotNumber(), request.metadata());
             try {
-                inventoryService.adjust(variant.getId(), request.warehouseId(), null,
-                        qty.negate(), "SCAN_PICK", request.serialNumber());
+                inventoryService.adjust(variant.getId(), request.warehouseId(), null, request.lotNumber(),
+                        qty.negate(), "SCAN_PICK", request.serialNumber(), request.metadata());
             } catch (ApiException ex) {
                 if ("INSUFFICIENT_STOCK".equals(ex.getCode())) {
                     throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", "Insufficient stock")
@@ -157,8 +184,9 @@ public class FulfillmentController {
             message = request.serialNumber() != null
                     ? "Picked serial " + request.serialNumber()
                     : "Picked " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
+            return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message,
+                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked());
         }
-        return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message, putawayTarget, primaryMediaUrl);
     }
 
     private boolean allowBlindReceiving() {
@@ -184,6 +212,8 @@ public class FulfillmentController {
         map.put("message", response.message());
         map.put("putawayTarget", response.putawayTarget());
         map.put("primaryMediaUrl", response.primaryMediaUrl());
+        map.put("isLotTracked", response.isLotTracked());
+        map.put("lotLoggedNotTracked", response.lotLoggedNotTracked());
         return map;
     }
 
@@ -191,6 +221,8 @@ public class FulfillmentController {
      * Floor scan payload. When the PWA decodes GS1-128 offline, it sends structured
      * {@code gtin}/{@code lotNumber}/{@code expiryDate}/{@code quantity} so the API
      * does not need to re-parse the composite AI string on replay.
+     * {@code metadata} may include {@code vendor_lot_captured} when the client already
+     * decided the variant is not lot-tracked.
      */
     public record ScanRequest(
             @NotBlank String barcode,
@@ -203,7 +235,8 @@ public class FulfillmentController {
             String expiryDate,
             BigDecimal quantity,
             Boolean isGs1,
-            String rawBarcode
+            String rawBarcode,
+            Map<String, Object> metadata
     ) {
     }
 
@@ -215,7 +248,24 @@ public class FulfillmentController {
             String serialPrompt,
             String message,
             String putawayTarget,
-            String primaryMediaUrl
+            String primaryMediaUrl,
+            boolean isLotTracked,
+            boolean lotLoggedNotTracked
+    ) {
+    }
+
+    public record ExceptionReportRequest(
+            @NotNull UUID allocationId,
+            Map<String, Object> metadata
+    ) {
+    }
+
+    public record ExceptionReportResponse(
+            UUID exceptionId,
+            UUID allocationId,
+            String resolutionStatus,
+            boolean alreadyReported,
+            String allocationStatus
     ) {
     }
 }
