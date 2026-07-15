@@ -12,4 +12,8 @@ public interface AllocationRepository extends JpaRepository<Allocation, UUID> {
     List<Allocation> findByProductionOrderIdAndStatus(UUID productionOrderId, String status);
 
     List<Allocation> findByTenantIdAndStatus(UUID tenantId, String status);
+
+    List<Allocation> findByTenantIdAndVariantIdAndStatus(UUID tenantId, UUID variantId, String status);
+
+    java.util.Optional<Allocation> findByTenantIdAndId(UUID tenantId, UUID id);
 }

@@ -1,4 +1,5 @@
 import { apiClient } from '@/api/client';
+import { compressImageForUpload } from '@/utils/imageCompression';
 
 export type PresignType = 'PRODUCT' | 'TRANSACTION' | 'USER_AVATAR';
 
@@ -18,16 +19,34 @@ export interface CompletedMedia {
   originalFilename?: string | null;
 }
 
+export interface UploadViaPresignOptions {
+  /** Compress client-side before PUT (default true). */
+  compress?: boolean;
+  /** Called when local compression starts / finishes (for loading copy). */
+  onPhase?: (phase: 'compressing' | 'uploading') => void;
+}
+
 /** Pre-sign → PUT bytes to MinIO/S3 → register MediaObject via /complete. */
 export async function uploadViaPresign(
   file: File,
   type: PresignType,
+  options: UploadViaPresignOptions = {},
 ): Promise<CompletedMedia> {
-  const contentType = file.type || 'image/jpeg';
+  const shouldCompress = options.compress !== false;
+  let payload = file;
+  if (shouldCompress) {
+    options.onPhase?.('compressing');
+    payload = await compressImageForUpload(file, {
+      avatar: type === 'USER_AVATAR',
+    });
+  }
+
+  options.onPhase?.('uploading');
+  const contentType = payload.type || 'image/webp';
   const { data: presign } = await apiClient.get<PresignedUpload>('/api/v1/media/presign-upload', {
     params: {
       type,
-      filename: file.name || 'capture.jpg',
+      filename: payload.name || 'upload.webp',
       contentType,
     },
   });
@@ -35,7 +54,7 @@ export async function uploadViaPresign(
   const putRes = await fetch(presign.uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Type': presign.contentType },
-    body: file,
+    body: payload,
   });
   if (!putRes.ok) {
     throw new Error(`Direct storage upload failed (${putRes.status})`);

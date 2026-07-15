@@ -21,5 +21,7 @@ class S3ObjectStorageTest extends AbstractIntegrationTest {
             assertThat(in.readAllBytes()).isEqualTo(TestImages.PNG_1X1);
         }
         assertThat(objectStorage.exists("tenants/missing-" + UUID.randomUUID() + ".png")).isFalse();
+        objectStorage.delete(key);
+        assertThat(objectStorage.exists(key)).isFalse();
     }
 }

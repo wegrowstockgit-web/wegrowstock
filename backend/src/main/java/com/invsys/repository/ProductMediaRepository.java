@@ -17,9 +17,17 @@ public interface ProductMediaRepository extends JpaRepository<ProductMedia, UUID
 
     Optional<ProductMedia> findFirstByTenantIdAndVariantIdAndPrimaryTrue(UUID tenantId, UUID variantId);
 
+    Optional<ProductMedia> findByTenantIdAndIdAndVariantId(UUID tenantId, UUID id, UUID variantId);
+
     List<ProductMedia> findByTenantIdAndVariantIdInAndPrimaryTrue(UUID tenantId, Collection<UUID> variantIds);
 
-    @Modifying
+    List<ProductMedia> findByTenantIdAndUrl(UUID tenantId, String url);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE ProductMedia m SET m.primary = false WHERE m.tenantId = :tenantId AND m.variantId = :variantId AND m.primary = true")
     void clearPrimary(@Param("tenantId") UUID tenantId, @Param("variantId") UUID variantId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM ProductMedia m WHERE m.tenantId = :tenantId AND m.url = :url")
+    void deleteByTenantIdAndUrl(@Param("tenantId") UUID tenantId, @Param("url") String url);
 }

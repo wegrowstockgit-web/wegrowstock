@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ScanLine, Scale } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { AlertTriangle, ScanLine, Scale } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { FulfillmentScanResponse, PackLabelResponse, PickingTask, SalesOrder } from '@/api/types';
 import { useBluetoothScale } from '@/hooks/useBluetoothScale';
@@ -9,7 +10,9 @@ import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useSessionStore } from '@/stores/session';
+import { useOfflineStore } from '@/stores/offlineStore';
 import { cn, generateIdempotencyKey } from '@/lib/utils';
+import type { ParsedBarcode } from '@/utils/gs1Parser';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
@@ -18,13 +21,20 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { LocationBreadcrumb } from '@/components/ui/LocationBreadcrumb';
 import { UndoToast } from '@/components/ui/UndoToast';
-import { MediaPicker } from '@/components/ui/MediaPicker';
-import { VariantThumb } from '@/components/ui/VariantThumb';
+import {
+  ReceiveQcPhotoSlot,
+  ScannerView,
+  type Gs1FieldState,
+  type ScannerHistoryItem,
+} from '@/features/fulfillment/ScannerView';
+import { QuarantineReview } from '@/features/fulfillment/QuarantineReview';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
 
 function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
   const canManage = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'));
+  const canClaim = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'));
   const [draftWaveId, setDraftWaveId] = useState<string | null>(null);
+  const [releasedWaveId, setReleasedWaveId] = useState<string | null>(null);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -40,26 +50,39 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
   const releaseMutation = useMutation({
     mutationFn: async (waveId: string) => {
       await apiClient.post(`/api/v1/picking/waves/${waveId}/release`);
+      return waveId;
     },
-    onSuccess: () => {
+    onSuccess: (waveId) => {
       setDraftWaveId(null);
+      setReleasedWaveId(waveId);
       onReleased();
     },
   });
 
-  if (!canManage) return null;
+  const claimMutation = useMutation({
+    mutationFn: async (waveId: string) => {
+      const res = await apiClient.post<{ waveId: string; allocationsClaimed: number }>(
+        `/api/v1/picking/waves/${waveId}/claim`,
+      );
+      return res.data;
+    },
+  });
+
+  if (!canManage && !canClaim) return null;
 
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      <Button
-        size="sm"
-        variant="secondary"
-        loading={generateMutation.isPending}
-        onClick={() => generateMutation.mutate()}
-      >
-        Generate draft wave
-      </Button>
-      {draftWaveId && (
+      {canManage && (
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={generateMutation.isPending}
+          onClick={() => generateMutation.mutate()}
+        >
+          Generate draft wave
+        </Button>
+      )}
+      {canManage && draftWaveId && (
         <Button
           size="sm"
           loading={releaseMutation.isPending}
@@ -68,20 +91,24 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
           Release to floor
         </Button>
       )}
+      {canClaim && releasedWaveId && (
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={claimMutation.isPending}
+          onClick={() => claimMutation.mutate(releasedWaveId)}
+        >
+          Claim wave (device lock)
+        </Button>
+      )}
+      {claimMutation.isSuccess && (
+        <p className="w-full text-xs text-success">
+          Locked {claimMutation.data.allocationsClaimed} allocation
+          {claimMutation.data.allocationsClaimed === 1 ? '' : 's'} to this device
+        </p>
+      )}
     </div>
   );
-}
-
-interface ScanResult {
-  barcode: string;
-  variantId?: string;
-  sku?: string;
-  name?: string;
-  success: boolean;
-  message: string;
-  putawayTarget?: string;
-  primaryMediaUrl?: string | null;
-  timestamp: number;
 }
 
 interface SerialCaptureState {
@@ -93,12 +120,30 @@ interface SerialCaptureState {
   required: number;
 }
 
+const EMPTY_GS1: Gs1FieldState = { lotNumber: '', expiryDate: '', quantity: '' };
+
+/** Offline / online scan body with client-decoded GS1 fields so the API need not re-parse. */
+export interface FulfillmentScanPayload {
+  barcode: string;
+  warehouseId: string | undefined;
+  mode: 'pick' | 'receive';
+  serialNumber?: string;
+  gtin?: string;
+  lotNumber?: string;
+  expiryDate?: string;
+  quantity?: number;
+  isGs1?: boolean;
+  rawBarcode?: string;
+}
+
 export function FulfillmentPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const warehouse = useActiveWarehouseStore((s) => s.warehouse);
   const lastScan = useScanBufferStore((s) => s.lastScan);
   const { flash, triggerSuccess, triggerError } = useScanFeedback();
-  const [history, setHistory] = useState<ScanResult[]>([]);
+  const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
+  const [history, setHistory] = useState<ScannerHistoryItem[]>([]);
   const [lastThumbUrl, setLastThumbUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<'pick' | 'receive'>('pick');
   const [batchMode, setBatchMode] = useState(false);
@@ -106,10 +151,21 @@ export function FulfillmentPage() {
   const [packingMode, setPackingMode] = useState(false);
   const [packSalesOrderId, setPackSalesOrderId] = useState('');
   const [labelMessage, setLabelMessage] = useState('');
+  const [showQuarantine, setShowQuarantine] = useState(false);
+  const [gs1Fields, setGs1Fields] = useState<Gs1FieldState>(EMPTY_GS1);
+  const [gs1Active, setGs1Active] = useState(false);
+  const lastParsedRef = useRef<ParsedBarcode | null>(null);
+  const gs1FeedbackPendingRef = useRef(false);
   const scale = useBluetoothScale();
   const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
   const bufferMisScan = useWarehouseUXStore((s) => s.bufferMisScan);
   const undoMisScan = useWarehouseUXStore((s) => s.undoMisScan);
+
+  useEffect(() => {
+    if (searchParams.get('quarantine') === '1') {
+      setShowQuarantine(true);
+    }
+  }, [searchParams]);
 
   const { data: packOrders = [] } = useQuery({
     queryKey: ['sales-orders', 'pack'],
@@ -159,14 +215,33 @@ export function FulfillmentPage() {
     onSuccess: () => void refetchTasks(),
   });
 
-  const submitScan = async (barcode: string, serialNumber?: string): Promise<FulfillmentScanResponse> => {
-    const idempotencyKey = generateIdempotencyKey();
-    const payload = {
+  const buildScanPayload = (barcode: string, serialNumber?: string): FulfillmentScanPayload => {
+    const parsed = lastParsedRef.current;
+    const qtyParsed = gs1Fields.quantity.trim() ? Number(gs1Fields.quantity) : undefined;
+    const payload: FulfillmentScanPayload = {
       barcode,
       warehouseId: warehouse?.id,
       mode: serialCapture?.mode ?? mode,
       serialNumber,
     };
+    if (parsed?.isGs1 || gs1Active) {
+      payload.isGs1 = true;
+      payload.gtin = parsed?.sku ?? barcode;
+      payload.rawBarcode = parsed?.raw;
+      const lot = gs1Fields.lotNumber.trim() || parsed?.lotNumber;
+      const expiry = gs1Fields.expiryDate.trim() || parsed?.expiryDate;
+      const quantity =
+        qtyParsed != null && Number.isFinite(qtyParsed) ? qtyParsed : parsed?.quantity;
+      if (lot) payload.lotNumber = lot;
+      if (expiry) payload.expiryDate = expiry;
+      if (quantity != null) payload.quantity = quantity;
+    }
+    return payload;
+  };
+
+  const submitScan = async (barcode: string, serialNumber?: string): Promise<FulfillmentScanResponse> => {
+    const idempotencyKey = generateIdempotencyKey();
+    const payload = buildScanPayload(barcode, serialNumber);
 
     if (!navigator.onLine) {
       const queuedHistory = {
@@ -208,8 +283,12 @@ export function FulfillmentPage() {
         });
         return;
       }
-      triggerSuccess();
-      if ('vibrate' in navigator) navigator.vibrate([30, 20, 30]);
+      // GS1 path already flashed on parse — avoid double green flash.
+      if (!gs1FeedbackPendingRef.current) {
+        triggerSuccess();
+        if ('vibrate' in navigator) navigator.vibrate([30, 20, 30]);
+      }
+      gs1FeedbackPendingRef.current = false;
       if (batchMode && nextTask) {
         pickTaskMutation.mutate(nextTask.id);
       }
@@ -224,6 +303,9 @@ export function FulfillmentPage() {
           message: result.message,
           putawayTarget: result.putawayTarget ?? undefined,
           primaryMediaUrl: result.primaryMediaUrl ?? null,
+          lotNumber: gs1Fields.lotNumber || undefined,
+          expiryDate: gs1Fields.expiryDate || undefined,
+          quantity: gs1Fields.quantity ? Number(gs1Fields.quantity) : undefined,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -231,6 +313,7 @@ export function FulfillmentPage() {
       setSerialCapture(null);
     },
     onError: (_err, barcode) => {
+      gs1FeedbackPendingRef.current = false;
       triggerError();
       setLastThumbUrl(null);
       setHistory((h) => [
@@ -277,8 +360,26 @@ export function FulfillmentPage() {
   useHardwareScanner({
     enabled: true,
     captureAll: true,
-    onScan: (code) => {
+    onGs1Scan: (parsed) => {
+      lastParsedRef.current = parsed;
+      setGs1Active(true);
+      setGs1Fields({
+        lotNumber: parsed.lotNumber ?? '',
+        expiryDate: parsed.expiryDate ?? '',
+        quantity: parsed.quantity != null ? String(parsed.quantity) : '',
+      });
+      // Instant offline-capable feedback: 50ms vibrate + green flash (useScanFeedback contract).
+      gs1FeedbackPendingRef.current = true;
+      triggerSuccess();
+    },
+    onScan: (code, parsed) => {
       if (!code.length) return;
+      if (parsed && !parsed.isGs1) {
+        lastParsedRef.current = null;
+        setGs1Active(false);
+        setGs1Fields(EMPTY_GS1);
+        gs1FeedbackPendingRef.current = false;
+      }
       if (serialCapture) {
         serialScanMutation.mutate(code);
       } else {
@@ -304,7 +405,32 @@ export function FulfillmentPage() {
               ? 'Batch pick'
               : `Scan to ${mode}`}
         </p>
+        {quarantineCount > 0 && (
+          <button
+            type="button"
+            data-testid="fulfillment-quarantine-badge"
+            className="mt-3 inline-flex min-h-12 items-center gap-2 rounded-lg border-2 border-danger bg-danger px-4 py-2 text-base font-bold text-white"
+            onClick={() => setShowQuarantine(true)}
+          >
+            <AlertTriangle className="h-5 w-5" aria-hidden />
+            {quarantineCount} quarantined scan{quarantineCount === 1 ? '' : 's'}
+          </button>
+        )}
       </div>
+
+      {showQuarantine ? (
+        <div className="mb-6">
+          <QuarantineReview
+            onClose={() => {
+              setShowQuarantine(false);
+              if (searchParams.get('quarantine')) {
+                searchParams.delete('quarantine');
+                setSearchParams(searchParams, { replace: true });
+              }
+            }}
+          />
+        </div>
+      ) : null}
 
       {serialCapture && (
         <Card className="mb-6 border-accent bg-accent-muted p-4">
@@ -504,88 +630,29 @@ export function FulfillmentPage() {
         </>
       )}
 
-      <Card className="mb-6 text-center" padding="lg" data-testid="scan-buffer-card">
-        <p className="text-sm text-text-muted">Last scan</p>
-        <div className="mt-3 flex items-center justify-center gap-4">
-          {(lastThumbUrl || history[0]?.success) && (
-            <VariantThumb
-              url={lastThumbUrl ?? history[0]?.primaryMediaUrl}
-              alt={history[0]?.name ?? history[0]?.sku ?? 'Scanned item'}
-              size="lg"
-            />
-          )}
-          <p className="font-mono text-2xl font-bold text-text">
-            {lastScan ?? 'Ready to scan'}
-          </p>
-        </div>
-        {(scanMutation.isPending || serialScanMutation.isPending) && (
-          <p className="mt-2 text-sm text-accent">Processing...</p>
-        )}
-        {mode === 'receive' && history[0]?.success && history[0]?.variantId && (
-          <div className="mt-4 text-left" data-testid="receive-qc-photo">
-            <MediaPicker
-              kind="EVIDENCE"
-              label="QC / damage photo"
-              capture
-              webrtc
-              presignType="TRANSACTION"
-              onUploaded={async (result) => {
-                await apiClient.post('/api/v1/media/transactions', {
-                  entityType: 'RECEIPT',
-                  entityId: history[0]!.variantId,
-                  url: result.contentUrl,
-                });
-                await apiClient.post('/api/v1/media/attachments', {
-                  mediaObjectId: result.id,
-                  entityType: 'PRODUCT_VARIANT',
-                  entityId: history[0]!.variantId,
-                  purpose: 'QC_DAMAGE',
-                });
-              }}
-            />
-          </div>
-        )}
-      </Card>
-
-      <div className="flex-1 space-y-2">
-        <h2 className="text-sm font-medium text-text-muted">Recent scans</h2>
-        {history.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">Scan a barcode to get started</p>
-        ) : (
-          history.map((item) => (
-            <div
-              key={item.timestamp}
-              className={cn(
-                'flex items-center gap-3 rounded-lg border p-4',
-                item.success
-                  ? 'border-success/30 bg-success/5'
-                  : 'border-danger/30 bg-danger/5'
-              )}
-            >
-              {item.success ? (
-                <VariantThumb url={item.primaryMediaUrl} alt={item.name ?? item.sku ?? item.barcode} size="md" />
-              ) : (
-                <div
-                  className="h-2.5 w-2.5 shrink-0 rounded-full bg-danger"
-                  aria-hidden
-                />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-mono font-medium text-text">{item.sku ?? item.barcode}</p>
-                {item.name && <p className="truncate text-sm text-text-muted">{item.name}</p>}
-                <p className={cn('text-xs', item.success ? 'text-text-muted' : 'text-danger')}>
-                  {item.message}
-                </p>
-                {mode === 'receive' && item.putawayTarget && (
-                  <p className="mt-1 text-xs font-medium text-accent">
-                    Putaway target: {item.putawayTarget.replace(/\//g, ' / ')}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      <ScannerView
+        lastScan={lastScan}
+        lastThumbUrl={lastThumbUrl}
+        history={history}
+        scanning={scanMutation.isPending || serialScanMutation.isPending}
+        mode={mode}
+        gs1Active={gs1Active}
+        gs1Fields={gs1Fields}
+        onGs1FieldsChange={setGs1Fields}
+        onThumbCaptured={(url, variantId) => {
+          setLastThumbUrl(url);
+          setHistory((h) =>
+            h.map((item) =>
+              item.variantId === variantId ? { ...item, primaryMediaUrl: url } : item,
+            ),
+          );
+        }}
+        receiveQcSlot={
+          mode === 'receive' && history[0]?.success && history[0]?.variantId ? (
+            <ReceiveQcPhotoSlot variantId={history[0].variantId} />
+          ) : undefined
+        }
+      />
 
       <UndoToast
         visible={!!pendingMisScan}

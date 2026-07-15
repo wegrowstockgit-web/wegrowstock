@@ -22,6 +22,13 @@ describe('parseGs1Barcode', () => {
     expect(gs1LookupKey('PLAIN')).toBe('PLAIN');
   });
 
+  it('parses AI 30 variable quantity with FNC1', () => {
+    const parsed = parseGs1Barcode('01012345678901283012\u001d10LOT99');
+    expect(parsed?.gtin).toBe('01234567890128');
+    expect(parsed?.variableQuantity).toBe(12);
+    expect(parsed?.lot).toBe('LOT99');
+  });
+
   it('returns null for non-GS1', () => {
     expect(parseGs1Barcode('SKU-1')).toBeNull();
     expect(parseGs1Barcode('')).toBeNull();

@@ -6,6 +6,7 @@ import com.invsys.auth.dto.SignupRequest;
 import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.auth.dto.TerminalSwitchRequest;
 import com.invsys.auth.dto.TerminalSwitchResponse;
+import com.invsys.auth.dto.MeResponse;
 import com.invsys.auth.dto.TokenResponse;
 import com.invsys.common.ApiException;
 import com.invsys.config.JwtProperties;
@@ -252,6 +253,24 @@ public class AuthService {
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
         refreshTokenRepository.save(entity);
         return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
+                user.getAvatarUrl());
+    }
+
+    @Transactional(readOnly = true)
+    public MeResponse currentUser() {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
+        List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+        return new MeResponse(
+                user.getId(),
+                user.getTenantId(),
+                user.getEmail(),
+                user.getDisplayName(),
+                roles,
+                warehouseIds,
                 user.getAvatarUrl());
     }
 

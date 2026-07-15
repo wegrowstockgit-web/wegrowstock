@@ -15,5 +15,24 @@ export default defineConfig({
     globals: true,
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'html'],
+      include: [
+        'src/utils/gs1Parser.ts',
+        'src/lib/gs1Barcode.ts',
+        'src/hooks/useBarcodeScanner.ts',
+        'src/stores/offlineStore.ts',
+        'src/offline/mutationQueue.ts',
+        'src/features/fulfillment/QuarantineReview.tsx',
+      ],
+      // ScannerView camera/upload paths are covered by Playwright e2e (gs1-composite-scan).
+      thresholds: {
+        lines: 85,
+        functions: 85,
+        branches: 68,
+        statements: 85,
+      },
+    },
   },
 });

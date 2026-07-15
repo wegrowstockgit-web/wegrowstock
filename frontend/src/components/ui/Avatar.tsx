@@ -1,19 +1,12 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { User } from 'lucide-react';
 import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import { cn } from '@/lib/utils';
 
-export interface AvatarProps {
-  src?: string | null;
-  alt?: string;
-  size?: 'sm' | 'md' | 'lg';
-  className?: string;
-}
-
 const sizeClass = {
-  sm: 'h-8 w-8',
-  md: 'h-9 w-9',
-  lg: 'h-11 w-11',
+  sm: 'h-8 w-8 text-xs',
+  md: 'h-9 w-9 text-sm',
+  lg: 'h-11 w-11 text-base',
 } as const;
 
 const iconClass = {
@@ -22,10 +15,43 @@ const iconClass = {
   lg: 'h-5 w-5',
 } as const;
 
-/** Compact avatar with Lucide user fallback (shadcn-style primitive). */
-export function Avatar({ src, alt = 'User', size = 'md', className }: AvatarProps) {
+export interface AvatarProps {
+  src?: string | null;
+  alt?: string;
+  fallback?: ReactNode;
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+  children?: ReactNode;
+}
+
+/** Root avatar shell (shadcn-style composition). */
+export function Avatar({
+  src,
+  alt = 'User',
+  fallback,
+  size = 'md',
+  className,
+  children,
+}: AvatarProps) {
   const [failed, setFailed] = useState(false);
   const hasImage = !!src?.trim() && !failed;
+
+  if (children) {
+    return (
+      <span
+        className={cn(
+          'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full',
+          'bg-surface-overlay text-text-muted ring-1 ring-border/70',
+          sizeClass[size],
+          className,
+        )}
+        aria-label={alt}
+        role="img"
+      >
+        {children}
+      </span>
+    );
+  }
 
   return (
     <span
@@ -33,21 +59,60 @@ export function Avatar({ src, alt = 'User', size = 'md', className }: AvatarProp
         'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full',
         'bg-surface-overlay text-text-muted ring-1 ring-border/70',
         sizeClass[size],
-        className
+        className,
       )}
       aria-label={alt}
       role="img"
     >
       {hasImage ? (
-        <AuthenticatedImage
-          src={src}
-          alt=""
-          className="h-full w-full object-cover"
-          onError={() => setFailed(true)}
-        />
+        <AvatarImage src={src!} alt="" onError={() => setFailed(true)} />
       ) : (
-        <User className={iconClass[size]} aria-hidden />
+        <AvatarFallback>{fallback ?? <User className={iconClass[size]} aria-hidden />}</AvatarFallback>
       )}
     </span>
   );
+}
+
+export function AvatarImage({
+  src,
+  alt = '',
+  className,
+  onError,
+}: {
+  src: string;
+  alt?: string;
+  className?: string;
+  onError?: () => void;
+}) {
+  return (
+    <AuthenticatedImage
+      src={src}
+      alt={alt}
+      className={cn('h-full w-full object-cover', className)}
+      onError={onError}
+    />
+  );
+}
+
+export function AvatarFallback({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={cn('flex h-full w-full items-center justify-center font-medium uppercase', className)}>
+      {children}
+    </span>
+  );
+}
+
+export function initialsFromName(name?: string | null, email?: string | null): string {
+  const source = (name ?? email ?? '').trim();
+  if (!source) return '';
+  const parts = source.split(/[\s@._-]+/).filter(Boolean);
+  if (parts.length === 0) return source.slice(0, 2).toUpperCase();
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }

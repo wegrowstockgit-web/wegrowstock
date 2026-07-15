@@ -1,18 +1,23 @@
 package com.invsys.service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * GS1-128 / GS1 DataMatrix Application Identifier parser.
- * Supports AI 01 (GTIN), AI 10 (lot/batch), AI 17 (expiry YYMMDD), AI 21 (serial).
+ * Supports AI 01 (GTIN), AI 10 (lot/batch), AI 17 (expiry YYMMDD),
+ * AI 21 (serial), AI 30 (variable count of items).
  * FNC1 separators accepted as ASCII 29 or literal {@code ]C1}/{@code {GS}}.
  */
 public final class Gs1BarcodeParser {
 
     private static final char FNC1 = '\u001d';
+    private static final Set<String> FIXED_DATE_AIS = Set.of("17", "11", "13", "15");
+    private static final Set<String> VARIABLE_AIS = Set.of("10", "21", "30");
 
     private Gs1BarcodeParser() {
     }
@@ -23,10 +28,11 @@ public final class Gs1BarcodeParser {
             String lot,
             LocalDate expiry,
             String serial,
+            BigDecimal variableQuantity,
             Map<String, String> all
     ) {
         public boolean hasCompositeData() {
-            return lot != null || expiry != null || serial != null;
+            return lot != null || expiry != null || serial != null || variableQuantity != null;
         }
     }
 
@@ -40,7 +46,8 @@ public final class Gs1BarcodeParser {
                 .replace("(01)", "01")
                 .replace("(10)", "10")
                 .replace("(17)", "17")
-                .replace("(21)", "21");
+                .replace("(21)", "21")
+                .replace("(30)", "30");
 
         // Strip human-readable parentheses form: (01)123...(17)250101(10)LOT
         if (normalized.contains("(") && normalized.contains(")")) {
@@ -78,12 +85,18 @@ public final class Gs1BarcodeParser {
                     elements.put(ai, normalized.substring(i, i + 6));
                     i += 6;
                 }
-                case "10", "21" -> {
+                case "10", "21", "30" -> {
                     int end = indexOfFnc1OrEnd(normalized, i);
-                    // If another fixed AI follows without FNC1, stop before it
                     end = Math.min(end, findNextFixedAiBoundary(normalized, i));
                     String value = normalized.substring(i, end);
-                    if (value.isEmpty() || value.length() > 20) {
+                    if (value.isEmpty()) {
+                        return Optional.empty();
+                    }
+                    if ("30".equals(ai)) {
+                        if (value.length() > 8 || !value.chars().allMatch(Character::isDigit)) {
+                            return Optional.empty();
+                        }
+                    } else if (value.length() > 20) {
                         return Optional.empty();
                     }
                     elements.put(ai, value);
@@ -108,12 +121,18 @@ public final class Gs1BarcodeParser {
             expiry = parseYyMmDd(elements.get("17"));
         }
 
+        BigDecimal variableQuantity = null;
+        if (elements.containsKey("30")) {
+            variableQuantity = new BigDecimal(elements.get("30"));
+        }
+
         return Optional.of(new Gs1Elements(
                 barcode.trim(),
                 elements.get("01"),
                 elements.get("10"),
                 expiry,
                 elements.get("21"),
+                variableQuantity,
                 Map.copyOf(elements)));
     }
 
@@ -137,13 +156,9 @@ public final class Gs1BarcodeParser {
     }
 
     private static int findNextFixedAiBoundary(String s, int from) {
-        // Prefer FNC1; else look for known fixed AI prefixes after at least 1 char of variable data
         for (int j = from + 1; j + 2 <= s.length(); j++) {
             String maybe = s.substring(j, j + 2);
-            if ("01".equals(maybe) || "17".equals(maybe) || "11".equals(maybe) || "15".equals(maybe)) {
-                return j;
-            }
-            if ("10".equals(maybe) || "21".equals(maybe)) {
+            if ("01".equals(maybe) || FIXED_DATE_AIS.contains(maybe) || VARIABLE_AIS.contains(maybe)) {
                 return j;
             }
         }

@@ -1,6 +1,7 @@
 package com.invsys.auth;
 
 import com.invsys.repository.CustomerUserMappingRepository;
+import com.invsys.repository.SupplierUserMappingRepository;
 import com.invsys.tenancy.TenantContext;
 import com.nimbusds.jwt.JWTClaimsSet;
 import jakarta.servlet.FilterChain;
@@ -26,10 +27,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomerUserMappingRepository customerUserMappingRepository;
+    private final SupplierUserMappingRepository supplierUserMappingRepository;
 
-    public JwtAuthFilter(JwtService jwtService, CustomerUserMappingRepository customerUserMappingRepository) {
+    public JwtAuthFilter(JwtService jwtService,
+                         CustomerUserMappingRepository customerUserMappingRepository,
+                         SupplierUserMappingRepository supplierUserMappingRepository) {
         this.jwtService = jwtService;
         this.customerUserMappingRepository = customerUserMappingRepository;
+        this.supplierUserMappingRepository = supplierUserMappingRepository;
     }
 
     @Override
@@ -58,6 +63,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 if (roles.contains("B2B_CUSTOMER")) {
                     customerUserMappingRepository.findByUserId(userId)
                             .ifPresent(m -> TenantContext.setCustomerId(m.getCustomerId()));
+                }
+                if (roles.contains("SUPPLIER")) {
+                    supplierUserMappingRepository.findByUserId(userId)
+                            .ifPresent(m -> TenantContext.setSupplierId(m.getSupplierId()));
                 }
 
                 List<SimpleGrantedAuthority> authorities = roles.stream()

@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useScanBufferStore } from '@/stores/scanBuffer';
-import { parseGs1Barcode } from '@/lib/gs1Barcode';
+import { parseGs1, type ParsedBarcode } from '@/utils/gs1Parser';
 
 const SCANNER_MAX_GAP_MS = 35;
 
 export interface BarcodeScannerOptions {
-  onScan: (barcode: string) => void;
-  /** Optional GS1-aware callback with structured AI 01/10/17 fields from one capture. */
-  onGs1Scan?: (payload: {
-    raw: string;
-    gtin: string | null;
-    lot: string | null;
-    expiry: string | null;
-    serial: string | null;
-  }) => void;
+  onScan: (barcode: string, parsed?: ParsedBarcode) => void;
+  /**
+   * Fired when a composite GS1 payload is decoded — before / instead of dumping
+   * the raw AI string into the scan buffer. Use to auto-fill Lot / Expiry / Qty.
+   */
+  onGs1Scan?: (parsed: ParsedBarcode) => void;
   prefix?: string;
   suffix?: string;
   captureAll?: boolean;
@@ -89,6 +86,10 @@ const INTENT_EVENT_NAMES = [
 /**
  * HID keyboard wedge + background intent broadcasting (DataWedge / Honeywell).
  * Intent listeners do not require focused input elements — glove-friendly floor ops.
+ *
+ * GS1 composites are parsed instantly client-side: the scan buffer receives the
+ * GTIN/SKU lookup key (not the raw AI string), and structured fields are emitted
+ * via {@link BarcodeScannerOptions.onGs1Scan}.
  */
 export function useBarcodeScanner({
   onScan,
@@ -117,18 +118,18 @@ export function useBarcodeScanner({
       const cleaned = barcode.trim();
       if (!cleaned) return;
       reset();
-      commit(cleaned);
-      const gs1 = parseGs1Barcode(cleaned);
-      if (gs1 && onGs1ScanRef.current) {
-        onGs1ScanRef.current({
-          raw: gs1.raw,
-          gtin: gs1.gtin,
-          lot: gs1.lot,
-          expiry: gs1.expiry,
-          serial: gs1.serial,
-        });
+
+      const parsed = parseGs1(cleaned);
+      if (parsed.isGs1) {
+        // Intercept: commit GTIN/SKU to the buffer — never the composite AI blob.
+        commit(parsed.sku);
+        onGs1ScanRef.current?.(parsed);
+        onScanRef.current(parsed.sku, parsed);
+        return;
       }
-      onScanRef.current(cleaned);
+
+      commit(cleaned);
+      onScanRef.current(cleaned, parsed);
     },
     [commit, reset]
   );

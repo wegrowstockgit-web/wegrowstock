@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockRequest, mockEnsureFresh, mockAddConflict } = vi.hoisted(() => ({
+const { mockRequest, mockEnsureFresh, mockAddConflict, mockQuarantine } = vi.hoisted(() => ({
   mockRequest: vi.fn(),
   mockEnsureFresh: vi.fn(),
   mockAddConflict: vi.fn(),
+  mockQuarantine: vi.fn(),
 }));
 
 vi.mock('idb-keyval', () => {
@@ -22,6 +23,14 @@ vi.mock('idb-keyval', () => {
 vi.mock('@/api/client', () => ({
   apiClient: { request: mockRequest },
   ensureFreshSession: mockEnsureFresh,
+}));
+
+vi.mock('@/stores/offlineStore', () => ({
+  useOfflineStore: {
+    getState: () => ({
+      quarantineMutation: mockQuarantine,
+    }),
+  },
 }));
 
 vi.mock('@/stores/syncConflicts', () => ({
@@ -66,18 +75,23 @@ describe('mutationQueue secure offline engine', () => {
         method: 'POST',
         url: '/api/v1/fulfillment/scan',
         headers: { 'Idempotency-Key': 'idem-1' },
-      })
+      }),
     );
     expect(result.succeeded).toBe(1);
     expect(await getMutationQueue()).toHaveLength(0);
   });
 
-  it('dead-letters 4xx business errors into syncConflicts', async () => {
+  it('quarantines 409 conflicts without stalling the queue', async () => {
     const axiosError = Object.assign(new Error('Conflict'), {
       isAxiosError: true,
-      response: { status: 409, data: { message: 'Stock no longer available' } },
+      response: {
+        status: 409,
+        data: {
+          title: 'ALLOCATION_LOCKED',
+          detail: 'Task reassigned to another picker',
+        },
+      },
     });
-    // Make axios.isAxiosError return true
     const axios = await import('axios');
     vi.spyOn(axios.default, 'isAxiosError').mockReturnValue(true);
 
@@ -92,13 +106,15 @@ describe('mutationQueue secure offline engine', () => {
     const result = await replayMutationQueue();
 
     expect(result.deadLettered).toBe(1);
-    expect(mockAddConflict).toHaveBeenCalledWith(
+    expect(mockQuarantine).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 409,
-        message: 'Stock no longer available',
+        title: 'ALLOCATION_LOCKED',
+        detail: 'Task reassigned to another picker',
         url: '/api/v1/fulfillment/scan',
-      })
+      }),
     );
+    expect(mockAddConflict).toHaveBeenCalled();
     expect(await getMutationQueue()).toHaveLength(0);
   });
 
@@ -116,4 +132,77 @@ describe('mutationQueue secure offline engine', () => {
     expect(mockRequest).not.toHaveBeenCalled();
     expect(await getMutationQueue()).toHaveLength(1);
   });
+
+  it('replays pre-parsed GS1 scan body without requiring server-side AI decode', async () => {
+    mockRequest.mockResolvedValue({ data: { sku: 'GS1R-1' } });
+    const gs1Body = {
+      barcode: '01234567890128',
+      mode: 'receive',
+      gtin: '01234567890128',
+      lotNumber: 'BATCH-E2E',
+      expiryDate: '2025-12-31',
+      quantity: 4,
+      isGs1: true,
+      rawBarcode: '(01)01234567890128(10)BATCH-E2E(17)251231(30)4',
+    };
+    await enqueueMutation({
+      idempotencyKey: 'idem-gs1',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: gs1Body,
+    });
+
+    await replayMutationQueue();
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          barcode: '01234567890128',
+          lotNumber: 'BATCH-E2E',
+          quantity: 4,
+          isGs1: true,
+        }),
+      }),
+    );
+  });
+
+  it('keeps transient 5xx failures in the queue for retry', async () => {
+    const axiosError = Object.assign(new Error('Server'), {
+      isAxiosError: true,
+      response: { status: 503, data: { detail: 'unavailable' } },
+    });
+    const axios = await import('axios');
+    vi.spyOn(axios.default, 'isAxiosError').mockReturnValue(true);
+    mockRequest.mockRejectedValue(axiosError);
+
+    await enqueueMutation({
+      idempotencyKey: 'idem-5xx',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'X' },
+    });
+
+    const result = await replayMutationQueue();
+    expect(result.failed).toBe(1);
+    expect(result.deadLettered).toBe(0);
+    expect(await getMutationQueue()).toHaveLength(1);
+  });
+
+  it('startMutationQueueReplay flushes when online', async () => {
+    mockRequest.mockResolvedValue({ data: {} });
+    await enqueueMutation({
+      idempotencyKey: 'idem-start',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'Y' },
+    });
+
+    const { startMutationQueueReplay } = await import('./mutationQueue');
+    startMutationQueueReplay();
+    await vi.waitFor(async () => {
+      expect(await getMutationQueue()).toHaveLength(0);
+    });
+  });
 });
+
+

@@ -3,14 +3,17 @@ package com.invsys.integration.outbox;
 import com.invsys.domain.Customer;
 import com.invsys.common.MdcSupport;
 import com.invsys.domain.IntegrationSyncLog;
+import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
+import com.invsys.domain.SoftKitComponent;
 import com.invsys.domain.WebhookEvent;
 import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.IntegrationSyncLogRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
+import com.invsys.repository.SoftKitComponentRepository;
 import com.invsys.repository.WebhookEventRepository;
 import com.invsys.service.DocumentSequenceService;
 import com.invsys.tenancy.TenantContext;
@@ -31,6 +34,7 @@ public class ChannelOrderWebhookHandler {
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderLineRepository salesOrderLineRepository;
     private final ProductVariantRepository variantRepository;
+    private final SoftKitComponentRepository softKitComponentRepository;
     private final CustomerRepository customerRepository;
     private final IntegrationSyncLogRepository syncLogRepository;
     private final DocumentSequenceService sequenceService;
@@ -39,6 +43,7 @@ public class ChannelOrderWebhookHandler {
                                       SalesOrderRepository salesOrderRepository,
                                       SalesOrderLineRepository salesOrderLineRepository,
                                       ProductVariantRepository variantRepository,
+                                      SoftKitComponentRepository softKitComponentRepository,
                                       CustomerRepository customerRepository,
                                       IntegrationSyncLogRepository syncLogRepository,
                                       DocumentSequenceService sequenceService) {
@@ -46,6 +51,7 @@ public class ChannelOrderWebhookHandler {
         this.salesOrderRepository = salesOrderRepository;
         this.salesOrderLineRepository = salesOrderLineRepository;
         this.variantRepository = variantRepository;
+        this.softKitComponentRepository = softKitComponentRepository;
         this.customerRepository = customerRepository;
         this.syncLogRepository = syncLogRepository;
         this.sequenceService = sequenceService;
@@ -95,7 +101,6 @@ public class ChannelOrderWebhookHandler {
             Map<String, Object> orderData = payload.get("order") instanceof Map<?, ?> m
                     ? (Map<String, Object>) m : payload;
 
-            String externalNumber = orderData.getOrDefault("name", event.getExternalEventId()).toString();
             SalesOrder order = new SalesOrder();
             order.setTenantId(event.getTenantId());
             order.setCustomerId(resolveCustomerId(event.getTenantId()));
@@ -112,18 +117,39 @@ public class ChannelOrderWebhookHandler {
             for (Map<String, Object> item : lineItems) {
                 String sku = item.getOrDefault("sku", "").toString();
                 BigDecimal qty = new BigDecimal(item.getOrDefault("quantity", "1").toString());
-                var variant = variantRepository.findByTenantIdAndSku(event.getTenantId(), sku);
-                if (variant.isEmpty()) {
+                BigDecimal unitPrice = new BigDecimal(item.getOrDefault("price", "0").toString());
+                var variantOpt = variantRepository.findByTenantIdAndSku(event.getTenantId(), sku);
+                if (variantOpt.isEmpty()) {
                     needsReview = true;
                     continue;
                 }
-                SalesOrderLine line = new SalesOrderLine();
-                line.setTenantId(event.getTenantId());
-                line.setSalesOrderId(order.getId());
-                line.setVariantId(variant.get().getId());
-                line.setQtyOrdered(qty);
-                line.setUnitPrice(new BigDecimal(item.getOrDefault("price", "0").toString()));
-                salesOrderLineRepository.save(line);
+                ProductVariant variant = variantOpt.get();
+                if (variant.isSoftKit()) {
+                    List<SoftKitComponent> components = softKitComponentRepository
+                            .findByTenantIdAndParentKitIdOrderByCreatedAtAsc(event.getTenantId(), variant.getId());
+                    if (components.isEmpty()) {
+                        needsReview = true;
+                        continue;
+                    }
+                    // Explode soft kit into raw pickable components (skip parent bundle line).
+                    for (SoftKitComponent component : components) {
+                        SalesOrderLine line = new SalesOrderLine();
+                        line.setTenantId(event.getTenantId());
+                        line.setSalesOrderId(order.getId());
+                        line.setVariantId(component.getComponentId());
+                        line.setQtyOrdered(qty.multiply(component.getQuantity()));
+                        line.setUnitPrice(BigDecimal.ZERO);
+                        salesOrderLineRepository.save(line);
+                    }
+                } else {
+                    SalesOrderLine line = new SalesOrderLine();
+                    line.setTenantId(event.getTenantId());
+                    line.setSalesOrderId(order.getId());
+                    line.setVariantId(variant.getId());
+                    line.setQtyOrdered(qty);
+                    line.setUnitPrice(unitPrice);
+                    salesOrderLineRepository.save(line);
+                }
             }
 
             if (needsReview) {

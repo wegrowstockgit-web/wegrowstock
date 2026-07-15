@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
@@ -117,6 +118,23 @@ public class S3ObjectStorage implements ObjectStorage {
             }
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MEDIA_READ_FAILED",
                     "Failed to probe media object in S3-compatible storage");
+        }
+    }
+
+    @Override
+    public void delete(String key) {
+        validateKey(key);
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(properties.getBucket())
+                    .key(key)
+                    .build());
+        } catch (S3Exception ex) {
+            if (ex.statusCode() == 404) {
+                return;
+            }
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MEDIA_DELETE_FAILED",
+                    "Failed to delete media object from S3-compatible storage");
         }
     }
 

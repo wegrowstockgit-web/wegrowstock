@@ -2,7 +2,10 @@ package com.invsys.media;
 
 import com.invsys.common.ApiException;
 import com.invsys.domain.MediaObject;
+import com.invsys.repository.MediaAttachmentRepository;
 import com.invsys.repository.MediaObjectRepository;
+import com.invsys.repository.ProductMediaRepository;
+import com.invsys.repository.UserRepository;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,15 +28,24 @@ public class MediaUploadService {
     }
 
     private final MediaObjectRepository mediaObjectRepository;
+    private final MediaAttachmentRepository mediaAttachmentRepository;
+    private final ProductMediaRepository productMediaRepository;
+    private final UserRepository userRepository;
     private final ObjectStorage objectStorage;
     private final ImageContentValidator contentValidator;
     private final MediaStorageProperties properties;
 
     public MediaUploadService(MediaObjectRepository mediaObjectRepository,
+                              MediaAttachmentRepository mediaAttachmentRepository,
+                              ProductMediaRepository productMediaRepository,
+                              UserRepository userRepository,
                               ObjectStorage objectStorage,
                               ImageContentValidator contentValidator,
                               MediaStorageProperties properties) {
         this.mediaObjectRepository = mediaObjectRepository;
+        this.mediaAttachmentRepository = mediaAttachmentRepository;
+        this.productMediaRepository = productMediaRepository;
+        this.userRepository = userRepository;
         this.objectStorage = objectStorage;
         this.contentValidator = contentValidator;
         this.properties = properties;
@@ -100,6 +112,29 @@ public class MediaUploadService {
 
     public String contentPath(UUID mediaId) {
         return "/api/v1/media/" + mediaId + "/content";
+    }
+
+    /**
+     * Deletes a tenant-owned media object from Postgres and MinIO/S3,
+     * cascading catalog rows and avatar references that point at its content URL.
+     */
+    @Transactional
+    public void delete(UUID mediaId) {
+        MediaObject media = requireOwned(mediaId);
+        UUID tenantId = media.getTenantId();
+        String path = contentPath(media.getId());
+        String storageKey = media.getStorageKey();
+
+        mediaAttachmentRepository.deleteByTenantIdAndMediaObjectId(tenantId, media.getId());
+        productMediaRepository.deleteByTenantIdAndUrl(tenantId, path);
+
+        userRepository.findByTenantIdAndAvatarUrl(tenantId, path).ifPresent(user -> {
+            user.setAvatarUrl(null);
+            userRepository.save(user);
+        });
+
+        mediaObjectRepository.delete(media);
+        objectStorage.delete(storageKey);
     }
 
     private static String sha256(byte[] bytes) {

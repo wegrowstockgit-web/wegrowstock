@@ -60,7 +60,7 @@ public class ScanService {
         String path = resolvePutawayPath(variant);
         if (gs1.isPresent()) {
             Gs1BarcodeParser.Gs1Elements elements = gs1.get();
-            return new ScanLookupResponse(
+            return ScanLookupResponse.of(
                     variant,
                     levels,
                     variant.getDefaultLocationId(),
@@ -69,12 +69,13 @@ public class ScanService {
                     elements.lot(),
                     elements.expiry(),
                     elements.serial(),
+                    elements.variableQuantity(),
                     elements.all(),
                     hit.primaryMediaUrl());
         }
-        return new ScanLookupResponse(
+        return ScanLookupResponse.of(
                 variant, levels, variant.getDefaultLocationId(), path,
-                null, null, null, null, Map.of(), hit.primaryMediaUrl());
+                null, null, null, null, null, Map.of(), hit.primaryMediaUrl());
     }
 
     /**

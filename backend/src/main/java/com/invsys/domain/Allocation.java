@@ -39,6 +39,9 @@ public class Allocation extends TenantScopedEntity {
     @Column(name = "serial_number_id")
     private UUID serialNumberId;
 
+    @Column(name = "assigned_to_user_id")
+    private UUID assignedToUserId;
+
     public UUID getSalesOrderLineId() {
         return salesOrderLineId;
     }
@@ -109,5 +112,13 @@ public class Allocation extends TenantScopedEntity {
 
     public void setSerialNumberId(UUID serialNumberId) {
         this.serialNumberId = serialNumberId;
+    }
+
+    public UUID getAssignedToUserId() {
+        return assignedToUserId;
+    }
+
+    public void setAssignedToUserId(UUID assignedToUserId) {
+        this.assignedToUserId = assignedToUserId;
     }
 }

@@ -71,6 +71,34 @@ public class ProductMediaService {
         return media;
     }
 
+    @Transactional
+    public ProductMedia setPrimary(UUID variantId, UUID mediaId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        ProductVariant variant = variantRepository.findById(variantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found"));
+        if (!tenantId.equals(variant.getTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found");
+        }
+        mediaRepository.findByTenantIdAndIdAndVariantId(tenantId, mediaId, variantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Media not found"));
+
+        mediaRepository.clearPrimary(tenantId, variantId);
+        // clearPrimary clears the persistence context — reload before mutating
+        ProductMedia media = mediaRepository.findByTenantIdAndIdAndVariantId(tenantId, mediaId, variantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Media not found"));
+        media.setPrimary(true);
+        media = mediaRepository.save(media);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("variantId", variantId.toString());
+        payload.put("mediaId", media.getId().toString());
+        payload.put("url", media.getUrl());
+        payload.put("isPrimary", true);
+        payload.put("sku", variant.getSku());
+        outboxService.append("PRODUCT_VARIANT", variantId, "PRODUCT_MEDIA_UPDATED", payload);
+        return media;
+    }
+
     @Transactional(readOnly = true)
     public List<ProductMedia> listForVariant(UUID variantId) {
         return mediaRepository.findByTenantIdAndVariantIdOrderBySortOrderAscCreatedAtAsc(

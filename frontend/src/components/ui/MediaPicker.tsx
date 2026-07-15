@@ -60,6 +60,7 @@ export function MediaPicker({
 }: MediaPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'compressing' | 'uploading' | null>(null);
   const [error, setError] = useState('');
   const [localPreview, setLocalPreview] = useState<string | null>(null);
 
@@ -69,12 +70,15 @@ export function MediaPicker({
     if (!file) return;
     setError('');
     setBusy(true);
+    setPhase(preferPresign ? 'compressing' : 'uploading');
     const preview = URL.createObjectURL(file);
     setLocalPreview(preview);
     try {
       let result: MediaUploadResult;
       if (preferPresign) {
-        const completed = await uploadViaPresign(file, presignType ?? kindToPresign(kind));
+        const completed = await uploadViaPresign(file, presignType ?? kindToPresign(kind), {
+          onPhase: setPhase,
+        });
         result = {
           id: completed.id,
           contentUrl: completed.contentUrl,
@@ -110,10 +114,14 @@ export function MediaPicker({
       setLocalPreview(null);
     } finally {
       setBusy(false);
+      setPhase(null);
       URL.revokeObjectURL(preview);
       if (inputRef.current) inputRef.current.value = '';
     }
   };
+
+  const busyLabel =
+    phase === 'compressing' ? 'Compressing…' : phase === 'uploading' ? 'Uploading…' : label;
 
   const shown = localPreview ?? previewUrl;
 
@@ -146,7 +154,7 @@ export function MediaPicker({
               }}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              {label}
+              {busyLabel}
             </Button>
             {capture && !webrtc && (
               <Button
@@ -169,7 +177,11 @@ export function MediaPicker({
           {webrtc && (
             <WebRtcCamera disabled={disabled || busy} onCapture={(file) => void handleFile(file)} />
           )}
-          <p className="text-xs text-text-muted">JPEG, PNG, WebP, or GIF. Stored privately per tenant.</p>
+          <p className="text-xs text-text-muted">
+            {phase === 'compressing'
+              ? 'Compressing on-device for faster upload…'
+              : 'JPEG, PNG, WebP, or GIF. Compressed to WebP before upload.'}
+          </p>
           {error && <p className="text-xs text-danger">{error}</p>}
         </div>
       </div>

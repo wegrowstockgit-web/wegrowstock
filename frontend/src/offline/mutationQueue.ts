@@ -1,7 +1,8 @@
 import { get, set } from 'idb-keyval';
 import axios from 'axios';
 import { apiClient, ensureFreshSession } from '@/api/client';
-import { useSyncConflictStore, type SyncConflict } from '@/stores/syncConflicts';
+import { useOfflineStore, type QuarantinedMutation } from '@/stores/offlineStore';
+import { useSyncConflictStore } from '@/stores/syncConflicts';
 
 const QUEUE_KEY = 'invsys-mutation-queue';
 
@@ -28,7 +29,7 @@ async function writeQueue(queue: QueuedMutation[]): Promise<void> {
 }
 
 export async function enqueueMutation(
-  mutation: Omit<QueuedMutation, 'id' | 'createdAt' | 'attempts'>
+  mutation: Omit<QueuedMutation, 'id' | 'createdAt' | 'attempts'>,
 ): Promise<QueuedMutation> {
   const queue = await readQueue();
   const entry: QueuedMutation = {
@@ -54,7 +55,7 @@ export async function removeFromQueue(id: string): Promise<void> {
 export async function updateMutationError(id: string, error: string): Promise<void> {
   const queue = await readQueue();
   const updated = queue.map((m) =>
-    m.id === id ? { ...m, attempts: m.attempts + 1, lastError: error } : m
+    m.id === id ? { ...m, attempts: m.attempts + 1, lastError: error } : m,
   );
   await writeQueue(updated);
 }
@@ -70,26 +71,46 @@ function statusOf(err: unknown): number | undefined {
   return undefined;
 }
 
-function messageOf(err: unknown): string {
+/** Parse RFC 7807 Problem Details (title/detail) with legacy message fallbacks. */
+export function problemDetailsOf(err: unknown): { title: string; detail: string } {
   if (axios.isAxiosError(err)) {
-    const data = err.response?.data as { message?: string; error?: string } | undefined;
-    return data?.message ?? data?.error ?? err.message;
+    const data = err.response?.data as
+      | { title?: string; detail?: string; message?: string; error?: string; reason?: string }
+      | undefined;
+    const detail =
+      data?.detail ?? data?.reason ?? data?.message ?? data?.error ?? err.message ?? 'Unknown error';
+    const title = data?.title ?? (err.response?.status === 409 ? 'CONFLICT' : 'CLIENT_ERROR');
+    return { title, detail };
   }
   if (typeof err === 'object' && err !== null && 'response' in err) {
-    const data = (err as { response?: { data?: { message?: string; error?: string } } }).response
-      ?.data;
-    if (data?.message || data?.error) {
-      return data.message ?? data.error ?? 'Unknown error';
-    }
+    const data = (
+      err as {
+        response?: {
+          data?: { title?: string; detail?: string; message?: string; error?: string; reason?: string };
+        };
+      }
+    ).response?.data;
+    return {
+      title: data?.title ?? 'CLIENT_ERROR',
+      detail: data?.detail ?? data?.reason ?? data?.message ?? data?.error ?? 'Unknown error',
+    };
   }
-  return err instanceof Error ? err.message : 'Unknown error';
+  return {
+    title: 'CLIENT_ERROR',
+    detail: err instanceof Error ? err.message : 'Unknown error',
+  };
 }
 
 function isBusinessClientError(status?: number): boolean {
   return status !== undefined && status >= 400 && status < 500 && status !== 401;
 }
 
-function toConflict(mutation: QueuedMutation, status: number, message: string): SyncConflict {
+function toQuarantine(
+  mutation: QueuedMutation,
+  status: number,
+  title: string,
+  detail: string,
+): QuarantinedMutation {
   return {
     id: mutation.id,
     idempotencyKey: mutation.idempotencyKey,
@@ -97,14 +118,40 @@ function toConflict(mutation: QueuedMutation, status: number, message: string): 
     url: mutation.url,
     body: mutation.body,
     status,
-    message,
+    title,
+    detail,
     failedAt: Date.now(),
   };
 }
 
 /**
+ * Move a failed mutation into the quarantine store and drop it from the active
+ * IndexedDB replay queue so the flush loop never stalls.
+ */
+export function quarantineFailedMutation(
+  mutation: QueuedMutation,
+  status: number,
+  title: string,
+  detail: string,
+): void {
+  const entry = toQuarantine(mutation, status, title, detail);
+  useOfflineStore.getState().quarantineMutation(entry);
+  // Keep legacy toast surface in sync for non-fulfillment pages.
+  useSyncConflictStore.getState().addConflict({
+    id: entry.id,
+    idempotencyKey: entry.idempotencyKey,
+    method: entry.method,
+    url: entry.url,
+    body: entry.body,
+    status: entry.status,
+    message: entry.detail,
+    failedAt: entry.failedAt,
+  });
+}
+
+/**
  * Flush IndexedDB offline mutations. Refreshes JWT before replay so tokens that
- * expired while offline are rotated; 4xx business failures go to the DLQ.
+ * expired while offline are rotated; HTTP 409 / business 4xx go to quarantine.
  */
 export async function replayMutationQueue(): Promise<{
   succeeded: number;
@@ -141,16 +188,17 @@ export async function replayMutationQueue(): Promise<{
         succeeded++;
       } catch (err) {
         const status = statusOf(err);
-        const message = messageOf(err);
+        const { title, detail } = problemDetailsOf(err);
 
         if (isBusinessClientError(status)) {
+          // Never stall: drop from active queue, park in quarantine with RFC7807 reason.
           await removeFromQueue(mutation.id);
-          useSyncConflictStore.getState().addConflict(toConflict(mutation, status!, message));
+          quarantineFailedMutation(mutation, status!, title, detail);
           deadLettered++;
           continue;
         }
 
-        await updateMutationError(mutation.id, message);
+        await updateMutationError(mutation.id, detail);
         failed++;
       }
     }

@@ -26,6 +26,15 @@ interface SessionState {
   primarySession: PrimarySessionSnapshot | null;
   setSessionFromToken: (token: TokenResponse, email: string, displayName?: string) => void;
   setAvatarUrl: (avatarUrl: string | null) => void;
+  /** Merge profile fields from GET /api/v1/auth/me into the active session user. */
+  applyMeProfile: (profile: {
+    userId: string;
+    email: string;
+    displayName: string;
+    roles: string[];
+    warehouseIds?: string[];
+    avatarUrl?: string | null;
+  }) => void;
   updateTokens: (accessToken: string, refreshToken?: string) => void;
   applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
   restorePrimarySession: () => void;
@@ -79,6 +88,24 @@ export const useSessionStore = create<SessionState>()(
             : state
         ),
 
+      applyMeProfile: (profile) =>
+        set((state) => {
+          const nextUser: User = {
+            id: profile.userId,
+            email: profile.email,
+            displayName: profile.displayName,
+            roles: profile.roles,
+            warehouseIds: profile.warehouseIds ?? [],
+            avatarUrl: profile.avatarUrl ?? null,
+          };
+          return {
+            user: nextUser,
+            primarySession: state.primarySession
+              ? { ...state.primarySession, user: nextUser }
+              : state.primarySession,
+          };
+        }),
+
       updateTokens: (accessToken, refreshToken) =>
         set((state) => ({
           accessToken,
@@ -106,6 +133,7 @@ export const useSessionStore = create<SessionState>()(
             displayName: emailHint?.split('@')[0] ?? 'Operator',
             roles: token.roles,
             warehouseIds: token.warehouseIds ?? [],
+            avatarUrl: state.primarySession?.user.avatarUrl ?? state.user.avatarUrl ?? null,
           },
         });
       },

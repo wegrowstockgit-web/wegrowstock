@@ -39,6 +39,13 @@ public class PickingController {
         return toGenerateResponse(pickingWaveService.releaseWave(waveId));
     }
 
+    @PostMapping("/waves/{waveId}/claim")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public ClaimWaveResponse claimWave(@PathVariable UUID waveId) {
+        PickingWaveService.ClaimResult result = pickingWaveService.claimWave(waveId);
+        return new ClaimWaveResponse(result.waveId(), result.assignedToUserId(), result.allocationsClaimed());
+    }
+
     @GetMapping("/batches/current/tasks")
     public List<TaskResponse> currentTasks() {
         return pickingWaveService.currentBatchTasks().stream()
@@ -75,6 +82,9 @@ public class PickingController {
     }
 
     public record GenerateWaveResponse(UUID waveId, UUID batchId, String status, List<TaskResponse> tasks) {
+    }
+
+    public record ClaimWaveResponse(UUID waveId, UUID assignedToUserId, int allocationsClaimed) {
     }
 
     public record TaskResponse(UUID id, UUID allocationId, String locationPath, String zone,

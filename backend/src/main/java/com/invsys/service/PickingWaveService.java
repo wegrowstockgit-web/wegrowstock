@@ -33,6 +33,7 @@ public class PickingWaveService {
     private final LocationRepository locationRepository;
     private final PickingService pickingService;
     private final CrossDockService crossDockService;
+    private final AllocationService allocationService;
 
     public PickingWaveService(PickingWaveRepository waveRepository,
                               PickingBatchRepository batchRepository,
@@ -40,7 +41,8 @@ public class PickingWaveService {
                               AllocationRepository allocationRepository,
                               LocationRepository locationRepository,
                               PickingService pickingService,
-                              CrossDockService crossDockService) {
+                              CrossDockService crossDockService,
+                              AllocationService allocationService) {
         this.waveRepository = waveRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
@@ -48,6 +50,7 @@ public class PickingWaveService {
         this.locationRepository = locationRepository;
         this.pickingService = pickingService;
         this.crossDockService = crossDockService;
+        this.allocationService = allocationService;
     }
 
     /**
@@ -171,6 +174,38 @@ public class PickingWaveService {
         return taskRepository.save(task);
     }
 
+    /**
+     * Pre-emptive device lock: assign all ACTIVE allocations in the wave to the current picker.
+     */
+    @Transactional
+    public ClaimResult claimWave(UUID waveId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        PickingWave wave = waveRepository.findById(waveId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found"));
+        if (!tenantId.equals(wave.getTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found");
+        }
+
+        List<UUID> allocationIds = new ArrayList<>();
+        List<PickingBatch> batches = batchRepository.findByWaveId(waveId);
+        for (PickingBatch batch : batches) {
+            batch.setAssignedUserId(userId);
+            batchRepository.save(batch);
+            for (PickingTask task : taskRepository.findByBatchIdOrderBySequenceOrderAsc(batch.getId())) {
+                if (task.getAllocationId() != null) {
+                    allocationIds.add(task.getAllocationId());
+                }
+            }
+        }
+        int claimed = allocationService.claimAllocations(allocationIds, userId);
+        return new ClaimResult(wave.getId(), userId, claimed);
+    }
+
     public record WaveResult(PickingWave wave, PickingBatch batch, List<PickingTask> tasks) {
+    }
+
+    public record ClaimResult(UUID waveId, UUID assignedToUserId, int allocationsClaimed) {
     }
 }

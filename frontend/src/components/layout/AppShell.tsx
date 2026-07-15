@@ -1,17 +1,15 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Search, Warehouse } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { TerminalPinPad } from './TerminalPinPad';
 import { Sidebar } from './Sidebar';
+import { Header } from './Header';
 import { CommandPalette, useCommandPalette } from './CommandPalette';
-import { Avatar } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useWarehouseStore } from '@/stores/warehouseStore';
 import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
+import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import { cn } from '@/lib/utils';
 
@@ -26,13 +24,23 @@ function isWarehouseRoute(pathname: string): boolean {
   );
 }
 
+interface MeResponse {
+  userId: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
+  roles: string[];
+  warehouseIds?: string[];
+  avatarUrl?: string | null;
+}
+
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { open, close, toggle } = useCommandPalette();
   const authenticated = useIsAuthenticated();
-  const user = useSessionStore((s) => s.user);
+  const applyMeProfile = useSessionStore((s) => s.applyMeProfile);
   const sessionWarehouseIds = useSessionStore((s) => s.user?.warehouseIds ?? []);
   const warehouse = useActiveWarehouseStore((s) => s.warehouse);
   const setWarehouse = useActiveWarehouseStore((s) => s.setWarehouse);
@@ -43,16 +51,34 @@ export function AppShell() {
   const switcherDisabled = useWarehouseStore((s) => s.switcherDisabled);
 
   const isWarehouseView = isWarehouseRoute(location.pathname);
-  /** Kiosk / terminal lockdown: JWT has exactly one warehouse — no switcher. */
   const jwtTerminalLocked = sessionWarehouseIds.length === 1;
   const hideSwitcher = jwtTerminalLocked || contextLocked || switcherDisabled;
 
   useEffect(() => {
     document.documentElement.setAttribute(
       'data-theme',
-      isWarehouseView ? 'warehouse' : 'office'
+      isWarehouseView ? 'warehouse' : 'office',
     );
   }, [isWarehouseView]);
+
+  useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<MeResponse>('/api/v1/auth/me');
+      applyMeProfile({
+        userId: data.userId,
+        email: data.email,
+        displayName: data.displayName,
+        roles: data.roles,
+        warehouseIds: data.warehouseIds,
+        avatarUrl: data.avatarUrl,
+      });
+      return data;
+    },
+    enabled: authenticated,
+    retry: false,
+    staleTime: 60_000,
+  });
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses', 'allowed'],
@@ -131,92 +157,21 @@ export function AppShell() {
         className={cn(
           'flex min-w-0 flex-1 flex-col overflow-hidden',
           !isWarehouseView &&
-            'pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]'
+            'pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
         )}
       >
-        <header
-          className={cn(
-            'flex h-[var(--header-height)] shrink-0 items-center justify-between px-4',
-            'border-b border-border/60 bg-surface-raised/80 backdrop-blur-md',
-            isWarehouseView && 'border-border/60'
-          )}
-        >
-          <div className="flex items-center gap-3">
-            {!isWarehouseView && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={toggle}
-                className="hidden sm:inline-flex"
-              >
-                <Search className="h-4 w-4" />
-                <span className="text-text-muted">Search</span>
-                <kbd className="ml-2 rounded border border-border px-1 text-xs">⌘K</kbd>
-              </Button>
-            )}
-
-            {isWarehouseView && (
-              <p className="text-sm font-semibold tracking-wide text-text">Floor ops</p>
-            )}
-
-            {warehouses.length > 0 &&
-              (hideSwitcher ? (
-                <div
-                  className={cn(
-                    'flex h-9 items-center gap-2 rounded-md border border-border bg-surface-overlay/60 pl-2.5 pr-3 text-sm text-text',
-                    isWarehouseView && 'h-11 text-base'
-                  )}
-                  title={lockTitle}
-                  aria-label={`Locked warehouse ${warehouse?.name ?? ''}`.trim()}
-                  data-terminal-locked="true"
-                  data-lock-reason={lockReason ?? 'JWT_SINGLE'}
-                >
-                  <Warehouse className="h-4 w-4 shrink-0 text-text-muted" />
-                  <span className="font-medium">{warehouse?.name ?? 'Warehouse'}</span>
-                </div>
-              ) : (
-                <div className="relative" title="Active warehouse for fulfillment and scanning">
-                  <select
-                    value={warehouse?.id ?? ''}
-                    onChange={(e) => handleWarehouseChange(e.target.value)}
-                    aria-label="Active warehouse"
-                    className={cn(
-                      'h-9 appearance-none rounded-md border border-border bg-surface-raised pl-9 pr-8 text-sm text-text',
-                      isWarehouseView && 'h-11 min-w-[10rem] text-base'
-                    )}
-                  >
-                    {warehouses.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Warehouse className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                </div>
-              ))}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {isWarehouseView && <TerminalPinPad warehouseSized />}
-            <div className="flex items-center gap-2" data-testid="header-user">
-              <Avatar
-                src={user?.avatarUrl}
-                alt={user?.displayName ?? user?.email ?? 'User'}
-                size={isWarehouseView ? 'lg' : 'md'}
-              />
-              {!isWarehouseView && (
-                <span className="hidden text-sm text-text-muted sm:inline">
-                  {user?.displayName ?? user?.email}
-                </span>
-              )}
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => void handleSignOut()}>
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
-          </div>
-        </header>
+        <Header
+          title={isWarehouseView ? 'Floor ops' : ''}
+          isWarehouseView={isWarehouseView}
+          warehouses={warehouses}
+          warehouse={warehouse}
+          hideSwitcher={hideSwitcher}
+          lockTitle={lockTitle}
+          lockReason={lockReason}
+          onToggleCommandPalette={toggle}
+          onWarehouseChange={handleWarehouseChange}
+          onSignOut={() => void handleSignOut()}
+        />
 
         <main className="flex-1 overflow-auto">
           <Outlet />

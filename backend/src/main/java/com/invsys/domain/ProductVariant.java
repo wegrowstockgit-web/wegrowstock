@@ -84,6 +84,9 @@ public class ProductVariant extends TenantScopedEntity {
     @Column(name = "is_kit", nullable = false)
     private boolean kit;
 
+    @Column(name = "is_soft_kit", nullable = false)
+    private boolean softKit;
+
     public UUID getProductId() {
         return productId;
     }
@@ -274,5 +277,13 @@ public class ProductVariant extends TenantScopedEntity {
 
     public void setKit(boolean kit) {
         this.kit = kit;
+    }
+
+    public boolean isSoftKit() {
+        return softKit;
+    }
+
+    public void setSoftKit(boolean softKit) {
+        this.softKit = softKit;
     }
 }

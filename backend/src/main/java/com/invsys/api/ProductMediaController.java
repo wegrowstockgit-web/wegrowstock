@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,7 +26,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/products/variants")
-@PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+@PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
 public class ProductMediaController {
 
     private final ProductMediaService productMediaService;
@@ -67,6 +68,11 @@ public class ProductMediaController {
                 .findFirst()
                 .orElseThrow();
         return toResponse(media);
+    }
+
+    @PutMapping("/{id}/media/{mediaId}/primary")
+    public MediaResponse setPrimary(@PathVariable UUID id, @PathVariable UUID mediaId) {
+        return toResponse(productMediaService.setPrimary(id, mediaId));
     }
 
     @GetMapping("/{id}/media")

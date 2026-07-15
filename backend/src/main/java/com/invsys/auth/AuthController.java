@@ -3,6 +3,7 @@ package com.invsys.auth;
 import com.invsys.auth.dto.LoginRequest;
 import com.invsys.auth.dto.MagicLoginConsumeRequest;
 import com.invsys.auth.dto.MagicLoginRequest;
+import com.invsys.auth.dto.MeResponse;
 import com.invsys.auth.dto.RefreshRequest;
 import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.auth.dto.SignupRequest;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -56,6 +58,12 @@ public class AuthController {
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public MeResponse me() {
+        return authService.currentUser();
     }
 
     @PostMapping("/magic-login")

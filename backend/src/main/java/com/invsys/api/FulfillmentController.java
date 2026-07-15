@@ -1,12 +1,14 @@
 package com.invsys.api;
 
 import com.invsys.common.ApiException;
+import com.invsys.domain.Allocation;
 import com.invsys.domain.Product;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.TenantSettings;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.TenantSettingsRepository;
+import com.invsys.service.AllocationService;
 import com.invsys.service.IdempotencyService;
 import com.invsys.service.InventoryService;
 import com.invsys.service.ScanService;
@@ -39,19 +41,22 @@ public class FulfillmentController {
     private final ScanService scanService;
     private final IdempotencyService idempotencyService;
     private final TenantSettingsRepository tenantSettingsRepository;
+    private final AllocationService allocationService;
 
     public FulfillmentController(ProductVariantRepository variantRepository,
                                  ProductRepository productRepository,
                                  InventoryService inventoryService,
                                  ScanService scanService,
                                  IdempotencyService idempotencyService,
-                                 TenantSettingsRepository tenantSettingsRepository) {
+                                 TenantSettingsRepository tenantSettingsRepository,
+                                 AllocationService allocationService) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
         this.scanService = scanService;
         this.idempotencyService = idempotencyService;
         this.tenantSettingsRepository = tenantSettingsRepository;
+        this.allocationService = allocationService;
     }
 
     @PostMapping("/scan")
@@ -90,8 +95,20 @@ public class FulfillmentController {
 
     private ScanResponse executeScan(ScanRequest request) {
         UUID tenantId = TenantContext.requireTenantId();
-        ProductVariant variant = variantRepository.findByTenantIdAndBarcode(tenantId, request.barcode())
-                .or(() -> variantRepository.findByTenantIdAndSku(tenantId, request.barcode()))
+        // Client-side GS1 parser sends GTIN as barcode (+ optional gtin); no server re-parse required.
+        final String lookupKey = (request.barcode() == null || request.barcode().isBlank())
+                && request.gtin() != null && !request.gtin().isBlank()
+                ? request.gtin()
+                : request.barcode();
+        ProductVariant variant = variantRepository.findByTenantIdAndBarcode(tenantId, lookupKey)
+                .or(() -> variantRepository.findByTenantIdAndSku(tenantId, lookupKey))
+                .or(() -> {
+                    String gtin = request.gtin();
+                    if (gtin == null || gtin.isBlank() || gtin.equals(lookupKey)) {
+                        return java.util.Optional.empty();
+                    }
+                    return variantRepository.findByTenantIdAndBarcode(tenantId, gtin);
+                })
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Barcode not found"));
 
         String productName = productRepository.findById(variant.getProductId())
@@ -99,6 +116,9 @@ public class FulfillmentController {
                 .orElse(variant.getSku());
         String putawayTarget = scanService.resolvePutawayPath(variant);
         String primaryMediaUrl = scanService.primaryMediaUrl(variant.getId());
+        BigDecimal qty = request.quantity() != null && request.quantity().signum() > 0
+                ? request.quantity()
+                : BigDecimal.ONE;
 
         String message;
         if ("receive".equalsIgnoreCase(request.mode())) {
@@ -111,20 +131,32 @@ public class FulfillmentController {
                         "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
             }
             inventoryService.receive(variant.getId(), request.warehouseId(), null,
-                    BigDecimal.ONE, "SCAN_RECEIVE", null, null, request.serialNumber());
+                    qty, "SCAN_RECEIVE", null, null, request.serialNumber());
             message = request.serialNumber() != null
                     ? "Received serial " + request.serialNumber()
-                    : "Received 1 unit";
+                    : "Received " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
         } else {
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
                         "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl);
             }
-            inventoryService.adjust(variant.getId(), request.warehouseId(), null,
-                    BigDecimal.ONE.negate(), "SCAN_PICK", request.serialNumber());
+            Allocation allocation = allocationService.assertPickableForCurrentUser(
+                    variant.getId(), request.allocationId());
+            try {
+                inventoryService.adjust(variant.getId(), request.warehouseId(), null,
+                        qty.negate(), "SCAN_PICK", request.serialNumber());
+            } catch (ApiException ex) {
+                if ("INSUFFICIENT_STOCK".equals(ex.getCode())) {
+                    throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", "Insufficient stock")
+                            .withProperty("reason", "Insufficient stock")
+                            .withProperty("variantId", variant.getId().toString());
+                }
+                throw ex;
+            }
+            allocationService.consumeForPick(allocation, qty);
             message = request.serialNumber() != null
                     ? "Picked serial " + request.serialNumber()
-                    : "Picked 1 unit";
+                    : "Picked " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
         }
         return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message, putawayTarget, primaryMediaUrl);
     }
@@ -155,11 +187,23 @@ public class FulfillmentController {
         return map;
     }
 
+    /**
+     * Floor scan payload. When the PWA decodes GS1-128 offline, it sends structured
+     * {@code gtin}/{@code lotNumber}/{@code expiryDate}/{@code quantity} so the API
+     * does not need to re-parse the composite AI string on replay.
+     */
     public record ScanRequest(
             @NotBlank String barcode,
             @NotNull UUID warehouseId,
             @NotBlank String mode,
-            String serialNumber
+            String serialNumber,
+            UUID allocationId,
+            String gtin,
+            String lotNumber,
+            String expiryDate,
+            BigDecimal quantity,
+            Boolean isGs1,
+            String rawBarcode
     ) {
     }
 

@@ -9,6 +9,7 @@ public final class TenantContext {
     private static final ThreadLocal<UUID> TENANT = new ThreadLocal<>();
     private static final ThreadLocal<UUID> USER = new ThreadLocal<>();
     private static final ThreadLocal<UUID> CUSTOMER = new ThreadLocal<>();
+    private static final ThreadLocal<UUID> SUPPLIER = new ThreadLocal<>();
     private static final ThreadLocal<UUID> WAREHOUSE = new ThreadLocal<>();
     private static final ThreadLocal<List<UUID>> AUTHORIZED_WAREHOUSES = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> BOOTSTRAP = ThreadLocal.withInitial(() -> false);
@@ -47,6 +48,18 @@ public final class TenantContext {
         return getCustomerId().orElseThrow(() -> new IllegalStateException("Customer context not set"));
     }
 
+    public static void setSupplierId(UUID supplierId) {
+        SUPPLIER.set(supplierId);
+    }
+
+    public static Optional<UUID> getSupplierId() {
+        return Optional.ofNullable(SUPPLIER.get());
+    }
+
+    public static UUID requireSupplierId() {
+        return getSupplierId().orElseThrow(() -> new IllegalStateException("Supplier context not set"));
+    }
+
     public static void setWarehouseId(UUID warehouseId) {
         WAREHOUSE.set(warehouseId);
     }
@@ -76,6 +89,7 @@ public final class TenantContext {
         TENANT.remove();
         USER.remove();
         CUSTOMER.remove();
+        SUPPLIER.remove();
         WAREHOUSE.remove();
         AUTHORIZED_WAREHOUSES.remove();
         BOOTSTRAP.remove();

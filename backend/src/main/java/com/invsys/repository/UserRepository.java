@@ -8,6 +8,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
+
+    Optional<User> findByTenantIdAndAvatarUrl(UUID tenantId, String avatarUrl);
     Optional<User> findByTenantIdAndEmail(UUID tenantId, String email);
     Optional<User> findByTenantIdAndTerminalPinHash(UUID tenantId, String terminalPinHash);
     List<User> findByTenantIdOrderByEmailAsc(UUID tenantId);

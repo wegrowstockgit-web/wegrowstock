@@ -57,7 +57,8 @@ public class UserController {
 
     @PostMapping("/invitations")
     public Invitation invite(@Valid @RequestBody InviteRequest request) {
-        return userManagementService.invite(request.email(), request.role(), request.customerId());
+        return userManagementService.invite(
+                request.email(), request.role(), request.customerId(), request.supplierId());
     }
 
     @PatchMapping("/{id}/role")
@@ -84,7 +85,12 @@ public class UserController {
                 id, request != null ? request.label() : null);
     }
 
-    public record InviteRequest(@NotBlank @Email String email, @NotBlank String role, UUID customerId) {
+    public record InviteRequest(
+            @NotBlank @Email String email,
+            @NotBlank String role,
+            UUID customerId,
+            UUID supplierId
+    ) {
     }
 
     public record ChangeRoleRequest(@NotBlank String role) {

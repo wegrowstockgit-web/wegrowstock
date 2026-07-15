@@ -13,4 +13,7 @@ public interface ObjectStorage {
     InputStream open(String key);
 
     boolean exists(String key);
+
+    /** Best-effort delete; missing keys are ignored. */
+    void delete(String key);
 }

@@ -32,6 +32,9 @@ public class Invitation extends TenantScopedEntity {
     @Column(name = "customer_id")
     private UUID customerId;
 
+    @Column(name = "supplier_id")
+    private UUID supplierId;
+
     public String getEmail() {
         return email;
     }
@@ -86,5 +89,13 @@ public class Invitation extends TenantScopedEntity {
 
     public void setCustomerId(UUID customerId) {
         this.customerId = customerId;
+    }
+
+    public UUID getSupplierId() {
+        return supplierId;
+    }
+
+    public void setSupplierId(UUID supplierId) {
+        this.supplierId = supplierId;
     }
 }

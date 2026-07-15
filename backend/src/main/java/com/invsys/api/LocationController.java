@@ -2,6 +2,7 @@ package com.invsys.api;
 
 import com.invsys.domain.Location;
 import com.invsys.repository.LocationRepository;
+import com.invsys.service.PutAwaySuggestionService;
 import com.invsys.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -26,9 +27,12 @@ import java.util.stream.Collectors;
 public class LocationController {
 
     private final LocationRepository locationRepository;
+    private final PutAwaySuggestionService putAwaySuggestionService;
 
-    public LocationController(LocationRepository locationRepository) {
+    public LocationController(LocationRepository locationRepository,
+                              PutAwaySuggestionService putAwaySuggestionService) {
         this.locationRepository = locationRepository;
+        this.putAwaySuggestionService = putAwaySuggestionService;
     }
 
     @GetMapping
@@ -63,6 +67,15 @@ public class LocationController {
         }
         Set<UUID> allowed = TenantContext.getAuthorizedWarehouseIds().stream().collect(Collectors.toSet());
         return warehouses.stream().filter(loc -> allowed.contains(loc.getId())).toList();
+    }
+
+    /**
+     * Directed put-away: consolidate onto existing stock, else first empty BIN.
+     */
+    @GetMapping("/putaway-suggestions")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public PutAwaySuggestionService.PutAwaySuggestion putawaySuggestions(@RequestParam UUID variantId) {
+        return putAwaySuggestionService.suggest(variantId);
     }
 
     @PostMapping

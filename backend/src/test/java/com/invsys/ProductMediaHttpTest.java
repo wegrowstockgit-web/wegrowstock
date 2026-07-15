@@ -23,8 +23,10 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -118,5 +120,36 @@ class ProductMediaHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[?(@.sku=='MED-1')].primaryMediaUrl")
                         .value(org.hamcrest.Matchers.hasItem(mediaUrl)));
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatarUrl").value(avatarUrl))
+                .andExpect(jsonPath("$.displayName").value("Owner"))
+                .andExpect(jsonPath("$.roles").isArray());
+
+        String mediaId = objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/products/variants/" + variantId + "/media")
+                                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString())
+                .get(0).path("id").asString();
+
+        mockMvc.perform(put("/api/v1/products/variants/" + variantId + "/media/" + mediaId + "/primary")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isPrimary").value(true));
+
+        String mediaObjectId = mediaUrl.replace("/api/v1/media/", "").replace("/content", "");
+        mockMvc.perform(delete("/api/v1/media/" + mediaObjectId)
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/scan/9900333344441")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.primaryMediaUrl").value(org.hamcrest.Matchers.nullValue()));
     }
 }

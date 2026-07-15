@@ -4,12 +4,14 @@ import com.invsys.common.ApiException;
 import com.invsys.domain.CustomerUserMapping;
 import com.invsys.domain.Invitation;
 import com.invsys.domain.Role;
+import com.invsys.domain.SupplierUserMapping;
 import com.invsys.domain.User;
 import com.invsys.domain.UserRole;
 import com.invsys.repository.CustomerUserMappingRepository;
 import com.invsys.repository.InvitationRepository;
 import com.invsys.repository.RefreshTokenRepository;
 import com.invsys.repository.RoleRepository;
+import com.invsys.repository.SupplierUserMappingRepository;
 import com.invsys.repository.UserRepository;
 import com.invsys.repository.UserRoleRepository;
 import com.invsys.tenancy.TenantContext;
@@ -34,6 +36,7 @@ public class UserManagementService {
     private final RoleRepository roleRepository;
     private final InvitationRepository invitationRepository;
     private final CustomerUserMappingRepository customerUserMappingRepository;
+    private final SupplierUserMappingRepository supplierUserMappingRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -42,6 +45,7 @@ public class UserManagementService {
                                  RoleRepository roleRepository,
                                  InvitationRepository invitationRepository,
                                  CustomerUserMappingRepository customerUserMappingRepository,
+                                 SupplierUserMappingRepository supplierUserMappingRepository,
                                  RefreshTokenRepository refreshTokenRepository,
                                  PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
@@ -49,6 +53,7 @@ public class UserManagementService {
         this.roleRepository = roleRepository;
         this.invitationRepository = invitationRepository;
         this.customerUserMappingRepository = customerUserMappingRepository;
+        this.supplierUserMappingRepository = supplierUserMappingRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
     }
@@ -59,9 +64,14 @@ public class UserManagementService {
 
     @Transactional
     public Invitation invite(String email, String roleCode, UUID customerId) {
+        return invite(email, roleCode, customerId, null);
+    }
+
+    @Transactional
+    public Invitation invite(String email, String roleCode, UUID customerId, UUID supplierId) {
         Role role = roleRepository.findByTenantIdAndCode(TenantContext.requireTenantId(), roleCode)
                 .orElseGet(() -> {
-                    if (!"B2B_CUSTOMER".equals(roleCode)) {
+                    if (!"B2B_CUSTOMER".equals(roleCode) && !"SUPPLIER".equals(roleCode)) {
                         throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ROLE", "Invalid role");
                     }
                     Role created = new Role();
@@ -72,6 +82,9 @@ public class UserManagementService {
         if ("B2B_CUSTOMER".equals(roleCode) && customerId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CUSTOMER_REQUIRED", "Customer is required for portal invites");
         }
+        if ("SUPPLIER".equals(roleCode) && supplierId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SUPPLIER_REQUIRED", "Supplier is required for vendor portal invites");
+        }
         if (userRepository.existsByTenantIdAndEmail(TenantContext.requireTenantId(), email.toLowerCase(Locale.ROOT))) {
             throw new ApiException(HttpStatus.CONFLICT, "USER_EXISTS", "User already exists");
         }
@@ -81,6 +94,7 @@ public class UserManagementService {
         invitation.setEmail(email.toLowerCase(Locale.ROOT));
         invitation.setRoleId(role.getId());
         invitation.setCustomerId(customerId);
+        invitation.setSupplierId(supplierId);
         invitation.setTokenHash(hash(token));
         invitation.setInvitedBy(TenantContext.getUserId().orElseThrow());
         invitation.setExpiresAt(Instant.now().plusSeconds(7 * 86400));
@@ -91,7 +105,7 @@ public class UserManagementService {
 
     @Transactional
     public Invitation invite(String email, String roleCode) {
-        return invite(email, roleCode, null);
+        return invite(email, roleCode, null, null);
     }
 
     @Transactional
@@ -123,6 +137,13 @@ public class UserManagementService {
             mapping.setCustomerId(invitation.getCustomerId());
             mapping.setUserId(user.getId());
             customerUserMappingRepository.save(mapping);
+        }
+        if ("SUPPLIER".equals(role.getCode()) && invitation.getSupplierId() != null) {
+            SupplierUserMapping mapping = new SupplierUserMapping();
+            mapping.setTenantId(invitation.getTenantId());
+            mapping.setSupplierId(invitation.getSupplierId());
+            mapping.setUserId(user.getId());
+            supplierUserMappingRepository.save(mapping);
         }
 
         invitation.setAcceptedAt(Instant.now());

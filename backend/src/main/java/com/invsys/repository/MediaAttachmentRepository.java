@@ -9,4 +9,8 @@ import java.util.UUID;
 public interface MediaAttachmentRepository extends JpaRepository<MediaAttachment, UUID> {
     List<MediaAttachment> findByTenantIdAndEntityTypeAndEntityIdOrderBySortOrderAscCreatedAtAsc(
             UUID tenantId, String entityType, UUID entityId);
+
+    List<MediaAttachment> findByTenantIdAndMediaObjectId(UUID tenantId, UUID mediaObjectId);
+
+    void deleteByTenantIdAndMediaObjectId(UUID tenantId, UUID mediaObjectId);
 }
