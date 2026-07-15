@@ -57,6 +57,8 @@ export interface TenantLocation {
   code: string;
   name: string;
   path: string;
+  /** STANDARD | PICK_FACE | RESERVE | RECEIVING */
+  zoneBehavior?: string;
 }
 
 export interface TenantUser {
@@ -820,6 +822,69 @@ export interface LotTraceResponse {
   lotNumber: string;
   upstream: GenealogyNode;
   downstream: GenealogyNode;
+}
+
+export interface ComplianceLotTraceResponse {
+  lotId: string;
+  lotNumber: string;
+  variantId: string;
+  sku: string;
+  origin: {
+    ledgerId: string;
+    receivedAt?: string | null;
+    quantity?: number | null;
+    locationId?: string | null;
+    locationCode?: string | null;
+    locationPath?: string | null;
+    purchaseOrderId?: string | null;
+    purchaseOrderNumber?: string | null;
+    purchaseOrderLineId?: string | null;
+    supplierId?: string | null;
+    supplierName?: string | null;
+  } | null;
+  currentExposure: Array<{
+    inventoryLevelId: string;
+    locationId: string;
+    locationCode: string;
+    locationPath: string;
+    locationType?: string | null;
+    zoneBehavior?: string | null;
+    onHand: number;
+    allocated: number;
+    available: number;
+  }>;
+  downstream: Array<{
+    ledgerId: string;
+    shippedAt?: string | null;
+    quantity?: number | null;
+    salesOrderId?: string | null;
+    salesOrderNumber?: string | null;
+    salesOrderLineId?: string | null;
+    customerId?: string | null;
+    customerName?: string | null;
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }>;
+}
+
+export interface ReplenishmentTask {
+  ruleId: string;
+  variantId: string;
+  sku: string;
+  variantName: string;
+  lotId?: string | null;
+  lotNumber?: string | null;
+  fromLocationId: string;
+  fromLocationCode: string;
+  fromLocationPath: string;
+  toLocationId: string;
+  toLocationCode: string;
+  toLocationPath: string;
+  pickFaceOnHand: number;
+  minQuantity: number;
+  maxQuantity: number;
+  suggestedQuantity: number;
+  instruction: string;
 }
 
 export interface VehicleAssignment {

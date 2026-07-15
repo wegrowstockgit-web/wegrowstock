@@ -88,6 +88,9 @@ public class LocationController {
         location.setCode(request.code());
         location.setName(request.name());
         location.setPath(request.path());
+        if (request.zoneBehavior() != null && !request.zoneBehavior().isBlank()) {
+            location.setZoneBehavior(request.zoneBehavior().trim().toUpperCase());
+        }
         return locationRepository.save(location);
     }
 
@@ -106,7 +109,8 @@ public class LocationController {
             @NotBlank String type,
             @NotBlank String code,
             @NotBlank String name,
-            @NotBlank String path
+            @NotBlank String path,
+            String zoneBehavior
     ) {
     }
 }

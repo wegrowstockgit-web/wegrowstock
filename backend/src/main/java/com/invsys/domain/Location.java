@@ -28,6 +28,10 @@ public class Location extends TenantScopedEntity {
     @Column(name = "sequence_index", nullable = false)
     private int sequenceIndex;
 
+    /** STANDARD | PICK_FACE | RESERVE | RECEIVING */
+    @Column(name = "zone_behavior", nullable = false)
+    private String zoneBehavior = "STANDARD";
+
     public UUID getParentLocationId() {
         return parentLocationId;
     }
@@ -74,5 +78,13 @@ public class Location extends TenantScopedEntity {
 
     public void setSequenceIndex(int sequenceIndex) {
         this.sequenceIndex = sequenceIndex;
+    }
+
+    public String getZoneBehavior() {
+        return zoneBehavior;
+    }
+
+    public void setZoneBehavior(String zoneBehavior) {
+        this.zoneBehavior = zoneBehavior;
     }
 }

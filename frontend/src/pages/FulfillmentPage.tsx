@@ -37,6 +37,10 @@ import {
   type ScannerHistoryItem,
 } from '@/features/fulfillment/ScannerView';
 import { QuarantineReview } from '@/features/fulfillment/QuarantineReview';
+import {
+  ReplenishmentBadge,
+  ReplenishmentQueue,
+} from '@/features/fulfillment/ReplenishmentQueue';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
 
 function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
@@ -164,6 +168,7 @@ export function FulfillmentPage() {
   const [packSalesOrderId, setPackSalesOrderId] = useState('');
   const [labelMessage, setLabelMessage] = useState('');
   const [showQuarantine, setShowQuarantine] = useState(false);
+  const [showReplenishment, setShowReplenishment] = useState(false);
   const [gs1Fields, setGs1Fields] = useState<Gs1FieldState>(EMPTY_GS1);
   const [gs1Active, setGs1Active] = useState(false);
   const [lotLoggedNotTracked, setLotLoggedNotTracked] = useState(false);
@@ -548,6 +553,9 @@ export function FulfillmentPage() {
             {quarantineCount} quarantined scan{quarantineCount === 1 ? '' : 's'}
           </button>
         )}
+        <div className="mx-auto mt-3 w-full max-w-md">
+          <ReplenishmentBadge onOpen={() => setShowReplenishment(true)} />
+        </div>
       </div>
 
       {showQuarantine ? (
@@ -561,6 +569,12 @@ export function FulfillmentPage() {
               }
             }}
           />
+        </div>
+      ) : null}
+
+      {showReplenishment ? (
+        <div className="mb-6">
+          <ReplenishmentQueue onClose={() => setShowReplenishment(false)} />
         </div>
       ) : null}
 
