@@ -37,6 +37,10 @@ export default defineConfig({
         'src/components/ui/ColumnVisibilityMenu.tsx',
         'src/components/ui/Table.tsx',
         'src/hooks/useClientSort.ts',
+        'src/api/inventory.ts',
+        'src/hooks/useReverseTransactionMutation.ts',
+        'src/features/inventory/LedgerHistoryTable.tsx',
+        'src/components/ui/AlertDialog.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       thresholds: {

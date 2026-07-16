@@ -3,7 +3,12 @@ import { expect, test } from './fixtures/roleFixture';
 test.describe('Surface A enterprise grid & settings', () => {
   test('products density toggle and column visibility menu', async ({ ownerPage: page }) => {
     await page.goto('/products');
-    await expect(page.getByRole('heading', { name: 'Products' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(
+      page.getByTestId('virtualized-table').or(page.getByRole('heading', { name: 'No products yet' })),
+    ).toBeVisible({ timeout: 15_000 });
 
     const density = page.getByTestId('density-toggle');
     await expect(density).toBeVisible();
@@ -22,7 +27,12 @@ test.describe('Surface A enterprise grid & settings', () => {
 
   test('list tables show corporate blue sortable headers', async ({ ownerPage: page }) => {
     await page.goto('/customers');
-    await expect(page.getByRole('heading', { name: /customers/i })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('columnheader', { name: /name/i }).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     const nameHeader = page.getByRole('columnheader', { name: /name/i }).first();
     await expect(nameHeader).toBeVisible();
@@ -39,7 +49,9 @@ test.describe('Surface A enterprise grid & settings', () => {
 
   test('import wizard page loads with mapping workspace', async ({ ownerPage: page }) => {
     await page.goto('/import');
-    await expect(page.getByRole('heading', { name: 'Data import' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('import-wizard')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'CSV import' }).click();
+    await expect(page.getByRole('heading', { name: 'Data import' })).toBeVisible();
     await expect(page.getByText(/Column mapping/i)).toBeVisible();
     await expect(page.getByText(/Drop a CSV here/i)).toBeVisible();
   });

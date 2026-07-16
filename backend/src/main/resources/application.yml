@@ -40,6 +40,12 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
+  observations:
+    annotations:
+      enabled: true
   metrics:
     tags:
       application: ${spring.application.name}
@@ -62,8 +68,15 @@ invsys:
     public-key-pem: ${JWT_PUBLIC_KEY:}
   stripe:
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
+    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}}
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_mock}
     platform-fee-percent: 0.4
-    connect-return-url: ${STRIPE_CONNECT_RETURN_URL:http://localhost:3000/settings}
+    connect-return-url: ${STRIPE_CONNECT_RETURN_URL:http://localhost:3000/settings/billing?stripe=success}
+  easypost:
+    api-key: ${EASYPOST_API_KEY:easypost_mock_key}
+  shopify:
+    api-key: ${SHOPIFY_API_KEY:shopify_mock_key}
+    api-version: ${SHOPIFY_API_VERSION:2024-10}
   webhooks:
     shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:shopify_mock_secret}
     easypost-secret: ${EASYPOST_WEBHOOK_SECRET:easypost_mock_secret}
@@ -79,6 +92,13 @@ invsys:
   redis:
     # Opt-in: enable via REDIS_ENABLED=true (docker/prod). Local/tests use in-memory fallbacks.
     enabled: ${REDIS_ENABLED:false}
+  rate-limit:
+    auth-per-minute: ${AUTH_RATE_LIMIT_PER_MINUTE:60}
+    terminal-pin-per-minute: ${TERMINAL_PIN_RATE_LIMIT_PER_MINUTE:20}
+    webhook-per-minute: ${WEBHOOK_RATE_LIMIT_PER_MINUTE:120}
+  alerts:
+    from-email: ${ALERTS_FROM_EMAIL:noreply@invsys.local}
+    debounce-minutes: ${ALERT_DEBOUNCE_MINUTES:60}
   observability:
     alert-scan-interval-ms: ${ALERT_SCAN_INTERVAL_MS:300000}
   integration:

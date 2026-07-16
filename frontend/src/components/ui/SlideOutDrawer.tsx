@@ -64,7 +64,8 @@ export function SlideOutDrawer({
           'absolute right-0 top-0 flex h-full flex-col border-l border-border bg-surface-raised shadow-elevated',
           'transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
           'motion-reduce:transition-none',
-          width === 'lg' ? 'w-full max-w-xl' : 'w-full max-w-md',
+          width === 'lg' ? 'w-full max-w-xl md:max-w-xl' : 'w-full max-w-md md:max-w-md',
+          'max-md:max-w-none',
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >

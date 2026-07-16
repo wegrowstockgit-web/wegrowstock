@@ -16,6 +16,10 @@ public interface InventoryLedgerRepository extends JpaRepository<InventoryLedger
 
     List<InventoryLedger> findByTenantIdOrderByCreatedAtAsc(UUID tenantId);
 
+    List<InventoryLedger> findTop100ByTenantIdOrderByCreatedAtDesc(UUID tenantId);
+
+    boolean existsByTenantIdAndReversalOfLedgerId(UUID tenantId, UUID reversalOfLedgerId);
+
     List<InventoryLedger> findByTenantIdAndReferenceTypeAndReferenceId(
             UUID tenantId, String referenceType, UUID referenceId);
 

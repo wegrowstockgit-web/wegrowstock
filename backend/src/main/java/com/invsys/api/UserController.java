@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -56,9 +57,17 @@ public class UserController {
     }
 
     @PostMapping("/invitations")
-    public Invitation invite(@Valid @RequestBody InviteRequest request) {
-        return userManagementService.invite(
+    public InviteResponse invite(@Valid @RequestBody InviteRequest request) {
+        UserManagementService.InviteResult result = userManagementService.invite(
                 request.email(), request.role(), request.customerId(), request.supplierId());
+        Invitation invitation = result.invitation();
+        return new InviteResponse(
+                invitation.getId(),
+                invitation.getEmail(),
+                request.role(),
+                invitation.getTokenHash(),
+                result.rawToken(),
+                invitation.getExpiresAt());
     }
 
     @PatchMapping("/{id}/role")
@@ -105,6 +114,20 @@ public class UserController {
             String displayName,
             String status,
             List<String> roles
+    ) {
+    }
+
+    /**
+     * Invite response. {@code token} is the one-time accept secret (also logged in non-prod).
+     * {@code tokenHash} is the persisted SHA-256 digest for DB correlation in tests/ops.
+     */
+    public record InviteResponse(
+            UUID id,
+            String email,
+            String role,
+            String tokenHash,
+            String token,
+            Instant expiresAt
     ) {
     }
 }

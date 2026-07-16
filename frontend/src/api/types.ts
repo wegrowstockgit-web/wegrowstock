@@ -631,6 +631,11 @@ export interface FulfillmentScanResponse {
   primaryMediaUrl?: string | null;
   isLotTracked?: boolean;
   lotLoggedNotTracked?: boolean;
+  crossDock?: boolean;
+  stagingPath?: string | null;
+  stagingLocationId?: string | null;
+  crossDockSalesOrderNumber?: string | null;
+  crossDockInstruction?: string | null;
 }
 
 export interface SsoConfig {

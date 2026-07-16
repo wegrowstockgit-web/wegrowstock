@@ -37,19 +37,27 @@ public class ShippingCredentialService {
 
     @Transactional
     public ShippingCredentialStatus save(String system, String apiKey) {
-        validateSystem(system);
+        String normalized = validateSystem(system);
         UUID tenantId = TenantContext.requireTenantId();
-        IntegrationCredential credential = credentialRepository.findByTenantIdAndSystem(tenantId, system)
+        IntegrationCredential credential = credentialRepository.findByTenantIdAndSystem(tenantId, normalized)
                 .orElseGet(() -> {
                     IntegrationCredential created = new IntegrationCredential();
                     created.setTenantId(tenantId);
-                    created.setSystem(system);
+                    created.setSystem(normalized);
                     return created;
                 });
         credential.setCiphertext(vaultService.encrypt(apiKey.getBytes(StandardCharsets.UTF_8)));
         credential.setStatus("CONNECTED");
         credentialRepository.save(credential);
-        return new ShippingCredentialStatus(system, "CONNECTED");
+        return new ShippingCredentialStatus(normalized, "CONNECTED");
+    }
+
+    @Transactional
+    public ShippingCredentialStatus disconnect(String system) {
+        String normalized = validateSystem(system);
+        UUID tenantId = TenantContext.requireTenantId();
+        credentialRepository.findByTenantIdAndSystem(tenantId, normalized).ifPresent(credentialRepository::delete);
+        return new ShippingCredentialStatus(normalized, "NOT_CONFIGURED");
     }
 
     /**
@@ -71,10 +79,12 @@ public class ShippingCredentialService {
                 .map(c -> new String(vaultService.decrypt(c.getCiphertext()), StandardCharsets.UTF_8));
     }
 
-    private void validateSystem(String system) {
-        if (!SHIPPING_SYSTEMS.contains(system.toUpperCase())) {
+    private String validateSystem(String system) {
+        String normalized = system == null ? "" : system.trim().toUpperCase();
+        if (!SHIPPING_SYSTEMS.contains(normalized)) {
             throw new IllegalArgumentException("Unsupported shipping system: " + system);
         }
+        return normalized;
     }
 
     public record ShippingCredentialStatus(String system, String status) {

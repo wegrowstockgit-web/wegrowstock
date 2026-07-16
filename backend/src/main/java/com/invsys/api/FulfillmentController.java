@@ -86,6 +86,7 @@ public class FulfillmentController {
                 task.salesOrderNumber(),
                 task.salesOrderLineId(),
                 task.stagingHintLocationId(),
+                task.stagingPath(),
                 task.quantity(),
                 task.allocationStatus(),
                 task.instruction());
@@ -100,6 +101,7 @@ public class FulfillmentController {
             String salesOrderNumber,
             UUID salesOrderLineId,
             UUID stagingHintLocationId,
+            String stagingPath,
             BigDecimal quantity,
             String allocationStatus,
             String instruction
@@ -142,7 +144,13 @@ public class FulfillmentController {
                     (String) body.get("putawayTarget"),
                     (String) body.get("primaryMediaUrl"),
                     Boolean.TRUE.equals(body.get("isLotTracked")),
-                    Boolean.TRUE.equals(body.get("lotLoggedNotTracked")));
+                    Boolean.TRUE.equals(body.get("lotLoggedNotTracked")),
+                    Boolean.TRUE.equals(body.get("crossDock")),
+                    (String) body.get("stagingPath"),
+                    body.get("stagingLocationId") != null
+                            ? UUID.fromString(String.valueOf(body.get("stagingLocationId"))) : null,
+                    (String) body.get("crossDockSalesOrderNumber"),
+                    (String) body.get("crossDockInstruction"));
             return ResponseEntity.status(cached.get().status()).body(replayed);
         }
 
@@ -184,6 +192,30 @@ public class FulfillmentController {
 
         String message;
         if ("receive".equalsIgnoreCase(request.mode())) {
+            // Cross-dock intercept preview — open SO demand bypasses storage put-away instructions.
+            CrossDockService.CrossDockTask crossDock = crossDockService.checkVariant(variant.getId());
+            if (crossDock.match()) {
+                String stagingPath = crossDock.stagingPath() != null ? crossDock.stagingPath() : putawayTarget;
+                message = crossDock.instruction() != null
+                        ? crossDock.instruction()
+                        : "Route to Shipping Staging Lane";
+                return new ScanResponse(
+                        variant.getId(),
+                        variant.getSku(),
+                        productName,
+                        false,
+                        null,
+                        message,
+                        stagingPath,
+                        primaryMediaUrl,
+                        variant.isLotTracked(),
+                        false,
+                        true,
+                        stagingPath,
+                        crossDock.stagingHintLocationId(),
+                        crossDock.salesOrderNumber(),
+                        crossDock.instruction());
+            }
             if (!allowBlindReceiving()) {
                 throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "BLIND_RECEIVING_DISABLED",
                         "Blind receiving is disabled for this tenant");
@@ -191,7 +223,7 @@ public class FulfillmentController {
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
                         "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl,
-                        variant.isLotTracked(), false);
+                        variant.isLotTracked(), false, false, null, null, null, null);
             }
             InventoryService.ResolvedLot preview = inventoryService.resolveLot(
                     variant, null, request.lotNumber(), request.metadata());
@@ -201,34 +233,40 @@ public class FulfillmentController {
                     ? "Received serial " + request.serialNumber()
                     : "Received " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
             return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message,
-                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked());
+                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked(),
+                    false, null, null, null, null);
         } else {
             if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
                 return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
                         "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl,
-                        variant.isLotTracked(), false);
+                        variant.isLotTracked(), false, false, null, null, null, null);
             }
             Allocation allocation = allocationService.assertPickableForCurrentUser(
                     variant.getId(), request.allocationId());
+            // Pick from the allocation bin (not the warehouse root) so on-hand matches.
+            UUID pickLocationId = allocation != null ? allocation.getLocationId() : request.warehouseId();
+            UUID pickLotId = allocation != null ? allocation.getLotId() : null;
             InventoryService.ResolvedLot preview = inventoryService.resolveLot(
-                    variant, null, request.lotNumber(), request.metadata());
+                    variant, pickLotId, request.lotNumber(), request.metadata());
             try {
-                inventoryService.adjust(variant.getId(), request.warehouseId(), null, request.lotNumber(),
-                        qty.negate(), "SCAN_PICK", request.serialNumber(), request.metadata());
-            } catch (ApiException ex) {
-                if ("INSUFFICIENT_STOCK".equals(ex.getCode())) {
-                    throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", "Insufficient stock")
-                            .withProperty("reason", "Insufficient stock")
-                            .withProperty("variantId", variant.getId().toString());
+                if (allocation != null) {
+                    inventoryService.adjustReserved(
+                            variant.getId(), pickLocationId, pickLotId, request.lotNumber(),
+                            qty.negate(), "SCAN_PICK", request.serialNumber(), request.metadata());
+                    allocationService.consumeForPick(allocation, qty);
+                } else {
+                    inventoryService.adjust(variant.getId(), pickLocationId, pickLotId, request.lotNumber(),
+                            qty.negate(), "SCAN_PICK", request.serialNumber(), request.metadata());
                 }
-                throw ex;
+            } catch (com.invsys.common.exception.InsufficientStockException ex) {
+                throw new com.invsys.common.exception.InsufficientStockException("Insufficient stock");
             }
-            allocationService.consumeForPick(allocation, qty);
             message = request.serialNumber() != null
                     ? "Picked serial " + request.serialNumber()
                     : "Picked " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
             return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message,
-                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked());
+                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked(),
+                    false, null, null, null, null);
         }
     }
 
@@ -257,6 +295,12 @@ public class FulfillmentController {
         map.put("primaryMediaUrl", response.primaryMediaUrl());
         map.put("isLotTracked", response.isLotTracked());
         map.put("lotLoggedNotTracked", response.lotLoggedNotTracked());
+        map.put("crossDock", response.crossDock());
+        map.put("stagingPath", response.stagingPath());
+        map.put("stagingLocationId",
+                response.stagingLocationId() != null ? response.stagingLocationId().toString() : null);
+        map.put("crossDockSalesOrderNumber", response.crossDockSalesOrderNumber());
+        map.put("crossDockInstruction", response.crossDockInstruction());
         return map;
     }
 
@@ -293,7 +337,12 @@ public class FulfillmentController {
             String putawayTarget,
             String primaryMediaUrl,
             boolean isLotTracked,
-            boolean lotLoggedNotTracked
+            boolean lotLoggedNotTracked,
+            boolean crossDock,
+            String stagingPath,
+            UUID stagingLocationId,
+            String crossDockSalesOrderNumber,
+            String crossDockInstruction
     ) {
     }
 

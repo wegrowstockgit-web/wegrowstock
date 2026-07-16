@@ -13,8 +13,10 @@ export function ScanFlashOverlay({ flash }: ScanFlashOverlayProps) {
       className={cn(
         'pointer-events-none fixed inset-0 z-[9999]',
         flash === 'success' && 'animate-flash-success',
-        flash === 'error' && 'animate-flash-error'
+        flash === 'error' && 'animate-flash-error',
       )}
+      data-testid="scan-flash-overlay"
+      data-flash={flash}
       aria-hidden
     />
   );

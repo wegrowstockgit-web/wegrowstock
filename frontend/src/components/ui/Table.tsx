@@ -12,9 +12,10 @@ interface TableProps {
 export function Table({ children, className }: TableProps) {
   const { tableClass } = useDensity();
   return (
-    // overflow-x only — vertical sticky headers must stick to the page/panel
-    // scrollport. overflow-y:auto on this wrapper traps sticky and lets headers scroll away.
-    <div className="w-full overflow-x-auto rounded-lg border border-border">
+    // No overflow here — the page/panel provides the single scrollport.
+    // A nested overflow-auto (plus page overflow-auto) caused double scrollbars.
+    // Sticky <th> pins to that outer scrollport when this shell stays overflow:visible.
+    <div className="w-full rounded-lg border border-border" data-table-shell="true">
       <table
         className={cn('w-full border-separate border-spacing-0', tableClass, className)}
       >

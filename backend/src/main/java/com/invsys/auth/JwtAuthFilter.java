@@ -43,54 +43,55 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String token = resolveAccessToken(request);
-        if (token != null) {
-            try {
-                JWTClaimsSet claims = jwtService.validateAndParse(token);
-                UUID userId = UUID.fromString(claims.getSubject());
-                UUID tenantId = UUID.fromString((String) claims.getClaim("tenant_id"));
-                @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) claims.getClaim("roles");
-                if (roles == null) {
-                    roles = List.of();
-                }
-
-                List<UUID> warehouseIds = parseWarehouseIds(claims.getClaim("warehouse_ids"));
-
-                TenantContext.setTenantId(tenantId);
-                TenantContext.setUserId(userId);
-                TenantContext.setAuthorizedWarehouseIds(warehouseIds);
-                MDC.put("tenantId", tenantId.toString());
-                MDC.put("userId", userId.toString());
-
-                if (roles.contains("B2B_CUSTOMER")) {
-                    customerUserMappingRepository.findByUserId(userId)
-                            .ifPresent(m -> TenantContext.setCustomerId(m.getCustomerId()));
-                }
-                if (roles.contains("SUPPLIER")) {
-                    supplierUserMappingRepository.findByUserId(userId)
-                            .ifPresent(m -> TenantContext.setSupplierId(m.getSupplierId()));
-                }
-
-                List<SimpleGrantedAuthority> authorities = roles.stream()
-                        .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
-                        .collect(Collectors.toList());
-                var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(auth);
-            } catch (Exception ignored) {
-                // Stale/invalid cookie or Bearer must not block public auth routes
-                // (e.g. POST /login while an expired invsys_access cookie is still present).
-                SecurityContextHolder.clearContext();
-                TenantContext.clear();
-            }
-        }
         try {
+            String token = resolveAccessToken(request);
+            if (token != null) {
+                try {
+                    JWTClaimsSet claims = jwtService.validateAndParse(token);
+                    UUID userId = UUID.fromString(claims.getSubject());
+                    UUID tenantId = UUID.fromString((String) claims.getClaim("tenant_id"));
+                    @SuppressWarnings("unchecked")
+                    List<String> roles = (List<String>) claims.getClaim("roles");
+                    if (roles == null) {
+                        roles = List.of();
+                    }
+
+                    List<UUID> warehouseIds = parseWarehouseIds(claims.getClaim("warehouse_ids"));
+
+                    TenantContext.setTenantId(tenantId);
+                    TenantContext.setUserId(userId);
+                    TenantContext.setAuthorizedWarehouseIds(warehouseIds);
+                    MDC.put(com.invsys.common.MdcSupport.TENANT_ID, tenantId.toString());
+                    MDC.put(com.invsys.common.MdcSupport.USER_ID, userId.toString());
+                    MDC.put("tenantId", tenantId.toString());
+                    MDC.put("userId", userId.toString());
+
+                    if (roles.contains("B2B_CUSTOMER")) {
+                        customerUserMappingRepository.findByUserId(userId)
+                                .ifPresent(m -> TenantContext.setCustomerId(m.getCustomerId()));
+                    }
+                    if (roles.contains("SUPPLIER")) {
+                        supplierUserMappingRepository.findByUserId(userId)
+                                .ifPresent(m -> TenantContext.setSupplierId(m.getSupplierId()));
+                    }
+
+                    List<SimpleGrantedAuthority> authorities = roles.stream()
+                            .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
+                            .collect(Collectors.toList());
+                    var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                } catch (Exception ignored) {
+                    // Stale/invalid cookie or Bearer must not block public auth routes
+                    // (e.g. POST /login while an expired invsys_access cookie is still present).
+                    SecurityContextHolder.clearContext();
+                    TenantContext.clear();
+                }
+            }
             chain.doFilter(request, response);
         } finally {
-            MDC.remove("tenantId");
-            MDC.remove("userId");
-            MDC.remove("warehouseId");
+            // Virtual threads may reuse carrier frames — never leave tenant/MDC residue.
             TenantContext.clear();
+            MDC.clear();
             SecurityContextHolder.clearContext();
         }
     }

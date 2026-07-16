@@ -2,6 +2,7 @@ package com.invsys.service;
 
 import com.invsys.common.JsonMaps;
 import com.invsys.domain.WebhookEvent;
+import com.invsys.integration.alerts.IntegrationFailurePublisher;
 import com.invsys.integration.webhooks.StripeWebhookValidator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,15 +16,18 @@ public class WebhookService {
     private final WebhookInboxWriter webhookInboxWriter;
     private final WebhookEventProcessor webhookEventProcessor;
     private final StripeWebhookValidator stripeWebhookValidator;
+    private final IntegrationFailurePublisher failurePublisher;
     private final String webhookSecret;
 
     public WebhookService(WebhookInboxWriter webhookInboxWriter,
                           WebhookEventProcessor webhookEventProcessor,
                           StripeWebhookValidator stripeWebhookValidator,
+                          IntegrationFailurePublisher failurePublisher,
                           @Value("${invsys.stripe.webhook-secret}") String webhookSecret) {
         this.webhookInboxWriter = webhookInboxWriter;
         this.webhookEventProcessor = webhookEventProcessor;
         this.stripeWebhookValidator = stripeWebhookValidator;
+        this.failurePublisher = failurePublisher;
         this.webhookSecret = webhookSecret;
     }
 
@@ -36,6 +40,10 @@ public class WebhookService {
         boolean signatureValid = stripeWebhookValidator.isValid(rawBody, signature, webhookSecret);
         WebhookEvent event = webhookInboxWriter.insertIfAbsent(
                 source, externalEventId, signatureValid, payload, tenantId);
+        if (!signatureValid && tenantId != null) {
+            failurePublisher.publish(tenantId, "STRIPE", "WEBHOOK_SIGNATURE_FAILED",
+                    "Invalid Stripe-Signature for event " + externalEventId, event.getId());
+        }
         if (signatureValid && event.getProcessedAt() == null && event.getError() == null) {
             webhookEventProcessor.processAsync(event.getId());
         }

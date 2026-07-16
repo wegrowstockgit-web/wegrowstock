@@ -13,9 +13,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
+/**
+ * Enriches every request log line with {@code request_id} (and hosts tenant/user once JWT runs).
+ * Clears MDC in {@code finally} to prevent virtual-thread / pool leakage.
+ * {@code tenant_id} / {@code user_id} are populated by {@code JwtAuthFilter} after authentication.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class RequestIdFilter extends OncePerRequestFilter {
+public class MdcLoggingFilter extends OncePerRequestFilter {
+
     public static final String HEADER = "X-Request-Id";
 
     @Override
@@ -25,12 +31,15 @@ public class RequestIdFilter extends OncePerRequestFilter {
         if (requestId == null || requestId.isBlank()) {
             requestId = UUID.randomUUID().toString();
         }
+        MDC.put(MdcSupport.REQUEST_ID, requestId);
+        // Legacy camelCase keys kept for existing log shipper dashboards.
         MDC.put("requestId", requestId);
         response.setHeader(HEADER, requestId);
+
         try {
             chain.doFilter(request, response);
         } finally {
-            MDC.remove("requestId");
+            MDC.clear();
         }
     }
 }

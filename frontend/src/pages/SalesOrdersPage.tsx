@@ -19,13 +19,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
   CONFIRMED: 'bg-accent-muted text-accent',
+  BACKORDERED: 'bg-warning/10 text-warning',
   ALLOCATED: 'bg-accent-muted text-accent',
   PARTIALLY_SHIPPED: 'bg-warning/10 text-warning',
   SHIPPED: 'bg-success/10 text-success',
@@ -343,7 +344,7 @@ function RowActions({ order }: { order: SalesOrder }) {
           Confirm
         </Button>
       )}
-      {canManage && order.status === 'CONFIRMED' && (
+      {canManage && (order.status === 'CONFIRMED' || order.status === 'BACKORDERED') && (
         <Button
           variant="secondary"
           size="sm"
@@ -390,14 +391,18 @@ export function SalesOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [peekOrderId, setPeekOrderId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error, refetch } =
-    useListQuery<SalesOrder>(['sales-orders'], '/api/v1/sales-orders');
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['sales-orders'],
+    queryFn: async () => (await apiClient.get<SalesOrder[]>('/api/v1/sales-orders')).data,
+    refetchInterval: 3_000,
+  });
 
   const { data: peekOrder } = useQuery({
     queryKey: ['sales-orders', peekOrderId],
     queryFn: async () =>
       (await apiClient.get<SalesOrderDetail>(`/api/v1/sales-orders/${peekOrderId}`)).data,
     enabled: !!peekOrderId,
+    refetchInterval: peekOrderId ? 3_000 : false,
   });
 
   const filtered = useMemo(() => {
@@ -440,7 +445,7 @@ export function SalesOrdersPage() {
         </DataListToolbar>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
       <ListPageState
         isLoading={isLoading}
         isError={isError}

@@ -70,6 +70,8 @@ public class SecurityConfig {
                             .requestMatchers("/api/v1/public/**").permitAll()
                             .requestMatchers("/oauth2/**", "/login/oauth2/**", "/saml2/**").permitAll()
                             .requestMatchers("/actuator/health").permitAll()
+                            // Scraped only on the Docker network; api-gateway blocks this path publicly.
+                            .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                             .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll();
                     if (!prod) {
                         auth.requestMatchers("/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll();

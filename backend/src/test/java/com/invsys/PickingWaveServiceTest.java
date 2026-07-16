@@ -126,4 +126,87 @@ class PickingWaveServiceTest extends AbstractIntegrationTest {
         assertThat(picks.stream().map(PickingWaveService.WavePick::locationPath).toList())
                 .containsExactly("WH-01/A-1", "WH-01/B-1");
     }
+
+    @Test
+    void optimizeWaveEmitsPathOrderedManifest() {
+        UUID tenantId = testDataHelper.createTenant("Opt Tenant", "opt-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+
+        Product product = new Product();
+        product.setTenantId(tenantId);
+        product.setSkuRoot("OPT");
+        product.setName("Opt Product");
+        product = productRepository.save(product);
+
+        ProductVariant variant = new ProductVariant();
+        variant.setTenantId(tenantId);
+        variant.setProductId(product.getId());
+        variant.setSku("OPT-V1");
+        variant = variantRepository.save(variant);
+
+        Location locFar = new Location();
+        locFar.setTenantId(tenantId);
+        locFar.setType("BIN");
+        locFar.setCode("Z-9");
+        locFar.setName("Bin Z");
+        locFar.setPath("WH-01/Z-PICK/A-9/B-99");
+        locFar = locationRepository.save(locFar);
+
+        Location locNear = new Location();
+        locNear.setTenantId(tenantId);
+        locNear.setType("BIN");
+        locNear.setCode("A-1");
+        locNear.setName("Bin A");
+        locNear.setPath("WH-01/Z-PICK/A-1/B-01");
+        locNear = locationRepository.save(locNear);
+
+        Customer customer = new Customer();
+        customer.setTenantId(tenantId);
+        customer.setName("Opt Customer");
+        customer = customerRepository.save(customer);
+
+        SalesOrder order = new SalesOrder();
+        order.setTenantId(tenantId);
+        order.setCustomerId(customer.getId());
+        order.setNumber("SO-OPT-1");
+        order.setStatus("ALLOCATED");
+        order = salesOrderRepository.save(order);
+
+        SalesOrderLine line = new SalesOrderLine();
+        line.setTenantId(tenantId);
+        line.setSalesOrderId(order.getId());
+        line.setVariantId(variant.getId());
+        line.setQtyOrdered(new BigDecimal("2"));
+        line = salesOrderLineRepository.save(line);
+
+        Allocation far = new Allocation();
+        far.setTenantId(tenantId);
+        far.setSalesOrderLineId(line.getId());
+        far.setVariantId(variant.getId());
+        far.setLocationId(locFar.getId());
+        far.setQuantity(BigDecimal.ONE);
+        far.setStatus("ACTIVE");
+        allocationRepository.save(far);
+
+        Allocation near = new Allocation();
+        near.setTenantId(tenantId);
+        near.setSalesOrderLineId(line.getId());
+        near.setVariantId(variant.getId());
+        near.setLocationId(locNear.getId());
+        near.setQuantity(BigDecimal.ONE);
+        near.setStatus("ACTIVE");
+        allocationRepository.save(near);
+
+        PickingWaveService.OptimizeResult optimized =
+                pickingWaveService.optimizeWave(List.of(order.getId()));
+
+        assertThat(optimized.waveId()).isNotNull();
+        assertThat(optimized.status()).isEqualTo("DRAFT");
+        assertThat(optimized.manifest()).hasSize(2);
+        assertThat(optimized.manifest().get(0).locationPath()).isEqualTo("WH-01/Z-PICK/A-1/B-01");
+        assertThat(optimized.manifest().get(1).locationPath()).isEqualTo("WH-01/Z-PICK/A-9/B-99");
+        assertThat(optimized.manifest().get(0).pathSegments()).containsExactly("WH-01", "Z-PICK", "A-1", "B-01");
+        assertThat(optimized.manifest().get(0).sequenceOrder()).isEqualTo(1);
+        assertThat(optimized.manifest().get(1).sequenceOrder()).isEqualTo(2);
+    }
 }

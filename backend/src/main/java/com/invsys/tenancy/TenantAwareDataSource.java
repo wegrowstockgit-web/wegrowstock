@@ -13,10 +13,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Binds {@code app.current_tenant} on first SQL executed through the connection (M6).
- * Inside a transaction the GUC is transaction-local; in autocommit it is bound at session
- * level and reset to '' before the connection returns to the pool, so RLS policies
- * (which use nullif(current_setting(...), '')) fail closed on recycled connections.
+ * Binds {@code app.current_tenant} with a strictly transaction-local GUC
+ * ({@code set_config(..., true)}) so PgBouncer transaction pooling cannot leak tenants.
+ * <p>
+ * When the connection is still in autocommit (no Spring transaction), this proxy opens a
+ * connection-scoped transaction before binding so the GUC survives subsequent statements
+ * until {@code close()}, then commits and restores autocommit.
  */
 public class TenantAwareDataSource extends DelegatingDataSource {
 
@@ -35,13 +37,14 @@ public class TenantAwareDataSource extends DelegatingDataSource {
     }
 
     private Connection proxy(Connection delegate) {
-        AtomicBoolean sessionBound = new AtomicBoolean(false);
+        AtomicBoolean openedLocalTx = new AtomicBoolean(false);
         InvocationHandler handler = (proxy, method, args) -> {
             String name = method.getName();
             if (requiresTenantBinding(name)) {
-                bindTenantIfNeeded(delegate, sessionBound);
+                bindTenantIfNeeded(delegate, openedLocalTx);
             } else if ("close".equals(name)) {
-                clearSessionBinding(delegate, sessionBound);
+                finalizeLocalTransaction(delegate, openedLocalTx);
+                clearTenantQuietly(delegate);
             }
             return method.invoke(delegate, args);
         };
@@ -57,20 +60,39 @@ public class TenantAwareDataSource extends DelegatingDataSource {
                 || methodName.startsWith("prepareCall");
     }
 
-    private void bindTenantIfNeeded(Connection connection, AtomicBoolean sessionBound) throws SQLException {
+    private void bindTenantIfNeeded(Connection connection, AtomicBoolean openedLocalTx) throws SQLException {
         UUID tenantId = TenantContext.getTenantId().orElse(null);
-        if (tenantId != null) {
-            TenantConnectionHelper.bindTenant(connection, tenantId);
-            if (connection.getAutoCommit()) {
-                sessionBound.set(true);
+        if (tenantId == null) {
+            return;
+        }
+        if (connection.getAutoCommit() && openedLocalTx.compareAndSet(false, true)) {
+            connection.setAutoCommit(false);
+        }
+        TenantConnectionHelper.bindTenant(connection, tenantId);
+    }
+
+    private void finalizeLocalTransaction(Connection connection, AtomicBoolean openedLocalTx) {
+        if (!openedLocalTx.getAndSet(false)) {
+            return;
+        }
+        try {
+            if (!connection.isClosed()) {
+                connection.commit();
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException ignored) {
+            try {
+                if (!connection.isClosed()) {
+                    connection.rollback();
+                    connection.setAutoCommit(true);
+                }
+            } catch (SQLException ignoredAgain) {
+                // Pool will validate/discard the connection.
             }
         }
     }
 
-    private void clearSessionBinding(Connection connection, AtomicBoolean sessionBound) {
-        if (!sessionBound.getAndSet(false)) {
-            return;
-        }
+    private void clearTenantQuietly(Connection connection) {
         try {
             if (!connection.isClosed()) {
                 TenantConnectionHelper.clearTenant(connection);

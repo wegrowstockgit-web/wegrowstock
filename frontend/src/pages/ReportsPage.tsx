@@ -30,6 +30,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 
 type ReportTab =
   | 'valuation'
+  | 'timeTravel'
   | 'turnover'
   | 'cogs'
   | 'profit'
@@ -41,6 +42,7 @@ type ReportTab =
 
 const TABS: { id: ReportTab; label: string }[] = [
   { id: 'valuation', label: 'Inventory valuation' },
+  { id: 'timeTravel', label: 'Time-travel valuation' },
   { id: 'turnover', label: 'Stock turnover' },
   { id: 'cogs', label: 'COGS ledger' },
   { id: 'profit', label: 'Profit & margin' },
@@ -50,6 +52,23 @@ const TABS: { id: ReportTab; label: string }[] = [
   { id: 'returns', label: 'Returns' },
   { id: 'demand', label: 'Demand sensing' },
 ];
+
+type AsOfValuationResponse = {
+  asOfDate: string;
+  totalValue: number;
+  currency: string;
+  lines: Array<{
+    variantId: string;
+    locationId: string;
+    quantityOnHand: number;
+    totalValue: number;
+  }>;
+};
+
+type ValuationHistoryResponse = {
+  currency: string;
+  points: Array<{ asOfDate: string; totalValue: number }>;
+};
 
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const lines = [headers.join(','), ...rows.map((r) => r.map((c) => `"${c}"`).join(','))];
@@ -72,6 +91,7 @@ function groupByWarehouse(rows: InventoryValuationReport['rows']): ReportChartPo
 
 export function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('profit');
+  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -87,6 +107,38 @@ export function ReportsPage() {
     queryFn: async () =>
       (await apiClient.get<InventoryValuationReport>('/api/v1/reports/inventory-valuation')).data,
     enabled: tab === 'valuation',
+    retry: false,
+  });
+
+  const asOfIso = useMemo(() => {
+    try {
+      return new Date(`${asOfDate}T23:59:59.999Z`).toISOString();
+    } catch {
+      return new Date().toISOString();
+    }
+  }, [asOfDate]);
+
+  const timeTravel = useQuery({
+    queryKey: ['reports', 'valuation-asof', asOfIso],
+    queryFn: async () =>
+      (
+        await apiClient.get<AsOfValuationResponse>('/api/v1/reports/valuation', {
+          params: { asOfDate: asOfIso },
+        })
+      ).data,
+    enabled: tab === 'timeTravel',
+    retry: false,
+  });
+
+  const timeTravelHistory = useQuery({
+    queryKey: ['reports', 'valuation-history'],
+    queryFn: async () =>
+      (
+        await apiClient.get<ValuationHistoryResponse>('/api/v1/reports/valuation/history', {
+          params: { days: 90, points: 30 },
+        })
+      ).data,
+    enabled: tab === 'timeTravel',
     retry: false,
   });
 
@@ -161,21 +213,32 @@ export function ReportsPage() {
   const active =
     tab === 'valuation'
       ? valuation
-      : tab === 'turnover'
-        ? turnover
-        : tab === 'cogs'
-          ? cogs
-          : tab === 'profit'
-            ? profit
-            : tab === 'sales'
-              ? sales
-              : tab === 'fulfillment'
-                ? fulfillment
-                : tab === 'purchases'
-                  ? purchases
-                  : tab === 'demand'
-                    ? demandChart
-                    : returns;
+      : tab === 'timeTravel'
+        ? timeTravel
+        : tab === 'turnover'
+          ? turnover
+          : tab === 'cogs'
+            ? cogs
+            : tab === 'profit'
+              ? profit
+              : tab === 'sales'
+                ? sales
+                : tab === 'fulfillment'
+                  ? fulfillment
+                  : tab === 'purchases'
+                    ? purchases
+                    : tab === 'demand'
+                      ? demandChart
+                      : returns;
+
+  const historyChart = useMemo(
+    () =>
+      (timeTravelHistory.data?.points ?? []).map((p) => ({
+        label: new Date(p.asOfDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        value: Number(p.totalValue),
+      })),
+    [timeTravelHistory.data],
+  );
 
   const warehouseChart = useMemo(
     () => (valuation.data ? groupByWarehouse(valuation.data.rows) : []),
@@ -310,6 +373,62 @@ export function ReportsPage() {
               ])}
             />
           </Card>
+        </div>
+      )}
+
+      {tab === 'timeTravel' && (
+        <div className="space-y-6" data-testid="time-travel-valuation">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block text-sm">
+              <span className="mb-1 block text-text-muted">As-of date</span>
+              <input
+                type="date"
+                className="h-10 rounded-md border border-border bg-surface-raised px-3 text-sm"
+                value={asOfDate}
+                onChange={(e) => setAsOfDate(e.target.value)}
+                data-testid="as-of-date"
+              />
+            </label>
+          </div>
+          {timeTravel.data && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <StatCard
+                label="Retroactive asset value"
+                value={formatCurrency(Number(timeTravel.data.totalValue), timeTravel.data.currency)}
+              />
+              <StatCard label="Ledger buckets" value={String(timeTravel.data.lines.length)} />
+              <StatCard
+                label="As of"
+                value={new Date(timeTravel.data.asOfDate).toLocaleDateString()}
+              />
+            </div>
+          )}
+          {historyChart.length > 0 && (
+            <ReportLineChart
+              title="Historical asset value (90d)"
+              data={historyChart}
+              valueFormatter={(v) =>
+                formatCurrency(v, timeTravelHistory.data?.currency ?? timeTravel.data?.currency ?? 'USD')
+              }
+            />
+          )}
+          {timeTravel.data && (
+            <Card>
+              <CardHeader
+                title="As-of ledger valuation"
+                description="SUM(quantity_delta) and SUM(quantity_delta × unit_cost) by variant/location"
+              />
+              <ReportDataTable
+                headers={['Variant', 'Location', 'Qty', 'Value']}
+                rows={timeTravel.data.lines.map((r) => [
+                  r.variantId.slice(0, 8),
+                  r.locationId.slice(0, 8),
+                  formatNumber(Number(r.quantityOnHand)),
+                  formatCurrency(Number(r.totalValue), timeTravel.data!.currency),
+                ])}
+              />
+            </Card>
+          )}
         </div>
       )}
 

@@ -64,11 +64,41 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-micrometer-metrics</artifactId>
         </dependency>
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>context-propagation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.loki4j</groupId>
+            <artifactId>loki-logback-appender</artifactId>
+            <version>1.6.0</version>
+        </dependency>
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.1</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -102,6 +132,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
             <version>2.31.78</version>
+        </dependency>
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>28.4.0</version>
         </dependency>
 
         <dependency>
@@ -252,6 +287,9 @@
                                 <exclude>com/invsys/service/WarehouseContextService*.class</exclude>
                                 <exclude>com/invsys/service/TerminalBiometricService*.class</exclude>
                                 <exclude>com/invsys/service/FulfillmentExceptionService*.class</exclude>
+                                <exclude>com/invsys/service/CrossDockService*.class</exclude>
+                                <exclude>com/invsys/service/IntegrationVaultSettingsService*.class</exclude>
+                                <exclude>com/invsys/service/OfflineSyncConflictService*.class</exclude>
                                 <exclude>com/invsys/billing/MockCapitalGateway.class</exclude>
                                 <exclude>com/invsys/billing/CapitalGateway*.class</exclude>
                             </excludes>

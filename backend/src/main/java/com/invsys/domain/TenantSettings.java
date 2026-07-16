@@ -18,12 +18,34 @@ public class TenantSettings extends TenantScopedEntity {
     @Column(columnDefinition = "jsonb", nullable = false)
     private Map<String, Object> settings = new LinkedHashMap<>();
 
+    @Column(name = "alert_email", length = 255)
+    private String alertEmail;
+
+    @Column(name = "slack_webhook_url", length = 1024)
+    private String slackWebhookUrl;
+
     public Map<String, Object> getSettings() {
         return settings;
     }
 
     public void setSettings(Map<String, Object> settings) {
         this.settings = settings;
+    }
+
+    public String getAlertEmail() {
+        return alertEmail;
+    }
+
+    public void setAlertEmail(String alertEmail) {
+        this.alertEmail = alertEmail;
+    }
+
+    public String getSlackWebhookUrl() {
+        return slackWebhookUrl;
+    }
+
+    public void setSlackWebhookUrl(String slackWebhookUrl) {
+        this.slackWebhookUrl = slackWebhookUrl;
     }
 
     public static TenantSettings withDefaults(UUID tenantId) {

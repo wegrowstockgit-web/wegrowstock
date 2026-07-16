@@ -7,6 +7,7 @@ import com.invsys.domain.SalesOrderLine;
 import com.invsys.domain.Shipment;
 import com.invsys.domain.ShipmentLine;
 import com.invsys.integration.OutboxService;
+import com.invsys.integration.easypost.EasyPostGateway;
 import com.invsys.repository.AllocationRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
@@ -33,6 +34,7 @@ public class ShipmentService {
     private final InventoryService inventoryService;
     private final OutboxService outboxService;
     private final KitService kitService;
+    private final EasyPostGateway easyPostClient;
 
     public ShipmentService(ShipmentRepository shipmentRepository,
                            ShipmentLineRepository shipmentLineRepository,
@@ -41,13 +43,15 @@ public class ShipmentService {
                            AllocationRepository allocationRepository,
                            InventoryService inventoryService,
                            OutboxService outboxService,
-                           KitService kitService) {
+                           KitService kitService,
+                           EasyPostGateway easyPostClient) {
         this.shipmentRepository = shipmentRepository;
         this.shipmentLineRepository = shipmentLineRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.salesOrderLineRepository = salesOrderLineRepository;
         this.allocationRepository = allocationRepository;
         this.inventoryService = inventoryService;
+        this.easyPostClient = easyPostClient;
         this.outboxService = outboxService;
         this.kitService = kitService;
     }
@@ -138,23 +142,21 @@ public class ShipmentService {
         salesOrderRepository.findById(salesOrderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
 
+        EasyPostGateway.LabelResult label = easyPostClient.purchaseLabel(
+                carrier != null ? carrier : "EASYPOST",
+                totalWeightLb,
+                salesOrderId.toString());
+
         Shipment shipment = new Shipment();
         shipment.setTenantId(TenantContext.requireTenantId());
         shipment.setSalesOrderId(salesOrderId);
         shipment.setCarrier(carrier != null ? carrier : "EASYPOST");
-        shipment.setTrackingNumber("LBL-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        shipment.setLabelRef("easypost_mock_" + shipment.getTrackingNumber());
+        shipment.setTrackingNumber(label.trackingNumber());
+        shipment.setLabelRef(label.labelRef());
         shipment.setStatus("LABEL_CREATED");
         shipment.setTotalWeight(totalWeightLb);
-        shipment.setPostageAmount(estimatePostage(totalWeightLb));
+        shipment.setPostageAmount(label.postageAmount());
         return shipmentRepository.save(shipment);
-    }
-
-    private BigDecimal estimatePostage(BigDecimal weightLb) {
-        if (weightLb == null || weightLb.signum() <= 0) {
-            return BigDecimal.ZERO;
-        }
-        return weightLb.multiply(new BigDecimal("0.75")).add(new BigDecimal("4.50"));
     }
 
     private void updateOrderStatus(SalesOrder order) {

@@ -176,12 +176,14 @@ export async function replayMutationQueue(): Promise<{
     const queue = await readQueue();
     for (const mutation of queue) {
       try {
+        // X-Offline-Replay: business-rule failures return 202 + server-side conflict sink.
         await apiClient.request({
           method: mutation.method,
           url: mutation.url,
           data: mutation.body,
           headers: {
             'Idempotency-Key': mutation.idempotencyKey,
+            'X-Offline-Replay': 'true',
           },
         });
         await removeFromQueue(mutation.id);
@@ -191,7 +193,7 @@ export async function replayMutationQueue(): Promise<{
         const { title, detail } = problemDetailsOf(err);
 
         if (isBusinessClientError(status)) {
-          // Never stall: drop from active queue, park in quarantine with RFC7807 reason.
+          // Fallback for endpoints that do not yet emit 202 — keep local quarantine.
           await removeFromQueue(mutation.id);
           quarantineFailedMutation(mutation, status!, title, detail);
           deadLettered++;

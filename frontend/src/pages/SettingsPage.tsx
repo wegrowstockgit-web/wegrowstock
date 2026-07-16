@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { Link2, Plus, RefreshCw, Trash2, UserPlus } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Plus, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
-  AccountMapping,
-  ChannelIntegration,
   CostCenter,
   Customer,
   InternalRequisition,
@@ -19,7 +17,6 @@ import type {
   TenantLocation,
   TenantSettingsMap,
   TenantUser,
-  UpdateAccountMapping,
 } from '@/api/types';
 import { cn } from '@/lib/utils';
 import { useSessionStore } from '@/stores/session';
@@ -40,6 +37,9 @@ import {
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { WarehouseVisualizer } from '@/features/settings/WarehouseVisualizer';
 import { PartnerCatalogMappingPanel } from '@/features/settings/PartnerCatalogMappingPanel';
+import { AccountingSync } from '@/features/settings/AccountingSync';
+import { Integrations } from '@/features/settings/Integrations';
+import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { useToast } from '@/components/ui/Toast';
 
 const TABS = [
@@ -54,6 +54,7 @@ const TABS = [
   { id: 'integrations', label: 'Integrations' },
   { id: 'mesh', label: 'Partner Catalog' },
   { id: 'operations', label: 'Operations' },
+  { id: 'syncConflicts', label: 'Sync Conflicts' },
   { id: 'costCenters', label: 'Cost Centers & Requisitions' },
 ] as const;
 
@@ -66,10 +67,6 @@ const FINANCE_LINKS = [
 type TabId = (typeof TABS)[number]['id'];
 
 const ASSIGNABLE_ROLES = ['ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER', 'B2B_CUSTOMER'] as const;
-
-const ACCOUNT_TYPES = ['INVENTORY_ASSET', 'COGS', 'SALES_REVENUE', 'TAX'] as const;
-
-const SYSTEMS = ['QUICKBOOKS', 'XERO'] as const;
 
 const SYNC_STATUS_STYLES: Record<string, string> = {
   SYNCED: 'bg-success/20 text-success',
@@ -1309,387 +1306,6 @@ interface ReconciliationReport {
   syncDrifts: { system: string; entityType: string; entityId: string; status: string; message?: string }[];
 }
 
-/* ------------------------------- Accounting sync -------------------------------- */
-
-function AccountingSyncTab() {
-  const queryClient = useQueryClient();
-  const [draftMappings, setDraftMappings] = useState<UpdateAccountMapping[]>([]);
-
-  const { data: mappings = [], isLoading: mappingsLoading } = useQuery({
-    queryKey: ['integrations', 'accounting', 'mappings'],
-    queryFn: async () => {
-      const res = await apiClient.get<AccountMapping[]>(
-        '/api/v1/integrations/accounting/mappings'
-      );
-      return res.data;
-    },
-    retry: false,
-  });
-
-  const { data: syncLogs = [], isLoading: logsLoading, refetch: refetchLogs } = useQuery({
-    queryKey: ['integrations', 'sync-logs'],
-    queryFn: async () => {
-      const res = await apiClient.get<SyncLog[]>('/api/v1/integrations/sync-logs');
-      return res.data;
-    },
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (mappings.length > 0) {
-      setDraftMappings(
-        mappings.map((m) => ({
-          system: m.system,
-          accountType: m.accountType,
-          externalAccountId: m.externalAccountId,
-        }))
-      );
-    }
-  }, [mappings]);
-
-  const saveMutation = useMutation({
-    mutationFn: async (payload: UpdateAccountMapping[]) => {
-      await apiClient.put('/api/v1/integrations/accounting/mappings/bulk', { mappings: payload });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['integrations', 'accounting', 'mappings'] });
-    },
-  });
-
-  const retryMutation = useMutation({
-    mutationFn: async (logId: string) => {
-      await apiClient.post(`/api/v1/integrations/sync-logs/${logId}/retry`);
-    },
-    onSuccess: () => {
-      void refetchLogs();
-    },
-  });
-
-  const updateMapping = (
-    system: string,
-    accountType: string,
-    externalAccountId: string
-  ) => {
-    setDraftMappings((prev) => {
-      const existing = prev.find(
-        (m) => m.system === system && m.accountType === accountType
-      );
-      if (existing) {
-        return prev.map((m) =>
-          m.system === system && m.accountType === accountType
-            ? { ...m, externalAccountId }
-            : m
-        );
-      }
-      return [...prev, { system, accountType, externalAccountId }];
-    });
-  };
-
-  const getMappingValue = (system: string, accountType: string) => {
-    const fromDraft = draftMappings.find(
-      (m) => m.system === system && m.accountType === accountType
-    );
-    if (fromDraft) return fromDraft.externalAccountId;
-    return (
-      mappings.find((m) => m.system === system && m.accountType === accountType)
-        ?.externalAccountId ?? ''
-    );
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader
-          title="Accounting connections"
-          description="QuickBooks and Xero sync uses the account mappings below; OAuth connection is managed by support"
-        />
-        <div className="flex flex-wrap gap-3">
-          {SYSTEMS.map((system) => (
-            <Button
-              key={system}
-              variant="secondary"
-              disabled
-              title="OAuth onboarding is not available yet — configure mappings below"
-            >
-              <Link2 className="h-4 w-4" />
-              Connect {system === 'QUICKBOOKS' ? 'QuickBooks' : 'Xero'}
-            </Button>
-          ))}
-        </div>
-      </Card>
-
-      <Card>
-        <CardHeader
-          title="Account mappings"
-          description="Map inventory accounts to your chart of accounts"
-          action={
-            <Button
-              size="sm"
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate(draftMappings)}
-            >
-              Save mappings
-            </Button>
-          }
-        />
-        {mappingsLoading ? (
-          <TableSkeleton rows={4} cols={3} />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>System</TableHead>
-                <TableHead>Account type</TableHead>
-                <TableHead>External account ID</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {SYSTEMS.flatMap((system) =>
-                ACCOUNT_TYPES.map((accountType) => (
-                  <TableRow key={`${system}-${accountType}`}>
-                    <TableCell>{system}</TableCell>
-                    <TableCell>{accountType}</TableCell>
-                    <TableCell>
-                      <Input
-                        value={getMappingValue(system, accountType)}
-                        onChange={(e) =>
-                          updateMapping(system, accountType, e.target.value)
-                        }
-                        placeholder="External account ID"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader
-          title="Sync log"
-          description="Recent integration sync attempts"
-          action={
-            <Button variant="ghost" size="sm" onClick={() => refetchLogs()}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-          }
-        />
-        {logsLoading ? (
-          <TableSkeleton rows={6} cols={5} />
-        ) : syncLogs.length === 0 ? (
-          <p className="text-sm text-text-muted">No sync activity yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>System</TableHead>
-                <TableHead>Entity</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Retries</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {syncLogs.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell>{log.system}</TableCell>
-                  <TableCell>
-                    <span className="text-text-muted">{log.entityType}</span>
-                    <span className="ml-1 font-mono text-xs">{log.entityId.slice(0, 8)}</span>
-                  </TableCell>
-                  <TableCell>{statusChip(log.status)}</TableCell>
-                  <TableCell mono>{log.retryCount}</TableCell>
-                  <TableCell>
-                    {log.status === 'FAILED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        loading={retryMutation.isPending}
-                        onClick={() => retryMutation.mutate(log.id)}
-                      >
-                        Retry
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-/* ---------------------------------- Integrations -------------------------------- */
-
-function ConnectChannelModal({
-  platform,
-  onClose,
-}: {
-  platform: string | null;
-  onClose: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [shopIdentifier, setShopIdentifier] = useState('');
-  const [error, setError] = useState('');
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/api/v1/integrations/channels', {
-        platform,
-        shopIdentifier,
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['integrations', 'channels'] });
-      setShopIdentifier('');
-      onClose();
-    },
-    onError: () => setError('Could not connect. That shop may already be connected.'),
-  });
-
-  return (
-    <Modal
-      open={platform !== null}
-      onClose={onClose}
-      title={`Connect ${platform === 'SHOPIFY' ? 'Shopify' : 'Amazon'}`}
-      description={
-        platform === 'SHOPIFY'
-          ? 'Enter your shop domain, e.g. my-store.myshopify.com'
-          : 'Enter your Amazon seller ID'
-      }
-    >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          mutation.mutate();
-        }}
-        className="space-y-4"
-      >
-        <Input
-          label={platform === 'SHOPIFY' ? 'Shop domain' : 'Seller ID'}
-          value={shopIdentifier}
-          onChange={(e) => setShopIdentifier(e.target.value)}
-          required
-          autoFocus
-        />
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={mutation.isPending}>
-            Connect
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function IntegrationsTab() {
-  const queryClient = useQueryClient();
-  const [connectPlatform, setConnectPlatform] = useState<string | null>(null);
-
-  const { data: channels = [], isLoading, refetch } = useQuery({
-    queryKey: ['integrations', 'channels'],
-    queryFn: async () => {
-      const res = await apiClient.get<ChannelIntegration[]>(
-        '/api/v1/integrations/channels'
-      );
-      return res.data;
-    },
-    retry: false,
-  });
-
-  const disconnectMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.delete(`/api/v1/integrations/channels/${id}`);
-    },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['integrations', 'channels'] }),
-  });
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader
-          title="Channel integrations"
-          description="Connect Shopify and Amazon for multi-channel sync"
-        />
-        <div className="flex flex-wrap gap-3">
-          <Button variant="secondary" onClick={() => setConnectPlatform('SHOPIFY')}>
-            <Plus className="h-4 w-4" />
-            Connect Shopify
-          </Button>
-          <Button variant="secondary" onClick={() => setConnectPlatform('AMAZON')}>
-            <Plus className="h-4 w-4" />
-            Connect Amazon
-          </Button>
-        </div>
-      </Card>
-
-      <Card>
-        <CardHeader
-          title="Connected channels"
-          description="Live health and sync status"
-          action={
-            <Button variant="ghost" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-          }
-        />
-        {isLoading ? (
-          <TableSkeleton rows={4} cols={5} />
-        ) : channels.length === 0 ? (
-          <p className="text-sm text-text-muted">No channels connected yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Platform</TableHead>
-                <TableHead>Shop / Seller</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Credential</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {channels.map((channel) => (
-                <TableRow key={channel.id}>
-                  <TableCell>{channel.platform}</TableCell>
-                  <TableCell mono>{channel.shopIdentifier}</TableCell>
-                  <TableCell>{statusChip(channel.status)}</TableCell>
-                  <TableCell>{statusChip(channel.credentialStatus)}</TableCell>
-                  <TableCell align="right">
-                    {channel.status !== 'DISCONNECTED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        loading={disconnectMutation.isPending}
-                        onClick={() => disconnectMutation.mutate(channel.id)}
-                      >
-                        Disconnect
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
-
-      <ConnectChannelModal platform={connectPlatform} onClose={() => setConnectPlatform(null)} />
-    </div>
-  );
-}
-
 /* ----------------------------- Operations console ----------------------------- */
 
 function OperationsConsoleTab() {
@@ -2137,7 +1753,17 @@ function CostCentersRequisitionsTab() {
 }
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('profile');
+  const [searchParams] = useSearchParams();
+  const isOwner = useSessionStore((s) => s.user?.roles?.includes('OWNER') ?? false);
+  const tabParam = searchParams.get('tab');
+  const initialTab = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : 'profile';
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  useEffect(() => {
+    if (TABS.some((t) => t.id === tabParam)) {
+      setActiveTab(tabParam as TabId);
+    }
+  }, [tabParam]);
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain p-6">
@@ -2167,7 +1793,7 @@ export function SettingsPage() {
             </button>
           ))}
           <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
-          {FINANCE_LINKS.map((link) => (
+          {FINANCE_LINKS.filter((link) => link.to !== '/settings/fintech' || isOwner).map((link) => (
             <Link
               key={link.to}
               to={link.to}
@@ -2186,10 +1812,11 @@ export function SettingsPage() {
           {activeTab === 'documents' && <DocumentsTab />}
           {activeTab === 'security' && <SecuritySsoTab />}
           {activeTab === 'reconciliation' && <ReconciliationTab />}
-          {activeTab === 'accounting' && <AccountingSyncTab />}
-          {activeTab === 'integrations' && <IntegrationsTab />}
+          {activeTab === 'accounting' && <AccountingSync />}
+          {activeTab === 'integrations' && <Integrations />}
           {activeTab === 'mesh' && <PartnerCatalogMappingPanel />}
           {activeTab === 'operations' && <OperationsConsoleTab />}
+          {activeTab === 'syncConflicts' && <SyncConflictsPanel />}
           {activeTab === 'costCenters' && <CostCentersRequisitionsTab />}
         </div>
       </div>

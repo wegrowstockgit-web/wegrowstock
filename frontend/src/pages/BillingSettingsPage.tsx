@@ -3,12 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Link2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
-import type { ShippingCredentialStatus, StripeBillingStatus, TenantEmailDomain } from '@/api/types';
+import type { StripeBillingStatus, TenantEmailDomain } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
+import { CarrierCredentials } from '@/features/settings/CarrierCredentials';
+import { LiveConnectionBadge } from '@/features/settings/LiveConnectionBadge';
 import { cn } from '@/lib/utils';
 
 function statusChip(status?: string) {
@@ -17,7 +18,7 @@ function statusChip(status?: string) {
     <span
       className={cn(
         'rounded-full px-2 py-0.5 text-xs font-medium',
-        normalized === 'CONNECTED' || normalized === 'VERIFIED' || normalized === 'complete'
+        normalized === 'CONNECTED' || normalized === 'VERIFIED' || normalized === 'complete' || normalized === 'ACTIVE'
           ? 'bg-success/20 text-success'
           : normalized === 'PENDING'
             ? 'bg-warning/20 text-warning'
@@ -37,21 +38,12 @@ export function BillingSettingsPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
-  const [shippingSystem, setShippingSystem] = useState('EASYPOST');
-  const [shippingKey, setShippingKey] = useState('');
   const [domainName, setDomainName] = useState('');
 
   const { data: stripeStatus, refetch: refetchStripe } = useQuery({
     queryKey: ['billing', 'stripe-status'],
     queryFn: async () =>
       (await apiClient.get<StripeBillingStatus>('/api/v1/billing/stripe/status')).data,
-    retry: false,
-  });
-
-  const { data: shippingAccounts = [] } = useQuery({
-    queryKey: ['shipping-accounts'],
-    queryFn: async () =>
-      (await apiClient.get<ShippingCredentialStatus[]>('/api/v1/settings/shipping-accounts')).data,
     retry: false,
   });
 
@@ -84,19 +76,6 @@ export function BillingSettingsPage() {
     onError: () => setError('Could not start Stripe onboarding. Try again.'),
   });
 
-  const saveShippingMutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/api/v1/settings/shipping-accounts', {
-        system: shippingSystem,
-        apiKey: shippingKey,
-      });
-    },
-    onSuccess: () => {
-      setShippingKey('');
-      void queryClient.invalidateQueries({ queryKey: ['shipping-accounts'] });
-    },
-  });
-
   const registerDomainMutation = useMutation({
     mutationFn: async () => {
       await apiClient.post('/api/v1/settings/email-domains', { domainName });
@@ -113,6 +92,9 @@ export function BillingSettingsPage() {
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['email-domains'] }),
   });
+
+  const stripeLive =
+    stripeStatus?.onboardingStatus === 'ACTIVE' || stripeStatus?.onboardingStatus === 'complete';
 
   return (
     <div className="space-y-6 p-6" data-testid="billing-settings-page">
@@ -132,8 +114,9 @@ export function BillingSettingsPage() {
 
       <Card>
         <CardHeader title="Billing & payments" description="Stripe Connect and platform fees" />
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           {statusChip(stripeStatus?.onboardingStatus ?? 'NOT_CONNECTED')}
+          {stripeLive && <LiveConnectionBadge />}
           {stripeStatus?.connectedAccountId && (
             <span className="font-mono text-xs text-text-muted">{stripeStatus.connectedAccountId}</span>
           )}
@@ -165,43 +148,7 @@ export function BillingSettingsPage() {
         </Button>
       </Card>
 
-      <Card>
-        <CardHeader title="Shipping accounts" description="Carrier credentials for label generation" />
-        <form
-          className="mb-4 grid gap-4 sm:grid-cols-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveShippingMutation.mutate();
-          }}
-        >
-          <Select label="Carrier" value={shippingSystem} onChange={(e) => setShippingSystem(e.target.value)}>
-            {['EASYPOST', 'UPS', 'FEDEX'].map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="API key"
-            type="password"
-            value={shippingKey}
-            onChange={(e) => setShippingKey(e.target.value)}
-            required
-          />
-          <div className="flex items-end">
-            <Button type="submit" loading={saveShippingMutation.isPending}>
-              Save credential
-            </Button>
-          </div>
-        </form>
-        <div className="flex flex-wrap gap-2">
-          {shippingAccounts.map((account) => (
-            <span key={account.system}>
-              {account.system}: {statusChip(account.status)}
-            </span>
-          ))}
-        </div>
-      </Card>
+      <CarrierCredentials />
 
       <Card>
         <CardHeader title="Email domains" description="Custom domains for PO and invoice emails" />

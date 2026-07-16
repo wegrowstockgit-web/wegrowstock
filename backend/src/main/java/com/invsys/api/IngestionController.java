@@ -1,6 +1,7 @@
 package com.invsys.api;
 
 import com.invsys.service.DataIngestionService;
+import com.invsys.service.LegacyErpMigrationService;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,9 +20,12 @@ import java.util.UUID;
 public class IngestionController {
 
     private final DataIngestionService dataIngestionService;
+    private final LegacyErpMigrationService legacyErpMigrationService;
 
-    public IngestionController(DataIngestionService dataIngestionService) {
+    public IngestionController(DataIngestionService dataIngestionService,
+                               LegacyErpMigrationService legacyErpMigrationService) {
         this.dataIngestionService = dataIngestionService;
+        this.legacyErpMigrationService = legacyErpMigrationService;
     }
 
     /**
@@ -37,6 +41,22 @@ public class IngestionController {
         return new ImportResponse(result.imported(), result.skipped(), result.errors());
     }
 
+    /**
+     * Legacy ERP cutover: single-transaction bulk products/variants + INITIAL_MIGRATION receives.
+     */
+    @PostMapping(value = "/legacy-migration", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MigrationResponse legacyMigration(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("columnsMapping") String columnsMapping,
+            @RequestParam(value = "locationId", required = false) UUID locationId) {
+        LegacyErpMigrationService.MigrationResult result =
+                legacyErpMigrationService.migrate(file, columnsMapping, locationId);
+        return new MigrationResponse(result.imported(), result.errors());
+    }
+
     public record ImportResponse(int imported, int skipped, List<String> errors) {
+    }
+
+    public record MigrationResponse(int imported, List<String> errors) {
     }
 }

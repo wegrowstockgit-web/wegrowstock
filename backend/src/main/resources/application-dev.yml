@@ -5,6 +5,32 @@ spring:
     activate:
       on-profile: dev
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
+    export:
+      # Off by default for IDE runs; enable when a local Tempo is reachable.
+      otlp:
+        enabled: ${OTEL_TRACING_ENABLED:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
+          transport: http
+
 invsys:
   dev:
     auto-seed: true
@@ -13,3 +39,5 @@ invsys:
     cookie-same-site: Lax
   redis:
     enabled: false
+  observability:
+    loki-url: ${LOKI_URL:http://localhost:3100/loki/api/v1/push}

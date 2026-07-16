@@ -25,6 +25,10 @@ import { enqueueMutation } from '@/offline/mutationQueue';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
+import {
+  CrossDockOverlay,
+  type CrossDockPrompt,
+} from '@/features/fulfillment/CrossDockOverlay';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -43,11 +47,27 @@ import {
 } from '@/features/fulfillment/ReplenishmentQueue';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
 
+function isStagingLocationBarcode(code: string, prompt: CrossDockPrompt): boolean {
+  const normalized = code.trim().toUpperCase();
+  const path = (prompt.stagingPath ?? '').toUpperCase();
+  const codePart = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+  return (
+    normalized === path ||
+    normalized === codePart ||
+    normalized === 'S-01' ||
+    normalized === 'Z-SHIP/S-01' ||
+    normalized === 'WH-01/Z-SHIP/S-01' ||
+    normalized.endsWith('/S-01')
+  );
+}
+
 function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
   const canManage = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'));
   const canClaim = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'));
   const [draftWaveId, setDraftWaveId] = useState<string | null>(null);
   const [releasedWaveId, setReleasedWaveId] = useState<string | null>(null);
+
+  const [manifestPreview, setManifestPreview] = useState<string[]>([]);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -58,6 +78,21 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
       return res.data;
     },
     onSuccess: (data) => setDraftWaveId(data.waveId),
+  });
+
+  const optimizeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post<{
+        waveId: string;
+        status: string;
+        manifest: Array<{ sequenceOrder: number; locationPath: string }>;
+      }>('/api/v1/picking/waves/optimize', {});
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setDraftWaveId(data.waveId);
+      setManifestPreview(data.manifest.map((m) => `${m.sequenceOrder}. ${m.locationPath}`));
+    },
   });
 
   const releaseMutation = useMutation({
@@ -89,15 +124,28 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
         <Button
           size="sm"
           variant="secondary"
+          className="min-h-11 touch-target"
           loading={generateMutation.isPending}
           onClick={() => generateMutation.mutate()}
         >
           Generate draft wave
         </Button>
       )}
+      {canManage && (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="min-h-11 touch-target"
+          loading={optimizeMutation.isPending}
+          onClick={() => optimizeMutation.mutate()}
+        >
+          Optimize pick path
+        </Button>
+      )}
       {canManage && draftWaveId && (
         <Button
           size="sm"
+          className="min-h-11 touch-target"
           loading={releaseMutation.isPending}
           onClick={() => releaseMutation.mutate(draftWaveId)}
         >
@@ -108,6 +156,7 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
         <Button
           size="sm"
           variant="secondary"
+          className="min-h-11 touch-target"
           loading={claimMutation.isPending}
           onClick={() => claimMutation.mutate(releasedWaveId)}
         >
@@ -119,6 +168,16 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
           Locked {claimMutation.data.allocationsClaimed} allocation
           {claimMutation.data.allocationsClaimed === 1 ? '' : 's'} to this device
         </p>
+      )}
+      {manifestPreview.length > 0 && (
+        <div className="w-full rounded-lg border border-border/60 bg-surface-raised p-3 text-xs text-text-muted">
+          <p className="mb-1 font-medium text-text">Optimized path</p>
+          <ol className="list-decimal space-y-1 pl-4">
+            {manifestPreview.slice(0, 8).map((line) => (
+              <li key={line}>{line.replace(/^\d+\.\s*/, '')}</li>
+            ))}
+          </ol>
+        </div>
       )}
     </div>
   );
@@ -162,6 +221,9 @@ export function FulfillmentPage() {
   const [history, setHistory] = useState<ScannerHistoryItem[]>([]);
   const [lastThumbUrl, setLastThumbUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<'pick' | 'receive'>('pick');
+  const [crossDockPrompt, setCrossDockPrompt] = useState<CrossDockPrompt | null>(null);
+  const crossDockPromptRef = useRef<CrossDockPrompt | null>(null);
+  crossDockPromptRef.current = crossDockPrompt;
   const [batchMode, setBatchMode] = useState(false);
   const [serialCapture, setSerialCapture] = useState<SerialCaptureState | null>(null);
   const [packingMode, setPackingMode] = useState(false);
@@ -349,9 +411,9 @@ export function FulfillmentPage() {
         return;
       }
       // GS1 path already flashed on parse — avoid double green flash.
+      // Success haptic/audio comes solely from triggerSuccess (vibrate(50)).
       if (!gs1FeedbackPendingRef.current) {
         triggerSuccess();
-        if ('vibrate' in navigator) navigator.vibrate([30, 20, 30]);
       }
       gs1FeedbackPendingRef.current = false;
       if (batchMode && nextTask) {
@@ -368,6 +430,20 @@ export function FulfillmentPage() {
       const logged = !!result.lotLoggedNotTracked;
       if (logged) setLotLoggedNotTracked(true);
       setLastThumbUrl(result.primaryMediaUrl ?? null);
+      if (result.crossDock && (result.stagingPath || result.crossDockInstruction)) {
+        setCrossDockPrompt({
+          sku: result.sku,
+          stagingPath: result.stagingPath ?? result.putawayTarget ?? 'WH-01/Z-SHIP/S-01',
+          stagingLocationId: result.stagingLocationId ?? undefined,
+          salesOrderNumber: result.crossDockSalesOrderNumber ?? undefined,
+          instruction:
+            result.crossDockInstruction ??
+            result.message ??
+            'Route item directly to Shipping Staging Lane',
+        });
+      } else if (mode === 'receive') {
+        setCrossDockPrompt(null);
+      }
       setHistory((h) => [
         {
           barcode,
@@ -376,7 +452,10 @@ export function FulfillmentPage() {
           name: result.name,
           success: true,
           message: result.message,
-          putawayTarget: result.putawayTarget ?? undefined,
+          // Cross-dock never shows reserve put-away bins
+          putawayTarget: result.crossDock
+            ? undefined
+            : (result.putawayTarget ?? undefined),
           primaryMediaUrl: result.primaryMediaUrl ?? null,
           lotNumber: gs1Fields.lotNumber || undefined,
           expiryDate: gs1Fields.expiryDate || undefined,
@@ -510,6 +589,24 @@ export function FulfillmentPage() {
     },
     onScan: (code, parsed) => {
       if (!code.length) return;
+      // Staging bin confirm while cross-dock overlay is active — do not treat as product scan.
+      const activeCrossDock = crossDockPromptRef.current;
+      if (activeCrossDock && isStagingLocationBarcode(code, activeCrossDock)) {
+        triggerSuccess();
+        setHistory((h) => [
+          {
+            barcode: code,
+            sku: activeCrossDock.sku,
+            name: 'Cross-dock staging confirmed',
+            success: true,
+            message: `Drop-off confirmed at ${activeCrossDock.stagingPath}`,
+            timestamp: Date.now(),
+          },
+          ...h.slice(0, 19),
+        ]);
+        setCrossDockPrompt(null);
+        return;
+      }
       if (parsed && !parsed.isGs1) {
         lastParsedRef.current = null;
         setGs1Active(false);
@@ -776,6 +873,14 @@ export function FulfillmentPage() {
         </>
       )}
 
+      {crossDockPrompt && (
+        <CrossDockOverlay
+          prompt={crossDockPrompt}
+          awaitingStagingScan
+          onDismiss={() => setCrossDockPrompt(null)}
+        />
+      )}
+
       <ScannerView
         lastScan={lastScan}
         lastThumbUrl={lastThumbUrl}
@@ -799,7 +904,10 @@ export function FulfillmentPage() {
           );
         }}
         receiveQcSlot={
-          mode === 'receive' && history[0]?.success && history[0]?.variantId ? (
+          mode === 'receive' &&
+          !crossDockPrompt &&
+          history[0]?.success &&
+          history[0]?.variantId ? (
             <ReceiveQcPhotoSlot variantId={history[0].variantId} />
           ) : undefined
         }

@@ -77,7 +77,19 @@ function guessMapping(headers: string[]): Record<TargetField, string> {
   };
 }
 
-export function ImportWizard() {
+type WizardMode = 'import' | 'legacy-migration';
+
+type MigrationResponse = {
+  imported: number;
+  errors: string[];
+};
+
+interface ImportWizardProps {
+  defaultMode?: WizardMode;
+}
+
+export function ImportWizard({ defaultMode = 'import' }: ImportWizardProps) {
+  const [mode, setMode] = useState<WizardMode>(defaultMode);
   const [file, setFile] = useState<File | null>(null);
   const [previewText, setPreviewText] = useState('');
   const [mapping, setMapping] = useState<Record<TargetField, string>>({
@@ -89,7 +101,7 @@ export function ImportWizard() {
   });
   const [locationId, setLocationId] = useState('');
   const [dragOver, setDragOver] = useState(false);
-  const [result, setResult] = useState<ImportResponse | null>(null);
+  const [result, setResult] = useState<(ImportResponse & { skipped?: number }) | null>(null);
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', 'WAREHOUSE'],
@@ -131,18 +143,47 @@ export function ImportWizard() {
       form.append('file', file);
       form.append('columnsMapping', JSON.stringify(mapping));
       if (locationId) form.append('locationId', locationId);
+      if (mode === 'legacy-migration') {
+        const data = (
+          await apiClient.post<MigrationResponse>('/api/v1/ingestion/legacy-migration', form)
+        ).data;
+        return { imported: data.imported, skipped: 0, errors: data.errors };
+      }
       return (await apiClient.post<ImportResponse>('/api/v1/ingestion/import', form)).data;
     },
     onSuccess: (data) => setResult(data),
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="import-wizard">
       <div>
-        <h1 className="text-2xl font-bold text-text">Data import</h1>
+        <h1 className="text-2xl font-bold text-text">
+          {mode === 'legacy-migration' ? 'Legacy ERP migration' : 'Data import'}
+        </h1>
         <p className="mt-1 text-sm text-text-muted">
-          Map spreadsheet columns, preview rows, then stream inventory into the ledger.
+          {mode === 'legacy-migration'
+            ? 'One-click cutover: bulk products/variants plus INITIAL_MIGRATION receives in a single transaction.'
+            : 'Map spreadsheet columns, preview rows, then stream inventory into the ledger.'}
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={mode === 'import' ? 'primary' : 'secondary'}
+            onClick={() => setMode('import')}
+          >
+            CSV import
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={mode === 'legacy-migration' ? 'primary' : 'secondary'}
+            data-testid="legacy-migration-mode"
+            onClick={() => setMode('legacy-migration')}
+          >
+            Legacy ERP migration
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -259,9 +300,10 @@ export function ImportWizard() {
           onClick={() => importMutation.mutate()}
           loading={importMutation.isPending}
           disabled={!file || !mapping.sku}
+          data-testid="import-submit"
         >
           <Upload className="h-4 w-4" />
-          Run import
+          {mode === 'legacy-migration' ? 'Run migration' : 'Run import'}
         </Button>
         {importMutation.isError && (
           <span className="text-sm text-danger">Import failed. Check mapping and file format.</span>
@@ -270,9 +312,17 @@ export function ImportWizard() {
 
       {result && (
         <Card>
-          <CardHeader title="Import result" description="Append-only ledger receives for valid rows" />
+          <CardHeader
+            title={mode === 'legacy-migration' ? 'Migration result' : 'Import result'}
+            description={
+              mode === 'legacy-migration'
+                ? 'Atomic INITIAL_MIGRATION ledger receives'
+                : 'Append-only ledger receives for valid rows'
+            }
+          />
           <p className="text-sm text-text">
-            Imported {result.imported}, skipped {result.skipped}
+            Imported {result.imported}
+            {typeof result.skipped === 'number' ? `, skipped ${result.skipped}` : ''}
           </p>
           {result.errors.length > 0 && (
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-danger">

@@ -2,23 +2,55 @@
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <springProperty name="APP_NAME" source="spring.application.name" defaultValue="invsys-api"/>
+    <springProperty name="LOKI_URL" source="invsys.observability.loki-url" defaultValue="http://loki:3100/loki/api/v1/push"/>
 
+    <!-- Local / test: human-readable console with MDC correlation fields -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{ISO8601} [%thread] %-5level %logger{36} tenant=%X{tenantId} req=%X{requestId} user=%X{userId} - %msg%n</pattern>
+            <pattern>%d{ISO8601} [%thread] %-5level %logger{36} tenant=%X{tenant_id} req=%X{request_id} user=%X{user_id} trace=%X{traceId} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- One-line JSON for Docker → Fluent Bit / Loki / CloudWatch -->
-    <appender name="JSON_PATTERN" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>{"ts":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSX}","level":"%level","logger":"%logger{36}","tenant":"%X{tenantId}","requestId":"%X{requestId}","userId":"%X{userId}","msg":"%replace(%replace(%msg){'\\','\\\\'}){'\"','\\\"'}","app":"${APP_NAME}"}%n</pattern>
+    <!-- Docker / prod: structured JSON via LogstashEncoder (includes all MDC keys) -->
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}"}</customFields>
+            <includeMdcKeyName>request_id</includeMdcKeyName>
+            <includeMdcKeyName>tenant_id</includeMdcKeyName>
+            <includeMdcKeyName>user_id</includeMdcKeyName>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>tenantId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
         </encoder>
     </appender>
 
-    <springProfile name="docker | prod">
+    <!-- Push structured JSON lines to Loki (docker / optional local OTEL stack) -->
+    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <http>
+            <url>${LOKI_URL}</url>
+        </http>
+        <format>
+            <label>
+                <pattern>app=${APP_NAME},level=%level</pattern>
+            </label>
+            <message>
+                <pattern>{"message":"%msg","logger":"%logger{36}","level":"%level","traceId":"%X{traceId}","spanId":"%X{spanId}","tenant_id":"%X{tenant_id}","request_id":"%X{request_id}","thread":"%thread","exception":"%ex{full}"}%n</pattern>
+            </message>
+        </format>
+    </appender>
+
+    <springProfile name="docker">
         <root level="INFO">
-            <appender-ref ref="JSON_PATTERN"/>
+            <appender-ref ref="JSON"/>
+            <appender-ref ref="LOKI"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="prod &amp; !docker">
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
         </root>
     </springProfile>
 

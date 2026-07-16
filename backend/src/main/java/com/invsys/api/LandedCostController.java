@@ -40,7 +40,7 @@ public class LandedCostController {
      * for moving-average COGS accuracy.
      */
     @PostMapping("/receive")
-    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public List<PurchaseOrderLine> receive(@Valid @RequestBody PurchasingReceiveRequest request) {
         List<PurchaseOrderService.ReceiveLineInput> lines = request.lines().stream()
                 .map(l -> new PurchaseOrderService.ReceiveLineInput(l.lineId(), l.quantity(), l.lotId()))

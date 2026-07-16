@@ -3,8 +3,14 @@ spring:
     activate:
       on-profile: docker
   datasource:
-    url: jdbc:postgresql://db:5432/invsys
+    # App traffic → PgBouncer (transaction pooling). prepareThreshold=0 avoids
+    # unnamed prepared-statement issues across pooled server connections.
+    url: jdbc:postgresql://pgbouncer:6432/invsys?prepareThreshold=0
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 2
   flyway:
+    # Migrations stay on direct Postgres (advisory locks / DDL are session-sensitive).
     url: jdbc:postgresql://db:5432/invsys
   data:
     redis:
@@ -12,9 +18,40 @@ spring:
       port: ${REDIS_PORT:6379}
       timeout: 2s
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  # Metrics stay on Prometheus scrape; Tempo is traces-only in this stack.
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
+    export:
+      otlp:
+        enabled: true
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://tempo:4318}
+          transport: http
+
 invsys:
   redis:
     enabled: true
+  # Playwright / demo traffic issues many short-lived logins from one gateway IP.
+  rate-limit:
+    auth-per-minute: ${AUTH_RATE_LIMIT_PER_MINUTE:2000}
+    terminal-pin-per-minute: ${TERMINAL_PIN_RATE_LIMIT_PER_MINUTE:200}
+    webhook-per-minute: ${WEBHOOK_RATE_LIMIT_PER_MINUTE:600}
   security:
     cookie-secure: ${COOKIE_SECURE:false}
     cookie-same-site: ${COOKIE_SAME_SITE:Lax}
@@ -31,3 +68,5 @@ invsys:
     secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
     path-style-access: true
     create-bucket-if-missing: true
+  observability:
+    loki-url: ${LOKI_URL:http://loki:3100/loki/api/v1/push}

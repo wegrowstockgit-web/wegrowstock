@@ -26,7 +26,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/fintech")
-@PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+@PreAuthorize("hasRole('OWNER')")
 public class FintechController {
 
     private final FintechUnderwritingService fintechService;

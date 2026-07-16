@@ -177,7 +177,7 @@ export function ExceptionsPage() {
         <DataListToolbar />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
         <ListPageState
           isLoading={isLoading}
           isError={isError}

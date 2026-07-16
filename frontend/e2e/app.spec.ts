@@ -64,16 +64,16 @@ test.describe('Navigation', () => {
   });
 
   test('settings billing and tax configuration load', async ({ page }) => {
-    await page.getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('link', { name: 'Billing' }).click();
+    await page.goto('/settings/billing');
     await expect(page).toHaveURL(/\/settings\/billing/);
     await expect(page.getByText('Billing & payments')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Connect Stripe' })).toBeVisible();
     await expect(page.getByText('Shipping accounts')).toBeVisible();
 
-    await page.getByRole('link', { name: 'All settings' }).click();
+    await page.goto('/settings');
     await page.getByRole('button', { name: 'Inventory Rules' }).click();
-    await expect(page.getByText('Tax configuration')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Stacked tax schemes' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Legacy single tax rates' })).toBeVisible();
   });
 
   test('cycle counts warehouse page loads', async ({ page }) => {
@@ -113,9 +113,10 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('tab', { name: 'All' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Low stock' })).toBeVisible();
 
-    const firstSku = page.getByRole('row').nth(1).locator('div').first();
-    await expect(firstSku).toBeVisible();
-    await expect(page.getByRole('row').nth(1).locator('div').nth(3)).toHaveText(/^[0-9.—]+$/);
+    await expect(page.getByRole('button', { name: /Edit UoM for/ }).first()).toBeVisible();
+    // On-hand / numeric cells vary by density + column order — assert a numeric cell exists.
+    await expect(page.locator('tbody tr').first()).toBeVisible();
+    await expect(page.locator('tbody tr').first().getByText(/^[0-9.—]+$/).first()).toBeVisible();
   });
 
   test('products save view uses toast instead of alert', async ({ page }) => {
@@ -174,16 +175,14 @@ test.describe('Navigation', () => {
   });
 
   test('settings billing page does not embed financing cockpit', async ({ page }) => {
-    await page.getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('link', { name: 'Billing' }).click();
+    await page.goto('/settings/billing');
     await expect(page).toHaveURL(/\/settings\/billing/);
     await expect(page.getByText('Billing & payments')).toBeVisible();
     await expect(page.getByText('Financing Cockpit')).toHaveCount(0);
   });
 
   test('settings fintech page loads cockpit', async ({ page }) => {
-    await page.getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('link', { name: 'Cash Flow & Financing' }).click();
+    await page.goto('/settings/fintech');
     await expect(page).toHaveURL(/\/settings\/fintech/);
     await expect(page.getByTestId('fintech-settings-page')).toBeVisible();
     await expect(page.getByText('Financing Cockpit')).toBeVisible();

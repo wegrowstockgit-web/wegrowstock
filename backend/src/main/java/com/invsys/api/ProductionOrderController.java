@@ -23,7 +23,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/manufacturing")
-@PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+@PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
 public class ProductionOrderController {
 
     private final ProductionOrderRepository productionOrderRepository;
@@ -51,12 +51,14 @@ public class ProductionOrderController {
     }
 
     @PostMapping("/orders")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public ProductionOrderResponse createOrder(@Valid @RequestBody CreateProductionOrderRequest request) {
         return dtoMapper.toProductionOrderResponse(
                 manufacturingService.createProductionOrder(request.parentVariantId(), request.qtyTarget()));
     }
 
     @PostMapping("/orders/{id}/allocate")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public ProductionOrderResponse allocate(@PathVariable UUID id) {
         return dtoMapper.toProductionOrderResponse(manufacturingService.allocateComponents(id));
     }

@@ -2,11 +2,13 @@ package com.invsys.service;
 
 import com.invsys.common.ApiException;
 import com.invsys.domain.Allocation;
+import com.invsys.domain.Location;
 import com.invsys.domain.PurchaseOrder;
 import com.invsys.domain.PurchaseOrderLine;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
 import com.invsys.repository.AllocationRepository;
+import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.PurchaseOrderLineRepository;
 import com.invsys.repository.PurchaseOrderRepository;
@@ -24,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -34,9 +37,11 @@ import java.util.UUID;
 public class CrossDockService {
 
     public static final String STATUS_CROSS_DOCK_ROUTED = "CROSS_DOCK_ROUTED";
+    public static final String REASON_CROSS_DOCK_ROUTING = "CROSS_DOCK_ROUTING";
+    public static final String STAGING_PATH = "WH-01/Z-SHIP/S-01";
 
     private static final Set<String> OPEN_PO = Set.of("SUBMITTED", "IN_TRANSIT", "PARTIALLY_RECEIVED");
-    private static final Set<String> OPEN_SO = Set.of("CONFIRMED", "ALLOCATED");
+    private static final Set<String> OPEN_SO = Set.of("CONFIRMED", "BACKORDERED", "ALLOCATED");
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderLineRepository purchaseOrderLineRepository;
@@ -44,6 +49,7 @@ public class CrossDockService {
     private final SalesOrderLineRepository salesOrderLineRepository;
     private final ProductVariantRepository variantRepository;
     private final AllocationRepository allocationRepository;
+    private final LocationRepository locationRepository;
     private final DSLContext dsl;
 
     public CrossDockService(PurchaseOrderRepository purchaseOrderRepository,
@@ -52,6 +58,7 @@ public class CrossDockService {
                             SalesOrderLineRepository salesOrderLineRepository,
                             ProductVariantRepository variantRepository,
                             AllocationRepository allocationRepository,
+                            LocationRepository locationRepository,
                             DSLContext dsl) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderLineRepository = purchaseOrderLineRepository;
@@ -59,6 +66,7 @@ public class CrossDockService {
         this.salesOrderLineRepository = salesOrderLineRepository;
         this.variantRepository = variantRepository;
         this.allocationRepository = allocationRepository;
+        this.locationRepository = locationRepository;
         this.dsl = dsl;
     }
 
@@ -125,21 +133,92 @@ public class CrossDockService {
     }
 
     /**
-     * High-velocity receive check: if an ACTIVE sales allocation exists for the variant,
-     * route it to shipping staging (bypass put-away / pick-face storage).
+     * Resolve shipping staging bin (prefers S-01 / Z-SHIP, then any STAGE* location).
+     */
+    @Transactional(readOnly = true)
+    public Location requireStagingLocation() {
+        UUID tenantId = TenantContext.requireTenantId();
+        Optional<Location> s01 = locationRepository.findByTenantIdAndCode(tenantId, "S-01");
+        if (s01.isPresent()) {
+            return s01.get();
+        }
+        return locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+                .filter(loc -> {
+                    String path = loc.getPath() != null ? loc.getPath().toUpperCase() : "";
+                    String code = loc.getCode() != null ? loc.getCode().toUpperCase() : "";
+                    String name = loc.getName() != null ? loc.getName().toUpperCase() : "";
+                    return path.contains("Z-SHIP")
+                            || path.contains("STAGE")
+                            || code.contains("STAGE")
+                            || name.contains("STAGING");
+                })
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "STAGING_LOCATION_REQUIRED",
+                        "Shipping staging location Z-SHIP/S-01 is not configured"));
+    }
+
+    /**
+     * Read-only preview: open sales demand for the variant that can intercept inbound receipts.
+     */
+    @Transactional(readOnly = true)
+    public Optional<OpenDemand> previewOpenDemand(UUID variantId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Record row = dsl.fetchOne("""
+                SELECT sol.id AS sales_order_line_id,
+                       sol.sales_order_id,
+                       so.number AS so_number,
+                       so.status AS so_status,
+                       pv.sku,
+                       (sol.qty_ordered - COALESCE(sol.qty_shipped, 0)) AS open_qty
+                FROM sales_order_lines sol
+                JOIN sales_orders so
+                  ON so.id = sol.sales_order_id AND so.tenant_id = sol.tenant_id
+                JOIN product_variants pv
+                  ON pv.id = sol.variant_id AND pv.tenant_id = sol.tenant_id
+                WHERE sol.tenant_id = ?
+                  AND sol.variant_id = ?
+                  AND so.status IN ('CONFIRMED', 'BACKORDERED', 'ALLOCATED', 'PICKING')
+                  AND (sol.qty_ordered - COALESCE(sol.qty_shipped, 0)) > 0
+                ORDER BY
+                  CASE so.status
+                    WHEN 'BACKORDERED' THEN 0
+                    WHEN 'CONFIRMED' THEN 1
+                    ELSE 2
+                  END,
+                  so.created_at ASC
+                LIMIT 1
+                """, tenantId, variantId);
+        if (row == null) {
+            return Optional.empty();
+        }
+        Location staging = requireStagingLocation();
+        return Optional.of(new OpenDemand(
+                variantId,
+                row.get("sku", String.class),
+                row.get("sales_order_id", UUID.class),
+                row.get("so_number", String.class),
+                row.get("sales_order_line_id", UUID.class),
+                row.get("open_qty", BigDecimal.class),
+                staging.getId(),
+                staging.getPath(),
+                staging.getCode()));
+    }
+
+    /**
+     * High-velocity receive check: open demand (including BACKORDERED) → route to shipping staging.
+     * When an ACTIVE allocation exists, marks it CROSS_DOCK_ROUTED.
      */
     @Transactional
     public CrossDockTask checkVariant(UUID variantId) {
-        UUID tenantId = TenantContext.requireTenantId();
         if (variantId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "variantId is required");
         }
+        UUID tenantId = TenantContext.requireTenantId();
 
-        Record row = dsl.fetchOne("""
+        Record active = dsl.fetchOne("""
                 SELECT a.id AS allocation_id,
                        a.quantity,
                        a.sales_order_line_id,
-                       a.location_id,
                        sol.sales_order_id,
                        so.number AS so_number,
                        pv.sku
@@ -153,40 +232,114 @@ public class CrossDockService {
                 WHERE a.tenant_id = ?
                   AND a.variant_id = ?
                   AND a.status = 'ACTIVE'
-                  AND so.status IN ('CONFIRMED', 'ALLOCATED', 'PICKING')
+                  AND so.status IN ('CONFIRMED', 'BACKORDERED', 'ALLOCATED', 'PICKING')
                 ORDER BY a.created_at ASC
                 LIMIT 1
                 """, tenantId, variantId);
 
-        if (row == null) {
-            return CrossDockTask.none(variantId);
+        if (active != null) {
+            Location staging = requireStagingLocation();
+            UUID allocationId = active.get("allocation_id", UUID.class);
+            Allocation allocation = allocationRepository.findByTenantIdAndId(tenantId, allocationId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Allocation not found"));
+            allocation.setStatus(STATUS_CROSS_DOCK_ROUTED);
+            allocation.setLocationId(staging.getId());
+            allocationRepository.save(allocation);
+
+            String sku = active.get("sku", String.class);
+            String soNumber = active.get("so_number", String.class);
+            BigDecimal qty = active.get("quantity", BigDecimal.class);
+            String instruction = stagingInstruction(soNumber, sku, staging.getPath());
+            return new CrossDockTask(
+                    true,
+                    variantId,
+                    sku,
+                    allocationId,
+                    active.get("sales_order_id", UUID.class),
+                    soNumber,
+                    active.get("sales_order_line_id", UUID.class),
+                    staging.getId(),
+                    staging.getPath(),
+                    qty,
+                    STATUS_CROSS_DOCK_ROUTED,
+                    instruction);
         }
 
-        UUID allocationId = row.get("allocation_id", UUID.class);
-        Allocation allocation = allocationRepository.findByTenantIdAndId(tenantId, allocationId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Allocation not found"));
+        return previewOpenDemand(variantId)
+                .map(demand -> new CrossDockTask(
+                        true,
+                        demand.variantId(),
+                        demand.sku(),
+                        null,
+                        demand.salesOrderId(),
+                        demand.salesOrderNumber(),
+                        demand.salesOrderLineId(),
+                        demand.stagingLocationId(),
+                        demand.stagingPath(),
+                        demand.openQty(),
+                        "PENDING_RECEIVE",
+                        stagingInstruction(demand.salesOrderNumber(), demand.sku(), demand.stagingPath())))
+                .orElseGet(() -> CrossDockTask.none(variantId));
+    }
+
+    /**
+     * After inbound receipt into staging: soft-allocate the open SO line and flip BACKORDERED → ALLOCATED.
+     */
+    @Transactional
+    public void fulfillOpenDemand(UUID variantId, UUID stagingLocationId, BigDecimal quantity) {
+        UUID tenantId = TenantContext.requireTenantId();
+        OpenDemand demand = previewOpenDemand(variantId)
+                .orElse(null);
+        if (demand == null) {
+            return;
+        }
+        BigDecimal qty = quantity.min(demand.openQty());
+        if (qty.signum() <= 0) {
+            return;
+        }
+
+        SalesOrderLine line = salesOrderLineRepository.findById(demand.salesOrderLineId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+        Allocation allocation = new Allocation();
+        allocation.setTenantId(tenantId);
+        allocation.setSalesOrderLineId(line.getId());
+        allocation.setVariantId(variantId);
+        allocation.setLocationId(stagingLocationId);
+        allocation.setQuantity(qty);
         allocation.setStatus(STATUS_CROSS_DOCK_ROUTED);
         allocationRepository.save(allocation);
 
-        String sku = row.get("sku", String.class);
-        String soNumber = row.get("so_number", String.class);
-        BigDecimal qty = row.get("quantity", BigDecimal.class);
-        String instruction = "Route item directly to Shipping Staging Lane"
-                + (soNumber != null ? " for SO " + soNumber : "")
-                + (sku != null ? " (" + sku + ")" : "");
+        BigDecimal allocated = line.getQtyAllocated() != null ? line.getQtyAllocated() : BigDecimal.ZERO;
+        line.setQtyAllocated(allocated.add(qty));
+        salesOrderLineRepository.save(line);
 
-        return new CrossDockTask(
-                true,
-                variantId,
-                sku,
-                allocationId,
-                row.get("sales_order_id", UUID.class),
-                soNumber,
-                row.get("sales_order_line_id", UUID.class),
-                row.get("location_id", UUID.class),
-                qty,
-                STATUS_CROSS_DOCK_ROUTED,
-                instruction);
+        SalesOrder order = salesOrderRepository.findById(demand.salesOrderId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+        if (List.of("BACKORDERED", "CONFIRMED", "ALLOCATED").contains(order.getStatus())) {
+            order.setStatus("ALLOCATED");
+            salesOrderRepository.save(order);
+        }
+    }
+
+    private static String stagingInstruction(String soNumber, String sku, String stagingPath) {
+        return "CROSS-DOCK: Route item directly to Shipping Staging Lane "
+                + (stagingPath != null ? stagingPath : STAGING_PATH)
+                + (soNumber != null ? " for SO " + soNumber : "")
+                + (sku != null ? " (" + sku + ")" : "")
+                + " — bypass storage put-away";
+    }
+
+    public record OpenDemand(
+            UUID variantId,
+            String sku,
+            UUID salesOrderId,
+            String salesOrderNumber,
+            UUID salesOrderLineId,
+            BigDecimal openQty,
+            UUID stagingLocationId,
+            String stagingPath,
+            String stagingCode
+    ) {
     }
 
     public record CrossDockSuggestion(
@@ -213,12 +366,13 @@ public class CrossDockService {
             String salesOrderNumber,
             UUID salesOrderLineId,
             UUID stagingHintLocationId,
+            String stagingPath,
             BigDecimal quantity,
             String allocationStatus,
             String instruction
     ) {
         static CrossDockTask none(UUID variantId) {
-            return new CrossDockTask(false, variantId, null, null, null, null, null, null, null, null, null);
+            return new CrossDockTask(false, variantId, null, null, null, null, null, null, null, null, null, null);
         }
     }
 }

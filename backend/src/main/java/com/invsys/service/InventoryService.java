@@ -67,8 +67,9 @@ public class InventoryService {
     }
 
     /**
-     * Graceful lot resolution: when {@code is_lot_tracked} is false, force {@code lot_id = null}
-     * and sink any vendor lot string into ledger metadata ({@code vendor_lot_captured}).
+     * Graceful lot resolution: when {@code is_lot_tracked} is false and no lotId is supplied,
+     * keep {@code lot_id = null} and sink vendor lot strings into ledger metadata
+     * ({@code vendor_lot_captured}). Explicit allocation lotIds are preserved for level targeting.
      */
     public ResolvedLot resolveLot(ProductVariant variant,
                                   UUID lotId,
@@ -78,15 +79,25 @@ public class InventoryService {
         if (clientMetadata != null) {
             meta.putAll(clientMetadata);
         }
+        // When a concrete lotId is supplied (e.g. from an allocation), keep it for level targeting
+        // even if the variant is not lot-tracked — otherwise pick/ship ADJUSTs write lot_id=NULL
+        // and fail validateOnHand against seeded lot-keyed inventory_levels rows.
+        if (lotId != null) {
+            if (!variant.isLotTracked()) {
+                String captured = firstNonBlank(lotNumber, lookupLotNumber(lotId));
+                if (captured != null) {
+                    meta.putIfAbsent("vendor_lot_captured", captured);
+                }
+                return new ResolvedLot(lotId, meta, captured != null);
+            }
+            return new ResolvedLot(lotId, meta, false);
+        }
         if (!variant.isLotTracked()) {
-            String captured = firstNonBlank(lotNumber, lookupLotNumber(lotId));
+            String captured = firstNonBlank(lotNumber, null);
             if (captured != null) {
                 meta.putIfAbsent("vendor_lot_captured", captured);
             }
             return new ResolvedLot(null, meta, captured != null);
-        }
-        if (lotId != null) {
-            return new ResolvedLot(lotId, meta, false);
         }
         if (lotNumber != null && !lotNumber.isBlank()) {
             return new ResolvedLot(findOrCreateLot(variant.getId(), lotNumber.trim()), meta, false);
@@ -121,6 +132,24 @@ public class InventoryService {
     public InventoryLedger receive(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
                                    BigDecimal quantity, String referenceType, UUID referenceId,
                                    BigDecimal unitCost, String serialCode, Map<String, Object> metadata) {
+        return receive(variantId, locationId, lotId, lotNumber, quantity, null, referenceType, referenceId,
+                unitCost, serialCode, metadata);
+    }
+
+    /**
+     * Opening-balance receive for legacy ERP cutover ({@code reason_code = INITIAL_MIGRATION}).
+     */
+    @Transactional
+    public InventoryLedger receiveInitialMigration(UUID variantId, UUID locationId,
+                                                   BigDecimal quantity, BigDecimal unitCost) {
+        return receive(variantId, locationId, null, null, quantity, "INITIAL_MIGRATION",
+                "LEGACY_ERP_MIGRATION", null, unitCost, null, null);
+    }
+
+    @Transactional
+    public InventoryLedger receive(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
+                                   BigDecimal quantity, String reasonCode, String referenceType, UUID referenceId,
+                                   BigDecimal unitCost, String serialCode, Map<String, Object> metadata) {
         ProductVariant variant = serialNumberService.requireVariant(variantId);
         serialNumberService.validateSerializedQuantity(variant, quantity);
         UUID serialId = null;
@@ -134,7 +163,7 @@ public class InventoryService {
         ResolvedLot resolved = resolveLot(variant, lotId, lotNumber, metadata);
         costingService.applyReceiveCost(variantId, quantity.abs(), unitCost);
         InventoryLedger entry = appendMovement("RECEIVE", variantId, locationId, resolved.lotId(), quantity.abs(),
-                null, referenceType, referenceId, null, unitCost, serialId, resolved.metadata());
+                reasonCode, referenceType, referenceId, null, unitCost, serialId, resolved.metadata());
         emitIntegrationEvents(entry, variantId);
         return entry;
     }
@@ -240,6 +269,7 @@ public class InventoryService {
             }
         }
         ResolvedLot resolved = resolveLot(variant, lotId, lotNumber, metadata);
+        validateNegative(delta, variantId, locationId, resolved.lotId());
         return appendMovement("ADJUST", variantId, locationId, resolved.lotId(), delta, reasonCode,
                 null, null, null, null, serialId, resolved.metadata());
     }
@@ -318,6 +348,66 @@ public class InventoryService {
                 reason, null, null, null, unitCost, null);
     }
 
+    /**
+     * Append-only error correction: posts a compensating ADJUST that negates the original
+     * quantity_delta. Inventory levels are corrected by the AFTER-INSERT ledger trigger.
+     */
+    @Transactional
+    public InventoryLedger reverseLedgerEntry(UUID ledgerId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        InventoryLedger original = ledgerRepository.findById(ledgerId)
+                .filter(e -> tenantId.equals(e.getTenantId()))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LEDGER_NOT_FOUND",
+                        "Ledger entry not found"));
+
+        if ("ERROR_CORRECTION".equals(original.getReasonCode()) || original.getReversalOfLedgerId() != null) {
+            throw new ApiException(HttpStatus.CONFLICT, "CANNOT_REVERSE_REVERSAL",
+                    "Compensating entries cannot be reversed");
+        }
+        if (ledgerRepository.existsByTenantIdAndReversalOfLedgerId(tenantId, original.getId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "ALREADY_REVERSED",
+                    "This ledger entry has already been reversed");
+        }
+
+        BigDecimal reverseDelta = original.getQuantityDelta().negate();
+        validateNegative(reverseDelta, original.getVariantId(), original.getLocationId(), original.getLotId());
+
+        InventoryLedger entry = new InventoryLedger();
+        entry.setTenantId(tenantId);
+        entry.setVariantId(original.getVariantId());
+        entry.setLocationId(original.getLocationId());
+        entry.setLotId(original.getLotId());
+        entry.setMovementType("ADJUST");
+        entry.setQuantityDelta(reverseDelta);
+        entry.setUnitCost(original.getUnitCost());
+        entry.setReasonCode("ERROR_CORRECTION");
+        entry.setReversalOfLedgerId(original.getId());
+        entry.setReferenceType(original.getReferenceType());
+        entry.setReferenceId(original.getReferenceId());
+        entry.setSerialNumberId(original.getSerialNumberId());
+        entry.setLandedCostComponent(
+                original.getLandedCostComponent() != null
+                        ? original.getLandedCostComponent().negate()
+                        : BigDecimal.ZERO);
+        entry.setMetadata(Map.of("reversed_ledger_id", original.getId().toString()));
+        entry.setCreatedBy(TenantContext.getUserId().orElse(null));
+        InventoryLedger saved = ledgerRepository.save(entry);
+        cycleCountService.evaluateLocationVelocity(original.getLocationId());
+        emitIntegrationEvents(saved, original.getVariantId());
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public List<InventoryLedger> listRecentLedger(int limit) {
+        UUID tenantId = TenantContext.requireTenantId();
+        int capped = Math.min(Math.max(limit, 1), 100);
+        List<InventoryLedger> rows = ledgerRepository.findTop100ByTenantIdOrderByCreatedAtDesc(tenantId);
+        if (rows.size() <= capped) {
+            return rows;
+        }
+        return rows.subList(0, capped);
+    }
+
     @Transactional
     public InventoryLedger ship(Allocation allocation, BigDecimal quantity) {
         return ship(allocation, quantity, null);
@@ -344,15 +434,44 @@ public class InventoryService {
             allocation.setSerialNumberId(serialId);
         }
         ResolvedLot resolved = resolveLot(variant, allocation.getLotId(), null, null);
-        validateNegative(quantity.negate(), allocation.getVariantId(), allocation.getLocationId(), resolved.lotId());
+        // Reserved stock has available=0; ship consumes against on-hand at the allocation bin.
+        validateOnHand(quantity.negate(), allocation.getVariantId(), allocation.getLocationId(), resolved.lotId());
         allocation.setStatus("CONSUMED");
-        allocationRepository.save(allocation);
+        allocationRepository.saveAndFlush(allocation);
         BigDecimal unitCost = costingService.snapshotShipCost(allocation.getVariantId());
         InventoryLedger entry = appendMovement("SHIP", allocation.getVariantId(), allocation.getLocationId(),
                 resolved.lotId(), quantity.negate(), null, "SALES_ORDER_LINE", allocation.getSalesOrderLineId(),
                 null, unitCost, serialId, resolved.metadata());
         emitIntegrationEvents(entry, allocation.getVariantId());
         return entry;
+    }
+
+    /**
+     * Floor pick ADJUST against an allocation hold. Validates {@code on_hand} (not available)
+     * because reserved qty already has available=0.
+     */
+    @Transactional
+    public InventoryLedger adjustReserved(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
+                                          BigDecimal delta, String reasonCode, String serialCode,
+                                          Map<String, Object> metadata) {
+        ProductVariant variant = serialNumberService.requireVariant(variantId);
+        serialNumberService.validateSerializedQuantity(variant, delta);
+        UUID serialId = null;
+        if (variant.isTrackSerials()) {
+            if (serialCode == null || serialCode.isBlank()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "SERIAL_REQUIRED",
+                        "Serial number is required for serialized variants");
+            }
+            if (delta.signum() > 0) {
+                serialId = serialNumberService.receiveSerial(variantId, serialCode.trim()).getId();
+            } else {
+                serialId = serialNumberService.consumeSerial(variantId, serialCode.trim()).getId();
+            }
+        }
+        ResolvedLot resolved = resolveLot(variant, lotId, lotNumber, metadata);
+        validateOnHand(delta, variantId, locationId, resolved.lotId());
+        return appendMovement("ADJUST", variantId, locationId, resolved.lotId(), delta, reasonCode,
+                null, null, null, null, serialId, resolved.metadata());
     }
 
     private InventoryLedger appendMovement(String type, UUID variantId, UUID locationId, UUID lotId,
@@ -462,7 +581,29 @@ public class InventoryService {
                 .map(InventoryLevel::getAvailable)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (available.add(delta).compareTo(BigDecimal.ZERO) < 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", "Insufficient available inventory");
+            throw new com.invsys.common.exception.InsufficientStockException("Insufficient available inventory");
+        }
+    }
+
+    private void validateOnHand(BigDecimal delta, UUID variantId, UUID locationId, UUID lotId) {
+        if (delta.signum() >= 0) {
+            return;
+        }
+        boolean allowNegative = settingsRepository.findByTenantId(TenantContext.requireTenantId())
+                .map(TenantSettings::getSettings)
+                .map(s -> Boolean.TRUE.equals(s.get("allow_negative_inventory")))
+                .orElse(false);
+        if (allowNegative) {
+            return;
+        }
+        List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(TenantContext.requireTenantId(), variantId);
+        BigDecimal onHand = levels.stream()
+                .filter(l -> l.getLocationId().equals(locationId))
+                .filter(l -> (lotId == null && l.getLotId() == null) || (lotId != null && lotId.equals(l.getLotId())))
+                .map(InventoryLevel::getOnHand)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (onHand.add(delta).compareTo(BigDecimal.ZERO) < 0) {
+            throw new com.invsys.common.exception.InsufficientStockException("Insufficient stock");
         }
     }
 }

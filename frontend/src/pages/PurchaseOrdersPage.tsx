@@ -489,6 +489,15 @@ function ReceivePoModal({
   );
 }
 
+interface ApDocIngestion {
+  id: string;
+  fileStorageKey: string;
+  ingestionStatus: string;
+  parsedMetadata?: Record<string, unknown>;
+  matchedPurchaseOrderId?: string | null;
+  createdAt: string;
+}
+
 function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] }) {
   const queryClient = useQueryClient();
   const [poId, setPoId] = useState('');
@@ -496,11 +505,20 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
   const [jsonPayload, setJsonPayload] = useState(
     '{\n  "lines": [\n    { "sku": "WIDGET-S", "qty": 100, "unitCost": 5.00 }\n  ]\n}'
   );
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const { data: ingestions = [] } = useQuery({
     queryKey: ['ap', 'ingestions'],
     queryFn: async () =>
       (await apiClient.get<SupplierInvoiceIngestion[]>('/api/v1/ap/ingestions')).data,
+    retry: false,
+  });
+
+  const { data: docIngestions = [] } = useQuery({
+    queryKey: ['ap', 'doc-ingestions'],
+    queryFn: async () =>
+      (await apiClient.get<ApDocIngestion[]>('/api/v1/ap-ingestions')).data,
+    refetchInterval: 3000,
     retry: false,
   });
 
@@ -519,13 +537,63 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
     },
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      await apiClient.post('/api/v1/ap-ingestions/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    onSuccess: () => {
+      setUploadFile(null);
+      void queryClient.invalidateQueries({ queryKey: ['ap', 'doc-ingestions'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+  });
+
   return (
     <Card className="mt-8">
       <CardHeader
         title="AP invoice ingestion"
-        description="Drop supplier invoice OCR payloads and reconcile against PO lines"
+        description="Upload supplier invoices for AI staging, or paste OCR JSON to reconcile against PO lines"
       />
       <div className="space-y-4 p-4">
+        <div className="space-y-3 rounded-lg border border-border/70 p-3">
+          <p className="text-sm font-medium text-text">Document AI upload</p>
+          <Input
+            type="file"
+            accept=".pdf,.txt,.csv,image/*"
+            className="min-h-11 touch-target"
+            onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+          />
+          <Button
+            className="min-h-11 touch-target"
+            onClick={() => uploadFile && uploadMutation.mutate(uploadFile)}
+            loading={uploadMutation.isPending}
+            disabled={!uploadFile}
+          >
+            Upload invoice document
+          </Button>
+          {docIngestions.length > 0 && (
+            <div className="space-y-2">
+              {docIngestions.slice(0, 5).map((ing) => (
+                <div key={ing.id} className="rounded-lg border border-border p-3 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{ing.ingestionStatus}</span>
+                    <span className="truncate text-xs text-text-muted">{ing.fileStorageKey}</span>
+                  </div>
+                  {ing.matchedPurchaseOrderId && (
+                    <p className="mt-1 text-xs text-text-muted">
+                      Matched PO {ing.matchedPurchaseOrderId.slice(0, 8)}…
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <Select
           label="Purchase order"
           value={poId}
@@ -554,6 +622,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
           />
         </label>
         <Button
+          className="min-h-11 touch-target"
           onClick={() => submitMutation.mutate()}
           loading={submitMutation.isPending}
           disabled={!poId}
@@ -562,7 +631,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
         </Button>
         {ingestions.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-text">Recent ingestions</p>
+            <p className="text-sm font-medium text-text">Recent reconciliations</p>
             {ingestions.slice(0, 5).map((ing) => (
               <div
                 key={ing.id}
@@ -622,7 +691,7 @@ export function PurchaseOrdersPage() {
         <DataListToolbar />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
         <ListPageState
           isLoading={isLoading}
           isError={isError}
@@ -646,7 +715,7 @@ export function PurchaseOrdersPage() {
           }
         >
           {(items) => (
-            <div className="w-full">
+            <div className="w-full px-6 pb-6">
               <PurchaseOrdersTable items={items} onPeek={setPeekPoId} />
             </div>
           )}

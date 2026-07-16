@@ -14,6 +14,7 @@ import com.invsys.repository.RoleRepository;
 import com.invsys.repository.SupplierUserMappingRepository;
 import com.invsys.repository.UserRepository;
 import com.invsys.repository.UserRoleRepository;
+import com.invsys.tenancy.BootstrapJdbc;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,6 +40,7 @@ public class UserManagementService {
     private final SupplierUserMappingRepository supplierUserMappingRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final BootstrapJdbc bootstrapJdbc;
 
     public UserManagementService(UserRepository userRepository,
                                  UserRoleRepository userRoleRepository,
@@ -47,7 +49,8 @@ public class UserManagementService {
                                  CustomerUserMappingRepository customerUserMappingRepository,
                                  SupplierUserMappingRepository supplierUserMappingRepository,
                                  RefreshTokenRepository refreshTokenRepository,
-                                 PasswordEncoder passwordEncoder) {
+                                 PasswordEncoder passwordEncoder,
+                                 BootstrapJdbc bootstrapJdbc) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.roleRepository = roleRepository;
@@ -56,6 +59,7 @@ public class UserManagementService {
         this.supplierUserMappingRepository = supplierUserMappingRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
+        this.bootstrapJdbc = bootstrapJdbc;
     }
 
     public List<User> listUsers() {
@@ -63,12 +67,12 @@ public class UserManagementService {
     }
 
     @Transactional
-    public Invitation invite(String email, String roleCode, UUID customerId) {
+    public InviteResult invite(String email, String roleCode, UUID customerId) {
         return invite(email, roleCode, customerId, null);
     }
 
     @Transactional
-    public Invitation invite(String email, String roleCode, UUID customerId, UUID supplierId) {
+    public InviteResult invite(String email, String roleCode, UUID customerId, UUID supplierId) {
         Role role = roleRepository.findByTenantIdAndCode(TenantContext.requireTenantId(), roleCode)
                 .orElseGet(() -> {
                     if (!"B2B_CUSTOMER".equals(roleCode) && !"SUPPLIER".equals(roleCode)) {
@@ -100,54 +104,58 @@ public class UserManagementService {
         invitation.setExpiresAt(Instant.now().plusSeconds(7 * 86400));
         invitationRepository.save(invitation);
         System.out.println("[DEV] Invitation link token for " + email + ": " + token);
-        return invitation;
+        return new InviteResult(invitation, token);
     }
 
     @Transactional
-    public Invitation invite(String email, String roleCode) {
+    public InviteResult invite(String email, String roleCode) {
         return invite(email, roleCode, null, null);
+    }
+
+    public record InviteResult(Invitation invitation, String rawToken) {
     }
 
     @Transactional
     public User acceptInvitation(String token, String displayName, String password) {
-        Invitation invitation = invitationRepository.findByTokenHash(hash(token))
+        // Lookup via app_owner — invitations RLS requires tenant context which accept does not have yet.
+        BootstrapJdbc.InvitationBootstrapRow invitation = bootstrapJdbc
+                .findOpenInvitationByTokenHash(hash(token))
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "Invalid invitation"));
-        if (invitation.getAcceptedAt() != null || invitation.getExpiresAt().isBefore(Instant.now())) {
+        if (invitation.acceptedAt() != null || invitation.expiresAt().isBefore(Instant.now())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "Invitation expired or used");
         }
-        TenantContext.setTenantId(invitation.getTenantId());
+        TenantContext.setTenantId(invitation.tenantId());
         User user = new User();
-        user.setTenantId(invitation.getTenantId());
-        user.setEmail(invitation.getEmail());
+        user.setTenantId(invitation.tenantId());
+        user.setEmail(invitation.email());
         user.setDisplayName(displayName);
         user.setPasswordHash(passwordEncoder.encode(password));
         user.setStatus("ACTIVE");
         userRepository.save(user);
 
         UserRole userRole = new UserRole();
-        userRole.setTenantId(invitation.getTenantId());
+        userRole.setTenantId(invitation.tenantId());
         userRole.setUserId(user.getId());
-        userRole.setRoleId(invitation.getRoleId());
+        userRole.setRoleId(invitation.roleId());
         userRoleRepository.save(userRole);
 
-        Role role = roleRepository.findById(invitation.getRoleId()).orElseThrow();
-        if ("B2B_CUSTOMER".equals(role.getCode()) && invitation.getCustomerId() != null) {
+        Role role = roleRepository.findById(invitation.roleId()).orElseThrow();
+        if ("B2B_CUSTOMER".equals(role.getCode()) && invitation.customerId() != null) {
             CustomerUserMapping mapping = new CustomerUserMapping();
-            mapping.setTenantId(invitation.getTenantId());
-            mapping.setCustomerId(invitation.getCustomerId());
+            mapping.setTenantId(invitation.tenantId());
+            mapping.setCustomerId(invitation.customerId());
             mapping.setUserId(user.getId());
             customerUserMappingRepository.save(mapping);
         }
-        if ("SUPPLIER".equals(role.getCode()) && invitation.getSupplierId() != null) {
+        if ("SUPPLIER".equals(role.getCode()) && invitation.supplierId() != null) {
             SupplierUserMapping mapping = new SupplierUserMapping();
-            mapping.setTenantId(invitation.getTenantId());
-            mapping.setSupplierId(invitation.getSupplierId());
+            mapping.setTenantId(invitation.tenantId());
+            mapping.setSupplierId(invitation.supplierId());
             mapping.setUserId(user.getId());
             supplierUserMappingRepository.save(mapping);
         }
 
-        invitation.setAcceptedAt(Instant.now());
-        invitationRepository.save(invitation);
+        bootstrapJdbc.markInvitationAccepted(invitation.id());
         return user;
     }
 

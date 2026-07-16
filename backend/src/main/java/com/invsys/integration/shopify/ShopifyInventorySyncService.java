@@ -3,6 +3,7 @@ package com.invsys.integration.shopify;
 import com.invsys.domain.ChannelIntegration;
 import com.invsys.domain.IntegrationSyncLog;
 import com.invsys.integration.CredentialVaultService;
+import com.invsys.integration.alerts.IntegrationFailurePublisher;
 import com.invsys.integration.domain.IntegrationCredential;
 import com.invsys.repository.ChannelIntegrationRepository;
 import com.invsys.integration.repository.IntegrationCredentialRepository;
@@ -33,18 +34,21 @@ public class ShopifyInventorySyncService {
     private final CredentialVaultService credentialVaultService;
     private final InventoryLevelRepository inventoryLevelRepository;
     private final IntegrationSyncLogRepository syncLogRepository;
+    private final IntegrationFailurePublisher failurePublisher;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public ShopifyInventorySyncService(ChannelIntegrationRepository channelIntegrationRepository,
                                        IntegrationCredentialRepository credentialRepository,
                                        CredentialVaultService credentialVaultService,
                                        InventoryLevelRepository inventoryLevelRepository,
-                                       IntegrationSyncLogRepository syncLogRepository) {
+                                       IntegrationSyncLogRepository syncLogRepository,
+                                       IntegrationFailurePublisher failurePublisher) {
         this.channelIntegrationRepository = channelIntegrationRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.inventoryLevelRepository = inventoryLevelRepository;
         this.syncLogRepository = syncLogRepository;
+        this.failurePublisher = failurePublisher;
     }
 
     public IntegrationSyncLog pushQuantity(UUID tenantId, UUID variantId, Map<String, Object> payload) {
@@ -115,12 +119,19 @@ public class ShopifyInventorySyncService {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            boolean ok = response.statusCode() >= 200 && response.statusCode() < 300;
+            int status = response.statusCode();
+            boolean ok = status >= 200 && status < 300;
             syncLog.setStatus(ok ? "SYNCED" : "FAILED");
             if (!ok) {
-                syncLog.setLastError("HTTP " + response.statusCode() + ": " + truncate(response.body()));
+                syncLog.setLastError("HTTP " + status + ": " + truncate(response.body()));
                 log.warn("Shopify inventorySetQuantities failed tenant={} variant={} status={}",
-                        tenantId, variantId, response.statusCode());
+                        tenantId, variantId, status);
+                IntegrationSyncLog saved = syncLogRepository.save(syncLog);
+                if (status == 401 || status == 403 || status >= 500) {
+                    failurePublisher.publish(tenantId, "SHOPIFY", "HTTP_" + status,
+                            truncate(response.body()), variantId);
+                }
+                return saved;
             }
             return syncLogRepository.save(syncLog);
         } catch (Exception ex) {
@@ -131,7 +142,10 @@ public class ShopifyInventorySyncService {
             failed.setEntityId(variantId);
             failed.setStatus("FAILED");
             failed.setLastError(truncate(ex.getMessage()));
-            return syncLogRepository.save(failed);
+            IntegrationSyncLog saved = syncLogRepository.save(failed);
+            failurePublisher.publish(tenantId, "SHOPIFY", "SYNC_EXCEPTION",
+                    truncate(ex.getMessage()), variantId);
+            return saved;
         } finally {
             TenantContext.clear();
         }

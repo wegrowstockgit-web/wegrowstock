@@ -10,12 +10,15 @@ import { Card, CardHeader } from '@/components/ui/Card';
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
 
   const acceptMutation = useMutation({
     mutationFn: async () => {
+      const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
       await apiClient.post('/api/v1/invitations/accept', {
         token,
         password,
@@ -23,7 +26,9 @@ export function InvitePage() {
       });
     },
     onSuccess: () => {
-      navigate('/login', { state: { message: 'Account created. Sign in with your company slug and email.' } });
+      navigate('/login', {
+        state: { message: 'Account created. Sign in with your email and password.' },
+      });
     },
     onError: () => {
       setError('This invitation is invalid or has expired.');
@@ -34,6 +39,14 @@ export function InvitePage() {
     e.preventDefault();
     if (!token) return;
     setError('');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('First and last name are required.');
+      return;
+    }
     acceptMutation.mutate();
   };
 
@@ -51,15 +64,22 @@ export function InvitePage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface p-6">
+    <div className="flex min-h-screen items-center justify-center bg-surface p-6" data-testid="invite-accept-page">
       <Card className="w-full max-w-md p-8">
         <CardHeader title="Accept invitation" description="Set up your account to join the team" />
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <Input
-            label="Your name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            label="First Name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            required
+            autoFocus
+          />
+          <Input
+            label="Last Name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
             required
           />
           <Input
@@ -67,6 +87,14 @@ export function InvitePage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={8}
+          />
+          <Input
+            label="Confirm Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
             required
             minLength={8}
           />

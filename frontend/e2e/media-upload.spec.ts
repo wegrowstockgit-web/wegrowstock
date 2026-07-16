@@ -26,21 +26,30 @@ test.describe('Media upload surfaces', () => {
   });
 
   test('Take photo opens device camera capture UI', async ({ ownerPage }) => {
-    await ownerPage.addInitScript(() => {
-      const fakeTrack = { stop: () => undefined };
-      const fakeStream = { getTracks: () => [fakeTrack] };
-      Object.defineProperty(navigator, 'mediaDevices', {
-        configurable: true,
-        value: {
-          getUserMedia: async () => fakeStream,
-        },
-      });
-    });
-
     await ownerPage.goto('/settings');
     await expect(ownerPage.getByTestId('profile-avatar-picker')).toBeVisible({ timeout: 30_000 });
+
+    // Headless Chromium has no camera — stub a canvas MediaStream in-page after load.
+    await ownerPage.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      const stream = canvas.captureStream(10);
+      const devices = navigator.mediaDevices ?? ({} as MediaDevices);
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: devices,
+      });
+      devices.getUserMedia = async () => stream;
+    });
+
     await ownerPage.getByRole('button', { name: 'Take photo' }).click();
-    await expect(ownerPage.getByTestId('camera-capture-live')).toBeVisible();
+    await expect(ownerPage.getByTestId('camera-capture-live')).toBeVisible({ timeout: 10_000 });
     await expect(ownerPage.getByTestId('camera-capture-snap')).toBeVisible();
     await expect(ownerPage.getByRole('button', { name: 'Cancel' })).toBeVisible();
   });

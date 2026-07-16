@@ -418,4 +418,77 @@ public class BootstrapJdbc {
                 DO UPDATE SET rate = EXCLUDED.rate, as_of = EXCLUDED.as_of, updated_at = NOW()
                 """, fromCurrency, toCurrency, rate, java.sql.Timestamp.from(asOf));
     }
+
+    public Optional<UUID> findTenantIdByStripeCustomerId(String stripeCustomerId) {
+        if (stripeCustomerId == null || stripeCustomerId.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbc.query(
+                "SELECT id FROM tenants WHERE stripe_customer_id = ? LIMIT 1",
+                rs -> rs.next() ? Optional.of(UUID.fromString(rs.getString(1))) : Optional.empty(),
+                stripeCustomerId.trim());
+    }
+
+    public int updateTenantSubscriptionStatus(UUID tenantId, String subscriptionStatus) {
+        return jdbc.update("""
+                UPDATE tenants
+                SET subscription_status = ?, updated_at = NOW()
+                WHERE id = ?
+                """, subscriptionStatus, tenantId);
+    }
+
+    /**
+     * Pre-auth invitation lookup (bypasses RLS) — accept flow has no tenant context yet.
+     */
+    public Optional<InvitationBootstrapRow> findOpenInvitationByTokenHash(String tokenHash) {
+        if (tokenHash == null || tokenHash.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, email, role_id, customer_id, supplier_id, expires_at, accepted_at
+                FROM invitations
+                WHERE token_hash = ?
+                LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new InvitationBootstrapRow(
+                            UUID.fromString(rs.getString("id")),
+                            UUID.fromString(rs.getString("tenant_id")),
+                            rs.getString("email"),
+                            UUID.fromString(rs.getString("role_id")),
+                            rs.getString("customer_id") != null
+                                    ? UUID.fromString(rs.getString("customer_id")) : null,
+                            rs.getString("supplier_id") != null
+                                    ? UUID.fromString(rs.getString("supplier_id")) : null,
+                            rs.getTimestamp("expires_at").toInstant(),
+                            rs.getTimestamp("accepted_at") != null
+                                    ? rs.getTimestamp("accepted_at").toInstant() : null));
+                },
+                tokenHash.trim());
+    }
+
+    public void markInvitationAccepted(UUID invitationId) {
+        jdbc.update("""
+                UPDATE invitations
+                SET accepted_at = NOW(), updated_at = NOW()
+                WHERE id = ?
+                """, invitationId);
+    }
+
+    public record InvitationBootstrapRow(
+            UUID id,
+            UUID tenantId,
+            String email,
+            UUID roleId,
+            UUID customerId,
+            UUID supplierId,
+            java.time.Instant expiresAt,
+            java.time.Instant acceptedAt
+    ) {
+    }
 }
+

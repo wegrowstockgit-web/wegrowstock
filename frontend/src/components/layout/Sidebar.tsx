@@ -153,7 +153,8 @@ export function Sidebar() {
   const setScrollFold = useRailStore((s) => s.setScrollFold);
 
   const coarsePointer = useCoarsePointer();
-  const isTabletOrBelow = useMediaQuery('(max-width: 767px)');
+  // iPad / tablet footprints (incl. portrait iPad) collapse the rail into a tap drawer.
+  const isTabletOrBelow = useMediaQuery('(max-width: 1023px)');
 
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -205,11 +206,13 @@ export function Sidebar() {
       document.documentElement.style.setProperty('--rail-width', '0px');
       return;
     }
+    // Keep main content padding in sync with peek/pin width so the flyout
+    // cannot intercept clicks on page chrome (settings subnav, etc.).
     document.documentElement.style.setProperty(
       '--rail-width',
-      pinned ? 'var(--rail-width-expanded)' : 'var(--rail-width-collapsed)'
+      expanded ? 'var(--rail-width-expanded)' : 'var(--rail-width-collapsed)'
     );
-  }, [pinned, isTabletOrBelow]);
+  }, [expanded, isTabletOrBelow]);
 
   const handlePinToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -257,7 +260,7 @@ export function Sidebar() {
         <button
           type="button"
           aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[1px] md:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}

@@ -1,7 +1,8 @@
 package com.invsys.billing;
 
 import com.invsys.domain.Invoice;
-import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -9,8 +10,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-@Service
-public class MockStripeGateway implements StripeGateway {
+/**
+ * Deterministic Stripe Connect simulation for local / test / docker profiles.
+ */
+@Component
+@Profile({"dev", "test", "docker", "default"})
+public class MockStripeConnectGateway implements StripeConnectGateway, StripeGateway {
 
     @Override
     public PaymentIntentResult createPaymentIntent(Invoice invoice, String connectedAccountId, double feePercent) {
@@ -32,7 +37,7 @@ public class MockStripeGateway implements StripeGateway {
     public ConnectOnboardingResult createConnectOnboardingUrl(UUID tenantId, String returnUrl) {
         String accountId = "acct_mock_" + tenantId.toString().replace("-", "").substring(0, 12);
         String url = "https://connect.stripe.com/setup/mock/" + accountId + "?return_url="
-                + (returnUrl != null ? returnUrl : "http://localhost:3000/settings");
+                + (returnUrl != null ? returnUrl : "http://localhost:3000/settings/billing");
         return new ConnectOnboardingResult(url, accountId);
     }
 }

@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.invsys.domain.IntegrationSyncLog;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.integration.CredentialVaultService;
+import com.invsys.integration.alerts.IntegrationFailurePublisher;
 import com.invsys.integration.domain.IntegrationCredential;
 import com.invsys.integration.repository.IntegrationCredentialRepository;
 import com.invsys.repository.IntegrationSyncLogRepository;
@@ -31,17 +32,20 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
     private final IntegrationCredentialRepository credentialRepository;
     private final CredentialVaultService credentialVaultService;
     private final InventoryLedgerRepository ledgerRepository;
+    private final IntegrationFailurePublisher failurePublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public QuickBooksOnlineAdapter(IntegrationSyncLogRepository syncLogRepository,
                                    IntegrationCredentialRepository credentialRepository,
                                    CredentialVaultService credentialVaultService,
-                                   InventoryLedgerRepository ledgerRepository) {
+                                   InventoryLedgerRepository ledgerRepository,
+                                   IntegrationFailurePublisher failurePublisher) {
         this.syncLogRepository = syncLogRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.ledgerRepository = ledgerRepository;
+        this.failurePublisher = failurePublisher;
     }
 
     @Override
@@ -103,10 +107,17 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            boolean ok = response.statusCode() >= 200 && response.statusCode() < 300;
+            int status = response.statusCode();
+            boolean ok = status >= 200 && status < 300;
             log.setStatus(ok ? "SYNCED" : "FAILED");
             if (!ok) {
-                log.setLastError("HTTP " + response.statusCode() + ": " + truncate(response.body()));
+                log.setLastError("HTTP " + status + ": " + truncate(response.body()));
+                IntegrationSyncLog saved = syncLogRepository.save(log);
+                if (isAlertableHttpStatus(status)) {
+                    failurePublisher.publish(tenantId, system(), "HTTP_" + status,
+                            truncate(response.body()), ledgerEntryId);
+                }
+                return saved;
             }
             return syncLogRepository.save(log);
         } catch (Exception ex) {
@@ -119,6 +130,12 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
     private Optional<CredentialBundle> loadCredentials(UUID tenantId) {
         return credentialRepository.findByTenantIdAndSystem(tenantId, system())
                 .map(credential -> {
+                    if (credential.getRefreshTokenExpiresAt() != null
+                            && credential.getRefreshTokenExpiresAt().isBefore(java.time.Instant.now())) {
+                        failurePublisher.publish(tenantId, system(), "OAUTH_TOKEN_EXPIRED",
+                                "QuickBooks refresh token expired at " + credential.getRefreshTokenExpiresAt());
+                        return null;
+                    }
                     String raw = new String(credentialVaultService.decrypt(credential.getCiphertext()),
                             StandardCharsets.UTF_8);
                     String[] parts = raw.split("\\|");
@@ -148,7 +165,13 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
         log.setEntityId(entityId);
         log.setStatus("FAILED");
         log.setLastError(truncate(detail));
-        return syncLogRepository.save(log);
+        IntegrationSyncLog saved = syncLogRepository.save(log);
+        failurePublisher.publish(tenantId, system(), "SYNC_EXCEPTION", truncate(detail), entityId);
+        return saved;
+    }
+
+    private static boolean isAlertableHttpStatus(int status) {
+        return status == 401 || status == 403 || status >= 500;
     }
 
     private static String truncate(String value) {

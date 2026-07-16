@@ -30,19 +30,22 @@ public class PurchaseOrderService {
     private final UomConversionService uomConversionService;
     private final TenantSettingsRepository tenantSettingsRepository;
     private final OutboxService outboxService;
+    private final CrossDockService crossDockService;
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderLineRepository lineRepository,
                                 InventoryService inventoryService,
                                 UomConversionService uomConversionService,
                                 TenantSettingsRepository tenantSettingsRepository,
-                                OutboxService outboxService) {
+                                OutboxService outboxService,
+                                CrossDockService crossDockService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.inventoryService = inventoryService;
         this.uomConversionService = uomConversionService;
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.outboxService = outboxService;
+        this.crossDockService = crossDockService;
     }
 
     @Transactional
@@ -99,11 +102,35 @@ public class PurchaseOrderService {
         BigDecimal standardQty = uomConversionService.toStandardQuantity(
                 line.getVariantId(), quantity, "PURCHASING");
         BigDecimal unitCost = applySurchargeToUnitCost(line.getUnitCost(), quantity, landedCostSurcharge);
-        inventoryService.receive(line.getVariantId(), locationId, lotId, standardQty,
-                "PURCHASE_ORDER_LINE", line.getId(), unitCost);
+
+        // Cross-dock intercept: open SO demand → receive into shipping staging, skip reserve put-away.
+        UUID receiveLocationId = locationId;
+        String reasonCode = "PO_RECEIVE";
+        var openDemand = crossDockService.previewOpenDemand(line.getVariantId());
+        if (openDemand.isPresent()) {
+            receiveLocationId = openDemand.get().stagingLocationId();
+            reasonCode = CrossDockService.REASON_CROSS_DOCK_ROUTING;
+        }
+
+        inventoryService.receive(
+                line.getVariantId(),
+                receiveLocationId,
+                lotId,
+                null,
+                standardQty,
+                reasonCode,
+                "PURCHASE_ORDER_LINE",
+                line.getId(),
+                unitCost,
+                null,
+                null);
         line.setQtyReceived(line.getQtyReceived().add(quantity));
         lineRepository.save(line);
         refreshPoStatus(po);
+
+        if (openDemand.isPresent()) {
+            crossDockService.fulfillOpenDemand(line.getVariantId(), receiveLocationId, standardQty);
+        }
         return line;
     }
 

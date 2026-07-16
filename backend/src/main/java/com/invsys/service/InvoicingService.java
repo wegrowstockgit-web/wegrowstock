@@ -1,7 +1,7 @@
 package com.invsys.service;
 
 import com.invsys.integration.OutboxService;
-import com.invsys.billing.StripeGateway;
+import com.invsys.billing.StripeConnectGateway;
 import com.invsys.common.ApiException;
 import com.invsys.domain.Invoice;
 import com.invsys.domain.InvoiceLine;
@@ -50,7 +50,7 @@ public class InvoicingService {
     private final StripeAccountRepository stripeAccountRepository;
     private final PaymentIntentRepository paymentIntentRepository;
     private final PaymentRepository paymentRepository;
-    private final StripeGateway stripeGateway;
+    private final StripeConnectGateway stripeGateway;
     private final OutboxService outboxService;
     private final CreditService creditService;
     private final ShipmentRepository shipmentRepository;
@@ -67,7 +67,7 @@ public class InvoicingService {
                             StripeAccountRepository stripeAccountRepository,
                             PaymentIntentRepository paymentIntentRepository,
                             PaymentRepository paymentRepository,
-                            StripeGateway stripeGateway,
+                            StripeConnectGateway stripeGateway,
                             OutboxService outboxService,
                             CreditService creditService,
                             ShipmentRepository shipmentRepository,
@@ -271,7 +271,7 @@ public class InvoicingService {
                 .map(StripeAccount::getConnectedAccountId)
                 .orElse("acct_mock");
 
-        StripeGateway.PaymentIntentResult result = stripeGateway.createPaymentIntent(invoice, connectedAccount, feePercent);
+        StripeConnectGateway.PaymentIntentResult result = stripeGateway.createPaymentIntent(invoice, connectedAccount, feePercent);
         PaymentIntent pi = new PaymentIntent();
         pi.setTenantId(TenantContext.requireTenantId());
         pi.setInvoiceId(invoiceId);

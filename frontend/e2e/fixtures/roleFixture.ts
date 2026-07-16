@@ -1,18 +1,108 @@
 import path from 'node:path';
-import { test as base, type Page, type Browser } from '@playwright/test';
+import { test as base, type Page, type Browser, type BrowserContext } from '@playwright/test';
 
+const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 const AUTH_DIR = path.join(process.cwd(), 'playwright', '.auth');
+
+const ROLE_EMAIL: Record<string, string> = {
+  owner: 'owner@demo.test',
+  admin: 'admin@demo.test',
+  manager: 'manager@demo.test',
+  picker: 'picker@demo.test',
+  viewer: 'viewer@demo.test',
+  b2b: 'b2b@demo.test',
+};
 
 function storageStateFor(role: string): string {
   return path.join(AUTH_DIR, `${role}.json`);
 }
 
-async function pageForRole(browser: Browser, role: string): Promise<{ page: Page; close: () => Promise<void> }> {
-  const context = await browser.newContext({
-    storageState: storageStateFor(role),
-    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
-  });
+/**
+ * Isolated context with a fresh API login.
+ * Prefer this over cached storageState — refresh tokens rotate and go stale mid-suite.
+ */
+async function pageForRole(
+  browser: Browser,
+  role: string,
+): Promise<{ page: Page; close: () => Promise<void> }> {
+  const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+  const email = ROLE_EMAIL[role];
+  if (!email) {
+    throw new Error(`Unknown role fixture: ${role}`);
+  }
+
+  const context: BrowserContext = await browser.newContext({ baseURL });
   const page = await context.newPage();
+
+  let loginRes = await page.request.post('/api/v1/auth/login', {
+    data: { email, password: DEMO_PASSWORD },
+  });
+  for (let attempt = 0; !loginRes.ok() && loginRes.status() === 429 && attempt < 4; attempt += 1) {
+    await page.waitForTimeout(15_000 * (attempt + 1));
+    loginRes = await page.request.post('/api/v1/auth/login', {
+      data: { email, password: DEMO_PASSWORD },
+    });
+  }
+  if (!loginRes.ok()) {
+    const status = loginRes.status();
+    const body = await loginRes.text().catch(() => '');
+    await context.close();
+    throw new Error(`Login failed for ${email}: ${status} ${body}`);
+  }
+  const session = (await loginRes.json()) as {
+    userId: string;
+    tenantId: string;
+    roles: string[];
+    warehouseIds?: string[];
+  };
+  const meRes = await page.request.get('/api/v1/auth/me');
+  const me = meRes.ok()
+    ? ((await meRes.json()) as {
+        userId: string;
+        tenantId: string;
+        email: string;
+        displayName: string;
+        roles: string[];
+        warehouseIds?: string[];
+      })
+    : null;
+
+  await page.goto('/login');
+  await page.evaluate(
+    ({ user }) => {
+      localStorage.setItem(
+        'invsys-session',
+        JSON.stringify({
+          state: {
+            authenticated: true,
+            user,
+            lastRequestId: null,
+            primarySession: null,
+          },
+          version: 0,
+        }),
+      );
+    },
+    {
+      user: {
+        id: me?.userId ?? session.userId,
+        email: me?.email ?? email,
+        displayName: me?.displayName ?? email,
+        roles: me?.roles ?? session.roles,
+        warehouseIds: me?.warehouseIds ?? session.warehouseIds ?? [],
+        tenantId: me?.tenantId ?? session.tenantId,
+      },
+    },
+  );
+  await page.goto('/dashboard');
+
+  // Keep a copy for debugging / optional reuse; do not rely on it as the sole session source.
+  try {
+    await context.storageState({ path: storageStateFor(role) });
+  } catch {
+    // ignore persistence failures
+  }
+
   return {
     page,
     close: async () => {
@@ -31,7 +121,7 @@ type RoleFixtures = {
 };
 
 /**
- * Role-authenticated page fixtures backed by cached storage state from global setup.
+ * Role-authenticated page fixtures with fresh cookies per test.
  */
 export const test = base.extend<RoleFixtures>({
   ownerPage: async ({ browser }, use) => {
@@ -71,10 +161,11 @@ export { expect } from '@playwright/test';
 /** Simulate a HID wedge barcode scan (fast keydown burst + Enter). */
 export async function hidScan(page: Page, barcode: string): Promise<void> {
   await page.evaluate((code) => {
+    // Match production hook: window capture-phase keydown listeners.
     for (const key of code) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   }, barcode);
 }
 

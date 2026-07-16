@@ -70,7 +70,7 @@ export function Header({
               variant="secondary"
               size="sm"
               onClick={toggleMobileOpen}
-              className="min-h-11 min-w-11 touch-target md:hidden"
+              className="min-h-11 min-w-11 touch-target lg:hidden"
               aria-label="Open navigation"
             >
               <Menu className="h-5 w-5" />

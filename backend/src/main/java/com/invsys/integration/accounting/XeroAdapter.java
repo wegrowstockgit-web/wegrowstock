@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.invsys.domain.IntegrationSyncLog;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.integration.CredentialVaultService;
+import com.invsys.integration.alerts.IntegrationFailurePublisher;
 import com.invsys.integration.repository.IntegrationCredentialRepository;
 import com.invsys.repository.IntegrationSyncLogRepository;
 import com.invsys.repository.InventoryLedgerRepository;
@@ -31,17 +32,20 @@ public class XeroAdapter implements AccountingSyncAdapter {
     private final IntegrationCredentialRepository credentialRepository;
     private final CredentialVaultService credentialVaultService;
     private final InventoryLedgerRepository ledgerRepository;
+    private final IntegrationFailurePublisher failurePublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public XeroAdapter(IntegrationSyncLogRepository syncLogRepository,
                        IntegrationCredentialRepository credentialRepository,
                        CredentialVaultService credentialVaultService,
-                       InventoryLedgerRepository ledgerRepository) {
+                       InventoryLedgerRepository ledgerRepository,
+                       IntegrationFailurePublisher failurePublisher) {
         this.syncLogRepository = syncLogRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.ledgerRepository = ledgerRepository;
+        this.failurePublisher = failurePublisher;
     }
 
     @Override
@@ -103,17 +107,27 @@ public class XeroAdapter implements AccountingSyncAdapter {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            boolean ok = response.statusCode() >= 200 && response.statusCode() < 300;
+            int status = response.statusCode();
+            boolean ok = status >= 200 && status < 300;
             log.setStatus(ok ? "SYNCED" : "FAILED");
             if (!ok) {
-                log.setLastError("HTTP " + response.statusCode() + ": " + truncate(response.body()));
+                log.setLastError("HTTP " + status + ": " + truncate(response.body()));
+                IntegrationSyncLog saved = syncLogRepository.save(log);
+                if (status == 401 || status == 403 || status >= 500) {
+                    failurePublisher.publish(tenantId, system(), "HTTP_" + status,
+                            truncate(response.body()), ledgerEntryId);
+                }
+                return saved;
             }
             return syncLogRepository.save(log);
         } catch (Exception ex) {
             IntegrationSyncLog failed = skipped(tenantId, "LEDGER_ENTRY", ledgerEntryId);
             failed.setStatus("FAILED");
             failed.setLastError(truncate(ex.getMessage()));
-            return syncLogRepository.save(failed);
+            IntegrationSyncLog saved = syncLogRepository.save(failed);
+            failurePublisher.publish(tenantId, system(), "SYNC_EXCEPTION",
+                    truncate(ex.getMessage()), ledgerEntryId);
+            return saved;
         } finally {
             TenantContext.clear();
         }

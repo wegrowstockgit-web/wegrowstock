@@ -1,11 +1,14 @@
 package com.invsys.api;
 
 import com.invsys.domain.WebhookEvent;
+import com.invsys.integration.alerts.IntegrationFailurePublisher;
 import com.invsys.integration.outbox.ChannelOrderWebhookHandler;
 import com.invsys.integration.shopify.ShopifyWebhookValidator;
 import com.invsys.integration.webhooks.EasyPostWebhookValidator;
 import com.invsys.service.AccountingPaymentWebhookService;
+import com.invsys.service.PlatformSubscriptionWebhookService;
 import com.invsys.service.PublicWebhookService;
+import com.invsys.tenancy.BootstrapJdbc;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +35,9 @@ public class PublicWebhookController {
     private final ShopifyWebhookValidator shopifyWebhookValidator;
     private final EasyPostWebhookValidator easyPostWebhookValidator;
     private final AccountingPaymentWebhookService accountingPaymentWebhookService;
+    private final PlatformSubscriptionWebhookService platformSubscriptionWebhookService;
+    private final IntegrationFailurePublisher failurePublisher;
+    private final BootstrapJdbc bootstrapJdbc;
     private final String shopifyWebhookSecret;
     private final String easyPostWebhookSecret;
 
@@ -40,6 +46,9 @@ public class PublicWebhookController {
                                    ShopifyWebhookValidator shopifyWebhookValidator,
                                    EasyPostWebhookValidator easyPostWebhookValidator,
                                    AccountingPaymentWebhookService accountingPaymentWebhookService,
+                                   PlatformSubscriptionWebhookService platformSubscriptionWebhookService,
+                                   IntegrationFailurePublisher failurePublisher,
+                                   BootstrapJdbc bootstrapJdbc,
                                    @Value("${invsys.webhooks.shopify-secret}") String shopifyWebhookSecret,
                                    @Value("${invsys.webhooks.easypost-secret}") String easyPostWebhookSecret) {
         this.publicWebhookService = publicWebhookService;
@@ -47,8 +56,18 @@ public class PublicWebhookController {
         this.shopifyWebhookValidator = shopifyWebhookValidator;
         this.easyPostWebhookValidator = easyPostWebhookValidator;
         this.accountingPaymentWebhookService = accountingPaymentWebhookService;
+        this.platformSubscriptionWebhookService = platformSubscriptionWebhookService;
+        this.failurePublisher = failurePublisher;
+        this.bootstrapJdbc = bootstrapJdbc;
         this.shopifyWebhookSecret = shopifyWebhookSecret;
         this.easyPostWebhookSecret = easyPostWebhookSecret;
+    }
+
+    @PostMapping("/stripe-platform")
+    public ResponseEntity<Map<String, String>> stripePlatformWebhook(
+            @RequestHeader(value = "Stripe-Signature", required = false) String signature,
+            @RequestBody String rawBody) {
+        return ResponseEntity.ok(platformSubscriptionWebhookService.accept(signature, rawBody));
     }
 
     @PostMapping("/channels/{platform}")
@@ -66,6 +85,10 @@ public class PublicWebhookController {
         }
         if ("shopify".equals(normalized)
                 && !shopifyWebhookValidator.isValid(rawBody, shopifyHmac, shopifyWebhookSecret)) {
+            String shop = shopDomain != null ? shopDomain : "unknown";
+            bootstrapJdbc.findTenantIdByChannelShop("SHOPIFY", shop).ifPresent(tenantId ->
+                    failurePublisher.publish(tenantId, "SHOPIFY", "WEBHOOK_SIGNATURE_FAILED",
+                            "Invalid X-Shopify-Hmac-Sha256 for shop " + shop));
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("status", "invalid_signature"));
         }

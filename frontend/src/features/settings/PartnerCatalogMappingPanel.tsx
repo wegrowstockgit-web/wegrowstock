@@ -151,7 +151,7 @@ export function PartnerCatalogMappingPanel() {
       {mappingsQuery.isLoading || catalogQuery.isLoading ? (
         <TableSkeleton rows={6} cols={3} />
       ) : (
-        <div className="overflow-x-auto">
+        <div>
           <Table>
             <TableHeader>
               <TableRow>

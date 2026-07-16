@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 
 import { AppShell } from '@/components/layout/AppShell';
 
@@ -9,6 +9,16 @@ import { LoginPage } from '@/pages/LoginPage';
 import { SignupPage } from '@/pages/SignupPage';
 
 import { InvitePage } from '@/pages/InvitePage';
+
+/** Prompt alias: /invite/accept?token=… → /invite/:token */
+function InviteAcceptRedirect() {
+  const [params] = useSearchParams();
+  const token = params.get('token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <Navigate to={`/invite/${token}`} replace />;
+}
 
 import { DashboardPage } from '@/pages/DashboardPage';
 
@@ -118,6 +128,10 @@ export function App() {
         <Route path="/signup" element={<SignupPage />} />
 
         <Route path="/invite/:token" element={<InvitePage />} />
+        <Route
+          path="/invite/accept"
+          element={<InviteAcceptRedirect />}
+        />
 
         <Route path="/supplier-portal/po/:token" element={<SupplierPortalPage />} />
 
@@ -203,6 +217,15 @@ export function App() {
           />
 
           <Route
+            path="settings/import"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <ImportPage legacy />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="cycle-counts"
             element={
               <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
@@ -222,6 +245,15 @@ export function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
                 <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="reports/audit-log"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
+                <Navigate to="/settings?tab=operations" replace />
               </ProtectedRoute>
             }
           />
@@ -269,7 +301,7 @@ export function App() {
           <Route
             path="returns/receive"
             element={
-              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
                 <ReturnsReceivePage />
               </ProtectedRoute>
             }
@@ -322,6 +354,15 @@ export function App() {
           />
 
           <Route
+            path="settings/users"
+            element={
+              <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+                <Navigate to="/settings?tab=users" replace />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
 
             path="settings/billing"
 
@@ -343,7 +384,7 @@ export function App() {
 
             element={
 
-              <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+              <ProtectedRoute roles={['OWNER']} officeOnly>
 
                 <FintechSettingsPage />
 

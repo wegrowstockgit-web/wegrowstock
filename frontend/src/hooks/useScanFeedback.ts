@@ -78,7 +78,8 @@ export function useScanFeedback(): ScanFeedbackState {
 
   const triggerError = useCallback(() => {
     unlockAudio();
-    vibrate([100, 50, 100]);
+    // Destructive error pattern — distinct from the short success pulse (50ms).
+    vibrate([200, 100, 200]);
     playTone(220, 120);
     setFlash('error');
     clearFlash();

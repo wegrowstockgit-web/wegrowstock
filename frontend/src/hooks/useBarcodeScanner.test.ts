@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { extractIntentBarcode } from '@/hooks/useBarcodeScanner';
+import { act, renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { extractIntentBarcode, useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 describe('extractIntentBarcode', () => {
   it('reads DataWedge data_string extras', () => {
@@ -20,5 +21,40 @@ describe('extractIntentBarcode', () => {
     expect(extractIntentBarcode(null)).toBeNull();
     expect(extractIntentBarcode({})).toBeNull();
     expect(extractIntentBarcode('   ')).toBeNull();
+  });
+});
+
+describe('useBarcodeScanner listener lifecycle', () => {
+  it('removes the capture-phase keydown listener on unmount', () => {
+    const onScan = vi.fn();
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    const { unmount } = renderHook(() =>
+      useBarcodeScanner({ enabled: true, captureAll: true, onScan }),
+    );
+
+    const keydownReg = addSpy.mock.calls.find(
+      (call) => call[0] === 'keydown' && call[2] === true,
+    );
+    expect(keydownReg).toBeTruthy();
+    const handler = keydownReg?.[1] as EventListener;
+
+    unmount();
+
+    expect(
+      removeSpy.mock.calls.some(
+        (call) => call[0] === 'keydown' && call[1] === handler && call[2] === true,
+      ),
+    ).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(onScan).not.toHaveBeenCalled();
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 });

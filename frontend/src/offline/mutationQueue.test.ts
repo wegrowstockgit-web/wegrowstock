@@ -74,7 +74,7 @@ describe('mutationQueue secure offline engine', () => {
       expect.objectContaining({
         method: 'POST',
         url: '/api/v1/fulfillment/scan',
-        headers: { 'Idempotency-Key': 'idem-1' },
+        headers: { 'Idempotency-Key': 'idem-1', 'X-Offline-Replay': 'true' },
       }),
     );
     expect(result.succeeded).toBe(1);

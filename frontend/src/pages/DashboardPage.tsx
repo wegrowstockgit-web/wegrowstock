@@ -30,11 +30,14 @@ import type {
   DashboardStats,
   DashboardWorkQueue,
   ForecastAlert,
+  FulfillmentException,
   LowStockVelocityPoint,
   PaginatedResponse,
   ProductVariant,
 } from '@/api/types';
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
+import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
+import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -309,6 +312,17 @@ export function DashboardPage() {
     retry: false,
   });
 
+  const { data: openExceptions = [] } = useQuery({
+    queryKey: ['office', 'exceptions', 'open'],
+    queryFn: async () => {
+      const all = (await apiClient.get<FulfillmentException[]>('/api/v1/office/exceptions/list')).data;
+      return all.filter((ex) => ex.resolutionStatus === 'OPEN');
+    },
+    enabled: canManageOrders,
+    refetchInterval: 5_000,
+    retry: false,
+  });
+
   const draftPoMutation = useMutation({
     mutationFn: async (variantIds: string[]) => {
       const res = await apiClient.post<Array<{ id: string; number: string; supplierId: string }>>(
@@ -439,6 +453,56 @@ export function DashboardPage() {
 
       {canManageOrders && <WorkQueue queue={workQueue} />}
 
+      {canManageOrders && (
+        <section
+          className="rounded-lg border border-warning/40 bg-warning/5 p-4"
+          data-testid="unresolved-exceptions-panel"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" aria-hidden />
+              <div>
+                <h2 className="text-sm font-semibold text-text">Unresolved Exceptions</h2>
+                <p className="text-xs text-text-muted">
+                  Floor Skip &amp; Flag reports awaiting office resolution
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => navigate('/exceptions')}
+              data-testid="open-exceptions-queue"
+            >
+              Open queue
+              {openExceptions.length > 0 ? ` (${openExceptions.length})` : ''}
+            </Button>
+          </div>
+          {openExceptions.length === 0 ? (
+            <p className="mt-3 text-sm text-text-muted">No open fulfillment exceptions.</p>
+          ) : (
+            <ul className="mt-3 space-y-2" data-testid="unresolved-exceptions-list">
+              {openExceptions.slice(0, 5).map((ex) => (
+                <li
+                  key={ex.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-surface px-3 py-2 text-sm"
+                >
+                  <span className="font-mono text-xs text-text-muted">
+                    {ex.allocationId.slice(0, 8)}…
+                  </span>
+                  <span className="text-warning font-medium">
+                    {String(ex.metadata?.reason ?? 'OPEN')}
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => navigate('/exceptions')}>
+                    Resolve
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -482,6 +546,9 @@ export function DashboardPage() {
           })}
         </div>
       )}
+
+      {canManageOrders && <LedgerHistoryTable />}
+      {canManageOrders && <SyncConflictsPanel />}
 
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">

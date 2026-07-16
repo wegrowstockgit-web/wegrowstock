@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -58,19 +59,29 @@ public class SalesOrderService {
     @Transactional
     public SalesOrder allocate(UUID orderId) {
         SalesOrder order = getOrder(orderId);
-        if (!List.of("CONFIRMED", "ALLOCATED").contains(order.getStatus())) {
+        if (!List.of("CONFIRMED", "BACKORDERED", "ALLOCATED").contains(order.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be allocated");
         }
         String before = order.getStatus();
         List<UUID> locationIds = locationRepository.findByTenantIdOrderByPathAsc(TenantContext.requireTenantId())
                 .stream().map(l -> l.getId()).toList();
+        BigDecimal totalOrdered = BigDecimal.ZERO;
+        BigDecimal totalAllocated = BigDecimal.ZERO;
         for (SalesOrderLine line : lineRepository.findBySalesOrderId(orderId)) {
             allocationService.allocate(line, locationIds);
+            SalesOrderLine refreshed = lineRepository.findById(line.getId()).orElse(line);
+            totalOrdered = totalOrdered.add(refreshed.getQtyOrdered());
+            totalAllocated = totalAllocated.add(
+                    refreshed.getQtyAllocated() != null ? refreshed.getQtyAllocated() : BigDecimal.ZERO);
         }
-        order.setStatus("ALLOCATED");
+        // Soft backorder: no stock reserved → BACKORDERED; otherwise ALLOCATED (may still be short).
+        String after = totalAllocated.signum() <= 0 ? "BACKORDERED" : "ALLOCATED";
+        order.setStatus(after);
         order = salesOrderRepository.save(order);
         auditService.record("SALES_ORDER_ALLOCATE", "SALES_ORDER", order.getId(), Map.of(
-                "status", Map.of("before", before, "after", order.getStatus())));
+                "status", Map.of("before", before, "after", order.getStatus()),
+                "qtyOrdered", totalOrdered,
+                "qtyAllocated", totalAllocated));
         return order;
     }
 

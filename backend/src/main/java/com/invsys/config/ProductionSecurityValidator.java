@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Fail-fast when production profile is active with mock or missing secrets.
+ * Fail-fast when production profile is active with mock or missing secrets / live API keys.
  */
 @Component
 public class ProductionSecurityValidator implements ApplicationRunner {
@@ -25,11 +25,18 @@ public class ProductionSecurityValidator implements ApplicationRunner {
             "shopify_mock_secret",
             "easypost_mock_secret",
             "app_user_secret",
-            "app_owner_secret"
+            "app_owner_secret",
+            "sk_test_mock",
+            "easypost_mock_key",
+            "shopify_mock_key"
     );
 
     private final Environment environment;
     private final String stripeWebhookSecret;
+    private final String stripePlatformWebhookSecret;
+    private final String stripeSecretKey;
+    private final String easyPostApiKey;
+    private final String shopifyApiKey;
     private final String jwtPrivateKey;
     private final String jwtPublicKey;
     private final String integrationMasterKey;
@@ -38,12 +45,20 @@ public class ProductionSecurityValidator implements ApplicationRunner {
     public ProductionSecurityValidator(
             Environment environment,
             @Value("${invsys.stripe.webhook-secret:}") String stripeWebhookSecret,
+            @Value("${invsys.stripe.platform-webhook-secret:}") String stripePlatformWebhookSecret,
+            @Value("${invsys.stripe.secret-key:}") String stripeSecretKey,
+            @Value("${invsys.easypost.api-key:}") String easyPostApiKey,
+            @Value("${invsys.shopify.api-key:}") String shopifyApiKey,
             @Value("${invsys.jwt.private-key-pem:}") String jwtPrivateKey,
             @Value("${invsys.jwt.public-key-pem:}") String jwtPublicKey,
             @Value("${invsys.integration.master-key:}") String integrationMasterKey,
             @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.environment = environment;
         this.stripeWebhookSecret = stripeWebhookSecret;
+        this.stripePlatformWebhookSecret = stripePlatformWebhookSecret;
+        this.stripeSecretKey = stripeSecretKey;
+        this.easyPostApiKey = easyPostApiKey;
+        this.shopifyApiKey = shopifyApiKey;
         this.jwtPrivateKey = jwtPrivateKey;
         this.jwtPublicKey = jwtPublicKey;
         this.integrationMasterKey = integrationMasterKey;
@@ -59,18 +74,30 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         if (isBlankOrMock(stripeWebhookSecret)) {
             errors.add("invsys.stripe.webhook-secret must be set to a non-mock value");
         }
+        if (isBlankOrMock(stripePlatformWebhookSecret)) {
+            errors.add("invsys.stripe.platform-webhook-secret must be set to a non-mock value");
+        }
+        if (isBlankOrMock(stripeSecretKey) || !stripeSecretKey.startsWith("sk_")) {
+            errors.add("STRIPE_SECRET_KEY (invsys.stripe.secret-key) must be a live Stripe secret key");
+        }
+        if (isBlankOrMock(easyPostApiKey)) {
+            errors.add("EASYPOST_API_KEY (invsys.easypost.api-key) must be configured for production");
+        }
+        if (isBlankOrMock(shopifyApiKey)) {
+            errors.add("SHOPIFY_API_KEY (invsys.shopify.api-key) must be configured for production");
+        }
         if (jwtPrivateKey == null || jwtPrivateKey.isBlank() || jwtPublicKey == null || jwtPublicKey.isBlank()) {
             errors.add("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY must be configured in production");
         }
         if (integrationMasterKey == null || integrationMasterKey.isBlank()) {
             errors.add("INTEGRATION_MASTER_KEY must be configured in production");
         }
-        String shopify = System.getenv().getOrDefault("SHOPIFY_WEBHOOK_SECRET", "");
-        if (isBlankOrMock(shopify)) {
+        String shopifyWebhook = System.getenv().getOrDefault("SHOPIFY_WEBHOOK_SECRET", "");
+        if (isBlankOrMock(shopifyWebhook)) {
             errors.add("SHOPIFY_WEBHOOK_SECRET must be set to a non-mock value");
         }
-        String easyPost = System.getenv().getOrDefault("EASYPOST_WEBHOOK_SECRET", "");
-        if (isBlankOrMock(easyPost)) {
+        String easyPostWebhook = System.getenv().getOrDefault("EASYPOST_WEBHOOK_SECRET", "");
+        if (isBlankOrMock(easyPostWebhook)) {
             errors.add("EASYPOST_WEBHOOK_SECRET must be set to a non-mock value");
         }
         if (publicSignupEnabled) {
@@ -79,7 +106,7 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Production security check failed: " + String.join("; ", errors));
         }
-        log.info("Production security startup checks passed");
+        log.info("Production security startup checks passed (live Stripe, EasyPost, Shopify clients required)");
     }
 
     private boolean isProd() {

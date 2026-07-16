@@ -146,32 +146,37 @@ public class AuthService {
         if (stored.revokedAt() != null || stored.expiresAt().isBefore(Instant.now())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token");
         }
+        // /auth/refresh bypasses JwtAuthFilter — bind + clear tenant explicitly for RLS + VT safety.
         TenantContext.setTenantId(stored.tenantId());
         TenantContext.setUserId(stored.userId());
-        RefreshToken tokenEntity = refreshTokenRepository.findByTokenHash(hash)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token"));
-        User user = userRepository.findById(stored.userId())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token"));
-        if (!"ACTIVE".equals(user.getStatus())) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_INACTIVE", "User is inactive");
-        }
-        tokenEntity.setRevokedAt(Instant.now());
-        refreshTokenRepository.save(tokenEntity);
+        try {
+            RefreshToken tokenEntity = refreshTokenRepository.findByTokenHash(hash)
+                    .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token"));
+            User user = userRepository.findById(stored.userId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token"));
+            if (!"ACTIVE".equals(user.getStatus())) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_INACTIVE", "User is inactive");
+            }
+            tokenEntity.setRevokedAt(Instant.now());
+            refreshTokenRepository.save(tokenEntity);
 
-        List<String> roles = userRoleRepository.findRoleCodesByUserId(user.getId());
-        List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
-        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
-        String refresh = UUID.randomUUID().toString();
-        RefreshToken replacement = new RefreshToken();
-        replacement.setTenantId(user.getTenantId());
-        replacement.setUserId(user.getId());
-        replacement.setTokenHash(hashToken(refresh));
-        replacement.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
-        replacement = refreshTokenRepository.save(replacement);
-        tokenEntity.setReplacedBy(replacement.getId());
-        refreshTokenRepository.save(tokenEntity);
-        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
-                user.getAvatarUrl());
+            List<String> roles = userRoleRepository.findRoleCodesByUserId(user.getId());
+            List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+            String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
+            String refresh = UUID.randomUUID().toString();
+            RefreshToken replacement = new RefreshToken();
+            replacement.setTenantId(user.getTenantId());
+            replacement.setUserId(user.getId());
+            replacement.setTokenHash(hashToken(refresh));
+            replacement.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
+            replacement = refreshTokenRepository.save(replacement);
+            tokenEntity.setReplacedBy(replacement.getId());
+            refreshTokenRepository.save(tokenEntity);
+            return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
+                    user.getAvatarUrl());
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @Transactional
@@ -179,10 +184,20 @@ public class AuthService {
         if (refreshToken == null || refreshToken.isBlank()) {
             return;
         }
-        refreshTokenRepository.findByTokenHash(hashToken(refreshToken)).ifPresent(token -> {
-            token.setRevokedAt(Instant.now());
-            refreshTokenRepository.save(token);
-        });
+        String hash = hashToken(refreshToken);
+        var stored = bootstrapJdbc.findRefreshTokenByHash(hash);
+        if (stored.isEmpty()) {
+            return;
+        }
+        TenantContext.setTenantId(stored.get().tenantId());
+        try {
+            refreshTokenRepository.findByTokenHash(hash).ifPresent(token -> {
+                token.setRevokedAt(Instant.now());
+                refreshTokenRepository.save(token);
+            });
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     /**

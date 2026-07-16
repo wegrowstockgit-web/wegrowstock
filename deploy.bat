@@ -100,7 +100,9 @@ echo === Deploy complete ===
 echo   Frontend : http://localhost:3000
 echo   API      : http://localhost:8080
 echo   Swagger  : http://localhost:8080/swagger-ui.html
+echo   Grafana  : http://localhost:3001  (admin / admin)
 echo   Postgres : localhost:5432
+echo   PgBouncer: localhost:6432  (transaction pool)
 echo.
 echo   Load demo data: deploy.bat seed
 echo   Check status  : deploy.bat status
@@ -171,10 +173,18 @@ if errorlevel 1 (
 )
 echo.
 echo === Loading demo seed data ===
-docker compose exec -T db psql -U app_owner -d invsys -f /seed/demo_seed.sql
+docker compose exec -T db psql -U app_owner -d invsys -v ON_ERROR_STOP=1 -f /seed/demo_seed.sql
 if errorlevel 1 (
     echo [ERROR] Demo seed failed.
     exit /b 1
+)
+if exist "ops\demo_seed_tenants_extra.sql" (
+    echo   Loading extra tenant seed ...
+    docker compose exec -T db psql -U app_owner -d invsys -v ON_ERROR_STOP=1 -f /seed/demo_seed_tenants_extra.sql
+    if errorlevel 1 (
+        echo [ERROR] Extra tenant seed failed.
+        exit /b 1
+    )
 )
 echo   Demo seed applied. Login: demo-corp / owner@demo.test / password123
 exit /b 0

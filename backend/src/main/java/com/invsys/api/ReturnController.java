@@ -84,7 +84,7 @@ import java.util.stream.Collectors;
 
 @RequestMapping("/api/v1/returns")
 
-@PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+@PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
 
 public class ReturnController {
 
@@ -189,7 +189,7 @@ public class ReturnController {
 
 
     @PostMapping
-
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public ReturnResponse create(@Valid @RequestBody CreateReturnRequest request) {
 
         List<ReturnService.ReturnLineInput> lines = request.lines().stream()
@@ -205,7 +205,7 @@ public class ReturnController {
 
 
     @PostMapping("/{id}/approve")
-
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public ReturnResponse approve(@PathVariable UUID id) {
 
         return toResponse(returnService.approve(id));
@@ -215,7 +215,7 @@ public class ReturnController {
 
 
     @PutMapping("/{returnId}/lines/{lineId}")
-
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public ReturnLineResponse updateDisposition(@PathVariable UUID returnId,
 
                                                 @PathVariable UUID lineId,

@@ -26,6 +26,12 @@ public class Tenant {
     @Column(nullable = false)
     private String status = "ACTIVE";
 
+    @Column(name = "subscription_status", nullable = false, length = 50)
+    private String subscriptionStatus = "ACTIVE";
+
+    @Column(name = "stripe_customer_id", length = 255)
+    private String stripeCustomerId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -76,6 +82,22 @@ public class Tenant {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getSubscriptionStatus() {
+        return subscriptionStatus;
+    }
+
+    public void setSubscriptionStatus(String subscriptionStatus) {
+        this.subscriptionStatus = subscriptionStatus;
+    }
+
+    public String getStripeCustomerId() {
+        return stripeCustomerId;
+    }
+
+    public void setStripeCustomerId(String stripeCustomerId) {
+        this.stripeCustomerId = stripeCustomerId;
     }
 
     public Instant getCreatedAt() {

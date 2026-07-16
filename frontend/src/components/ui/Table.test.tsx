@@ -37,7 +37,7 @@ describe('Table corporate header skin', () => {
     expect(screen.getByText('Name')).toBeVisible();
   });
 
-  it('uses overflow-x only so vertical sticky headers are not trapped', () => {
+  it('does not nest its own scrollport (avoids double scrollbars)', () => {
     const { container } = render(
       <Table>
         <TableHeader>
@@ -53,9 +53,8 @@ describe('Table corporate header skin', () => {
       </Table>,
     );
     const shell = container.firstElementChild as HTMLElement;
-    const classes = shell.className.split(/\s+/);
-    expect(classes).toContain('overflow-x-auto');
-    expect(classes).not.toContain('overflow-auto');
+    expect(shell.getAttribute('data-table-shell')).toBe('true');
+    expect(shell.className.split(/\s+/)).not.toContain('overflow-auto');
   });
 
   it('invokes onSort from sortable headers', () => {

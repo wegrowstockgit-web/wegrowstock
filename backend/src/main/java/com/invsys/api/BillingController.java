@@ -1,6 +1,6 @@
 package com.invsys.api;
 
-import com.invsys.billing.StripeGateway;
+import com.invsys.billing.StripeConnectGateway;
 import com.invsys.service.BillingService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +21,7 @@ public class BillingController {
 
     @GetMapping("/stripe/onboarding-url")
     public OnboardingUrlResponse stripeOnboardingUrl(@RequestParam(required = false) String returnUrl) {
-        StripeGateway.ConnectOnboardingResult result = billingService.onboardingUrl(returnUrl);
+        StripeConnectGateway.ConnectOnboardingResult result = billingService.onboardingUrl(returnUrl);
         return new OnboardingUrlResponse(result.url(), result.accountId());
     }
 

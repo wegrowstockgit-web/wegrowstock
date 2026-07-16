@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -23,15 +24,22 @@ import java.time.Duration;
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private static final int AUTH_LIMIT = 60;
-    private static final int TERMINAL_PIN_LIMIT = 20;
-    private static final int WEBHOOK_LIMIT = 120;
     private static final Duration WINDOW = Duration.ofMinutes(1);
 
     private final DistributedRateLimiter distributedRateLimiter;
+    private final int authLimit;
+    private final int terminalPinLimit;
+    private final int webhookLimit;
 
-    public RateLimitFilter(DistributedRateLimiter distributedRateLimiter) {
+    public RateLimitFilter(
+            DistributedRateLimiter distributedRateLimiter,
+            @Value("${invsys.rate-limit.auth-per-minute:60}") int authLimit,
+            @Value("${invsys.rate-limit.terminal-pin-per-minute:20}") int terminalPinLimit,
+            @Value("${invsys.rate-limit.webhook-per-minute:120}") int webhookLimit) {
         this.distributedRateLimiter = distributedRateLimiter;
+        this.authLimit = authLimit;
+        this.terminalPinLimit = terminalPinLimit;
+        this.webhookLimit = webhookLimit;
     }
 
     @Override
@@ -59,21 +67,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    private static Integer limitFor(String path) {
+    private Integer limitFor(String path) {
         if (path.startsWith("/api/v1/auth/terminal-switch")
                 || path.startsWith("/api/v1/auth/terminal-biometric")
                 || path.startsWith("/api/v1/auth/warehouse/login")) {
-            return TERMINAL_PIN_LIMIT;
+            return terminalPinLimit;
         }
         if (path.startsWith("/api/v1/auth/login")
                 || path.startsWith("/api/v1/auth/signup")
                 || path.startsWith("/api/v1/auth/refresh")
                 || path.startsWith("/api/v1/auth/sso-discover")
                 || path.startsWith("/api/v1/invitations/accept")) {
-            return AUTH_LIMIT;
+            return authLimit;
         }
         if (path.startsWith("/api/v1/webhooks/") || path.startsWith("/api/v1/public/webhooks/")) {
-            return WEBHOOK_LIMIT;
+            return webhookLimit;
         }
         return null;
     }

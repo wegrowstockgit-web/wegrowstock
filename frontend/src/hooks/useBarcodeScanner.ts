@@ -218,12 +218,19 @@ export function useBarcodeScanner({
   );
 
   useEffect(() => {
-    if (!enabled) return;
-    window.addEventListener('keydown', handleKeyDown, true);
-    for (const name of INTENT_EVENT_NAMES) {
-      window.addEventListener(name, handleNativeScan as EventListener);
+    if (!enabled) {
+      return undefined;
     }
-    window.addEventListener('message', handleMessage);
+
+    const onKeyDown = handleKeyDown;
+    const onNativeScan = handleNativeScan as EventListener;
+    const onMessage = handleMessage;
+
+    window.addEventListener('keydown', onKeyDown, true);
+    for (const name of INTENT_EVENT_NAMES) {
+      window.addEventListener(name, onNativeScan);
+    }
+    window.addEventListener('message', onMessage);
 
     // Native Android laser wedge via cordova-plugin-intent / intentShim — no focused input required.
     const shim = getIntentShim();
@@ -250,11 +257,11 @@ export function useBarcodeScanner({
     }
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keydown', onKeyDown, true);
       for (const name of INTENT_EVENT_NAMES) {
-        window.removeEventListener(name, handleNativeScan as EventListener);
+        window.removeEventListener(name, onNativeScan);
       }
-      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('message', onMessage);
       try {
         shim?.unregisterBroadcastReceiver?.();
       } catch {

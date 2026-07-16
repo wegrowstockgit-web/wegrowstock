@@ -160,7 +160,7 @@ public class AllocationService {
                     .filter(a -> userId.equals(a.getAssignedToUserId()))
                     .toList();
             if (!mine.isEmpty()) {
-                allocation = mine.getFirst();
+                allocation = preferWithOnHand(mine);
             } else {
                 List<Allocation> lockedByOthers = active.stream()
                         .filter(a -> a.getAssignedToUserId() != null && !userId.equals(a.getAssignedToUserId()))
@@ -170,7 +170,7 @@ public class AllocationService {
                             "Task reassigned to another picker",
                             "assignedToUserId", lockedByOthers.getFirst().getAssignedToUserId().toString());
                 }
-                allocation = active.getFirst();
+                allocation = preferWithOnHand(active);
             }
         }
 
@@ -215,7 +215,31 @@ public class AllocationService {
         } else {
             allocation.setQuantity(remaining);
         }
-        allocationRepository.save(allocation);
+        // Flush so inventory_levels.allocated updates before the pick ADJUST validates available.
+        allocationRepository.saveAndFlush(allocation);
+    }
+
+    /** Prefer an allocation whose bin/lot still has on-hand (stale claimed rows may be empty). */
+    private Allocation preferWithOnHand(List<Allocation> candidates) {
+        for (Allocation candidate : candidates) {
+            if (hasOnHand(candidate)) {
+                return candidate;
+            }
+        }
+        return candidates.getFirst();
+    }
+
+    private boolean hasOnHand(Allocation allocation) {
+        UUID tenantId = TenantContext.requireTenantId();
+        BigDecimal onHand = levelRepository.findByTenantIdAndVariantId(tenantId, allocation.getVariantId())
+                .stream()
+                .filter(l -> l.getLocationId().equals(allocation.getLocationId()))
+                .filter(l -> allocation.getLotId() == null
+                        ? l.getLotId() == null
+                        : allocation.getLotId().equals(l.getLotId()))
+                .map(InventoryLevel::getOnHand)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return onHand.signum() > 0;
     }
 
     @Transactional

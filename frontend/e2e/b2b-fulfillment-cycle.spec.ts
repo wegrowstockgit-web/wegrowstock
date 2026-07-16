@@ -79,6 +79,9 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     await expect(pickerPage.getByText('Floor ops')).toBeVisible();
     await pickerPage.getByRole('button', { name: 'Batch' }).click();
     await expect(pickerPage.getByText(/Next bin|Optimized route|No released batch/)).toBeVisible();
+    await pickerPage.request.post(`/api/v1/picking/waves/${wave.waveId}/claim`, {
+      headers: { 'X-Warehouse-Id': 'a0000000-0000-4000-8000-000000000601' },
+    });
 
     // Single-pick scan still exercises HID wedge + fulfillment path
     await pickerPage.getByRole('button', { name: 'Single' }).click();
@@ -89,7 +92,7 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     );
     await hidScan(pickerPage, DEMO_BARCODE);
     const scanned = await scanResponse;
-    expect(scanned.ok()).toBeTruthy();
+    expect(scanned.ok(), await scanned.text()).toBeTruthy();
 
     const detailRes = await adminPage.request.get(`/api/v1/sales-orders/${orderId}`, {
     });
@@ -99,7 +102,6 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
       lines: Array<{ id: string; qtyOrdered: number }>;
     };
 
-    const pickerToken = await sessionAccessToken(pickerPage);
     const shipRes = await pickerPage.request.post('/api/v1/shipments', {
       headers: {
         'Content-Type': 'application/json',

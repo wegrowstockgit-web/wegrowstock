@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -59,6 +60,18 @@ public class InventoryController {
     public UUID transfer(@Valid @RequestBody TransferRequest request) {
         return inventoryService.transfer(request.variantId(), request.fromLocationId(), request.toLocationId(),
                 request.lotId(), request.quantity());
+    }
+
+    @GetMapping("/ledger")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
+    public List<InventoryLedger> ledger(@RequestParam(defaultValue = "50") int limit) {
+        return inventoryService.listRecentLedger(limit);
+    }
+
+    @PostMapping("/ledger/{ledgerId}/reverse")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public InventoryLedger reverse(@PathVariable UUID ledgerId) {
+        return inventoryService.reverseLedgerEntry(ledgerId);
     }
 
     public record ReceiveRequest(

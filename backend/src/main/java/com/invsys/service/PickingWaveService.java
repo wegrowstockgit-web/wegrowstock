@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -227,6 +228,113 @@ public class PickingWaveService {
     }
 
     /**
+     * Algorithmic pick-path optimization: aggregate open unfulfilled sales-order lines
+     * (optionally filtered), resolve leaf BIN coordinates, group variants, and sequence
+     * by location path (Warehouse → Zone → Aisle → Bin) to prevent backtracking.
+     */
+    @Transactional
+    public OptimizeResult optimizeWave(List<UUID> salesOrderIds) {
+        UUID tenantId = TenantContext.requireTenantId();
+
+        List<Allocation> active = allocationRepository.findByTenantIdAndStatus(tenantId, "ACTIVE").stream()
+                .filter(a -> a.getSalesOrderLineId() != null)
+                .toList();
+
+        if (salesOrderIds != null && !salesOrderIds.isEmpty()) {
+            UUID[] orderIds = salesOrderIds.toArray(UUID[]::new);
+            Result<Record> lineRows = dsl.fetch("""
+                    SELECT sol.id AS line_id
+                    FROM sales_order_lines sol
+                    WHERE sol.tenant_id = ?
+                      AND sol.sales_order_id = ANY (?::uuid[])
+                    """, tenantId, (Object) orderIds);
+            var allowedLines = lineRows.stream()
+                    .map(r -> r.get("line_id", UUID.class))
+                    .collect(Collectors.toSet());
+            active = active.stream()
+                    .filter(a -> allowedLines.contains(a.getSalesOrderLineId()))
+                    .toList();
+        }
+
+        // Prefer BIN leaf coordinates when available.
+        List<Location> locations = locationRepository.findByTenantIdOrderByPathAsc(tenantId);
+        Map<UUID, String> locationPaths = locations.stream()
+                .collect(Collectors.toMap(Location::getId, Location::getPath, (a, b) -> a));
+        Map<UUID, Integer> sequenceIndexes = locations.stream()
+                .collect(Collectors.toMap(Location::getId, Location::getSequenceIndex, (a, b) -> a, HashMap::new));
+
+        // Group same-variant picks together before path sequencing.
+        Map<UUID, List<Allocation>> byVariant = active.stream()
+                .collect(Collectors.groupingBy(Allocation::getVariantId, LinkedHashMap::new, Collectors.toList()));
+        List<Allocation> grouped = new ArrayList<>();
+        byVariant.values().forEach(grouped::addAll);
+
+        List<Allocation> optimizedRoute = pickingService.optimizePickSequence(
+                grouped, locationPaths, sequenceIndexes);
+
+        // Stable secondary sort by path segments for deterministic Surface B manifests.
+        optimizedRoute = optimizedRoute.stream()
+                .sorted((a, b) -> {
+                    String pa = locationPaths.getOrDefault(a.getLocationId(), "");
+                    String pb = locationPaths.getOrDefault(b.getLocationId(), "");
+                    int pathCmp = pa.compareToIgnoreCase(pb);
+                    if (pathCmp != 0) {
+                        return pathCmp;
+                    }
+                    return a.getVariantId().compareTo(b.getVariantId());
+                })
+                .toList();
+
+        PickingWave wave = new PickingWave();
+        wave.setTenantId(tenantId);
+        wave.setStatus("DRAFT");
+        wave = waveRepository.save(wave);
+
+        PickingBatch batch = new PickingBatch();
+        batch.setTenantId(tenantId);
+        batch.setWaveId(wave.getId());
+        batch.setStatus("DRAFT");
+        batch = batchRepository.save(batch);
+
+        pickingService.lockLevelsForRoute(tenantId, optimizedRoute);
+
+        List<OptimizedPickLine> manifest = new ArrayList<>();
+        List<PickingTask> tasks = new ArrayList<>();
+        int seq = 1;
+        for (Allocation allocation : optimizedRoute) {
+            String path = locationPaths.getOrDefault(allocation.getLocationId(), "UNKNOWN");
+            PickingTask task = new PickingTask();
+            task.setTenantId(tenantId);
+            task.setBatchId(batch.getId());
+            task.setAllocationId(allocation.getId());
+            task.setLocationPath(path);
+            task.setSequenceOrder(seq);
+            task.setStatus("PENDING");
+            task = taskRepository.save(task);
+            tasks.add(task);
+            manifest.add(new OptimizedPickLine(
+                    seq,
+                    task.getId(),
+                    allocation.getId(),
+                    allocation.getVariantId(),
+                    allocation.getLocationId(),
+                    allocation.getQuantity(),
+                    path,
+                    pathSegments(path)));
+            seq++;
+        }
+
+        return new OptimizeResult(wave.getId(), batch.getId(), wave.getStatus(), manifest, tasks);
+    }
+
+    private static List<String> pathSegments(String path) {
+        if (path == null || path.isBlank()) {
+            return List.of();
+        }
+        return List.of(path.split("/"));
+    }
+
+    /**
      * Pre-emptive device lock: assign all ACTIVE allocations in the wave to the current picker.
      */
     @Transactional
@@ -270,6 +378,27 @@ public class PickingWaveService {
             String locationPath,
             int sequenceOrder,
             String status
+    ) {
+    }
+
+    public record OptimizeResult(
+            UUID waveId,
+            UUID batchId,
+            String status,
+            List<OptimizedPickLine> manifest,
+            List<PickingTask> tasks
+    ) {
+    }
+
+    public record OptimizedPickLine(
+            int sequenceOrder,
+            UUID taskId,
+            UUID allocationId,
+            UUID variantId,
+            UUID locationId,
+            java.math.BigDecimal quantity,
+            String locationPath,
+            List<String> pathSegments
     ) {
     }
 }

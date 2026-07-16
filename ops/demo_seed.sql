@@ -59,16 +59,6 @@ INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES
     ('a0000000-0000-4000-8000-000000000306', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000206', 'a0000000-0000-4000-8000-000000000106')
 ON CONFLICT (user_id, role_id) DO NOTHING;
 
-INSERT INTO customer_user_mappings (id, tenant_id, customer_id, user_id) VALUES
-    ('a0000000-0000-4000-8000-000000000551', 'a0000000-0000-4000-8000-000000000001',
-     'a0000000-0000-4000-8000-000000001102', 'a0000000-0000-4000-8000-000000000206')
-ON CONFLICT (user_id) DO NOTHING;
-
-INSERT INTO customer_credit_lines (id, tenant_id, customer_id, credit_limit, available_credit, status) VALUES
-    ('a0000000-0000-4000-8000-000000000561', 'a0000000-0000-4000-8000-000000000001',
-     'a0000000-0000-4000-8000-000000001102', 50000, 50000, 'ACTIVE')
-ON CONFLICT (tenant_id, customer_id) DO NOTHING;
-
 INSERT INTO refresh_tokens (id, tenant_id, user_id, token_hash, expires_at) VALUES
     ('a0000000-0000-4000-8000-000000000401', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000201',
      'seed_refresh_token_owner_hash', NOW() + INTERVAL '7 days')
@@ -89,7 +79,11 @@ INSERT INTO locations (id, tenant_id, parent_location_id, type, code, name, path
     ('a0000000-0000-4000-8000-000000000611', 'a0000000-0000-4000-8000-000000000001', NULL, 'WAREHOUSE', 'WH-02', 'Overflow Warehouse', 'WH-02'),
     ('a0000000-0000-4000-8000-000000000612', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000611', 'ZONE', 'Z-B', 'Zone B', 'WH-02/Z-B'),
     ('a0000000-0000-4000-8000-000000000613', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000612', 'BIN', 'B-10', 'Bin 10', 'WH-02/Z-B/B-10'),
-    ('a0000000-0000-4000-8000-000000000621', 'a0000000-0000-4000-8000-000000000001', NULL, 'VEHICLE', 'VAN-01', 'Service Van 01', 'VAN-01')
+    ('a0000000-0000-4000-8000-000000000621', 'a0000000-0000-4000-8000-000000000001', NULL, 'VEHICLE', 'VAN-01', 'Service Van 01', 'VAN-01'),
+    ('a0000000-0000-4000-8000-000000000630', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000601', 'ZONE', 'Z-SHIP', 'Shipping Staging Zone', 'WH-01/Z-SHIP'),
+    ('a0000000-0000-4000-8000-000000000631', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000630', 'BIN', 'S-01', 'Staging Lane 01', 'WH-01/Z-SHIP/S-01')
 ON CONFLICT (tenant_id, code) DO NOTHING;
 
 -- Active technician truck for Demo Owner (Technician Truck page)
@@ -150,6 +144,16 @@ INSERT INTO customers (id, tenant_id, name, email, billing_address, shipping_add
     ('a0000000-0000-4000-8000-000000001101', 'a0000000-0000-4000-8000-000000000001', 'Retail Partners LLC', 'ap@retailpartners.com', '{"city":"New York"}', '{"city":"New York"}', 'cus_demo_retail'),
     ('a0000000-0000-4000-8000-000000001102', 'a0000000-0000-4000-8000-000000000001', 'Metro Distributors', 'buyer@metrodist.com', '{"city":"Chicago"}', '{"city":"Chicago"}', 'cus_demo_metro')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO customer_user_mappings (id, tenant_id, customer_id, user_id) VALUES
+    ('a0000000-0000-4000-8000-000000000551', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001102', 'a0000000-0000-4000-8000-000000000206')
+ON CONFLICT (user_id) DO NOTHING;
+
+INSERT INTO customer_credit_lines (id, tenant_id, customer_id, credit_limit, available_credit, status) VALUES
+    ('a0000000-0000-4000-8000-000000000561', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001102', 50000, 50000, 'ACTIVE')
+ON CONFLICT (tenant_id, customer_id) DO NOTHING;
 
 INSERT INTO document_sequences (id, tenant_id, doc_type, period, next_value) VALUES
     ('a0000000-0000-4000-8000-000000001201', 'a0000000-0000-4000-8000-000000000001', 'PO', '2026', 3),

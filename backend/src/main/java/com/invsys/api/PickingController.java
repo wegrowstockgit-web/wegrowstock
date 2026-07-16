@@ -44,6 +44,29 @@ public class PickingController {
         return toGenerateResponse(result);
     }
 
+    /**
+     * Surface B pick-path optimizer: returns a sequenced manifest ordered by BIN location path.
+     */
+    @PostMapping("/waves/optimize")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public OptimizeWaveResponse optimizeWave(@RequestBody(required = false) OptimizeWaveRequest request) {
+        PickingWaveService.OptimizeResult result = pickingWaveService.optimizeWave(
+                request != null ? request.salesOrderIds() : null);
+        List<ManifestLineResponse> manifest = result.manifest().stream()
+                .map(line -> new ManifestLineResponse(
+                        line.sequenceOrder(),
+                        line.taskId(),
+                        line.allocationId(),
+                        line.variantId(),
+                        line.locationId(),
+                        line.quantity(),
+                        line.locationPath(),
+                        line.pathSegments(),
+                        resolveZone(line.locationPath())))
+                .toList();
+        return new OptimizeWaveResponse(result.waveId(), result.batchId(), result.status(), manifest);
+    }
+
     @PostMapping("/waves/{waveId}/release")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public GenerateWaveResponse releaseWave(@PathVariable UUID waveId) {
@@ -128,6 +151,30 @@ public class PickingController {
     }
 
     public record GenerateWaveResponse(UUID waveId, UUID batchId, String status, List<TaskResponse> tasks) {
+    }
+
+    public record OptimizeWaveRequest(List<UUID> salesOrderIds) {
+    }
+
+    public record OptimizeWaveResponse(
+            UUID waveId,
+            UUID batchId,
+            String status,
+            List<ManifestLineResponse> manifest
+    ) {
+    }
+
+    public record ManifestLineResponse(
+            int sequenceOrder,
+            UUID taskId,
+            UUID allocationId,
+            UUID variantId,
+            UUID locationId,
+            BigDecimal quantity,
+            String locationPath,
+            List<String> pathSegments,
+            String zone
+    ) {
     }
 
     public record ClaimWaveResponse(UUID waveId, UUID assignedToUserId, int allocationsClaimed) {

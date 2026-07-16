@@ -1,6 +1,6 @@
 package com.invsys.service;
 
-import com.invsys.billing.StripeGateway;
+import com.invsys.billing.StripeConnectGateway;
 import com.invsys.domain.StripeAccount;
 import com.invsys.repository.StripeAccountRepository;
 import com.invsys.tenancy.TenantContext;
@@ -15,23 +15,23 @@ import java.util.UUID;
 @Service
 public class BillingService {
 
-    private final StripeGateway stripeGateway;
+    private final StripeConnectGateway stripeGateway;
     private final StripeAccountRepository stripeAccountRepository;
     private final String defaultReturnUrl;
 
-    public BillingService(StripeGateway stripeGateway,
+    public BillingService(StripeConnectGateway stripeGateway,
                           StripeAccountRepository stripeAccountRepository,
-                          @Value("${invsys.stripe.connect-return-url:http://localhost:3000/settings?stripe=success}") String defaultReturnUrl) {
+                          @Value("${invsys.stripe.connect-return-url:http://localhost:3000/settings/billing?stripe=success}") String defaultReturnUrl) {
         this.stripeGateway = stripeGateway;
         this.stripeAccountRepository = stripeAccountRepository;
         this.defaultReturnUrl = defaultReturnUrl;
     }
 
     @Transactional
-    public StripeGateway.ConnectOnboardingResult onboardingUrl(String returnUrl) {
+    public StripeConnectGateway.ConnectOnboardingResult onboardingUrl(String returnUrl) {
         UUID tenantId = TenantContext.requireTenantId();
         String redirect = returnUrl != null && !returnUrl.isBlank() ? returnUrl : defaultReturnUrl;
-        StripeGateway.ConnectOnboardingResult result = stripeGateway.createConnectOnboardingUrl(tenantId, redirect);
+        StripeConnectGateway.ConnectOnboardingResult result = stripeGateway.createConnectOnboardingUrl(tenantId, redirect);
 
         StripeAccount account = stripeAccountRepository.findByTenantId(tenantId).orElseGet(() -> {
             StripeAccount created = new StripeAccount();
