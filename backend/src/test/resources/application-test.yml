@@ -40,3 +40,9 @@ invsys:
   security:
     public-signup-enabled: true
     cors-allowed-origins: http://localhost:5173,http://localhost:3000
+    cors-include-verified-domains: true
+    cors-cache-seconds: 5
+    cookie-secure: false
+    cookie-same-site: Lax
+  redis:
+    enabled: false

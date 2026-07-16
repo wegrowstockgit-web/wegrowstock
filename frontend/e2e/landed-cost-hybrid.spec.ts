@@ -11,7 +11,6 @@ test.describe('Hybrid landed cost API', () => {
     const res = await ownerPage.request.post(
       '/api/v1/purchasing/invoices/00000000-0000-4000-8000-000000000001/landed-costs',
       {
-        headers: { Authorization: `Bearer ${token}` },
         data: {
           freightTotal: 100,
           eventType: 'FREIGHT',
@@ -28,7 +27,6 @@ test.describe('Hybrid landed cost API', () => {
     await ownerPage.goto('/dashboard');
     const token = await sessionAccessToken(ownerPage);
     const res = await ownerPage.request.get('/api/v1/picking/cross-dock/suggestions', {
-      headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();

@@ -2,11 +2,14 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type ReactNode,
 } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDensity } from '@/hooks/useDensity';
+import { useClientSort, type SortAccessors } from '@/hooks/useClientSort';
 import { useGridColumnStore } from '@/stores/gridColumnStore';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +21,9 @@ export interface VirtualizedColumnDef<T> {
   align?: 'left' | 'right' | 'center';
   /** When false, omitted from the column-visibility menu. Default true. */
   hideable?: boolean;
+  /** Enables header click sort when sortValue is provided. */
+  sortable?: boolean;
+  sortValue?: (row: T) => string | number | boolean | null | undefined | Date;
   className?: string;
   cell: (row: T, index: number) => ReactNode;
 }
@@ -27,6 +33,8 @@ export interface VirtualizedTableProps<T> {
   rows: T[];
   getRowId: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Controlled selection highlight (row id from getRowId). */
+  selectedRowId?: string | null;
   /** Fire near the end of the list (infinite scroll). */
   onEndReached?: () => void;
   endReachedThreshold?: number;
@@ -51,13 +59,15 @@ function stickyStyle(left: number, isHeader: boolean): CSSProperties {
   return {
     position: 'sticky',
     left,
-    zIndex: isHeader ? 30 : 20,
+    ...(isHeader ? { top: 0 } : undefined),
+    zIndex: isHeader ? 50 : 20,
   };
 }
 
 /**
  * Enterprise pinned-column virtualized data grid for Surface A.
- * Sticky left offsets are derived from column widths in pin order.
+ * Outer shell is overflow-hidden / fixed-viewport; only the inner scrollport
+ * rolls. Near-end scroll triggers TanStack infinite append via onEndReached.
  */
 export function VirtualizedTable<T>({
   columns,
@@ -68,15 +78,33 @@ export function VirtualizedTable<T>({
   endReachedThreshold = 5,
   className,
   empty,
+  selectedRowId,
 }: VirtualizedTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const endReachedLock = useRef(false);
   const { rowPx, styles: densityStyles } = useDensity();
   const columnVisibility = useGridColumnStore((s) => s.columnVisibility);
   const pinnedColumns = useGridColumnStore((s) => s.pinnedColumns);
   const columnOrder = useGridColumnStore((s) => s.columnOrder);
   const ensureColumns = useGridColumnStore((s) => s.ensureColumns);
+  const [internalSelected, setInternalSelected] = useState<string | null>(null);
+
+  const controlled = selectedRowId !== undefined;
+  const activeSelected = controlled ? selectedRowId : internalSelected;
 
   const columnIds = useMemo(() => columns.map((c) => c.id), [columns]);
+
+  const sortAccessors = useMemo(() => {
+    const map: SortAccessors<T> = {};
+    for (const col of columns) {
+      if (col.sortable !== false && col.sortValue) {
+        map[col.id] = col.sortValue;
+      }
+    }
+    return map;
+  }, [columns]);
+
+  const { sort, toggle, sorted: sortedRows } = useClientSort(rows, sortAccessors);
 
   useEffect(() => {
     ensureColumns(columnIds, {
@@ -95,7 +123,6 @@ export function VirtualizedTable<T>({
           ]
         : columnIds;
 
-    // Pinned columns lead the row (stable freeze block).
     const pinned = pinnedColumns.filter(
       (id) => byId.has(id) && columnVisibility[id] !== false,
     );
@@ -130,10 +157,11 @@ export function VirtualizedTable<T>({
   );
 
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: sortedRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => Math.max(rowPx, 32),
+    estimateSize: () => rowPx,
     overscan: 12,
+    scrollMargin: 0,
   });
 
   useEffect(() => {
@@ -147,52 +175,94 @@ export function VirtualizedTable<T>({
   const lastVisible = virtualItems[virtualItems.length - 1]?.index ?? -1;
 
   useEffect(() => {
-    if (!onEndReached || lastVisible < 0) return;
-    if (lastVisible >= rows.length - endReachedThreshold) {
-      onEndReached();
-    }
-  }, [endReachedThreshold, lastVisible, onEndReached, rows.length]);
+    endReachedLock.current = false;
+  }, [sortedRows.length]);
 
-  if (rows.length === 0 && empty) {
+  useEffect(() => {
+    if (!onEndReached || lastVisible < 0 || endReachedLock.current) return;
+    if (lastVisible >= sortedRows.length - endReachedThreshold) {
+      endReachedLock.current = true;
+      onEndReached();
+      const unlock = window.setTimeout(() => {
+        endReachedLock.current = false;
+      }, 400);
+      return () => window.clearTimeout(unlock);
+    }
+  }, [endReachedThreshold, lastVisible, onEndReached, sortedRows.length]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !onEndReached) return;
+
+    const onScroll = () => {
+      const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (remaining <= Math.max(rowPx * endReachedThreshold, 48) && !endReachedLock.current) {
+        endReachedLock.current = true;
+        onEndReached();
+        window.setTimeout(() => {
+          endReachedLock.current = false;
+        }, 400);
+      }
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [endReachedThreshold, onEndReached, rowPx, sortedRows.length]);
+
+  if (sortedRows.length === 0 && empty) {
     return <>{empty}</>;
   }
+
+  const handleRowClick = (row: T) => {
+    const id = getRowId(row);
+    if (!controlled) {
+      setInternalSelected(id);
+    }
+    onRowClick?.(row);
+  };
 
   return (
     <div
       className={cn(
-        'overflow-x-auto overflow-y-hidden max-w-full containment-layout',
-        'min-h-0 flex-1 bg-background',
+        'flex min-h-0 flex-1 flex-col overflow-hidden max-w-full containment-layout',
+        'bg-background',
         className,
       )}
       data-testid="virtualized-table"
     >
+      {/* Sole vertical scrollport — page/window stays static */}
       <div
         ref={scrollRef}
-        className="h-[calc(100vh-16rem)] max-h-full overflow-auto"
+        className="min-h-0 flex-1 overflow-auto overscroll-contain"
+        style={{ scrollbarGutter: 'stable' }}
       >
         <table
-          className={cn('w-full border-collapse', densityStyles.typography)}
+          className={cn('w-full border-separate border-spacing-0', densityStyles.typography)}
           style={{ minWidth: minTableWidth }}
         >
-          <thead className="sticky top-0 z-40">
+          <thead className="table-head-accent">
             <tr
               className={cn(
                 densityStyles.row,
-                'border-b border-border bg-surface-overlay font-medium uppercase tracking-wide text-text-muted',
+                'border-b border-[#155a9c] font-semibold uppercase tracking-wide',
               )}
             >
               {orderedVisible.map((col) => {
                 const pinned = pinOffsets.has(col.id);
                 const isPinEdge = col.id === lastPinnedId;
+                const canSort = Boolean(col.sortValue) && col.sortable !== false;
+                const active = canSort && sort?.key === col.id;
                 return (
                   <th
                     key={col.id}
                     scope="col"
+                    aria-sort={
+                      active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : canSort ? 'none' : undefined
+                    }
                     className={cn(
-                      'whitespace-nowrap font-medium',
+                      'table-head-cell sticky top-0 z-40 whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
                       densityStyles.cell,
                       alignClass(col.align),
-                      pinned && 'bg-surface-overlay',
                       isPinEdge && PIN_EDGE,
                       col.className,
                     )}
@@ -203,7 +273,32 @@ export function VirtualizedTable<T>({
                       ...(pinned ? stickyStyle(pinOffsets.get(col.id)!, true) : undefined),
                     }}
                   >
-                    {col.header}
+                    {canSort ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          'inline-flex min-h-11 w-full items-center gap-1.5 touch-target',
+                          'text-[var(--color-table-header-fg)] hover:opacity-90',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70',
+                          col.align === 'right' && 'justify-end',
+                          col.align === 'center' && 'justify-center',
+                        )}
+                        onClick={() => toggle(col.id)}
+                      >
+                        <span>{col.header}</span>
+                        {active ? (
+                          sort!.dir === 'asc' ? (
+                            <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+                          ) : (
+                            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+                          )
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                        )}
+                      </button>
+                    ) : (
+                      col.header
+                    )}
                   </th>
                 );
               })}
@@ -219,24 +314,45 @@ export function VirtualizedTable<T>({
               </tr>
             )}
             {virtualItems.map((virtualRow) => {
-              const row = rows[virtualRow.index];
+              const row = sortedRows[virtualRow.index];
               if (!row) return null;
 
+              const rowId = getRowId(row);
+              const selected = activeSelected === rowId;
               const zebra = virtualRow.index % 2 === 1;
-              const rowBg = zebra ? 'bg-muted/40' : 'bg-background';
+              const rowBg = selected
+                ? 'bg-blue-100/60 dark:bg-slate-700/80'
+                : zebra
+                  ? 'bg-muted/40'
+                  : 'bg-background';
 
               return (
                 <tr
-                  key={getRowId(row)}
+                  key={rowId}
                   data-index={virtualRow.index}
+                  data-state={selected ? 'selected' : undefined}
+                  aria-selected={selected || undefined}
                   className={cn(
+                    'table-row-interactive density-row',
                     densityStyles.row,
                     rowBg,
-                    'border-b border-border transition-colors',
-                    onRowClick && 'cursor-pointer hover:bg-surface-overlay',
+                    'border-b border-border',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40',
+                    onRowClick && 'cursor-pointer',
                   )}
                   style={{ height: virtualRow.size }}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onClick={onRowClick ? () => handleRowClick(row) : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleRowClick(row);
+                          }
+                        }
+                      : undefined
+                  }
                 >
                   {orderedVisible.map((col) => {
                     const pinned = pinOffsets.has(col.id);

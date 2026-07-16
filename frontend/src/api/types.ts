@@ -5,11 +5,7 @@ export interface User {
   roles: string[];
   warehouseIds?: string[];
   avatarUrl?: string | null;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
+  tenantId?: string;
 }
 
 export interface LoginRequest {
@@ -17,9 +13,8 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface TokenResponse {
-  accessToken: string;
-  refreshToken: string;
+/** Session metadata — JWTs are HttpOnly cookies only. */
+export interface SessionResponse {
   tenantId: string;
   userId: string;
   roles: string[];
@@ -27,8 +22,11 @@ export interface TokenResponse {
   avatarUrl?: string | null;
 }
 
-/** @deprecated use TokenResponse */
-export type LoginResponse = TokenResponse;
+/** @deprecated use SessionResponse */
+export type TokenResponse = SessionResponse;
+
+/** @deprecated use SessionResponse */
+export type LoginResponse = SessionResponse;
 
 export interface SignupRequest {
   companyName: string;

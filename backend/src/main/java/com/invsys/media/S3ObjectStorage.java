@@ -142,5 +142,12 @@ public class S3ObjectStorage implements ObjectStorage {
         if (key == null || key.isBlank() || key.contains("..") || key.startsWith("/") || key.startsWith("\\")) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_STORAGE_KEY", "Invalid storage key");
         }
+        String lower = key.toLowerCase();
+        // Reject any attempt to address local filesystem / URI schemes — S3 object keys only.
+        if (lower.startsWith("file:") || lower.startsWith("file:/")
+                || lower.contains("://") || lower.startsWith("c:") || lower.startsWith("\\\\")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_STORAGE_KEY",
+                    "Media must be stored in S3-compatible object storage only");
+        }
     }
 }

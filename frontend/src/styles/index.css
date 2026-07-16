@@ -46,6 +46,34 @@
   .containment-layout {
     contain: layout;
   }
+
+  /** Icon-rail nav: hide native scrollbar chrome (Track 1). */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /** Scroll-fade mask when nav content overflows the fold. */
+  .rail-scroll-mask {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      black 4%,
+      black 92%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      black 4%,
+      black 92%,
+      transparent 100%
+    );
+  }
 }
 
 /* Density matrix — driven by html[data-density] (Surface A) */
@@ -74,6 +102,76 @@
 @layer components {
   .density-table {
     font-size: var(--density-text);
+  }
+
+  .table-head-accent {
+    background-color: var(--color-table-header);
+    color: var(--color-table-header-fg);
+  }
+
+  /* Header <tr>/<th> must stay opaque blue — body TableRow styles must not wash out white labels. */
+  thead.table-head-accent > tr,
+  thead.table-head-accent th,
+  th.table-head-cell {
+    background-color: var(--color-table-header) !important;
+    color: var(--color-table-header-fg) !important;
+  }
+
+  /* Sticky column headers: opaque fill + edge so rows pass underneath cleanly. */
+  th.table-head-cell.sticky {
+    box-shadow: 0 1px 0 0 #155a9c;
+  }
+
+  thead.table-head-accent > tr:hover,
+  thead.table-head-accent > tr.table-row-interactive:hover {
+    background-color: var(--color-table-header) !important;
+  }
+
+  .table-row-interactive {
+    transition: background-color 100ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  tbody .table-row-interactive:hover {
+    background-color: color-mix(in srgb, #1d70cb 5%, transparent);
+  }
+
+  tbody .table-row-interactive:active {
+    background-color: color-mix(in srgb, #1d70cb 15%, transparent);
+  }
+
+  tbody .table-row-interactive[data-state='selected'],
+  tbody .table-row-interactive[aria-selected='true'] {
+    background-color: color-mix(in srgb, #1d70cb 10%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .table-row-interactive {
+      transition: none;
+    }
+  }
+}
+
+/* Surface A tablet / coarse-pointer: 44px minimum touch targets */
+@media (pointer: coarse) {
+  [data-theme='office'] .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  [data-theme='office'] .density-row {
+    min-height: 2.75rem;
+  }
+
+  [data-density='compact'] {
+    --density-cell-py: 0.5rem;
+    --density-row-h: 2.75rem;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-theme='office'] {
+    --rail-width-collapsed: 0px;
+    --rail-width: 0px;
   }
 }
 

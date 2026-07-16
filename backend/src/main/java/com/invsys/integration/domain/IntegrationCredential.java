@@ -5,6 +5,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "integration_credentials")
 public class IntegrationCredential extends TenantScopedEntity {
@@ -20,6 +22,9 @@ public class IntegrationCredential extends TenantScopedEntity {
 
     @Column(nullable = false, length = 30)
     private String status = "CONNECTED";
+
+    @Column(name = "refresh_token_expires_at")
+    private Instant refreshTokenExpiresAt;
 
     public String getSystem() {
         return system;
@@ -51,5 +56,13 @@ public class IntegrationCredential extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Instant getRefreshTokenExpiresAt() {
+        return refreshTokenExpiresAt;
+    }
+
+    public void setRefreshTokenExpiresAt(Instant refreshTokenExpiresAt) {
+        this.refreshTokenExpiresAt = refreshTokenExpiresAt;
     }
 }

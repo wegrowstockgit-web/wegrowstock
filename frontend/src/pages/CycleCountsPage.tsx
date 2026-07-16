@@ -12,6 +12,45 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { useClientSort } from '@/hooks/useClientSort';
+
+function PriorityAuditsTable({ audits }: { audits: PriorityAudit[] }) {
+  const { sort, toggle, sorted } = useClientSort(
+    audits,
+    {
+      location: (a) => a.locationPath,
+      reason: (a) => a.notes ?? '',
+      created: (a) => a.createdAt,
+    },
+    { key: 'created', dir: 'desc' },
+  );
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="location" sort={sort} onSort={toggle}>
+            Location
+          </TableHead>
+          <TableHead sortable sortKey="reason" sort={sort} onSort={toggle}>
+            Reason
+          </TableHead>
+          <TableHead sortable sortKey="created" sort={sort} onSort={toggle}>
+            Created
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((audit) => (
+          <TableRow key={audit.id}>
+            <TableCell mono>{audit.locationPath}</TableCell>
+            <TableCell>{audit.notes ?? 'Priority audit'}</TableCell>
+            <TableCell>{new Date(audit.createdAt).toLocaleString()}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export function CycleCountsPage() {
   const { data: audits = [], isLoading } = useQuery({
@@ -42,24 +81,7 @@ export function CycleCountsPage() {
         ) : audits.length === 0 ? (
           <p className="py-8 text-center text-sm text-text-muted">No priority audits right now.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Location</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {audits.map((audit) => (
-                <TableRow key={audit.id}>
-                  <TableCell mono>{audit.locationPath}</TableCell>
-                  <TableCell>{audit.notes ?? 'Priority audit'}</TableCell>
-                  <TableCell>{new Date(audit.createdAt).toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <PriorityAuditsTable audits={audits} />
         )}
       </Card>
     </div>

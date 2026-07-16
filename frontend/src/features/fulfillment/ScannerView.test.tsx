@@ -39,6 +39,27 @@ vi.mock('@/components/ui/MediaPicker', () => ({
   ),
 }));
 
+vi.mock('@/components/ui/CameraCapture', () => ({
+  CameraCapture: ({
+    label,
+    onCapture,
+    disabled,
+  }: {
+    label: string;
+    onCapture: (file: File) => void;
+    disabled?: boolean;
+  }) => (
+    <button
+      type="button"
+      data-testid="camera-capture-mock"
+      disabled={disabled}
+      onClick={() => onCapture(new File(['cam'], 'cam.jpg', { type: 'image/jpeg' }))}
+    >
+      {label}
+    </button>
+  ),
+}));
+
 describe('ScannerView GS1 fields', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -214,15 +235,54 @@ describe('ScannerView GS1 fields', () => {
       />,
     );
 
-    const file = new File(['img'], 'shot.jpg', { type: 'image/jpeg' });
-    const input = screen.getByTestId('capture-product-image').querySelector('input[type="file"]')!;
-    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
-    fireEvent.change(input);
+    fireEvent.click(screen.getByTestId('camera-capture-mock'));
 
     await waitFor(() => {
       expect(compressImageForUpload).toHaveBeenCalled();
       expect(uploadViaPresign).toHaveBeenCalled();
       expect(onThumb).toHaveBeenCalledWith('/api/v1/media/m1/content', 'v-1');
+    });
+  });
+
+  it('opens gallery file input from Upload from gallery', async () => {
+    vi.mocked(uploadViaPresign).mockResolvedValue({
+      id: 'm2',
+      contentUrl: '/api/v1/media/m2/content',
+      contentType: 'image/webp',
+      byteSize: 12,
+    } as never);
+    vi.mocked(apiClient.post).mockResolvedValue({ data: {} } as never);
+
+    render(
+      <ScannerView
+        lastScan="SKU-1"
+        lastThumbUrl={null}
+        history={[
+          {
+            barcode: 'SKU-1',
+            variantId: 'v-1',
+            sku: 'SKU-1',
+            success: true,
+            message: 'Picked',
+            timestamp: Date.now(),
+          },
+        ]}
+        scanning={false}
+        mode="pick"
+        onThumbCaptured={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByTestId('capture-product-image').querySelector('input[type="file"]')!;
+    const clickSpy = vi.spyOn(input, 'click');
+    fireEvent.click(screen.getByRole('button', { name: /upload from gallery/i }));
+    expect(clickSpy).toHaveBeenCalled();
+
+    const file = new File(['img'], 'shot.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    fireEvent.change(input);
+    await waitFor(() => {
+      expect(uploadViaPresign).toHaveBeenCalled();
     });
   });
 

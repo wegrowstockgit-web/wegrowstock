@@ -302,6 +302,8 @@ export function ProductsPage() {
         id: 'sku',
         header: 'SKU',
         width: 128,
+        sortable: true,
+        sortValue: (product) => product.sku,
         cell: (product) => (
           <span className="truncate font-mono text-text">{product.sku}</span>
         ),
@@ -310,12 +312,16 @@ export function ProductsPage() {
         id: 'name',
         header: 'Name',
         width: 180,
+        sortable: true,
+        sortValue: (product) => product.name,
         cell: (product) => <span className="truncate text-text">{product.name}</span>,
       },
       {
         id: 'barcode',
         header: 'Barcode',
         width: 120,
+        sortable: true,
+        sortValue: (product) => product.barcode ?? '',
         cell: (product) => (
           <span className="truncate font-mono text-text-muted">{product.barcode ?? '—'}</span>
         ),
@@ -325,6 +331,8 @@ export function ProductsPage() {
         header: 'On hand',
         width: 88,
         align: 'right',
+        sortable: true,
+        sortValue: (product) => product.onHand ?? 0,
         cell: (product) => (
           <span className="font-mono tabular-nums text-text">{qty(product.onHand)}</span>
         ),
@@ -334,6 +342,8 @@ export function ProductsPage() {
         header: 'Allocated',
         width: 88,
         align: 'right',
+        sortable: true,
+        sortValue: (product) => product.allocated ?? 0,
         cell: (product) => (
           <span className="font-mono tabular-nums text-text-muted">{qty(product.allocated)}</span>
         ),
@@ -343,6 +353,8 @@ export function ProductsPage() {
         header: 'ATP',
         width: 80,
         align: 'right',
+        sortable: true,
+        sortValue: (product) => product.atp ?? 0,
         cell: (product) => (
           <span className="font-mono font-medium tabular-nums text-text">{qty(product.atp)}</span>
         ),
@@ -352,6 +364,8 @@ export function ProductsPage() {
         header: 'Reorder',
         width: 96,
         align: 'right',
+        sortable: true,
+        sortValue: (product) => product.reorderPoint ?? 0,
         cell: (product) =>
           canManage ? (
             <span onClick={(e) => e.stopPropagation()}>
@@ -453,7 +467,7 @@ export function ProductsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-[calc(100dvh-var(--header-height))] max-h-[calc(100dvh-var(--header-height))] min-h-0 flex-col overflow-hidden">
       <div className="mb-0 flex shrink-0 flex-col gap-4 border-b border-border/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Products</h1>
@@ -499,6 +513,7 @@ export function ProductsPage() {
         columns={columns}
         rows={displayed}
         getRowId={(row) => row.id}
+        selectedRowId={peekProductId}
         onRowClick={(row) => setPeekProductId(row.id)}
         onEndReached={loadMore}
         empty={
@@ -544,6 +559,7 @@ export function ProductsPage() {
                   <MediaPicker
                     kind="PRODUCT"
                     label="Upload product photo"
+                    capture
                     previewUrl={peekProduct.primaryMediaUrl}
                     onUploaded={async (result) => {
                       await apiClient.post(`/api/v1/products/variants/${peekProduct.id}/media`, {

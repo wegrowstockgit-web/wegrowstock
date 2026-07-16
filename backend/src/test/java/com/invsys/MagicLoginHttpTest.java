@@ -13,8 +13,11 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
 
+import com.invsys.auth.AuthCookieService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -51,8 +54,10 @@ class MagicLoginHttpTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"" + magicToken + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.refreshToken").isNotEmpty());
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(cookie().exists(AuthCookieService.ACCESS_COOKIE))
+                .andExpect(cookie().exists(AuthCookieService.REFRESH_COOKIE));
 
         mockMvc.perform(post("/api/v1/auth/magic-login/consume")
                         .contentType(MediaType.APPLICATION_JSON)

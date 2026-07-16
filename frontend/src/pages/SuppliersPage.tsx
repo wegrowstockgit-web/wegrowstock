@@ -16,7 +16,41 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
+
+function SuppliersTable({ items }: { items: Supplier[] }) {
+  const { sort, toggle, sorted } = useClientSort(
+    items,
+    {
+      name: (s) => s.name,
+      email: (s) => s.contactEmail ?? '',
+    },
+    { key: 'name', dir: 'asc' },
+  );
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="name" sort={sort} onSort={toggle}>
+            Name
+          </TableHead>
+          <TableHead sortable sortKey="email" sort={sort} onSort={toggle}>
+            Contact email
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((s) => (
+          <TableRow key={s.id}>
+            <TableCell>{s.name}</TableCell>
+            <TableCell>{s.contactEmail ?? '—'}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 function AddSupplierModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -117,24 +151,7 @@ export function SuppliersPage() {
           ) : undefined
         }
       >
-        {(items) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Contact email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.name}</TableCell>
-                  <TableCell>{s.contactEmail ?? '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        {(items) => <SuppliersTable items={items} />}
       </ListPageState>
 
       <AddSupplierModal open={modalOpen} onClose={() => setModalOpen(false)} />

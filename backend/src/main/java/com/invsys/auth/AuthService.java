@@ -1,13 +1,14 @@
 package com.invsys.auth;
 
 import com.invsys.auth.dto.LoginRequest;
+import com.invsys.auth.dto.MeResponse;
 import com.invsys.auth.dto.RefreshRequest;
-import com.invsys.auth.dto.SignupRequest;
 import com.invsys.auth.dto.SetTerminalPinRequest;
+import com.invsys.auth.dto.SignupRequest;
 import com.invsys.auth.dto.TerminalSwitchRequest;
 import com.invsys.auth.dto.TerminalSwitchResponse;
-import com.invsys.auth.dto.MeResponse;
 import com.invsys.auth.dto.TokenResponse;
+import com.invsys.auth.dto.WarehouseLoginRequest;
 import com.invsys.common.ApiException;
 import com.invsys.config.JwtProperties;
 import com.invsys.domain.RefreshToken;
@@ -49,6 +50,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final VehicleAssignmentRepository vehicleAssignmentRepository;
     private final MediaUrlValidator mediaUrlValidator;
+    private final TenantSsoResolver tenantSsoResolver;
+    private final TerminalPinBruteForceGuard terminalPinBruteForceGuard;
     private final AuthService self;
 
     public AuthService(TenantOnboardingService onboardingService,
@@ -62,6 +65,8 @@ public class AuthService {
                        PasswordEncoder passwordEncoder,
                        VehicleAssignmentRepository vehicleAssignmentRepository,
                        MediaUrlValidator mediaUrlValidator,
+                       TenantSsoResolver tenantSsoResolver,
+                       TerminalPinBruteForceGuard terminalPinBruteForceGuard,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
@@ -73,7 +78,9 @@ public class AuthService {
         this.jwtProperties = jwtProperties;
         this.passwordEncoder = passwordEncoder;
         this.vehicleAssignmentRepository = vehicleAssignmentRepository;
+        this.tenantSsoResolver = tenantSsoResolver;
         this.mediaUrlValidator = mediaUrlValidator;
+        this.terminalPinBruteForceGuard = terminalPinBruteForceGuard;
         this.self = self;
     }
 
@@ -87,6 +94,17 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
 
         UUID tenantId = authUser.tenantId();
+
+        // Domain-routed force-SSO — only when the domain route belongs to THIS user's tenant
+        // (prevents attacker-tenant domain registration from locking out victims).
+        tenantSsoResolver.resolveByEmail(request.email())
+                .filter(TenantSsoResolver.SsoRoute::forceSso)
+                .filter(route -> tenantId.equals(route.tenantId()))
+                .ifPresent(route -> {
+                    throw new ApiException(HttpStatus.FORBIDDEN, "SSO_REQUIRED",
+                            "Corporate SSO is required for this domain")
+                            .withProperty("ssoAuthorizationUrl", route.authorizationUrl());
+                });
 
         bootstrapJdbc.findSsoConfigByTenantId(tenantId).ifPresent(sso -> {
             if (sso.enabled() && sso.forceSso()) {
@@ -171,17 +189,55 @@ public class AuthService {
      * Shared-terminal PIN pad: swap operator JWT context without issuing a new refresh token
      * (primary device session remains intact on the client).
      */
+    /**
+     * Surface B warehouse login: email + 4-digit PIN → full session cookies.
+     * Lockout keyed by email (and optional deviceId).
+     */
+    public TokenResponse warehouseLogin(WarehouseLoginRequest request) {
+        String lockKey = request.deviceId() != null && !request.deviceId().isBlank()
+                ? request.deviceId().trim()
+                : request.email().trim().toLowerCase();
+        terminalPinBruteForceGuard.assertCredentialAllowed(lockKey);
+
+        var authUser = bootstrapJdbc.findUserForAuthByEmail(request.email().trim().toLowerCase())
+                .orElse(null);
+        if (authUser == null) {
+            terminalPinBruteForceGuard.recordCredentialFailure(lockKey);
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN", "Invalid terminal PIN");
+        }
+        UUID tenantId = authUser.tenantId();
+        String pinHash = hashTerminalPin(tenantId, request.pin());
+        TenantContext.setTenantId(tenantId);
+        try {
+            User target = userRepository.findByTenantIdAndTerminalPinHash(tenantId, pinHash).orElse(null);
+            if (target == null
+                    || !target.getId().equals(authUser.id())
+                    || !"ACTIVE".equals(target.getStatus())) {
+                terminalPinBruteForceGuard.recordCredentialFailure(lockKey);
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN", "Invalid terminal PIN");
+            }
+            terminalPinBruteForceGuard.recordCredentialSuccess(lockKey);
+            return self.completeLogin(target.getId());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
     @Transactional(readOnly = true)
     public TerminalSwitchResponse terminalSwitch(TerminalSwitchRequest request) {
         UUID tenantId = TenantContext.requireTenantId();
         UUID switchedFrom = TenantContext.getUserId().orElse(null);
+        terminalPinBruteForceGuard.assertAllowed(tenantId, switchedFrom);
+
         String pinHash = hashTerminalPin(tenantId, request.pin());
-        User target = userRepository.findByTenantIdAndTerminalPinHash(tenantId, pinHash)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN",
-                        "Invalid terminal PIN"));
-        if (!"ACTIVE".equals(target.getStatus())) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_INACTIVE", "User is inactive");
+        User target = userRepository.findByTenantIdAndTerminalPinHash(tenantId, pinHash).orElse(null);
+        // Uniform failure — do not distinguish missing PIN vs inactive operator (enumeration).
+        if (target == null || !"ACTIVE".equals(target.getStatus())) {
+            terminalPinBruteForceGuard.recordFailure(tenantId, switchedFrom);
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN", "Invalid terminal PIN");
         }
+
+        terminalPinBruteForceGuard.recordSuccess(tenantId, switchedFrom);
         List<String> roles = userRoleRepository.findRoleCodesByUserId(target.getId());
         List<UUID> warehouseIds = resolveWarehouseIds(tenantId, target.getId(), roles);
         return buildTerminalSwitchResponse(target, roles, warehouseIds, switchedFrom);

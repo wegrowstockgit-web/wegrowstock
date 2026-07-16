@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Link2, Plus, RefreshCw, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
@@ -12,13 +12,10 @@ import type {
   OutboxEventItem,
   PlatformAlertItem,
   AuditLogItem,
-  ShippingCredentialStatus,
   SsoConfig,
-  StripeBillingStatus,
   SyncLog,
   TaxRate,
   TaxScheme,
-  TenantEmailDomain,
   TenantLocation,
   TenantSettingsMap,
   TenantUser,
@@ -41,8 +38,8 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
-import { FinancingCockpit } from '@/components/fintech/FinancingCockpit';
 import { WarehouseVisualizer } from '@/features/settings/WarehouseVisualizer';
+import { PartnerCatalogMappingPanel } from '@/features/settings/PartnerCatalogMappingPanel';
 import { useToast } from '@/components/ui/Toast';
 
 const TABS = [
@@ -51,14 +48,19 @@ const TABS = [
   { id: 'warehouses', label: 'Warehouses' },
   { id: 'inventory', label: 'Inventory Rules' },
   { id: 'documents', label: 'Documents' },
-  { id: 'billing', label: 'Billing' },
-  { id: 'financing', label: 'Cash Flow & Financing' },
   { id: 'security', label: 'Security & SSO' },
   { id: 'reconciliation', label: 'Reconciliation' },
   { id: 'accounting', label: 'Accounting Sync' },
   { id: 'integrations', label: 'Integrations' },
+  { id: 'mesh', label: 'Partner Catalog' },
   { id: 'operations', label: 'Operations' },
   { id: 'costCenters', label: 'Cost Centers & Requisitions' },
+] as const;
+
+/** Financial surfaces live on dedicated routes (not general Settings tabs). */
+const FINANCE_LINKS = [
+  { to: '/settings/billing', label: 'Billing' },
+  { to: '/settings/fintech', label: 'Cash Flow & Financing' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -1046,233 +1048,6 @@ function DocumentsTab() {
             <SavedNote show={settings.patch.isSuccess && !settings.patch.isPending} />
           </div>
         </form>
-      </Card>
-    </div>
-  );
-}
-
-/* ------------------------------------ Financing ----------------------------------- */
-
-function FinancingTab() {
-  return <FinancingCockpit />;
-}
-
-/* ------------------------------------ Billing ----------------------------------- */
-
-function BillingTab() {
-  const [searchParams] = useSearchParams();
-  const queryClient = useQueryClient();
-  const [error, setError] = useState('');
-  const [shippingSystem, setShippingSystem] = useState('EASYPOST');
-  const [shippingKey, setShippingKey] = useState('');
-  const [domainName, setDomainName] = useState('');
-
-  const { data: stripeStatus, refetch: refetchStripe } = useQuery({
-    queryKey: ['billing', 'stripe-status'],
-    queryFn: async () =>
-      (await apiClient.get<StripeBillingStatus>('/api/v1/billing/stripe/status')).data,
-    retry: false,
-  });
-
-  const { data: shippingAccounts = [] } = useQuery({
-    queryKey: ['shipping-accounts'],
-    queryFn: async () =>
-      (await apiClient.get<ShippingCredentialStatus[]>('/api/v1/settings/shipping-accounts')).data,
-    retry: false,
-  });
-
-  const { data: emailDomains = [] } = useQuery({
-    queryKey: ['email-domains'],
-    queryFn: async () =>
-      (await apiClient.get<TenantEmailDomain[]>('/api/v1/settings/email-domains')).data,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (searchParams.get('stripe') === 'success') {
-      void apiClient.get('/api/v1/billing/stripe/refresh').then(() => {
-        void refetchStripe();
-        void queryClient.invalidateQueries({ queryKey: ['billing', 'stripe-status'] });
-      });
-    }
-  }, [searchParams, refetchStripe, queryClient]);
-
-  const connectMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.get<{ url: string }>(
-        '/api/v1/billing/stripe/onboarding-url',
-        { params: { returnUrl: `${window.location.origin}/settings?stripe=success` } }
-      );
-      return res.data.url;
-    },
-    onSuccess: (url) => {
-      window.location.href = url;
-    },
-    onError: () => setError('Could not start Stripe onboarding. Try again.'),
-  });
-
-  const saveShippingMutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/api/v1/settings/shipping-accounts', {
-        system: shippingSystem,
-        apiKey: shippingKey,
-      });
-    },
-    onSuccess: () => {
-      setShippingKey('');
-      void queryClient.invalidateQueries({ queryKey: ['shipping-accounts'] });
-    },
-  });
-
-  const registerDomainMutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/api/v1/settings/email-domains', { domainName });
-    },
-    onSuccess: () => {
-      setDomainName('');
-      void queryClient.invalidateQueries({ queryKey: ['email-domains'] });
-    },
-  });
-
-  const verifyDomainMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.post(`/api/v1/settings/email-domains/${id}/verify`);
-    },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['email-domains'] }),
-  });
-
-  return (
-    <div className="space-y-6">
-      <FinancingCockpit />
-
-      <Card>
-        <CardHeader title="Billing & payments" description="Stripe Connect and platform fees" />
-        <div className="mb-4 flex flex-wrap gap-2">
-          {statusChip(stripeStatus?.onboardingStatus ?? 'NOT_CONNECTED')}
-          {stripeStatus?.connectedAccountId && (
-            <span className="font-mono text-xs text-text-muted">{stripeStatus.connectedAccountId}</span>
-          )}
-        </div>
-        {stripeStatus?.capabilities && Object.keys(stripeStatus.capabilities).length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-2">
-            {Object.entries(stripeStatus.capabilities).map(([key, value]) => (
-              <span key={key} className="text-xs text-text-muted">
-                {key}: {String(value)}
-              </span>
-            ))}
-          </div>
-        )}
-        <p className="text-sm text-text-muted">
-          Connect your Stripe account to receive invoice payments directly. Platform fees apply per
-          your tenant settings.
-        </p>
-        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-        <Button
-          className="mt-4"
-          loading={connectMutation.isPending}
-          onClick={() => {
-            setError('');
-            connectMutation.mutate();
-          }}
-        >
-          <Link2 className="h-4 w-4" />
-          Connect Stripe
-        </Button>
-      </Card>
-
-      <Card>
-        <CardHeader title="Shipping accounts" description="Carrier credentials for label generation" />
-        <form
-          className="mb-4 grid gap-4 sm:grid-cols-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveShippingMutation.mutate();
-          }}
-        >
-          <Select label="Carrier" value={shippingSystem} onChange={(e) => setShippingSystem(e.target.value)}>
-            {['EASYPOST', 'UPS', 'FEDEX'].map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="API key"
-            type="password"
-            value={shippingKey}
-            onChange={(e) => setShippingKey(e.target.value)}
-            required
-          />
-          <div className="flex items-end">
-            <Button type="submit" loading={saveShippingMutation.isPending}>
-              Save credential
-            </Button>
-          </div>
-        </form>
-        <div className="flex flex-wrap gap-2">
-          {shippingAccounts.map((account) => (
-            <span key={account.system}>
-              {account.system}: {statusChip(account.status)}
-            </span>
-          ))}
-        </div>
-      </Card>
-
-      <Card>
-        <CardHeader title="Email domains" description="Custom domains for PO and invoice emails" />
-        <form
-          className="mb-4 flex flex-wrap gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            registerDomainMutation.mutate();
-          }}
-        >
-          <Input
-            label="Domain"
-            value={domainName}
-            onChange={(e) => setDomainName(e.target.value)}
-            placeholder="mail.yourcompany.com"
-            required
-          />
-          <div className="flex items-end">
-            <Button type="submit" loading={registerDomainMutation.isPending}>
-              Add domain
-            </Button>
-          </div>
-        </form>
-        {emailDomains.length === 0 ? (
-          <p className="text-sm text-text-muted">No custom domains registered.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Domain</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {emailDomains.map((domain) => (
-                <TableRow key={domain.id}>
-                  <TableCell>{domain.domainName}</TableCell>
-                  <TableCell>{statusChip(domain.verificationStatus)}</TableCell>
-                  <TableCell align="right">
-                    {domain.verificationStatus === 'PENDING' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => verifyDomainMutation.mutate(domain.id)}
-                        loading={verifyDomainMutation.isPending}
-                      >
-                        Verify
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
       </Card>
     </div>
   );
@@ -2365,7 +2140,7 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
 
   return (
-    <div className="p-6">
+    <div className="h-full overflow-y-auto overscroll-contain p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-text">Settings</h1>
         <p className="mt-1 text-sm text-text-muted">
@@ -2391,6 +2166,16 @@ export function SettingsPage() {
               {tab.label}
             </button>
           ))}
+          <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
+          {FINANCE_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className="whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-overlay hover:text-text"
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
 
         <div className="flex-1">
@@ -2399,12 +2184,11 @@ export function SettingsPage() {
           {activeTab === 'warehouses' && <WarehousesTab />}
           {activeTab === 'inventory' && <InventoryRulesTab />}
           {activeTab === 'documents' && <DocumentsTab />}
-          {activeTab === 'billing' && <BillingTab />}
-          {activeTab === 'financing' && <FinancingTab />}
           {activeTab === 'security' && <SecuritySsoTab />}
           {activeTab === 'reconciliation' && <ReconciliationTab />}
           {activeTab === 'accounting' && <AccountingSyncTab />}
           {activeTab === 'integrations' && <IntegrationsTab />}
+          {activeTab === 'mesh' && <PartnerCatalogMappingPanel />}
           {activeTab === 'operations' && <OperationsConsoleTab />}
           {activeTab === 'costCenters' && <CostCentersRequisitionsTab />}
         </div>

@@ -15,14 +15,86 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useShowroomCart } from '@/showroom/useShowroomCart';
+
+function ShowroomOrdersTable({
+  orders,
+  reorderPending,
+  onReorder,
+}: {
+  orders: PortalOrder[];
+  reorderPending: boolean;
+  onReorder: (orderId: string) => void;
+}) {
+  const { sort, toggle, sorted } = useClientSort(
+    orders,
+    {
+      number: (o) => o.number,
+      status: (o) => o.status,
+      total: (o) => o.total,
+      created: (o) => o.createdAt,
+    },
+    { key: 'created', dir: 'desc' },
+  );
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
+            Number
+          </TableHead>
+          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+            Status
+          </TableHead>
+          <TableHead sortable sortKey="total" sort={sort} onSort={toggle} align="right">
+            Total
+          </TableHead>
+          <TableHead sortable sortKey="created" sort={sort} onSort={toggle}>
+            Created
+          </TableHead>
+          <TableHead align="right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((order) => (
+          <TableRow key={order.id}>
+            <TableCell mono>{order.number}</TableCell>
+            <TableCell>
+              <StatusBadge status={order.status} />
+            </TableCell>
+            <TableCell align="right" mono>
+              {order.total.toLocaleString(undefined, {
+                style: 'currency',
+                currency: order.currency,
+              })}
+            </TableCell>
+            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+            <TableCell align="right">
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={reorderPending}
+                onClick={() => onReorder(order.id)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reorder
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export function ShowroomOrdersPage() {
   const navigate = useNavigate();
   const { addLines } = useShowroomCart();
   const { data, isLoading, isError, error, refetch } = useListQuery<PortalOrder>(
     ['portal', 'orders'],
-    '/api/v1/portal/orders'
+    '/api/v1/portal/orders',
   );
 
   const reorderMutation = useMutation({
@@ -45,7 +117,7 @@ export function ShowroomOrdersPage() {
           variantId: string;
           quantity: number;
           catalogItem: PortalCatalogItem;
-        }>
+        }>,
       );
       navigate('/showroom/catalog');
     },
@@ -74,45 +146,11 @@ export function ShowroomOrdersPage() {
         }
       >
         {(orders) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead align="right">Total</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell mono>{order.number}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={order.status} />
-                  </TableCell>
-                  <TableCell align="right" mono>
-                    {order.total.toLocaleString(undefined, {
-                      style: 'currency',
-                      currency: order.currency,
-                    })}
-                  </TableCell>
-                  <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={reorderMutation.isPending}
-                      onClick={() => reorderMutation.mutate(order.id)}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Reorder
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <ShowroomOrdersTable
+            orders={orders}
+            reorderPending={reorderMutation.isPending}
+            onReorder={(id) => reorderMutation.mutate(id)}
+          />
         )}
       </ListPageState>
     </div>

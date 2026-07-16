@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -28,6 +29,73 @@ const STATUS_STYLES: Record<string, string> = {
   PAID: 'bg-success/10 text-success',
   VOID: 'bg-danger/10 text-danger',
 };
+
+function InvoicesTable({
+  items,
+  onPeek,
+}: {
+  items: Invoice[];
+  onPeek: (id: string) => void;
+}) {
+  const { sort, toggle, sorted } = useClientSort(
+    items,
+    {
+      number: (inv) => inv.number,
+      customer: (inv) => inv.customerName,
+      status: (inv) => inv.status,
+      total: (inv) => inv.total,
+      due: (inv) => inv.dueAt ?? '',
+    },
+    { key: 'number', dir: 'desc' },
+  );
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
+            Number
+          </TableHead>
+          <TableHead sortable sortKey="customer" sort={sort} onSort={toggle}>
+            Customer
+          </TableHead>
+          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+            Status
+          </TableHead>
+          <TableHead sortable sortKey="total" sort={sort} onSort={toggle} align="right">
+            Total
+          </TableHead>
+          <TableHead sortable sortKey="due" sort={sort} onSort={toggle}>
+            Due
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((inv) => (
+          <TableRow key={inv.id} className="cursor-pointer" onClick={() => onPeek(inv.id)}>
+            <TableCell mono>{inv.number}</TableCell>
+            <TableCell>{inv.customerName}</TableCell>
+            <TableCell>
+              <span
+                className={cn(
+                  'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  STATUS_STYLES[inv.status] ?? 'bg-surface-overlay text-text-muted',
+                )}
+              >
+                {inv.status.replaceAll('_', ' ')}
+              </span>
+            </TableCell>
+            <TableCell align="right" mono>
+              {formatCurrency(inv.total, inv.currency)}
+            </TableCell>
+            <TableCell className="text-text-muted">
+              {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : '—'}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 function CreateInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -183,43 +251,7 @@ export function InvoicesPage() {
           ) : undefined
         }
       >
-        {(items) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead align="right">Total</TableHead>
-                <TableHead>Due</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((inv) => (
-                <TableRow key={inv.id} className="cursor-pointer" onClick={() => setPeekInvoiceId(inv.id)}>
-                  <TableCell mono>{inv.number}</TableCell>
-                  <TableCell>{inv.customerName}</TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        STATUS_STYLES[inv.status] ?? 'bg-surface-overlay text-text-muted'
-                      )}
-                    >
-                      {inv.status.replaceAll('_', ' ')}
-                    </span>
-                  </TableCell>
-                  <TableCell align="right" mono>
-                    {formatCurrency(inv.total, inv.currency)}
-                  </TableCell>
-                  <TableCell className="text-text-muted">
-                    {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        {(items) => <InvoicesTable items={items} onPeek={setPeekInvoiceId} />}
       </ListPageState>
 
       <CreateInvoiceModal open={modalOpen} onClose={() => setModalOpen(false)} />

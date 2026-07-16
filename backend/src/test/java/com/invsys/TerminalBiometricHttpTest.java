@@ -113,10 +113,10 @@ class TerminalBiometricHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tokenType").value("TERMINAL_SWITCH"))
                 .andExpect(jsonPath("$.userId").value(picker.getId().toString()))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
                 .andReturn();
 
-        String access = result.getResponse().getContentAsString()
-                .replaceAll("(?s).*\"accessToken\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+        String access = result.getResponse().getCookie("invsys_access").getValue();
         JWTClaimsSet claims = jwtService.validateAndParse(access);
         assertThat(claims.getClaim("token_type")).isEqualTo("TERMINAL_SWITCH");
         @SuppressWarnings("unchecked")

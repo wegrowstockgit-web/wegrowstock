@@ -130,6 +130,111 @@ public class BootstrapJdbc {
                 tenantId);
     }
 
+    /**
+     * Resolve tenant + enabled SSO from a verified corporate email domain (e.g. acme.com).
+     */
+    /**
+     * Cross-tenant check (bypasses RLS): another org already verified this email domain.
+     */
+    public Optional<UUID> findVerifiedDomainOwner(String domainName) {
+        if (domainName == null || domainName.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbc.query(
+                """
+                SELECT tenant_id FROM tenant_domains
+                WHERE lower(domain_name) = lower(?)
+                  AND verification_status IN ('ACTIVE', 'VERIFIED')
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(UUID.fromString(rs.getString(1))) : Optional.empty(),
+                domainName.trim());
+    }
+
+    /**
+     * Cross-tenant (bypasses RLS): DNS-verified domains eligible for dynamic CORS origins.
+     */
+    public List<String> listActiveVerifiedDomainNames() {
+        return jdbc.queryForList(
+                """
+                SELECT lower(domain_name) AS domain_name
+                FROM tenant_domains
+                WHERE verification_status IN ('ACTIVE', 'VERIFIED')
+                ORDER BY domain_name
+                """,
+                String.class);
+    }
+
+    public Optional<DomainSsoRow> findEnabledSsoByEmailDomain(String domainName) {
+        if (domainName == null || domainName.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbc.query(
+                """
+                SELECT td.tenant_id, s.issuer_url, s.client_id, s.enabled, s.force_sso,
+                       COALESCE(s.protocol, 'OIDC') AS protocol
+                FROM tenant_domains td
+                JOIN tenant_sso_configs s ON s.tenant_id = td.tenant_id
+                WHERE lower(td.domain_name) = lower(?)
+                  AND td.verification_status IN ('ACTIVE', 'VERIFIED')
+                  AND s.enabled = TRUE
+                LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new DomainSsoRow(
+                            UUID.fromString(rs.getString("tenant_id")),
+                            rs.getString("issuer_url"),
+                            rs.getString("client_id"),
+                            rs.getBoolean("enabled"),
+                            rs.getBoolean("force_sso"),
+                            rs.getString("protocol")));
+                },
+                domainName.trim());
+    }
+
+    public void insertOauthCallbackState(String state, UUID tenantId, String provider, String payloadJson,
+                                         java.time.Instant expiresAt) {
+        jdbc.update("""
+                INSERT INTO oauth_callback_states (state, tenant_id, provider, payload, expires_at)
+                VALUES (?, ?, ?, CAST(? AS jsonb), ?)
+                ON CONFLICT (state) DO UPDATE
+                SET tenant_id = EXCLUDED.tenant_id,
+                    provider = EXCLUDED.provider,
+                    payload = EXCLUDED.payload,
+                    expires_at = EXCLUDED.expires_at
+                """,
+                state, tenantId, provider, payloadJson, java.sql.Timestamp.from(expiresAt));
+    }
+
+    public Optional<OauthStateRow> consumeOauthCallbackState(String state) {
+        if (state == null || state.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<OauthStateRow> row = jdbc.query(
+                """
+                SELECT state, tenant_id, provider, payload::text AS payload, expires_at
+                FROM oauth_callback_states
+                WHERE state = ?
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new OauthStateRow(
+                            rs.getString("state"),
+                            UUID.fromString(rs.getString("tenant_id")),
+                            rs.getString("provider"),
+                            rs.getString("payload"),
+                            rs.getTimestamp("expires_at").toInstant()));
+                },
+                state.trim());
+        row.ifPresent(r -> jdbc.update("DELETE FROM oauth_callback_states WHERE state = ?", r.state()));
+        return row;
+    }
+
     public Optional<MagicLoginTokenRow> findMagicLoginTokenByHash(String tokenHash) {
         return jdbc.query(
                 """
@@ -182,6 +287,103 @@ public class BootstrapJdbc {
                 trimmed);
     }
 
+    public List<MeshPartnerRow> listConnectedMeshPartnersForBuyer(UUID buyerTenantId) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, partner_tenant_id, supplier_id, customer_id, connection_status
+                FROM tenant_mesh_partners
+                WHERE tenant_id = ?
+                  AND connection_status = 'CONNECTED'
+                ORDER BY created_at DESC
+                """,
+                (rs, rowNum) -> mapMeshPartner(rs),
+                buyerTenantId);
+    }
+
+    public List<PartnerCatalogSku> listPartnerCatalogSkus(UUID partnerTenantId) {
+        return jdbc.query(
+                """
+                SELECT pv.id AS variant_id, pv.sku, COALESCE(p.name, pv.sku) AS product_name
+                FROM product_variants pv
+                LEFT JOIN products p ON p.id = pv.product_id AND p.tenant_id = pv.tenant_id
+                WHERE pv.tenant_id = ?
+                  AND pv.sku NOT LIKE 'MESH-PENDING-%'
+                ORDER BY pv.sku
+                """,
+                (rs, rowNum) -> new PartnerCatalogSku(
+                        UUID.fromString(rs.getString("variant_id")),
+                        rs.getString("sku"),
+                        rs.getString("product_name")),
+                partnerTenantId);
+    }
+
+    /**
+     * Authoritative mesh pairing write (SECURITY DEFINER; safe across RLS boundaries).
+     */
+    public UUID upsertMeshPartner(UUID buyerTenantId, UUID sellerTenantId,
+                                  UUID supplierId, UUID customerId, String status) {
+        return jdbc.queryForObject(
+                "SELECT bootstrap_upsert_mesh_partner(?, ?, ?, ?, ?)",
+                UUID.class,
+                buyerTenantId, sellerTenantId, supplierId, customerId, status);
+    }
+
+    /**
+     * Cross-tenant mesh lookup (bypasses RLS): buyer tenant + supplier → CONNECTED partner.
+     */
+    public Optional<MeshPartnerRow> findConnectedMeshByBuyerSupplier(UUID buyerTenantId, UUID supplierId) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, partner_tenant_id, supplier_id, customer_id, connection_status
+                FROM tenant_mesh_partners
+                WHERE tenant_id = ?
+                  AND supplier_id = ?
+                  AND connection_status = 'CONNECTED'
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(mapMeshPartner(rs)) : Optional.empty(),
+                buyerTenantId, supplierId);
+    }
+
+    /**
+     * Cross-tenant mesh lookup (bypasses RLS): seller tenant + customer → CONNECTED partner.
+     */
+    public Optional<MeshPartnerRow> findConnectedMeshBySellerCustomer(UUID sellerTenantId, UUID customerId) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, partner_tenant_id, supplier_id, customer_id, connection_status
+                FROM tenant_mesh_partners
+                WHERE partner_tenant_id = ?
+                  AND customer_id = ?
+                  AND connection_status = 'CONNECTED'
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(mapMeshPartner(rs)) : Optional.empty(),
+                sellerTenantId, customerId);
+    }
+
+    private static MeshPartnerRow mapMeshPartner(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new MeshPartnerRow(
+                UUID.fromString(rs.getString("id")),
+                UUID.fromString(rs.getString("tenant_id")),
+                UUID.fromString(rs.getString("partner_tenant_id")),
+                UUID.fromString(rs.getString("supplier_id")),
+                UUID.fromString(rs.getString("customer_id")),
+                rs.getString("connection_status"));
+    }
+
+    public record MeshPartnerRow(
+            UUID id,
+            UUID tenantId,
+            UUID partnerTenantId,
+            UUID supplierId,
+            UUID customerId,
+            String connectionStatus) {
+    }
+
+    public record PartnerCatalogSku(UUID variantId, String sku, String productName) {
+    }
+
     public record UserAuthRow(UUID id, String passwordHash, String status) {}
 
     public record UserAuthWithTenantRow(UUID id, UUID tenantId, String passwordHash, String status) {}
@@ -198,6 +400,14 @@ public class BootstrapJdbc {
     }
 
     public record InvoiceBootstrapRow(UUID id, UUID tenantId, String number, String status) {
+    }
+
+    public record DomainSsoRow(UUID tenantId, String issuerUrl, String clientId,
+                               boolean enabled, boolean forceSso, String protocol) {
+    }
+
+    public record OauthStateRow(String state, UUID tenantId, String provider,
+                                String payloadJson, java.time.Instant expiresAt) {
     }
 
     public void upsertCurrencyRate(String fromCurrency, String toCurrency, java.math.BigDecimal rate, java.time.Instant asOf) {

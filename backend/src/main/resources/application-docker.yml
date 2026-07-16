@@ -6,8 +6,18 @@ spring:
     url: jdbc:postgresql://db:5432/invsys
   flyway:
     url: jdbc:postgresql://db:5432/invsys
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
 
 invsys:
+  redis:
+    enabled: true
+  security:
+    cookie-secure: ${COOKIE_SECURE:false}
+    cookie-same-site: ${COOKIE_SAME_SITE:Lax}
   jwt:
     private-key-file: ${JWT_PRIVATE_KEY_FILE:/run/jwt/dev-private.pem}
     public-key-file: ${JWT_PUBLIC_KEY_FILE:/run/jwt/dev-public.pem}

@@ -28,9 +28,77 @@ import {
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 
 const RECEIVABLE = new Set(['SUBMITTED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED']);
+
+function PurchaseOrdersTable({
+  items,
+  onPeek,
+}: {
+  items: PurchaseOrder[];
+  onPeek: (id: string) => void;
+}) {
+  const { sort, toggle, sorted } = useClientSort(
+    items,
+    {
+      number: (po) => po.number,
+      supplier: (po) => po.supplierName,
+      status: (po) => po.status,
+      expected: (po) => po.expectedAt ?? '',
+      freight: (po) => po.freightAmount ?? 0,
+    },
+    { key: 'number', dir: 'desc' },
+  );
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
+            Number
+          </TableHead>
+          <TableHead sortable sortKey="supplier" sort={sort} onSort={toggle}>
+            Supplier
+          </TableHead>
+          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+            Status
+          </TableHead>
+          <TableHead sortable sortKey="expected" sort={sort} onSort={toggle}>
+            Expected
+          </TableHead>
+          <TableHead sortable sortKey="freight" sort={sort} onSort={toggle} align="right">
+            Freight
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((po) => (
+          <TableRow key={po.id} className="cursor-pointer" onClick={() => onPeek(po.id)}>
+            <TableCell mono>{po.number}</TableCell>
+            <TableCell>{po.supplierName}</TableCell>
+            <TableCell>
+              <span
+                className={cn(
+                  'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted',
+                )}
+              >
+                {po.status.replaceAll('_', ' ')}
+              </span>
+            </TableCell>
+            <TableCell className="text-text-muted">
+              {po.expectedAt ? new Date(po.expectedAt).toLocaleDateString() : '—'}
+            </TableCell>
+            <TableCell align="right" mono>
+              {po.freightAmount != null ? po.freightAmount.toFixed(2) : '—'}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
@@ -579,45 +647,7 @@ export function PurchaseOrdersPage() {
         >
           {(items) => (
             <div className="w-full">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Number</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Expected</TableHead>
-                    <TableHead align="right">Freight</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((po) => (
-                    <TableRow
-                      key={po.id}
-                      className="cursor-pointer"
-                      onClick={() => setPeekPoId(po.id)}
-                    >
-                      <TableCell mono>{po.number}</TableCell>
-                      <TableCell>{po.supplierName}</TableCell>
-                      <TableCell>
-                        <span
-                          className={cn(
-                            'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                            STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted'
-                          )}
-                        >
-                          {po.status.replaceAll('_', ' ')}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-text-muted">
-                        {po.expectedAt ? new Date(po.expectedAt).toLocaleDateString() : '—'}
-                      </TableCell>
-                      <TableCell align="right" mono>
-                        {po.freightAmount != null ? po.freightAmount.toFixed(2) : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <PurchaseOrdersTable items={items} onPeek={setPeekPoId} />
             </div>
           )}
         </ListPageState>

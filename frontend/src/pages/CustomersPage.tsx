@@ -16,7 +16,41 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
+
+function CustomersTable({ items }: { items: Customer[] }) {
+  const { sort, toggle, sorted } = useClientSort(
+    items,
+    {
+      name: (c) => c.name,
+      email: (c) => c.email ?? '',
+    },
+    { key: 'name', dir: 'asc' },
+  );
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="name" sort={sort} onSort={toggle}>
+            Name
+          </TableHead>
+          <TableHead sortable sortKey="email" sort={sort} onSort={toggle}>
+            Email
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((c) => (
+          <TableRow key={c.id}>
+            <TableCell>{c.name}</TableCell>
+            <TableCell>{c.email ?? '—'}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 function AddCustomerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -110,24 +144,7 @@ export function CustomersPage() {
           ) : undefined
         }
       >
-        {(items) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell>{c.name}</TableCell>
-                  <TableCell>{c.email ?? '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        {(items) => <CustomersTable items={items} />}
       </ListPageState>
 
       <AddCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />

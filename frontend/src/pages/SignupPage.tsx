@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
-import type { SignupRequest, TokenResponse } from '@/api/types';
+import type { SessionResponse, SignupRequest } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -15,7 +15,7 @@ function slugify(name: string) {
 
 export function SignupPage() {
   const navigate = useNavigate();
-  const setSessionFromToken = useSessionStore((s) => s.setSessionFromToken);
+  const setSessionFromLogin = useSessionStore((s) => s.setSessionFromLogin);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     companyName: '',
@@ -33,11 +33,11 @@ export function SignupPage() {
         password: form.password,
         displayName: form.displayName,
       };
-      const res = await apiClient.post<TokenResponse>('/api/v1/auth/signup', payload);
+      const res = await apiClient.post<SessionResponse>('/api/v1/auth/signup', payload);
       return res.data;
     },
     onSuccess: (data) => {
-      setSessionFromToken(data, form.email, form.displayName);
+      setSessionFromLogin(data, form.email, form.displayName);
       navigate('/dashboard');
     },
     onError: () => {

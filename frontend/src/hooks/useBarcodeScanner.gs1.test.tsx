@@ -119,5 +119,56 @@ describe('useBarcodeScanner GS1 intercept', () => {
 
     expect(onScan).toHaveBeenCalledWith('MSG-SKU-1', expect.any(Object));
   });
+
+  it('registers Android intentShim broadcast receiver when present', () => {
+    const onScan = vi.fn();
+    const unregisterBroadcastReceiver = vi.fn();
+    let receiver: ((intent: unknown) => void) | undefined;
+    const registerBroadcastReceiver = vi.fn(
+      (_filter: unknown, cb: (intent: unknown) => void) => {
+        receiver = cb;
+      },
+    );
+    (window as Window & { intentShim?: unknown }).intentShim = {
+      registerBroadcastReceiver,
+      unregisterBroadcastReceiver,
+    };
+
+    const { unmount } = renderHook(() =>
+      useBarcodeScanner({
+        enabled: true,
+        captureAll: true,
+        onScan,
+      }),
+    );
+
+    expect(registerBroadcastReceiver).toHaveBeenCalled();
+    act(() => {
+      receiver?.({ extras: { 'com.symbol.datawedge.data_string': 'ZEBRA-99' } });
+    });
+    expect(onScan).toHaveBeenCalledWith('ZEBRA-99', expect.any(Object));
+
+    unmount();
+    expect(unregisterBroadcastReceiver).toHaveBeenCalled();
+    delete (window as Window & { intentShim?: unknown }).intentShim;
+  });
+
+  it('tolerates intentShim register failures', () => {
+    (window as Window & { intentShim?: unknown }).intentShim = {
+      registerBroadcastReceiver: () => {
+        throw new Error('no bridge');
+      },
+    };
+    expect(() =>
+      renderHook(() =>
+        useBarcodeScanner({
+          enabled: true,
+          captureAll: true,
+          onScan: vi.fn(),
+        }),
+      ),
+    ).not.toThrow();
+    delete (window as Window & { intentShim?: unknown }).intentShim;
+  });
 });
 

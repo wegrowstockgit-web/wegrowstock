@@ -3,8 +3,13 @@ package com.invsys.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -31,6 +36,10 @@ public class PurchaseOrder extends TenantScopedEntity {
 
     @Column(name = "duties_amount", nullable = false)
     private java.math.BigDecimal dutiesAmount = java.math.BigDecimal.ZERO;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "tracking_metadata", columnDefinition = "jsonb", nullable = false)
+    private List<Map<String, Object>> trackingMetadata = new ArrayList<>();
 
     public UUID getSupplierId() {
         return supplierId;
@@ -86,5 +95,13 @@ public class PurchaseOrder extends TenantScopedEntity {
 
     public void setDutiesAmount(java.math.BigDecimal dutiesAmount) {
         this.dutiesAmount = dutiesAmount;
+    }
+
+    public List<Map<String, Object>> getTrackingMetadata() {
+        return trackingMetadata;
+    }
+
+    public void setTrackingMetadata(List<Map<String, Object>> trackingMetadata) {
+        this.trackingMetadata = trackingMetadata != null ? trackingMetadata : new ArrayList<>();
     }
 }

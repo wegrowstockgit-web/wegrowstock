@@ -1,5 +1,6 @@
 package com.invsys.auth.oidc;
 
+import com.invsys.auth.AuthCookieService;
 import com.invsys.auth.AuthService;
 import com.invsys.auth.dto.TokenResponse;
 import com.invsys.common.ApiException;
@@ -23,13 +24,16 @@ import java.util.UUID;
 public class OidcLoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final AuthService authService;
+    private final AuthCookieService authCookieService;
     private final UserRepository userRepository;
     private final String frontendUrl;
 
     public OidcLoginSuccessHandler(AuthService authService,
+                                   AuthCookieService authCookieService,
                                    UserRepository userRepository,
                                    @Value("${invsys.frontend-url:http://localhost:3000}") String frontendUrl) {
         this.authService = authService;
+        this.authCookieService = authCookieService;
         this.userRepository = userRepository;
         this.frontendUrl = frontendUrl;
     }
@@ -56,12 +60,9 @@ public class OidcLoginSuccessHandler implements AuthenticationSuccessHandler {
                     .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "USER_NOT_PROVISIONED",
                             "No user account exists for this email in the tenant"));
             TokenResponse tokens = authService.completeLogin(user.getId());
+            authCookieService.writeSessionCookies(response, tokens);
             String redirect = UriComponentsBuilder.fromUriString(frontendUrl + "/login")
                     .queryParam("sso", "1")
-                    .queryParam("accessToken", tokens.accessToken())
-                    .queryParam("refreshToken", tokens.refreshToken())
-                    .queryParam("tenantId", tokens.tenantId().toString())
-                    .queryParam("userId", tokens.userId().toString())
                     .build()
                     .encode()
                     .toUriString();

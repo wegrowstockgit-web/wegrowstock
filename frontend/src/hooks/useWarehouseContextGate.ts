@@ -71,7 +71,7 @@ export function useWarehouseContextGate(
   warehouses: Warehouse[],
   jwtTerminalLocked: boolean
 ): void {
-  const authenticated = !!useSessionStore((s) => s.accessToken);
+  const authenticated = useSessionStore((s) => s.isAuthenticated());
   const lockFromHardware = useActiveWarehouseStore((s) => s.lockFromHardware);
   const clearHardwareLock = useActiveWarehouseStore((s) => s.clearHardwareLock);
 

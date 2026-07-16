@@ -10,9 +10,10 @@ export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
+  withCredentials: true,
 });
 
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
 async function handleAuthFailure(): Promise<void> {
   useSessionStore.getState().clearSession();
@@ -20,30 +21,25 @@ async function handleAuthFailure(): Promise<void> {
   await clearQueryCache();
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken, updateTokens } = useSessionStore.getState();
-  if (!refreshToken) {
-    await handleAuthFailure();
-    return null;
-  }
-
+async function refreshAccessToken(): Promise<boolean> {
   try {
     const path = '/api/v1/auth/refresh';
-    const response = await axios.post<{ accessToken: string; refreshToken?: string }>(
+    await axios.post(
       API_BASE_URL ? `${API_BASE_URL}${path}` : path,
-      { refreshToken },
-      { headers: { 'Content-Type': 'application/json' } }
+      {},
+      {
+        headers: { 'Content-Type': 'application/json' },
+        withCredentials: true,
+      },
     );
-    const { accessToken, refreshToken: newRefresh } = response.data;
-    updateTokens(accessToken, newRefresh);
-    return accessToken;
+    return true;
   } catch {
     await handleAuthFailure();
-    return null;
+    return false;
   }
 }
 
-function singleFlightRefresh(): Promise<string | null> {
+function singleFlightRefresh(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = refreshAccessToken().finally(() => {
       refreshPromise = null;
@@ -52,48 +48,29 @@ function singleFlightRefresh(): Promise<string | null> {
   return refreshPromise;
 }
 
-function accessTokenExpiresSoon(token: string, skewMs = 60_000): boolean {
-  try {
-    const [, payload] = token.split('.');
-    if (!payload) return true;
-    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as {
-      exp?: number;
-    };
-    return typeof json.exp !== 'number' || json.exp * 1000 <= Date.now() + skewMs;
-  } catch {
-    return true;
-  }
-}
-
 /**
- * Ensure a valid access token before offline queue flush. Refreshes only when
- * the access token is missing or near expiry so mid-session rotation does not
- * invalidate other clients holding the prior refresh token.
+ * Ensure a valid cookie session before offline queue flush.
  */
 export async function ensureFreshSession(): Promise<boolean> {
-  const { accessToken, refreshToken } = useSessionStore.getState();
-  if (!refreshToken && !accessToken) {
+  const { authenticated } = useSessionStore.getState();
+  if (!authenticated) {
     return false;
   }
-  if (accessToken && !accessTokenExpiresSoon(accessToken)) {
-    return true;
-  }
-  if (!refreshToken) {
-    return !!accessToken;
-  }
-  const token = await singleFlightRefresh();
-  return !!token;
+  return singleFlightRefresh();
 }
 
 function isAuthFailure(status?: number): boolean {
-  // Only 401 means the session is invalid. 403 is an RBAC denial and must not
-  // trigger refresh/logout (otherwise floor roles get signed out on office APIs).
   return status === 401;
 }
 
 function isProtectedApiRequest(url?: string): boolean {
   if (!url) return false;
-  return url.includes('/api/v1/') && !url.includes('/api/v1/auth/login') && !url.includes('/api/v1/auth/signup');
+  return (
+    url.includes('/api/v1/') &&
+    !url.includes('/api/v1/auth/login') &&
+    !url.includes('/api/v1/auth/signup') &&
+    !url.includes('/api/v1/auth/warehouse/login')
+  );
 }
 
 function captureRequestId(headers: Record<string, unknown> | undefined) {
@@ -104,10 +81,6 @@ function captureRequestId(headers: Record<string, unknown> | undefined) {
 }
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = useSessionStore.getState().accessToken;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
   const warehouseId = useActiveWarehouseStore.getState().warehouseId;
   if (warehouseId) {
     config.headers['X-Warehouse-Id'] = warehouseId;
@@ -140,14 +113,13 @@ apiClient.interceptors.response.use(
       !originalRequest.url?.includes('/api/v1/auth/refresh')
     ) {
       originalRequest._retry = true;
-      const newToken = await singleFlightRefresh();
-      if (newToken) {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      const ok = await singleFlightRefresh();
+      if (ok) {
         return apiClient(originalRequest);
       }
       await handleAuthFailure();
     }
 
     return Promise.reject(error);
-  }
+  },
 );

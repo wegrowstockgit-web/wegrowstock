@@ -79,6 +79,7 @@ export function AppShell() {
         roles: data.roles,
         warehouseIds: data.warehouseIds,
         avatarUrl: data.avatarUrl,
+        tenantId: data.tenantId,
       });
       return data;
     },
@@ -164,7 +165,7 @@ export function AppShell() {
         className={cn(
           'flex min-w-0 flex-1 flex-col overflow-hidden',
           !isWarehouseView &&
-            'pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
+            'md:pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
         )}
       >
         <Header
@@ -180,7 +181,12 @@ export function AppShell() {
           onSignOut={() => void handleSignOut()}
         />
 
-        <main className="flex-1 overflow-auto">
+        {/*
+          Document pages scroll here. Virtualized grid pages set a viewport-locked
+          root (calc 100dvh − header) with overflow-hidden so only the table
+          scrollport moves — the outer window never gains a second scrollbar.
+        */}
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <Outlet />
         </main>
       </div>

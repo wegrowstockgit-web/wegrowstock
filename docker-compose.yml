@@ -20,6 +20,17 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: invsys-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: invsys-minio
@@ -76,6 +87,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       minio:
         condition: service_healthy
       minio-init:
@@ -89,6 +102,11 @@ services:
       DB_PASSWORD: app_user_secret
       FLYWAY_USER: app_owner
       FLYWAY_PASSWORD: app_owner_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_ENABLED: "true"
+      COOKIE_SECURE: "false"
+      COOKIE_SAME_SITE: Lax
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       STRIPE_WEBHOOK_SECRET: whsec_mock_secret
@@ -96,6 +114,9 @@ services:
       EASYPOST_WEBHOOK_SECRET: easypost_mock_secret
       ACCOUNTING_WEBHOOK_SECRET: accounting_mock_secret
       PUBLIC_SIGNUP_ENABLED: "true"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
+      CORS_INCLUDE_VERIFIED_DOMAINS: "true"
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       MEDIA_PROVIDER: MINIO
       MEDIA_ENDPOINT: http://minio:9000
       MEDIA_PUBLIC_ENDPOINT: ${MEDIA_PUBLIC_ENDPOINT:-http://localhost:9000}
@@ -105,12 +126,30 @@ services:
       MEDIA_SECRET_KEY: ${MEDIA_SECRET_KEY:-invsyssecret}
       MEDIA_PATH_STYLE: "true"
       MEDIA_CREATE_BUCKET: "true"
-    ports:
-      - "8080:8080"
+    # Not published — only reachable via api-gateway on the Docker network
+    expose:
+      - "8080"
     volumes:
       - ./ops/jwt:/run/jwt:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api-gateway:
+    image: nginx:1.27-alpine
+    container_name: invsys-api-gateway
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./ops/api-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      # Prefer 127.0.0.1 — alpine wget to "localhost" can hit IPv6 ::1 while nginx listens on IPv4.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -121,7 +160,7 @@ services:
       dockerfile: Dockerfile
     container_name: invsys-web
     depends_on:
-      backend:
+      api-gateway:
         condition: service_healthy
     ports:
       - "3000:80"

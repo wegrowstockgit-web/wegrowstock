@@ -6,6 +6,14 @@ import type { TenantLocation } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
 import { cn } from '@/lib/utils';
 
 const TARGET_FIELDS = [
@@ -217,36 +225,32 @@ export function ImportWizard() {
         {preview.headers.length === 0 ? (
           <p className="text-sm text-text-muted">Upload a file to preview mapped values.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-text-muted">
-                  {TARGET_FIELDS.map((f) => (
-                    <th key={f.key} className="px-3 py-2 font-medium">
-                      {f.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.rows.map((row, idx) => (
-                  <tr key={idx} className="border-b border-border/60">
-                    {TARGET_FIELDS.map((f) => {
-                      const header = mapping[f.key];
-                      const colIdx = preview.headers.findIndex(
-                        (h) => h.toLowerCase() === header.toLowerCase()
-                      );
-                      return (
-                        <td key={f.key} className="px-3 py-2 text-text">
-                          {colIdx >= 0 ? row[colIdx] ?? '' : '—'}
-                        </td>
-                      );
-                    })}
-                  </tr>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {TARGET_FIELDS.map((f) => (
+                  <TableHead key={f.key}>{f.label}</TableHead>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {preview.rows.map((row, idx) => (
+                <TableRow key={idx}>
+                  {TARGET_FIELDS.map((f) => {
+                    const header = mapping[f.key];
+                    const colIdx = preview.headers.findIndex(
+                      (h) => h.toLowerCase() === header.toLowerCase(),
+                    );
+                    return (
+                      <TableCell key={f.key}>
+                        {colIdx >= 0 ? row[colIdx] ?? '' : '—'}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </Card>
 

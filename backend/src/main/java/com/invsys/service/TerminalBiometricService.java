@@ -1,6 +1,7 @@
 package com.invsys.service;
 
 import com.invsys.auth.AuthService;
+import com.invsys.auth.TerminalPinBruteForceGuard;
 import com.invsys.auth.dto.TerminalSwitchResponse;
 import com.invsys.common.ApiException;
 import com.invsys.config.JwtProperties;
@@ -43,19 +44,22 @@ public class TerminalBiometricService {
     private final UserRoleRepository userRoleRepository;
     private final AuthService authService;
     private final JwtProperties jwtProperties;
+    private final TerminalPinBruteForceGuard terminalPinBruteForceGuard;
 
     public TerminalBiometricService(WebAuthnChallengeRepository challengeRepository,
                                     WebAuthnCredentialRepository credentialRepository,
                                     UserRepository userRepository,
                                     UserRoleRepository userRoleRepository,
                                     AuthService authService,
-                                    JwtProperties jwtProperties) {
+                                    JwtProperties jwtProperties,
+                                    TerminalPinBruteForceGuard terminalPinBruteForceGuard) {
         this.challengeRepository = challengeRepository;
         this.credentialRepository = credentialRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.authService = authService;
         this.jwtProperties = jwtProperties;
+        this.terminalPinBruteForceGuard = terminalPinBruteForceGuard;
     }
 
     @Transactional
@@ -106,20 +110,20 @@ public class TerminalBiometricService {
     public TerminalSwitchResponse assertTerminal(String credentialId, String challenge, String signature) {
         UUID tenantId = TenantContext.requireTenantId();
         UUID switchedFrom = TenantContext.getUserId().orElse(null);
+        terminalPinBruteForceGuard.assertAllowed(tenantId, switchedFrom);
 
         WebAuthnChallenge stored = challengeRepository.findByTenantIdAndChallenge(tenantId, challenge)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CHALLENGE",
-                        "Unknown or expired biometric challenge"));
-        if (stored.getConsumedAt() != null || stored.getExpiresAt().isBefore(Instant.now())) {
+                .orElse(null);
+        if (stored == null || stored.getConsumedAt() != null || stored.getExpiresAt().isBefore(Instant.now())) {
+            terminalPinBruteForceGuard.recordFailure(tenantId, switchedFrom);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CHALLENGE",
-                    "Biometric challenge expired or reused");
+                    "Unknown or expired biometric challenge");
         }
 
         WebAuthnCredential cred = credentialRepository.findByTenantIdAndCredentialId(tenantId, credentialId)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNKNOWN_CREDENTIAL",
-                        "Passkey not registered for this terminal"));
-
-        if (!verifyHmacSignature(challenge, credentialId, signature, cred.getCredentialSecretHash())) {
+                .orElse(null);
+        if (cred == null || !verifyHmacSignature(challenge, credentialId, signature, cred.getCredentialSecretHash())) {
+            terminalPinBruteForceGuard.recordFailure(tenantId, switchedFrom);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_ASSERTION",
                     "Biometric assertion failed");
         }
@@ -129,12 +133,14 @@ public class TerminalBiometricService {
         cred.setSignCount(cred.getSignCount() + 1);
         credentialRepository.save(cred);
 
-        User target = userRepository.findById(cred.getUserId())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "USER_INACTIVE", "User not found"));
-        if (!"ACTIVE".equals(target.getStatus())) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "USER_INACTIVE", "User is inactive");
+        User target = userRepository.findById(cred.getUserId()).orElse(null);
+        if (target == null || !"ACTIVE".equals(target.getStatus())) {
+            terminalPinBruteForceGuard.recordFailure(tenantId, switchedFrom);
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_ASSERTION",
+                    "Biometric assertion failed");
         }
 
+        terminalPinBruteForceGuard.recordSuccess(tenantId, switchedFrom);
         List<String> roles = userRoleRepository.findRoleCodesByUserId(target.getId());
         List<UUID> warehouseIds = authService.resolveWarehouseIds(tenantId, target.getId(), roles);
         String access = authService.issueTerminalAccessToken(target, roles, warehouseIds);

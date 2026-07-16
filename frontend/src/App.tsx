@@ -26,6 +26,10 @@ import { SupplierPortalPage } from '@/pages/SupplierPortalPage';
 
 import { SettingsPage } from '@/pages/SettingsPage';
 
+import { BillingSettingsPage } from '@/pages/BillingSettingsPage';
+
+import { FintechSettingsPage } from '@/pages/FintechSettingsPage';
+
 import { PurchaseOrdersPage } from '@/pages/PurchaseOrdersPage';
 
 import { SalesOrdersPage } from '@/pages/SalesOrdersPage';
@@ -310,6 +314,38 @@ export function App() {
               <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
 
                 <SettingsPage />
+
+              </ProtectedRoute>
+
+            }
+
+          />
+
+          <Route
+
+            path="settings/billing"
+
+            element={
+
+              <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+
+                <BillingSettingsPage />
+
+              </ProtectedRoute>
+
+            }
+
+          />
+
+          <Route
+
+            path="settings/fintech"
+
+            element={
+
+              <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+
+                <FintechSettingsPage />
 
               </ProtectedRoute>
 

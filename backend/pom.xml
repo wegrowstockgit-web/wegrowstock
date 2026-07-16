@@ -60,6 +60,10 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-micrometer-metrics</artifactId>
         </dependency>
         <dependency>
@@ -232,6 +236,8 @@
                                 <exclude>com/invsys/service/EdiTranslationEngine.class</exclude>
                                 <exclude>com/invsys/service/ApOcrIngestionService*.class</exclude>
                                 <exclude>com/invsys/service/PlatformAlertService*.class</exclude>
+                                <exclude>com/invsys/dns/**</exclude>
+                                <exclude>com/invsys/gateway/**</exclude>
                                 <exclude>com/invsys/service/PathOptimizationScheduler*.class</exclude>
                                 <exclude>com/invsys/service/OperationsConsoleService*.class</exclude>
                                 <exclude>com/invsys/service/OverdueInvoiceScheduler*.class</exclude>

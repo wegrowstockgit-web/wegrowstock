@@ -46,7 +46,8 @@ public class LocationController {
             locations = locationRepository.findByTenantIdOrderByPathAsc(tenantId);
         }
 
-        if (("WAREHOUSE".equalsIgnoreCase(type) || "VEHICLE".equalsIgnoreCase(type)) && !isElevated()) {
+        // LBAC warehouse_ids apply to WAREHOUSE locations only — VEHICLE ids are never in the JWT claim.
+        if ("WAREHOUSE".equalsIgnoreCase(type) && !isElevated()) {
             Set<UUID> allowed = TenantContext.getAuthorizedWarehouseIds().stream().collect(Collectors.toSet());
             return locations.stream().filter(loc -> allowed.contains(loc.getId())).toList();
         }

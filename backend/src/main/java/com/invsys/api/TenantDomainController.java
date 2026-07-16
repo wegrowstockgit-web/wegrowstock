@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/settings/email-domains")
+@RequestMapping({"/api/v1/settings/email-domains", "/api/v1/settings/domains"})
 @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
 public class TenantDomainController {
 

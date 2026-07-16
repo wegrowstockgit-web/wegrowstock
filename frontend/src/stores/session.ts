@@ -1,16 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useEffect, useState } from 'react';
-import type { User, TokenResponse } from '@/api/types';
+import type { User, SessionResponse } from '@/api/types';
 
 interface PrimarySessionSnapshot {
-  accessToken: string;
-  refreshToken: string | null;
   user: User;
 }
 
 interface TerminalSwitchPayload {
-  accessToken: string;
   tenantId: string;
   userId: string;
   roles: string[];
@@ -18,15 +15,14 @@ interface TerminalSwitchPayload {
 }
 
 interface SessionState {
-  accessToken: string | null;
-  refreshToken: string | null;
+  /** Cookie-authenticated session flag — JWTs never live in JS. */
+  authenticated: boolean;
   user: User | null;
   lastRequestId: string | null;
-  /** Device login preserved while a short-lived terminal PIN JWT is active. */
+  /** Profile snapshot while a short-lived terminal PIN cookie is active. */
   primarySession: PrimarySessionSnapshot | null;
-  setSessionFromToken: (token: TokenResponse, email: string, displayName?: string) => void;
+  setSessionFromLogin: (session: SessionResponse, email: string, displayName?: string) => void;
   setAvatarUrl: (avatarUrl: string | null) => void;
-  /** Merge profile fields from GET /api/v1/auth/me into the active session user. */
   applyMeProfile: (profile: {
     userId: string;
     email: string;
@@ -34,8 +30,8 @@ interface SessionState {
     roles: string[];
     warehouseIds?: string[];
     avatarUrl?: string | null;
+    tenantId?: string;
   }) => void;
-  updateTokens: (accessToken: string, refreshToken?: string) => void;
   applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
   restorePrimarySession: () => void;
   isTerminalSwitchActive: () => boolean;
@@ -52,24 +48,23 @@ interface SessionState {
 export const useSessionStore = create<SessionState>()(
   persist(
     (set, get) => ({
-      accessToken: null,
-      refreshToken: null,
+      authenticated: false,
       user: null,
       lastRequestId: null,
       primarySession: null,
 
-      setSessionFromToken: (token, email, displayName) =>
+      setSessionFromLogin: (session, email, displayName) =>
         set({
-          accessToken: token.accessToken,
-          refreshToken: token.refreshToken,
+          authenticated: true,
           primarySession: null,
           user: {
-            id: token.userId,
+            id: session.userId,
             email,
             displayName: displayName ?? email.split('@')[0],
-            roles: token.roles,
-            warehouseIds: token.warehouseIds ?? [],
-            avatarUrl: token.avatarUrl ?? null,
+            roles: session.roles,
+            warehouseIds: session.warehouseIds ?? [],
+            avatarUrl: session.avatarUrl ?? null,
+            tenantId: session.tenantId,
           },
         }),
 
@@ -85,7 +80,7 @@ export const useSessionStore = create<SessionState>()(
                     }
                   : state.primarySession,
               }
-            : state
+            : state,
         ),
 
       applyMeProfile: (profile) =>
@@ -97,8 +92,10 @@ export const useSessionStore = create<SessionState>()(
             roles: profile.roles,
             warehouseIds: profile.warehouseIds ?? [],
             avatarUrl: profile.avatarUrl ?? null,
+            tenantId: profile.tenantId ?? state.user?.tenantId,
           };
           return {
+            authenticated: true,
             user: nextUser,
             primarySession: state.primarySession
               ? { ...state.primarySession, user: nextUser }
@@ -106,27 +103,17 @@ export const useSessionStore = create<SessionState>()(
           };
         }),
 
-      updateTokens: (accessToken, refreshToken) =>
-        set((state) => ({
-          accessToken,
-          refreshToken: refreshToken ?? state.refreshToken,
-        })),
-
       applyTerminalSwitch: (token, emailHint) => {
         const state = get();
-        if (!state.accessToken || !state.user) return;
+        if (!state.authenticated || !state.user) return;
         const primary =
           state.primarySession ??
           ({
-            accessToken: state.accessToken,
-            refreshToken: state.refreshToken,
             user: state.user,
           } satisfies PrimarySessionSnapshot);
         set({
           primarySession: primary,
-          accessToken: token.accessToken,
-          // Keep primary refresh token — do not kill the station session.
-          refreshToken: primary.refreshToken,
+          authenticated: true,
           user: {
             id: token.userId,
             email: emailHint ?? state.user.email,
@@ -134,6 +121,7 @@ export const useSessionStore = create<SessionState>()(
             roles: token.roles,
             warehouseIds: token.warehouseIds ?? [],
             avatarUrl: state.primarySession?.user.avatarUrl ?? state.user.avatarUrl ?? null,
+            tenantId: token.tenantId ?? state.user.tenantId,
           },
         });
       },
@@ -142,10 +130,9 @@ export const useSessionStore = create<SessionState>()(
         const primary = get().primarySession;
         if (!primary) return;
         set({
-          accessToken: primary.accessToken,
-          refreshToken: primary.refreshToken,
           user: primary.user,
           primarySession: null,
+          authenticated: true,
         });
       },
 
@@ -155,13 +142,12 @@ export const useSessionStore = create<SessionState>()(
 
       clearSession: () =>
         set({
-          accessToken: null,
-          refreshToken: null,
+          authenticated: false,
           user: null,
           primarySession: null,
         }),
 
-      isAuthenticated: () => !!get().accessToken && !!get().user,
+      isAuthenticated: () => get().authenticated && !!get().user,
 
       hasRole: (...roles) => {
         const userRoles = get().user?.roles ?? [];
@@ -183,25 +169,23 @@ export const useSessionStore = create<SessionState>()(
         return userRoles.length > 0 && userRoles.every((role) => role === 'VIEWER');
       },
 
-      canManageInventory: () =>
-        get().hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'),
+      canManageInventory: () => get().hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'),
     }),
     {
       name: 'invsys-session',
       partialize: (state) => ({
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
+        authenticated: state.authenticated,
         user: state.user,
         primarySession: state.primarySession,
       }),
-    }
-  )
+    },
+  ),
 );
 
 export function useIsAuthenticated(): boolean {
-  const accessToken = useSessionStore((s) => s.accessToken);
+  const authenticated = useSessionStore((s) => s.authenticated);
   const user = useSessionStore((s) => s.user);
-  return !!accessToken && !!user;
+  return authenticated && !!user;
 }
 
 export function useSessionHydrated(): boolean {
@@ -213,10 +197,12 @@ export function useSessionHydrated(): boolean {
       return;
     }
     const unsub = useSessionStore.persist.onFinishHydration(() => setHydrated(true));
-    // Playwright storageState can race hydration — force a rehydrate pass.
     void useSessionStore.persist.rehydrate();
     return unsub;
   }, []);
 
   return hydrated;
 }
+
+/** @deprecated use setSessionFromLogin */
+export type TokenResponse = SessionResponse;

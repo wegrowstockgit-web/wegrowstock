@@ -21,6 +21,7 @@ export default defineConfig({
       include: [
         'src/utils/gs1Parser.ts',
         'src/lib/gs1Barcode.ts',
+        'src/lib/terminalPasskey.ts',
         'src/hooks/useBarcodeScanner.ts',
         'src/hooks/useDensity.ts',
         'src/stores/offlineStore.ts',
@@ -34,8 +35,10 @@ export default defineConfig({
         'src/components/ui/primitives/VirtualizedTable.tsx',
         'src/components/ui/DensityToggle.tsx',
         'src/components/ui/ColumnVisibilityMenu.tsx',
+        'src/components/ui/Table.tsx',
+        'src/hooks/useClientSort.ts',
       ],
-      // Camera capture / multipart edge paths remain covered by Playwright e2e.
+      // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       thresholds: {
         lines: 85,
         functions: 85,

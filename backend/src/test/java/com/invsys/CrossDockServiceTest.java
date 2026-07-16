@@ -1,6 +1,8 @@
 package com.invsys;
 
+import com.invsys.domain.Allocation;
 import com.invsys.domain.Customer;
+import com.invsys.domain.Location;
 import com.invsys.domain.Product;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.PurchaseOrder;
@@ -8,7 +10,9 @@ import com.invsys.domain.PurchaseOrderLine;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
 import com.invsys.domain.Supplier;
+import com.invsys.repository.AllocationRepository;
 import com.invsys.repository.CustomerRepository;
+import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.PurchaseOrderLineRepository;
@@ -40,6 +44,8 @@ class CrossDockServiceTest extends AbstractIntegrationTest {
     @Autowired PurchaseOrderLineRepository purchaseOrderLineRepository;
     @Autowired SalesOrderRepository salesOrderRepository;
     @Autowired SalesOrderLineRepository salesOrderLineRepository;
+    @Autowired LocationRepository locationRepository;
+    @Autowired AllocationRepository allocationRepository;
     @Autowired CrossDockService crossDockService;
     @Autowired PickingWaveService pickingWaveService;
 
@@ -118,5 +124,73 @@ class CrossDockServiceTest extends AbstractIntegrationTest {
         List<CrossDockService.CrossDockSuggestion> viaWave = pickingWaveService.crossDockSuggestions();
         assertThat(viaWave).hasSize(suggestions.size());
         assertThat(viaWave.getFirst().variantId()).isEqualTo(variant.getId());
+    }
+
+    @Test
+    void checkVariantRoutesActiveAllocationToShippingStaging() {
+        UUID tenantId = testDataHelper.createTenant("XDock Check", "xdock-chk-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+
+        Customer customer = new Customer();
+        customer.setTenantId(tenantId);
+        customer.setName("Outbound");
+        customer = customerRepository.save(customer);
+
+        Product product = new Product();
+        product.setTenantId(tenantId);
+        product.setSkuRoot("XDC");
+        product.setName("Cross Dock Check");
+        product = productRepository.save(product);
+
+        ProductVariant variant = new ProductVariant();
+        variant.setTenantId(tenantId);
+        variant.setProductId(product.getId());
+        variant.setSku("XDC-1");
+        variant = variantRepository.save(variant);
+
+        Location bin = new Location();
+        bin.setTenantId(tenantId);
+        bin.setType("BIN");
+        bin.setCode("STAGE-1");
+        bin.setName("Staging");
+        bin.setPath("/WH/STAGE-1");
+        bin = locationRepository.save(bin);
+
+        SalesOrder so = new SalesOrder();
+        so.setTenantId(tenantId);
+        so.setCustomerId(customer.getId());
+        so.setNumber("SO-XDC-1");
+        so.setStatus("ALLOCATED");
+        so = salesOrderRepository.save(so);
+
+        SalesOrderLine soLine = new SalesOrderLine();
+        soLine.setTenantId(tenantId);
+        soLine.setSalesOrderId(so.getId());
+        soLine.setVariantId(variant.getId());
+        soLine.setQtyOrdered(new BigDecimal("3"));
+        soLine.setUnitPrice(new BigDecimal("10"));
+        soLine = salesOrderLineRepository.save(soLine);
+
+        Allocation allocation = new Allocation();
+        allocation.setTenantId(tenantId);
+        allocation.setSalesOrderLineId(soLine.getId());
+        allocation.setVariantId(variant.getId());
+        allocation.setLocationId(bin.getId());
+        allocation.setQuantity(new BigDecimal("3"));
+        allocation.setStatus("ACTIVE");
+        allocation = allocationRepository.save(allocation);
+
+        CrossDockService.CrossDockTask none = crossDockService.checkVariant(UUID.randomUUID());
+        assertThat(none.match()).isFalse();
+
+        CrossDockService.CrossDockTask task = crossDockService.checkVariant(variant.getId());
+        assertThat(task.match()).isTrue();
+        assertThat(task.allocationId()).isEqualTo(allocation.getId());
+        assertThat(task.allocationStatus()).isEqualTo(CrossDockService.STATUS_CROSS_DOCK_ROUTED);
+        assertThat(task.instruction()).contains("Shipping Staging Lane");
+        assertThat(task.instruction()).contains("SO-XDC-1");
+
+        Allocation refreshed = allocationRepository.findByTenantIdAndId(tenantId, allocation.getId()).orElseThrow();
+        assertThat(refreshed.getStatus()).isEqualTo(CrossDockService.STATUS_CROSS_DOCK_ROUTED);
     }
 }

@@ -13,7 +13,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 import java.util.UUID;
 
+import com.invsys.auth.AuthCookieService;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -37,8 +40,10 @@ class SluglessLoginHttpTest extends AbstractIntegrationTest {
                                 "email", email,
                                 "password", "password123"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.tenantId").value(tokens.tenantId().toString()));
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.tenantId").value(tokens.tenantId().toString()))
+                .andExpect(cookie().exists(AuthCookieService.ACCESS_COOKIE))
+                .andExpect(cookie().httpOnly(AuthCookieService.ACCESS_COOKIE, true));
     }
 
     @Test

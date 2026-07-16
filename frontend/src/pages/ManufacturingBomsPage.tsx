@@ -19,11 +19,109 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { useClientSort } from '@/hooks/useClientSort';
 import { cn } from '@/lib/utils';
 
 interface DraftLine {
   componentVariantId: string;
   quantityRequired: string;
+}
+
+function ActiveBomsTable({
+  boms,
+  selectedBomId,
+  onSelect,
+}: {
+  boms: Bom[];
+  selectedBomId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const { sort, toggle, sorted } = useClientSort(
+    boms,
+    {
+      parentSku: (bom) => bom.parentSku ?? bom.parentVariantId,
+      name: (bom) => bom.name,
+      status: (bom) => (bom.isActive ? 'Active' : 'Inactive'),
+    },
+    { key: 'parentSku', dir: 'asc' },
+  );
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="parentSku" sort={sort} onSort={toggle}>
+            Parent SKU
+          </TableHead>
+          <TableHead sortable sortKey="name" sort={sort} onSort={toggle}>
+            Name
+          </TableHead>
+          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+            Status
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((bom) => (
+          <TableRow
+            key={bom.id}
+            className={cn('cursor-pointer', selectedBomId === bom.id && 'bg-accent-muted')}
+            onClick={() => onSelect(bom.id)}
+          >
+            <TableCell mono>{bom.parentSku ?? bom.parentVariantId}</TableCell>
+            <TableCell>{bom.name}</TableCell>
+            <TableCell>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  bom.isActive
+                    ? 'bg-accent-muted text-accent'
+                    : 'bg-surface-overlay text-text-muted',
+                )}
+              >
+                {bom.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function BomLinesTable({ lines }: { lines: BomLine[] }) {
+  const { sort, toggle, sorted } = useClientSort(
+    lines,
+    {
+      sku: (line) => line.componentSku ?? line.componentVariantId,
+      name: (line) => line.componentName ?? '',
+      qty: (line) => line.quantityRequired,
+    },
+    { key: 'sku', dir: 'asc' },
+  );
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="sku" sort={sort} onSort={toggle}>
+            SKU
+          </TableHead>
+          <TableHead sortable sortKey="name" sort={sort} onSort={toggle}>
+            Name
+          </TableHead>
+          <TableHead sortable sortKey="qty" sort={sort} onSort={toggle} align="right">
+            Qty required
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((line) => (
+          <BomTreeRow key={line.id} line={line} />
+        ))}
+      </TableBody>
+    </Table>
+  );
 }
 
 function BomTreeRow({ line, depth = 0 }: { line: BomLine; depth?: number }) {
@@ -296,39 +394,11 @@ export function ManufacturingBomsPage() {
               />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Parent SKU</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {boms.map((bom) => (
-                  <TableRow
-                    key={bom.id}
-                    className={cn('cursor-pointer', selectedBomId === bom.id && 'bg-accent-muted')}
-                    onClick={() => setSelectedBomId(bom.id)}
-                  >
-                    <TableCell mono>{bom.parentSku ?? bom.parentVariantId}</TableCell>
-                    <TableCell>{bom.name}</TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          bom.isActive
-                            ? 'bg-accent-muted text-accent'
-                            : 'bg-surface-overlay text-text-muted'
-                        )}
-                      >
-                        {bom.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <ActiveBomsTable
+              boms={boms}
+              selectedBomId={selectedBomId}
+              onSelect={setSelectedBomId}
+            />
           )}
         </Card>
 
@@ -348,20 +418,7 @@ export function ManufacturingBomsPage() {
           ) : (bomDetail?.lines?.length ?? 0) === 0 ? (
             <p className="text-sm text-text-muted">No components defined for this BOM.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead align="right">Qty required</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bomDetail?.lines?.map((line) => (
-                  <BomTreeRow key={line.id} line={line} />
-                ))}
-              </TableBody>
-            </Table>
+            <BomLinesTable lines={bomDetail?.lines ?? []} />
           )}
         </Card>
       </div>

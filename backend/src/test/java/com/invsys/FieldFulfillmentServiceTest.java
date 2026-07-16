@@ -89,7 +89,11 @@ class FieldFulfillmentServiceTest extends AbstractIntegrationTest {
 
         VehicleAssignmentResponse assignment = fieldService.assignVehicle(savedVehicle.getId(), tech.getId());
         assertThat(assignment.returnedAt()).isNull();
-        assertThat(fieldService.activeAssignmentForUser(tech.getId()).locationId()).isEqualTo(savedVehicle.getId());
+        assertThat(fieldService.activeAssignmentForUser(tech.getId()))
+                .isPresent()
+                .get()
+                .extracting(VehicleAssignmentResponse::locationId)
+                .isEqualTo(savedVehicle.getId());
 
         fieldService.replenishVan(savedWarehouse.getId(), savedVehicle.getId(), Map.of(savedVariant.getId(), new BigDecimal("4")));
         entityManager.clear();

@@ -4,6 +4,7 @@ import com.invsys.common.ApiException;
 import com.invsys.domain.PurchaseOrder;
 import com.invsys.domain.PurchaseOrderLine;
 import com.invsys.domain.TenantSettings;
+import com.invsys.integration.OutboxService;
 import com.invsys.repository.PurchaseOrderLineRepository;
 import com.invsys.repository.PurchaseOrderRepository;
 import com.invsys.repository.TenantSettingsRepository;
@@ -15,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -26,17 +29,20 @@ public class PurchaseOrderService {
     private final InventoryService inventoryService;
     private final UomConversionService uomConversionService;
     private final TenantSettingsRepository tenantSettingsRepository;
+    private final OutboxService outboxService;
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderLineRepository lineRepository,
                                 InventoryService inventoryService,
                                 UomConversionService uomConversionService,
-                                TenantSettingsRepository tenantSettingsRepository) {
+                                TenantSettingsRepository tenantSettingsRepository,
+                                OutboxService outboxService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.inventoryService = inventoryService;
         this.uomConversionService = uomConversionService;
         this.tenantSettingsRepository = tenantSettingsRepository;
+        this.outboxService = outboxService;
     }
 
     @Transactional
@@ -47,7 +53,13 @@ public class PurchaseOrderService {
                     "Only DRAFT purchase orders can be submitted");
         }
         po.setStatus("SUBMITTED");
-        return purchaseOrderRepository.save(po);
+        po = purchaseOrderRepository.save(po);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("purchaseOrderId", po.getId());
+        payload.put("supplierId", po.getSupplierId());
+        payload.put("number", po.getNumber());
+        outboxService.append("PURCHASE_ORDER", po.getId(), "PURCHASE_ORDER_SUBMITTED", payload);
+        return po;
     }
 
     @Transactional

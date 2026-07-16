@@ -1,0 +1,25 @@
+HTTP/1.1 200 
+Server: nginx/1.29.8
+Date: Thu, 16 Jul 2026 00:18:13 GMT
+Content-Type: application/json
+Content-Length: 285
+Connection: keep-alive
+X-Request-Id: 27400a2b-aa90-46a7-9d97-e8935900964d
+Access-Control-Allow-Origin: http://localhost:3000
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Authorization, Content-Type, Idempotency-Key, X-Request-Id, X-Warehouse-Id, Stripe-Signature, X-Shopify-Hmac-Sha256, X-Shopify-Shop-Domain, X-Shopify-Topic, X-Shopify-Webhook-Id, X-Hmac-Signature
+Access-Control-Expose-Headers: X-Request-Id, Retry-After
+Access-Control-Max-Age: 600
+Vary: Origin
+Set-Cookie: invsys_access=eyJhbGciOiJSUzI1NiJ9.eyJ0ZW5hbnRfaWQiOiJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJzdWIiOiJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAyMDEiLCJleHAiOjE3ODQxNjE5OTMsImlhdCI6MTc4NDE2MTA5Mywid2FyZWhvdXNlX2lkcyI6WyJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA2MDEiLCJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA2MTEiXSwicm9sZXMiOlsiT1dORVIiXX0.vWDVW0vbL2Kv6i-pQhIUHUf4rTv9Y-0q_QFBX8E6rUPQ_ovvViLXbX34rk_etSVRcvvvBYnGxoFrb0_sfRDc-c2m7Jef8lDRYebqLf4lGlJyMUlOKKTyAQT_qEFzcvfgNaQ2Ncv2YdVUTdiZxZxsmOs8zRr38RNLo3k2B7yaI1BhdkjteUnfx5CeRHoZvquV_3CawCqGWVTljmZnqnwc1VcCYa7VRizpHof46PQnxUjV_XDRCj4DbpoCeu9vnCGTZH_vXKexeAum9He6DiJTOt_wpVCQcUnBjqTOsj25W6yfk1rmhiLmOPSL8MH6qLY_5I41dD_8hv6Vgk0FxBnA2Q; Path=/; Max-Age=900; Expires=Thu, 16 Jul 2026 00:33:13 GMT; HttpOnly; SameSite=Lax
+Set-Cookie: invsys_refresh=9864d975-85a4-4f4a-939e-6e44e66007b2; Path=/api/v1/auth; Max-Age=604800; Expires=Thu, 23 Jul 2026 00:18:13 GMT; HttpOnly; SameSite=Lax
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(self), microphone=(), camera=()
+

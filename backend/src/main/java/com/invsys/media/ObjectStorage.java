@@ -3,8 +3,10 @@ package com.invsys.media;
 import java.io.InputStream;
 
 /**
- * Provider-agnostic object storage. Implementations target S3-compatible APIs
- * (AWS S3, GCP Cloud Storage HMAC, DigitalOcean Spaces, Azure S3 gateway, MinIO).
+ * Provider-agnostic object storage.
+ * <p><strong>S3-only invariant:</strong> the sole production implementation is
+ * {@link S3ObjectStorage}. Local filesystem / disk backends are forbidden — all
+ * media bytes must live in an S3-compatible bucket (AWS, MinIO, GCS HMAC, DO Spaces).
  */
 public interface ObjectStorage {
 

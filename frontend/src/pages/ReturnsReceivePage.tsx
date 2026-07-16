@@ -159,7 +159,7 @@ function LineConfirmCard({
                 kind="EVIDENCE"
                 label="Condition photo"
                 capture
-                webrtc
+                facingMode="environment"
                 presignType="TRANSACTION"
                 onUploaded={async (result) => {
                   await apiClient.post('/api/v1/media/transactions', {

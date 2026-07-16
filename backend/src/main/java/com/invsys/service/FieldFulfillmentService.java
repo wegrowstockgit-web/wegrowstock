@@ -83,13 +83,14 @@ public class FieldFulfillmentService {
     }
 
     @Transactional(readOnly = true)
-    public VehicleAssignmentResponse activeAssignmentForUser(UUID userId) {
+    public java.util.Optional<VehicleAssignmentResponse> activeAssignmentForUser(UUID userId) {
         UUID tenantId = TenantContext.requireTenantId();
-        VehicleAssignment assignment = assignmentRepository
+        return assignmentRepository
                 .findByTenantIdAndTechnicianUserIdAndReturnedAtIsNull(tenantId, userId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "No active vehicle assignment"));
-        Location location = locationRepository.findById(assignment.getLocationId()).orElse(null);
-        return toResponse(assignment, location);
+                .map(assignment -> {
+                    Location location = locationRepository.findById(assignment.getLocationId()).orElse(null);
+                    return toResponse(assignment, location);
+                });
     }
 
     @Transactional(readOnly = true)

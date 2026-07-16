@@ -8,3 +8,8 @@ spring:
 invsys:
   dev:
     auto-seed: true
+  security:
+    cookie-secure: false
+    cookie-same-site: Lax
+  redis:
+    enabled: false

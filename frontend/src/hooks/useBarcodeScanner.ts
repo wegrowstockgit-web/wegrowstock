@@ -81,6 +81,31 @@ const INTENT_EVENT_NAMES = [
   'BarcodeScanned',
   'honeywell.barcodeScanned',
   'scan',
+  'intent',
+] as const;
+
+/** Cordova / Capacitor Intent Shim (Zebra DataWedge + Honeywell) on Android WebView. */
+type IntentShim = {
+  registerBroadcastReceiver?: (
+    filters: { filterActions: string[]; filterCategories?: string[] },
+    callback: (intent: unknown) => void,
+  ) => void;
+  unregisterBroadcastReceiver?: () => void;
+};
+
+function getIntentShim(): IntentShim | undefined {
+  const w = window as Window & {
+    plugins?: { intentShim?: IntentShim };
+    intentShim?: IntentShim;
+  };
+  return w.plugins?.intentShim ?? w.intentShim;
+}
+
+const DATAWEDGE_ACTIONS = [
+  'com.symbol.datawedge.api.RESULT_ACTION',
+  'com.symbol.datawedge.data',
+  'com.honeywell.sample.action.BARCODE_DATA',
+  'com.honeywell.decode.intent.action.EDIT_DATA',
 ] as const;
 
 /**
@@ -199,15 +224,42 @@ export function useBarcodeScanner({
       window.addEventListener(name, handleNativeScan as EventListener);
     }
     window.addEventListener('message', handleMessage);
+
+    // Native Android laser wedge via cordova-plugin-intent / intentShim — no focused input required.
+    const shim = getIntentShim();
+    const onIntent = (intent: unknown) => {
+      const barcode =
+        extractIntentBarcode(intent) ??
+        extractIntentBarcode((intent as { extras?: unknown } | null)?.extras);
+      if (barcode) {
+        ingestCommitted(stripAffixes(barcode, prefix, suffix));
+      }
+    };
+    if (shim?.registerBroadcastReceiver) {
+      try {
+        shim.registerBroadcastReceiver(
+          { filterActions: [...DATAWEDGE_ACTIONS], filterCategories: ['android.intent.category.DEFAULT'] },
+          onIntent,
+        );
+      } catch {
+        // Plugin absent or WebView without native bridge — HID + custom events still work.
+      }
+    }
     if (Capacitor.isNativePlatform()) {
       // hardwareScan already registered above for Capacitor bridges
     }
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
       for (const name of INTENT_EVENT_NAMES) {
         window.removeEventListener(name, handleNativeScan as EventListener);
       }
       window.removeEventListener('message', handleMessage);
+      try {
+        shim?.unregisterBroadcastReceiver?.();
+      } catch {
+        // ignore
+      }
     };
-  }, [enabled, handleKeyDown, handleNativeScan, handleMessage]);
+  }, [enabled, handleKeyDown, handleNativeScan, handleMessage, ingestCommitted, prefix, suffix]);
 }

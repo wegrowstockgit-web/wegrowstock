@@ -14,6 +14,8 @@ test.describe('Media upload surfaces', () => {
 
     const picker = ownerPage.getByTestId('profile-avatar-picker');
     await expect(picker).toBeVisible();
+    await expect(picker.getByRole('button', { name: 'Take photo' })).toBeVisible();
+    await expect(picker.getByTestId('camera-capture')).toBeVisible();
 
     const fileInput = picker.locator('input[type="file"]');
     await fileInput.setInputFiles(FIXTURE_PNG);
@@ -21,6 +23,26 @@ test.describe('Media upload surfaces', () => {
     await expect(ownerPage.getByTestId('header-user')).toBeVisible();
     // Avatar blob path is stored; header avatar container remains present.
     await expect(picker.getByText(/JPEG, PNG/i)).toBeVisible();
+  });
+
+  test('Take photo opens device camera capture UI', async ({ ownerPage }) => {
+    await ownerPage.addInitScript(() => {
+      const fakeTrack = { stop: () => undefined };
+      const fakeStream = { getTracks: () => [fakeTrack] };
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: async () => fakeStream,
+        },
+      });
+    });
+
+    await ownerPage.goto('/settings');
+    await expect(ownerPage.getByTestId('profile-avatar-picker')).toBeVisible({ timeout: 30_000 });
+    await ownerPage.getByRole('button', { name: 'Take photo' }).click();
+    await expect(ownerPage.getByTestId('camera-capture-live')).toBeVisible();
+    await expect(ownerPage.getByTestId('camera-capture-snap')).toBeVisible();
+    await expect(ownerPage.getByRole('button', { name: 'Cancel' })).toBeVisible();
   });
 
   test('owner can upload product photo from product peek', async ({ ownerPage }) => {

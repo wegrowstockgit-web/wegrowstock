@@ -1,5 +1,7 @@
 package com.invsys.config;
 
+import com.invsys.common.ApiException;
+import com.invsys.ratelimit.DistributedRateLimiter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,21 +13,26 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.time.Duration;
 
 /**
- * Lightweight in-memory rate limit for public auth and webhook endpoints.
+ * Redis-backed (or local fallback) rate limit for public auth and webhook endpoints.
+ * Returns RFC 7807 problem+json on 429.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final int AUTH_LIMIT = 60;
+    private static final int TERMINAL_PIN_LIMIT = 20;
     private static final int WEBHOOK_LIMIT = 120;
-    private static final long WINDOW_MS = 60_000L;
+    private static final Duration WINDOW = Duration.ofMinutes(1);
 
-    private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    private final DistributedRateLimiter distributedRateLimiter;
+
+    public RateLimitFilter(DistributedRateLimiter distributedRateLimiter) {
+        this.distributedRateLimiter = distributedRateLimiter;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -36,29 +43,32 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        String key = limit + ":" + clientKey(request) + ":" + pathBucket(path);
-        long now = System.currentTimeMillis();
-        Window window = windows.compute(key, (k, existing) -> {
-            if (existing == null || now - existing.startedAtMs >= WINDOW_MS) {
-                return new Window(now, new AtomicInteger(1));
-            }
-            existing.count.incrementAndGet();
-            return existing;
-        });
-        if (window.count.get() > limit) {
+        String key = "rate:ip:" + pathBucket(path) + ":" + clientKey(request);
+        try {
+            distributedRateLimiter.tryAcquire(key, limit, 1, WINDOW);
+        } catch (ApiException ex) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", "60");
-            response.setContentType("application/json");
-            response.getWriter().write("{\"error\":\"RATE_LIMITED\",\"message\":\"Too many requests\"}");
+            response.setContentType("application/problem+json");
+            String detail = ex.getMessage() == null ? "Too many requests" : ex.getMessage().replace("\"", "'");
+            response.getWriter().write(
+                    "{\"type\":\"about:blank\",\"title\":\"RATE_LIMITED\",\"status\":429,\"detail\":\""
+                            + detail + "\",\"retryAfterSeconds\":60}");
             return;
         }
         chain.doFilter(request, response);
     }
 
     private static Integer limitFor(String path) {
+        if (path.startsWith("/api/v1/auth/terminal-switch")
+                || path.startsWith("/api/v1/auth/terminal-biometric")
+                || path.startsWith("/api/v1/auth/warehouse/login")) {
+            return TERMINAL_PIN_LIMIT;
+        }
         if (path.startsWith("/api/v1/auth/login")
                 || path.startsWith("/api/v1/auth/signup")
                 || path.startsWith("/api/v1/auth/refresh")
+                || path.startsWith("/api/v1/auth/sso-discover")
                 || path.startsWith("/api/v1/invitations/accept")) {
             return AUTH_LIMIT;
         }
@@ -69,13 +79,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private static String pathBucket(String path) {
+        if (path.startsWith("/api/v1/auth/terminal-switch")
+                || path.startsWith("/api/v1/auth/terminal-biometric")
+                || path.startsWith("/api/v1/auth/warehouse/login")) {
+            return "terminal-pin";
+        }
         if (path.startsWith("/api/v1/auth/")) {
             return "auth";
         }
         if (path.startsWith("/api/v1/webhooks/") || path.startsWith("/api/v1/public/webhooks/")) {
-            return "webhooks";
+            return "webhook";
         }
-        return path;
+        return "other";
     }
 
     private static String clientKey(HttpServletRequest request) {
@@ -84,8 +99,5 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return forwarded.split(",")[0].trim();
         }
         return request.getRemoteAddr() != null ? request.getRemoteAddr() : "unknown";
-    }
-
-    private record Window(long startedAtMs, AtomicInteger count) {
     }
 }

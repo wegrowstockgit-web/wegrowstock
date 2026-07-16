@@ -22,7 +22,6 @@ test.describe('LBAC warehouse boundaries', () => {
 
     const forbidden = await pickerPage.request.get('/api/v1/locations/warehouses/assigned', {
       headers: {
-        Authorization: `Bearer ${token}`,
         'X-Warehouse-Id': WH_02,
       },
     });
@@ -34,7 +33,6 @@ test.describe('LBAC warehouse boundaries', () => {
 
     const allowed = await pickerPage.request.get('/api/v1/locations/warehouses/assigned', {
       headers: {
-        Authorization: `Bearer ${token}`,
         'X-Warehouse-Id': WH_01,
       },
     });

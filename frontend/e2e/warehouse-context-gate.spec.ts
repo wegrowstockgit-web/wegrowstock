@@ -22,7 +22,6 @@ test.describe('Warehouse context gate', () => {
     const token = await sessionAccessToken(ownerPage);
 
     const create = await ownerPage.request.post('/api/v1/warehouse-context-rules', {
-      headers: { Authorization: `Bearer ${token}` },
       data: {
         locationId: WH_02,
         matchType: 'WIFI_SSID',

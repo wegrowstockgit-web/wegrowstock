@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,10 +48,13 @@ public class FieldController {
 
     @GetMapping("/vehicles/active")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
-    public VehicleAssignmentResponse active() {
+    public ResponseEntity<VehicleAssignmentResponse> active() {
         UUID userId = TenantContext.getUserId()
                 .orElseThrow();
-        return fieldService.activeAssignmentForUser(userId);
+        // 204 when unassigned — not an error; clients should not treat this as failure.
+        return fieldService.activeAssignmentForUser(userId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @PostMapping("/van/replenish")

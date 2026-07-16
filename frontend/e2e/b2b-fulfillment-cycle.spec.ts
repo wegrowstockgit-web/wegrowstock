@@ -1,4 +1,4 @@
-import { expect, hidScan, sessionAccessToken, test } from './fixtures/roleFixture';
+import { expect, hidScan, test } from './fixtures/roleFixture';
 
 const DEMO_BARCODE = '8901000000001'; // WIDGET-S from demo seed
 
@@ -28,13 +28,11 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     await adminPage.goto('/sales-orders');
     await expect(adminPage.getByRole('heading', { name: 'Sales Orders', exact: true })).toBeVisible();
 
-    const adminToken = await sessionAccessToken(adminPage);
     let orderId = '';
     let orderNumber = '';
     await expect
       .poll(async () => {
         const listRes = await adminPage.request.get('/api/v1/sales-orders', {
-          headers: { Authorization: `Bearer ${adminToken}` },
         });
         if (!listRes.ok()) return false;
         const orders = (await listRes.json()) as Array<{
@@ -55,12 +53,10 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     expect(orderId).toBeTruthy();
 
     const confirmRes = await adminPage.request.post(`/api/v1/sales-orders/${orderId}/confirm`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(confirmRes.ok()).toBeTruthy();
 
     const allocateRes = await adminPage.request.post(`/api/v1/sales-orders/${orderId}/allocate`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(allocateRes.ok()).toBeTruthy();
 
@@ -69,13 +65,12 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
 
     // Release a picking wave so the floor can batch-pick
     const waveRes = await adminPage.request.post('/api/v1/picking/waves/generate', {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       data: {},
     });
     expect(waveRes.ok()).toBeTruthy();
     const wave = (await waveRes.json()) as { waveId: string };
     const releaseRes = await adminPage.request.post(`/api/v1/picking/waves/${wave.waveId}/release`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(releaseRes.ok()).toBeTruthy();
 
@@ -97,7 +92,6 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     expect(scanned.ok()).toBeTruthy();
 
     const detailRes = await adminPage.request.get(`/api/v1/sales-orders/${orderId}`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(detailRes.ok()).toBeTruthy();
     const detail = (await detailRes.json()) as {
@@ -108,7 +102,6 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     const pickerToken = await sessionAccessToken(pickerPage);
     const shipRes = await pickerPage.request.post('/api/v1/shipments', {
       headers: {
-        Authorization: `Bearer ${pickerToken}`,
         'Content-Type': 'application/json',
         'X-Warehouse-Id': 'a0000000-0000-4000-8000-000000000601',
       },
@@ -130,7 +123,6 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     await expect(adminPage.getByRole('heading', { name: 'Invoices', exact: true })).toBeVisible();
 
     const invoiceRes = await adminPage.request.post(`/api/v1/invoices/from-shipment/${shipment.id}`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(invoiceRes.ok()).toBeTruthy();
 
@@ -138,7 +130,6 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     await expect
       .poll(async () => {
         const inv = await adminPage.request.get('/api/v1/invoices', {
-          headers: { Authorization: `Bearer ${adminToken}` },
         });
         const list = (await inv.json()) as Array<{ salesOrderId?: string }>;
         return list.some((i) => i.salesOrderId === orderId);

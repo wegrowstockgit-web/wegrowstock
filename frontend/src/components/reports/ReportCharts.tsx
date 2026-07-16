@@ -13,8 +13,18 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { useMemo } from 'react';
 import type { ReportChartPoint } from '@/api/types';
 import { Card } from '@/components/ui/Card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
+import { useClientSort } from '@/hooks/useClientSort';
 
 const CHART_COLORS = ['#55ACEE', '#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#34d399', '#fb7185'];
 
@@ -188,40 +198,55 @@ export function ReportDataTable({
   headers: string[];
   rows: (string | number)[][];
 }) {
+  const accessors = useMemo(() => {
+    const map: Record<string, (row: (string | number)[]) => string | number> = {};
+    headers.forEach((_, index) => {
+      map[`c${index}`] = (row) => row[index] ?? '';
+    });
+    return map;
+  }, [headers]);
+
+  const { sort, toggle, sorted } = useClientSort(rows, accessors, {
+    key: 'c0',
+    dir: 'asc',
+  });
+
   return (
     <Card padding="none" className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-surface-raised">
-            <tr>
-              {headers.map((header) => (
-                <th key={header} className="px-4 py-3 text-left font-medium text-text-muted">
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={headers.length} className="px-4 py-8 text-center text-text-muted">
-                  No rows to display
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, rowIndex) => (
-                <tr key={rowIndex} className="border-t border-border">
-                  {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} className="px-4 py-3 text-text">
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Table className="min-w-[720px]">
+        <TableHeader>
+          <TableRow>
+            {headers.map((header, index) => (
+              <TableHead
+                key={header}
+                sortable
+                sortKey={`c${index}`}
+                sort={sort}
+                onSort={toggle}
+              >
+                {header}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sorted.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={headers.length} className="py-8 text-center text-text-muted" align="center">
+                No rows to display
+              </TableCell>
+            </TableRow>
+          ) : (
+            sorted.map((row, rowIndex) => (
+              <TableRow key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <TableCell key={cellIndex}>{cell}</TableCell>
+                ))}
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
     </Card>
   );
 }

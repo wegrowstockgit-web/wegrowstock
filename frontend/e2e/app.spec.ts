@@ -65,11 +65,13 @@ test.describe('Navigation', () => {
 
   test('settings billing and tax configuration load', async ({ page }) => {
     await page.getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('button', { name: 'Billing' }).click();
+    await page.getByRole('link', { name: 'Billing' }).click();
+    await expect(page).toHaveURL(/\/settings\/billing/);
     await expect(page.getByText('Billing & payments')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Connect Stripe' })).toBeVisible();
     await expect(page.getByText('Shipping accounts')).toBeVisible();
 
+    await page.getByRole('link', { name: 'All settings' }).click();
     await page.getByRole('button', { name: 'Inventory Rules' }).click();
     await expect(page.getByText('Tax configuration')).toBeVisible();
   });
@@ -171,16 +173,19 @@ test.describe('Navigation', () => {
     await expect(page.getByTestId('icon-rail')).toHaveCount(0);
   });
 
-  test('settings billing tab shows financing cockpit', async ({ page }) => {
+  test('settings billing page does not embed financing cockpit', async ({ page }) => {
     await page.getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('button', { name: 'Billing' }).click();
-    await expect(page.getByText('Financing Cockpit')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Credit limit')).toBeVisible();
+    await page.getByRole('link', { name: 'Billing' }).click();
+    await expect(page).toHaveURL(/\/settings\/billing/);
+    await expect(page.getByText('Billing & payments')).toBeVisible();
+    await expect(page.getByText('Financing Cockpit')).toHaveCount(0);
   });
 
-  test('settings financing tab loads cockpit', async ({ page }) => {
+  test('settings fintech page loads cockpit', async ({ page }) => {
     await page.getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('button', { name: 'Cash Flow & Financing' }).click();
+    await page.getByRole('link', { name: 'Cash Flow & Financing' }).click();
+    await expect(page).toHaveURL(/\/settings\/fintech/);
+    await expect(page.getByTestId('fintech-settings-page')).toBeVisible();
     await expect(page.getByText('Financing Cockpit')).toBeVisible();
     await expect(page.getByText('Eligible factoring invoices')).toBeVisible();
   });

@@ -15,8 +15,80 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { useClientSort } from '@/hooks/useClientSort';
 import { cn } from '@/lib/utils';
 import { useShowroomCart } from '@/showroom/useShowroomCart';
+
+function PortalInvoicesTable({
+  invoices,
+  duplicatePending,
+  onDuplicate,
+}: {
+  invoices: PortalInvoice[];
+  duplicatePending: boolean;
+  onDuplicate: (invoiceId: string) => void;
+}) {
+  const { sort, toggle, sorted } = useClientSort(
+    invoices,
+    {
+      number: (inv) => inv.number,
+      status: (inv) => inv.status,
+      total: (inv) => Number(inv.total),
+      due: (inv) => inv.dueAt ?? '',
+    },
+    { key: 'due', dir: 'asc' },
+  );
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
+            Number
+          </TableHead>
+          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+            Status
+          </TableHead>
+          <TableHead sortable sortKey="total" sort={sort} onSort={toggle} align="right">
+            Total
+          </TableHead>
+          <TableHead sortable sortKey="due" sort={sort} onSort={toggle}>
+            Due
+          </TableHead>
+          <TableHead align="right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((inv) => (
+          <TableRow key={inv.id}>
+            <TableCell mono>{inv.number}</TableCell>
+            <TableCell>{inv.status}</TableCell>
+            <TableCell align="right" mono>
+              {Number(inv.total).toLocaleString(undefined, {
+                style: 'currency',
+                currency: inv.currency,
+              })}
+            </TableCell>
+            <TableCell>
+              {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : '—'}
+            </TableCell>
+            <TableCell align="right">
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={duplicatePending}
+                onClick={() => onDuplicate(inv.id)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Duplicate to cart
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export function ShowroomBillingPage() {
   const navigate = useNavigate();
@@ -89,7 +161,7 @@ export function ShowroomBillingPage() {
           <div
             className={cn(
               'h-full rounded-full transition-all',
-              utilization > 80 ? 'bg-warning' : 'bg-accent'
+              utilization > 80 ? 'bg-warning' : 'bg-accent',
             )}
             style={{ width: `${Math.min(100, utilization)}%` }}
           />
@@ -120,45 +192,11 @@ export function ShowroomBillingPage() {
         ) : invoices.length === 0 ? (
           <p className="text-sm text-text-muted">No invoices yet.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead align="right">Total</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((inv) => (
-                <TableRow key={inv.id}>
-                  <TableCell mono>{inv.number}</TableCell>
-                  <TableCell>{inv.status}</TableCell>
-                  <TableCell align="right" mono>
-                    {Number(inv.total).toLocaleString(undefined, {
-                      style: 'currency',
-                      currency: inv.currency,
-                    })}
-                  </TableCell>
-                  <TableCell>
-                    {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : '—'}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={duplicateMutation.isPending}
-                      onClick={() => duplicateMutation.mutate(inv.id)}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Duplicate to cart
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <PortalInvoicesTable
+            invoices={invoices}
+            duplicatePending={duplicateMutation.isPending}
+            onDuplicate={(id) => duplicateMutation.mutate(id)}
+          />
         )}
       </Card>
 

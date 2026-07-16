@@ -78,15 +78,23 @@ export async function hidScan(page: Page, barcode: string): Promise<void> {
   }, barcode);
 }
 
-export async function sessionAccessToken(page: Page): Promise<string> {
-  const token = await page.evaluate(() => {
+/** Confirms Zustand session profile is present (JWTs live in HttpOnly cookies). */
+export async function assertSession(page: Page): Promise<void> {
+  const ok = await page.evaluate(() => {
     const raw = localStorage.getItem('invsys-session');
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { state?: { accessToken?: string } };
-    return parsed.state?.accessToken ?? null;
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { state?: { authenticated?: boolean; user?: unknown } };
+    return !!parsed.state?.authenticated && !!parsed.state?.user;
   });
-  if (!token) {
-    throw new Error('No access token in invsys-session storage');
+  if (!ok) {
+    throw new Error('No authenticated session profile in invsys-session storage');
   }
-  return token;
+}
+
+/**
+ * @deprecated Prefer cookie-auth via storageState. Returns empty string — do not send Bearer.
+ */
+export async function sessionAccessToken(page: Page): Promise<string> {
+  await assertSession(page);
+  return '';
 }

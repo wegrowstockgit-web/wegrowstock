@@ -23,7 +23,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.UUID;
@@ -112,18 +111,16 @@ class SupplierPortalHttpTest extends AbstractIntegrationTest {
                 {"email":"%s","password":"password123"}
                 """.formatted("vendor@" + slug + ".test");
 
-        String loginJson = mockMvc.perform(post("/api/v1/auth/login")
+        var loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody))
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        JsonNode login = objectMapper.readTree(loginJson);
-        String token = login.get("accessToken").asText();
+                .andReturn();
+        var accessCookie = loginResult.getResponse().getCookie(com.invsys.auth.AuthCookieService.ACCESS_COOKIE);
+        org.assertj.core.api.Assertions.assertThat(accessCookie).isNotNull();
 
         mockMvc.perform(get("/api/v1/supplier-portal/purchase-orders")
-                        .header("Authorization", "Bearer " + token))
+                        .cookie(accessCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].number").value("PO-OPEN-1"))

@@ -52,6 +52,25 @@ public class ShippingCredentialService {
         return new ShippingCredentialStatus(system, "CONNECTED");
     }
 
+    /**
+     * Decrypts the tenant's vaulted carrier / EasyPost API key for outbox label purchase.
+     * Prefer explicit carrier ({@code UPS}/{@code FEDEX}) when present; otherwise {@code EASYPOST}.
+     */
+    public String resolveApiKey(String preferredSystem) {
+        UUID tenantId = TenantContext.requireTenantId();
+        String preferred = preferredSystem == null ? "EASYPOST" : preferredSystem.trim().toUpperCase();
+        return decryptIfPresent(tenantId, preferred)
+                .or(() -> decryptIfPresent(tenantId, "EASYPOST"))
+                .orElseThrow(() -> new IllegalStateException(
+                        "No shipping credentials configured for " + preferred + " (or EASYPOST fallback)"));
+    }
+
+    private java.util.Optional<String> decryptIfPresent(UUID tenantId, String system) {
+        return credentialRepository.findByTenantIdAndSystem(tenantId, system)
+                .filter(c -> "CONNECTED".equalsIgnoreCase(c.getStatus()))
+                .map(c -> new String(vaultService.decrypt(c.getCiphertext()), StandardCharsets.UTF_8));
+    }
+
     private void validateSystem(String system) {
         if (!SHIPPING_SYSTEMS.contains(system.toUpperCase())) {
             throw new IllegalArgumentException("Unsupported shipping system: " + system);

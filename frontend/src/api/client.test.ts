@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InternalAxiosRequestConfig } from 'axios';
 
 const sessionState = {
-  accessToken: 'tok-abc' as string | null,
+  authenticated: true,
   setLastRequestId: vi.fn(),
+  clearSession: vi.fn(),
 };
 
 const warehouseState = {
@@ -31,12 +32,13 @@ import { apiClient } from '@/api/client';
 
 describe('apiClient warehouse header', () => {
   beforeEach(() => {
-    sessionState.accessToken = 'tok-abc';
+    sessionState.authenticated = true;
     warehouseState.warehouseId = 'wh-uuid-1';
     sessionState.setLastRequestId.mockReset();
   });
 
-  it('attaches X-Warehouse-Id from active warehouse store', async () => {
+  it('attaches X-Warehouse-Id and uses credentials (no Bearer token)', async () => {
+    expect(apiClient.defaults.withCredentials).toBe(true);
     const handlers = (apiClient.interceptors.request as unknown as {
       handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }>;
     }).handlers;
@@ -48,7 +50,7 @@ describe('apiClient warehouse header', () => {
       url: '/api/v1/locations/warehouses/assigned',
     } as InternalAxiosRequestConfig);
 
-    expect(config.headers.Authorization).toBe('Bearer tok-abc');
+    expect(config.headers.Authorization).toBeUndefined();
     expect(config.headers['X-Warehouse-Id']).toBe('wh-uuid-1');
   });
 

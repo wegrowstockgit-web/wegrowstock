@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DensityToggle } from '@/components/ui/DensityToggle';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
 
@@ -185,6 +186,52 @@ function DispositionSelect({
   );
 }
 
+function ReturnLinesTable({ lines, returnId }: { lines: ReturnLine[]; returnId: string }) {
+  const { sort, toggle, sorted } = useClientSort(
+    lines,
+    {
+      sku: (line) => line.sku ?? line.productName ?? line.id,
+      expected: (line) => line.quantityExpected,
+      received: (line) => line.quantityReceived,
+      disposition: (line) => line.disposition ?? '',
+    },
+    { key: 'sku', dir: 'asc' },
+  );
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="sku" sort={sort} onSort={toggle}>
+            SKU
+          </TableHead>
+          <TableHead sortable sortKey="expected" sort={sort} onSort={toggle}>
+            Expected
+          </TableHead>
+          <TableHead sortable sortKey="received" sort={sort} onSort={toggle}>
+            Received
+          </TableHead>
+          <TableHead sortable sortKey="disposition" sort={sort} onSort={toggle}>
+            Disposition
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((line) => (
+          <TableRow key={line.id}>
+            <TableCell mono>{line.sku ?? line.productName ?? line.id}</TableCell>
+            <TableCell mono>{line.quantityExpected}</TableCell>
+            <TableCell mono>{line.quantityReceived}</TableCell>
+            <TableCell>
+              <DispositionSelect line={line} returnId={returnId} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 export function ReturnsPage() {
   const navigate = useNavigate();
   const canManage = useSessionStore((s) => s.canManageInventory());
@@ -301,28 +348,7 @@ export function ReturnsPage() {
                 {expandedId === rma.id && (rma.lines?.length ?? 0) > 0 && (
                   <div className="border-t border-border p-4">
                     <CardHeader title="Line items" description="Set disposition per line" />
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>SKU</TableHead>
-                          <TableHead>Expected</TableHead>
-                          <TableHead>Received</TableHead>
-                          <TableHead>Disposition</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {rma.lines?.map((line) => (
-                          <TableRow key={line.id}>
-                            <TableCell mono>{line.sku ?? line.productName ?? line.id}</TableCell>
-                            <TableCell mono>{line.quantityExpected}</TableCell>
-                            <TableCell mono>{line.quantityReceived}</TableCell>
-                            <TableCell>
-                              <DispositionSelect line={line} returnId={rma.id} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    <ReturnLinesTable lines={rma.lines ?? []} returnId={rma.id} />
                   </div>
                 )}
               </Card>

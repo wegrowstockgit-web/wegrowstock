@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -42,6 +43,65 @@ function StatusBadge({ status }: { status: string }) {
     >
       {status.replaceAll('_', ' ')}
     </span>
+  );
+}
+
+function SalesOrdersTable({
+  items,
+  onPeek,
+  renderActions,
+}: {
+  items: SalesOrder[];
+  onPeek: (id: string) => void;
+  renderActions: (order: SalesOrder) => ReactNode;
+}) {
+  const { sort, toggle, sorted } = useClientSort(
+    items,
+    {
+      number: (o) => o.number,
+      customer: (o) => o.customerName,
+      status: (o) => o.status,
+      created: (o) => o.createdAt,
+    },
+    { key: 'created', dir: 'desc' },
+  );
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
+            Number
+          </TableHead>
+          <TableHead sortable sortKey="customer" sort={sort} onSort={toggle}>
+            Customer
+          </TableHead>
+          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+            Status
+          </TableHead>
+          <TableHead sortable sortKey="created" sort={sort} onSort={toggle}>
+            Created
+          </TableHead>
+          <TableHead align="right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sorted.map((so) => (
+          <TableRow key={so.id} className="cursor-pointer" onClick={() => onPeek(so.id)}>
+            <TableCell mono>{so.number}</TableCell>
+            <TableCell>{so.customerName}</TableCell>
+            <TableCell>
+              <StatusBadge status={so.status} />
+            </TableCell>
+            <TableCell className="text-text-muted">
+              {new Date(so.createdAt).toLocaleDateString()}
+            </TableCell>
+            <TableCell align="right">
+              <div onClick={(e: MouseEvent) => e.stopPropagation()}>{renderActions(so)}</div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -404,36 +464,11 @@ export function SalesOrdersPage() {
         }
       >
         {(items) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((so) => (
-                <TableRow key={so.id} className="cursor-pointer" onClick={() => setPeekOrderId(so.id)}>
-                  <TableCell mono>{so.number}</TableCell>
-                  <TableCell>{so.customerName}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={so.status} />
-                  </TableCell>
-                  <TableCell className="text-text-muted">
-                    {new Date(so.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell align="right">
-                    <div onClick={(e: MouseEvent) => e.stopPropagation()}>
-                      <RowActions order={so} />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <SalesOrdersTable
+            items={items}
+            onPeek={setPeekOrderId}
+            renderActions={(so) => <RowActions order={so} />}
+          />
         )}
       </ListPageState>
       </div>

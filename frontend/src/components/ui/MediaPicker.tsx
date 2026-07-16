@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import { Camera, ImagePlus, Loader2 } from 'lucide-react';
+import { ImagePlus, Loader2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
-import { WebRtcCamera } from '@/components/ui/WebRtcCamera';
+import { CameraCapture, type CameraFacing } from '@/components/ui/CameraCapture';
 import { uploadViaPresign, type PresignType } from '@/lib/mediaPresign';
 import { cn } from '@/lib/utils';
 
@@ -20,16 +20,22 @@ interface MediaPickerProps {
   kind: MediaUploadKind;
   label?: string;
   previewUrl?: string | null;
+  /** Show Take photo (device camera → S3 pre-sign path). */
   capture?: boolean;
-  /** Use WebRTC getUserMedia instead of input capture= (floor surfaces). */
+  /**
+   * @deprecated Capture always uses getUserMedia. Kept so existing call sites
+   * (`webrtc`) keep compiling; ignored.
+   */
   webrtc?: boolean;
+  /** Override camera lens; defaults to user for AVATAR, environment otherwise. */
+  facingMode?: CameraFacing;
   disabled?: boolean;
   className?: string;
-  /** Legacy multipart endpoint (skips pre-sign when set). */
+  /** Legacy multipart endpoint (skips pre-sign when set). Still stores in S3 server-side. */
   uploadUrl?: string;
   /** Force pre-sign type; defaults from kind. */
   presignType?: PresignType;
-  /** Prefer MinIO pre-signed PUT (default true when uploadUrl is unset). */
+  /** Prefer MinIO/S3 pre-signed PUT (default true when uploadUrl is unset). */
   usePresign?: boolean;
   onUploaded: (result: MediaUploadResult) => void | Promise<void>;
 }
@@ -45,12 +51,16 @@ function kindToPresign(kind: MediaUploadKind): PresignType {
   }
 }
 
+function defaultFacing(kind: MediaUploadKind): CameraFacing {
+  return kind === 'AVATAR' ? 'user' : 'environment';
+}
+
 export function MediaPicker({
   kind,
   label = 'Add photo',
   previewUrl,
   capture = false,
-  webrtc = false,
+  facingMode,
   disabled,
   className,
   uploadUrl,
@@ -76,6 +86,7 @@ export function MediaPicker({
     try {
       let result: MediaUploadResult;
       if (preferPresign) {
+        // Bytes go browser → S3/MinIO PUT → /media/complete (never persisted on API disk).
         const completed = await uploadViaPresign(file, presignType ?? kindToPresign(kind), {
           onPhase: setPhase,
         });
@@ -131,7 +142,7 @@ export function MediaPicker({
         <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-overlay ring-1 ring-border/60">
           {shown ? (
             localPreview ? (
-              <img src={localPreview} alt="" className="h-full w-full object-cover" />
+              <img src={shown} alt="" className="h-full w-full object-cover" />
             ) : (
               <AuthenticatedImage src={shown} alt="" className="h-full w-full object-cover" />
             )
@@ -146,37 +157,20 @@ export function MediaPicker({
               size="sm"
               variant="secondary"
               disabled={disabled || busy}
-              onClick={() => {
-                if (inputRef.current) {
-                  inputRef.current.removeAttribute('capture');
-                  inputRef.current.click();
-                }
-              }}
+              onClick={() => inputRef.current?.click()}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
               {busyLabel}
             </Button>
-            {capture && !webrtc && (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
+            {capture && (
+              <CameraCapture
                 disabled={disabled || busy}
-                onClick={() => {
-                  if (inputRef.current) {
-                    inputRef.current.setAttribute('capture', 'environment');
-                    inputRef.current.click();
-                  }
-                }}
-              >
-                <Camera className="h-4 w-4" />
-                Take photo
-              </Button>
+                label="Take photo"
+                facingMode={facingMode ?? defaultFacing(kind)}
+                onCapture={(file) => void handleFile(file)}
+              />
             )}
           </div>
-          {webrtc && (
-            <WebRtcCamera disabled={disabled || busy} onCapture={(file) => void handleFile(file)} />
-          )}
           <p className="text-xs text-text-muted">
             {phase === 'compressing'
               ? 'Compressing on-device for faster upload…'

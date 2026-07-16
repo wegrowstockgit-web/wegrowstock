@@ -176,4 +176,101 @@ describe('VirtualizedTable', () => {
     expect(screen.getByText('SKU')).toBeInTheDocument();
     expect(screen.getByText('Barcode')).toBeInTheDocument();
   });
+
+  it('sorts rows when a sortable header is clicked', () => {
+    const sortableCols: VirtualizedColumnDef<Row>[] = [
+      {
+        id: 'sku',
+        header: 'SKU',
+        width: 120,
+        sortable: true,
+        sortValue: (r) => r.sku,
+        cell: (r) => r.sku,
+      },
+      {
+        id: 'name',
+        header: 'Name',
+        width: 160,
+        sortable: true,
+        sortValue: (r) => r.name,
+        cell: (r) => r.name,
+      },
+    ];
+    render(
+      <VirtualizedTable columns={sortableCols} rows={rows} getRowId={(r) => r.id} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /name/i }));
+    const bodyRows = screen.getAllByRole('row').slice(1);
+    expect(bodyRows[0]).toHaveTextContent('Alpha');
+    fireEvent.click(screen.getByRole('button', { name: /name/i }));
+    const descRows = screen.getAllByRole('row').slice(1);
+    expect(descRows[0]).toHaveTextContent('Beta');
+  });
+
+  it('supports controlled selection and keyboard activation', () => {
+    const onRowClick = vi.fn();
+    render(
+      <VirtualizedTable
+        columns={columns}
+        rows={rows}
+        getRowId={(r) => r.id}
+        selectedRowId="2"
+        onRowClick={onRowClick}
+      />,
+    );
+
+    const selected = screen.getByText('Beta').closest('tr');
+    expect(selected?.getAttribute('data-state')).toBe('selected');
+
+    const alpha = screen.getByText('Alpha').closest('tr')!;
+    fireEvent.keyDown(alpha, { key: 'Enter' });
+    expect(onRowClick).toHaveBeenCalledWith(rows[0]);
+    fireEvent.keyDown(alpha, { key: ' ' });
+    expect(onRowClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('exports hideableColumnMeta and renders empty state', () => {
+    expect(
+      hideableColumnMeta([
+        ...columns,
+        { id: 'locked', header: 'Locked', width: 80, hideable: false, cell: () => null },
+      ]).map((c) => c.id),
+    ).toEqual(['sku', 'name', 'barcode']);
+
+    render(
+      <VirtualizedTable
+        columns={columns}
+        rows={[]}
+        getRowId={(r) => r.id}
+        empty={<p data-testid="vt-empty">No rows</p>}
+      />,
+    );
+    expect(screen.getByTestId('vt-empty')).toBeInTheDocument();
+  });
+
+  it('fires onEndReached from scroll near bottom', () => {
+    const onEndReached = vi.fn();
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      id: String(i),
+      sku: `S-${i}`,
+      name: `N-${i}`,
+      barcode: `${i}`,
+    }));
+    render(
+      <VirtualizedTable
+        columns={columns}
+        rows={many}
+        getRowId={(r) => r.id}
+        onEndReached={onEndReached}
+        endReachedThreshold={5}
+      />,
+    );
+    const root = screen.getByTestId('virtualized-table');
+    const scroll = root.querySelector('.overflow-auto') as HTMLElement;
+    Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 800 });
+    Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: 580 });
+    fireEvent.scroll(scroll);
+    expect(onEndReached).toHaveBeenCalled();
+  });
 });

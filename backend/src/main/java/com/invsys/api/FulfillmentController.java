@@ -9,6 +9,7 @@ import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.service.AllocationService;
+import com.invsys.service.CrossDockService;
 import com.invsys.service.FulfillmentExceptionService;
 import com.invsys.service.IdempotencyService;
 import com.invsys.service.InventoryService;
@@ -21,10 +22,12 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
@@ -44,6 +47,7 @@ public class FulfillmentController {
     private final TenantSettingsRepository tenantSettingsRepository;
     private final AllocationService allocationService;
     private final FulfillmentExceptionService fulfillmentExceptionService;
+    private final CrossDockService crossDockService;
 
     public FulfillmentController(ProductVariantRepository variantRepository,
                                  ProductRepository productRepository,
@@ -52,7 +56,8 @@ public class FulfillmentController {
                                  IdempotencyService idempotencyService,
                                  TenantSettingsRepository tenantSettingsRepository,
                                  AllocationService allocationService,
-                                 FulfillmentExceptionService fulfillmentExceptionService) {
+                                 FulfillmentExceptionService fulfillmentExceptionService,
+                                 CrossDockService crossDockService) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
@@ -61,6 +66,44 @@ public class FulfillmentController {
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.allocationService = allocationService;
         this.fulfillmentExceptionService = fulfillmentExceptionService;
+        this.crossDockService = crossDockService;
+    }
+
+    /**
+     * On receive: if sales demand is already allocated, bypass storage and stage for shipping.
+     * POST-only — mutates allocation status (GET would be unsafe / cacheable).
+     */
+    @PostMapping("/cross-dock/check")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public CrossDockCheckResponse crossDockCheck(@RequestParam UUID variantId) {
+        CrossDockService.CrossDockTask task = crossDockService.checkVariant(variantId);
+        return new CrossDockCheckResponse(
+                task.match(),
+                task.variantId(),
+                task.sku(),
+                task.allocationId(),
+                task.salesOrderId(),
+                task.salesOrderNumber(),
+                task.salesOrderLineId(),
+                task.stagingHintLocationId(),
+                task.quantity(),
+                task.allocationStatus(),
+                task.instruction());
+    }
+
+    public record CrossDockCheckResponse(
+            boolean match,
+            UUID variantId,
+            String sku,
+            UUID allocationId,
+            UUID salesOrderId,
+            String salesOrderNumber,
+            UUID salesOrderLineId,
+            UUID stagingHintLocationId,
+            BigDecimal quantity,
+            String allocationStatus,
+            String instruction
+    ) {
     }
 
     @PostMapping("/exceptions/report")

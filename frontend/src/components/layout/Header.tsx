@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronDown, LogOut, Search, Settings2, User, Warehouse } from 'lucide-react';
+import { AlertTriangle, ChevronDown, LogOut, Menu, Search, Settings2, User, Warehouse } from 'lucide-react';
 import { Avatar, initialsFromName } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ProfileSettingsDialog } from '@/components/layout/ProfileSettingsDialog';
 import { TerminalPinPad } from '@/components/layout/TerminalPinPad';
 import { useSessionStore } from '@/stores/session';
 import { useOfflineStore } from '@/stores/offlineStore';
+import { useRailStore } from '@/stores/rail';
 import { cn } from '@/lib/utils';
 import type { Warehouse as WarehouseType } from '@/api/types';
 
@@ -41,6 +42,7 @@ export function Header({
   const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
+  const toggleMobileOpen = useRailStore((s) => s.toggleMobileOpen);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -67,8 +69,19 @@ export function Header({
             <Button
               variant="secondary"
               size="sm"
+              onClick={toggleMobileOpen}
+              className="min-h-11 min-w-11 touch-target md:hidden"
+              aria-label="Open navigation"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
+          {!isWarehouseView && (
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={onToggleCommandPalette}
-              className="hidden sm:inline-flex"
+              className="hidden min-h-11 touch-target sm:inline-flex"
             >
               <Search className="h-4 w-4" />
               <span className="text-text-muted">Search</span>

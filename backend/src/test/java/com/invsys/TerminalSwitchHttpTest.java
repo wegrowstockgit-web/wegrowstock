@@ -1,7 +1,9 @@
 package com.invsys;
 
+import com.invsys.auth.AuthCookieService;
 import com.invsys.auth.AuthService;
 import com.invsys.auth.JwtService;
+import com.invsys.auth.TerminalPinBruteForceGuard;
 import com.invsys.auth.dto.LoginRequest;
 import com.invsys.auth.dto.SignupRequest;
 import com.invsys.auth.dto.TokenResponse;
@@ -31,6 +33,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,10 +49,12 @@ class TerminalSwitchHttpTest extends AbstractIntegrationTest {
     @Autowired UserRoleRepository userRoleRepository;
     @Autowired UserWarehouseRepository userWarehouseRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired TerminalPinBruteForceGuard terminalPinBruteForceGuard;
 
     @AfterEach
     void tearDown() {
         TenantContext.clear();
+        terminalPinBruteForceGuard.reset();
     }
 
     @Test
@@ -94,17 +99,18 @@ class TerminalSwitchHttpTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pin\":\"4821\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
                 .andExpect(jsonPath("$.tokenType").value("TERMINAL_SWITCH"))
                 .andExpect(jsonPath("$.userId").value(picker.getId().toString()))
                 .andExpect(jsonPath("$.expiresInSeconds").value(300))
                 .andExpect(jsonPath("$.switchedFromUserId").value(station.userId().toString()))
+                .andExpect(cookie().exists(AuthCookieService.ACCESS_COOKIE))
                 .andReturn();
 
         String body = result.getResponse().getContentAsString();
         assertThat(body).doesNotContain("refreshToken");
 
-        String access = body.replaceAll("(?s).*\"accessToken\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+        String access = result.getResponse().getCookie(AuthCookieService.ACCESS_COOKIE).getValue();
         JWTClaimsSet claims = jwtService.validateAndParse(access);
         assertThat(claims.getClaim("token_type")).isEqualTo("TERMINAL_SWITCH");
         @SuppressWarnings("unchecked")
@@ -115,6 +121,85 @@ class TerminalSwitchHttpTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + station.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.title").value("INVALID_PIN"));
+    }
+
+    @Test
+    void repeatedInvalidPinsLockOutStationOperator() throws Exception {
+        String slug = "lock-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse ownerTokens = authService.signup(new SignupRequest(
+                "Lock Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = ownerTokens.tenantId();
+
+        TenantContext.setTenantId(tenantId);
+        TenantContext.setUserId(ownerTokens.userId());
+        Role pickerRole = roleRepository.findByTenantIdAndCode(tenantId, "PICKER").orElseThrow();
+        User picker = new User();
+        picker.setTenantId(tenantId);
+        picker.setEmail("picker@" + slug + ".test");
+        picker.setDisplayName("Floor Picker");
+        picker.setPasswordHash(passwordEncoder.encode("password123"));
+        picker.setStatus("ACTIVE");
+        picker = userRepository.save(picker);
+        UserRole userRole = new UserRole();
+        userRole.setTenantId(tenantId);
+        userRole.setUserId(picker.getId());
+        userRole.setRoleId(pickerRole.getId());
+        userRoleRepository.save(userRole);
+        authService.setTerminalPin(picker.getId(), "9999");
+        TenantContext.clear();
+
+        TokenResponse station = authService.login(new LoginRequest("owner@" + slug + ".test", "password123"));
+
+        for (int i = 0; i < TerminalPinBruteForceGuard.MAX_FAILURES - 1; i++) {
+            mockMvc.perform(post("/api/v1/auth/terminal-switch")
+                            .header("Authorization", "Bearer " + station.accessToken())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"pin\":\"0000\"}"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.title").value("INVALID_PIN"));
+        }
+
+        mockMvc.perform(post("/api/v1/auth/terminal-switch")
+                        .header("Authorization", "Bearer " + station.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.title").value("PIN_LOCKED"))
+                .andExpect(jsonPath("$.unlockAt").isNotEmpty());
+    }
+
+    @Test
+    void inactiveOperatorPinFailsAsInvalidPinWithoutEnumeration() throws Exception {
+        String slug = "inact-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse ownerTokens = authService.signup(new SignupRequest(
+                "Inactive Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = ownerTokens.tenantId();
+
+        TenantContext.setTenantId(tenantId);
+        TenantContext.setUserId(ownerTokens.userId());
+        Role pickerRole = roleRepository.findByTenantIdAndCode(tenantId, "PICKER").orElseThrow();
+        User picker = new User();
+        picker.setTenantId(tenantId);
+        picker.setEmail("picker@" + slug + ".test");
+        picker.setDisplayName("Inactive Picker");
+        picker.setPasswordHash(passwordEncoder.encode("password123"));
+        picker.setStatus("INACTIVE");
+        picker = userRepository.save(picker);
+        UserRole userRole = new UserRole();
+        userRole.setTenantId(tenantId);
+        userRole.setUserId(picker.getId());
+        userRole.setRoleId(pickerRole.getId());
+        userRoleRepository.save(userRole);
+        authService.setTerminalPin(picker.getId(), "5555");
+        TenantContext.clear();
+
+        TokenResponse station = authService.login(new LoginRequest("owner@" + slug + ".test", "password123"));
+        mockMvc.perform(post("/api/v1/auth/terminal-switch")
+                        .header("Authorization", "Bearer " + station.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"5555\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.title").value("INVALID_PIN"));
     }

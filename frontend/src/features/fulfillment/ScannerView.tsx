@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, Camera, Loader2 } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Loader2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { CameraCapture } from '@/components/ui/CameraCapture';
 import { Input } from '@/components/ui/Input';
 import { MediaPicker } from '@/components/ui/MediaPicker';
 import { VariantThumb } from '@/components/ui/VariantThumb';
@@ -217,30 +218,39 @@ export function ScannerView({
       )}
 
       {needsCapture && (
-        <div className="mt-4" data-testid="capture-product-image">
+        <div className="mt-4 space-y-2" data-testid="capture-product-image">
+          <CameraCapture
+            className="[&_button]:min-h-12 [&_button]:w-full [&_button]:justify-center [&_button]:border-2 [&_button]:border-text [&_button]:bg-accent [&_button]:text-text-inverse"
+            disabled={capturing}
+            facingMode="environment"
+            label={
+              phase === 'compressing'
+                ? 'Compressing…'
+                : phase === 'uploading'
+                  ? 'Uploading…'
+                  : 'Capture Product Image'
+            }
+            onCapture={(file) => void handleCapture(file)}
+          />
           <Button
             type="button"
-            size="lg"
-            className="w-full border-2 border-text bg-accent text-text-inverse hover:bg-accent-hover"
+            size="sm"
+            variant="secondary"
+            className="w-full"
             disabled={capturing}
             onClick={() => captureRef.current?.click()}
           >
             {capturing ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Camera className="h-5 w-5" />
+              <ImagePlus className="h-4 w-4" />
             )}
-            {phase === 'compressing'
-              ? 'Compressing…'
-              : phase === 'uploading'
-                ? 'Uploading…'
-                : 'Capture Product Image'}
+            Upload from gallery
           </Button>
           <input
             ref={captureRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="sr-only"
             aria-hidden
             tabIndex={-1}
@@ -355,7 +365,7 @@ export function ReceiveQcPhotoSlot({
         kind="EVIDENCE"
         label="QC / damage photo"
         capture
-        webrtc
+        facingMode="environment"
         presignType="TRANSACTION"
         onUploaded={async (result) => {
           await apiClient.post('/api/v1/media/transactions', {

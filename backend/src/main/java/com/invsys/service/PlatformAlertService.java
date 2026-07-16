@@ -63,6 +63,37 @@ public class PlatformAlertService {
         return platformAlertRepository.save(alert);
     }
 
+    /**
+     * Raise (or refresh) an open alert for the current tenant context.
+     */
+    @Transactional
+    public PlatformAlert raise(String alertType, String severity, String sourceSystem,
+                               String title, Map<String, Object> details) {
+        UUID tenantId = TenantContext.requireTenantId();
+        var existing = platformAlertRepository
+                .findByTenantIdAndAlertTypeAndSourceSystemAndAcknowledgedAtIsNull(
+                        tenantId, alertType, sourceSystem);
+        if (existing.isPresent()) {
+            PlatformAlert alert = existing.get();
+            alert.setTitle(title);
+            alert.setSeverity(severity != null ? severity : alert.getSeverity());
+            Map<String, Object> merged = new LinkedHashMap<>(alert.getDetails());
+            if (details != null) {
+                merged.putAll(details);
+            }
+            alert.setDetails(merged);
+            return platformAlertRepository.save(alert);
+        }
+        PlatformAlert alert = new PlatformAlert();
+        alert.setTenantId(tenantId);
+        alert.setAlertType(alertType);
+        alert.setSeverity(severity != null ? severity : "WARNING");
+        alert.setSourceSystem(sourceSystem);
+        alert.setTitle(title);
+        alert.setDetails(details != null ? new LinkedHashMap<>(details) : new LinkedHashMap<>());
+        return platformAlertRepository.save(alert);
+    }
+
     @Scheduled(fixedDelayString = "${invsys.observability.alert-scan-interval-ms:300000}")
     public void scanIntegrationHealth() {
         for (UUID tenantId : tenantRepository.findAll().stream().map(t -> t.getId()).toList()) {

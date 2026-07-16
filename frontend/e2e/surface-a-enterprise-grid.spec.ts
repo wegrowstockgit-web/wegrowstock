@@ -20,6 +20,23 @@ test.describe('Surface A enterprise grid & settings', () => {
     await expect(page.getByTestId('virtualized-table').or(page.getByText(/No products yet/i))).toBeVisible();
   });
 
+  test('list tables show corporate blue sortable headers', async ({ ownerPage: page }) => {
+    await page.goto('/customers');
+    await expect(page.getByRole('heading', { name: /customers/i })).toBeVisible({ timeout: 20_000 });
+
+    const nameHeader = page.getByRole('columnheader', { name: /name/i }).first();
+    await expect(nameHeader).toBeVisible();
+    await expect(nameHeader).toHaveClass(/table-head-cell/);
+    await expect(nameHeader.locator('button')).toBeVisible();
+
+    const before = await page.locator('tbody tr').first().textContent().catch(() => null);
+    await nameHeader.locator('button').click();
+    await expect(nameHeader).toHaveAttribute('aria-sort', /ascending|descending/);
+    if (before) {
+      await expect(page.locator('tbody tr').first()).toBeVisible();
+    }
+  });
+
   test('import wizard page loads with mapping workspace', async ({ ownerPage: page }) => {
     await page.goto('/import');
     await expect(page.getByRole('heading', { name: 'Data import' })).toBeVisible({ timeout: 15_000 });

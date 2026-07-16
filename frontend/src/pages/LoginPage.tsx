@@ -4,15 +4,26 @@ import { Boxes, Sparkles } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { type AxiosError } from 'axios';
 import { apiClient } from '@/api/client';
-import type { LoginRequest, TokenResponse } from '@/api/types';
+import type { LoginRequest, SessionResponse } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
+interface MeResponse {
+  userId: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
+  roles: string[];
+  warehouseIds?: string[];
+  avatarUrl?: string | null;
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const setSessionFromToken = useSessionStore((s) => s.setSessionFromToken);
+  const setSessionFromLogin = useSessionStore((s) => s.setSessionFromLogin);
+  const applyMeProfile = useSessionStore((s) => s.applyMeProfile);
   const [email, setEmail] = useState('owner@demo.test');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,34 +31,25 @@ export function LoginPage() {
 
   useEffect(() => {
     if (searchParams.get('sso') === '1') {
-      const accessToken = searchParams.get('accessToken');
-      const refreshToken = searchParams.get('refreshToken');
-      const tenantId = searchParams.get('tenantId');
-      const userId = searchParams.get('userId');
-      if (accessToken && refreshToken && tenantId && userId) {
-        setSessionFromToken(
-          {
-            accessToken,
-            refreshToken,
-            tenantId,
-            userId,
-            roles: [],
-            warehouseIds: [],
-          },
-          email
-        );
-        navigate('/dashboard', { replace: true });
-      }
+      void (async () => {
+        try {
+          const me = await apiClient.get<MeResponse>('/api/v1/auth/me');
+          applyMeProfile(me.data);
+          navigate('/dashboard', { replace: true });
+        } catch {
+          setError('SSO session could not be established.');
+        }
+      })();
     }
-  }, [searchParams, setSessionFromToken, navigate, email]);
+  }, [searchParams, applyMeProfile, navigate]);
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginRequest) => {
-      const res = await apiClient.post<TokenResponse>('/api/v1/auth/login', data);
+      const res = await apiClient.post<SessionResponse>('/api/v1/auth/login', data);
       return res.data;
     },
     onSuccess: (data) => {
-      setSessionFromToken(data, email);
+      setSessionFromLogin(data, email);
       const b2bOnly =
         data.roles.length > 0 && data.roles.every((role) => role === 'B2B_CUSTOMER');
       const pickerOnly =
@@ -67,11 +69,11 @@ export function LoginPage() {
 
   const magicConsumeMutation = useMutation({
     mutationFn: async (token: string) => {
-      const res = await apiClient.post<TokenResponse>('/api/v1/auth/magic-login/consume', { token });
+      const res = await apiClient.post<SessionResponse>('/api/v1/auth/magic-login/consume', { token });
       return res.data;
     },
     onSuccess: (data) => {
-      setSessionFromToken(data, email);
+      setSessionFromLogin(data, email);
       navigate('/fulfillment');
     },
     onError: () => setError('Magic link expired or already used.'),

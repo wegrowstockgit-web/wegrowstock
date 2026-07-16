@@ -16,9 +16,7 @@ export const DEMO_ROLES = [
 
 export type DemoRoleKey = (typeof DEMO_ROLES)[number]['key'];
 
-interface TokenResponse {
-  accessToken: string;
-  refreshToken: string;
+interface SessionResponse {
   tenantId: string;
   userId: string;
   roles: string[];
@@ -31,7 +29,7 @@ function authPath(key: string): string {
 
 /**
  * Programmatic login for each seeded demo role. Persists Playwright storage
- * state with Zustand `invsys-session` hydrated so fixtures start authenticated.
+ * state with HttpOnly session cookies + Zustand user profile (no JWTs in JS).
  */
 async function globalSetup(config: FullConfig): Promise<void> {
   const baseURL = config.projects[0]?.use?.baseURL ?? 'http://localhost:3000';
@@ -53,35 +51,39 @@ async function globalSetup(config: FullConfig): Promise<void> {
       if (!loginResponse.ok()) {
         const body = await loginResponse.text();
         throw new Error(
-          `Auth setup failed for ${role.email}: HTTP ${loginResponse.status()} ${body}`
+          `Auth setup failed for ${role.email}: HTTP ${loginResponse.status()} ${body}`,
         );
       }
 
-      const tokens = (await loginResponse.json()) as TokenResponse;
+      const session = (await loginResponse.json()) as SessionResponse;
+      if ('accessToken' in (session as object) && (session as { accessToken?: string }).accessToken) {
+        throw new Error(`Login leaked accessToken in JSON for ${role.email}`);
+      }
 
       await page.goto('/login');
       await page.evaluate(
-        ({ tokens: t, email, displayName }) => {
+        ({ session: s, email, displayName }) => {
           localStorage.setItem(
             'invsys-session',
             JSON.stringify({
               state: {
-                accessToken: t.accessToken,
-                refreshToken: t.refreshToken,
+                authenticated: true,
                 user: {
-                  id: t.userId,
+                  id: s.userId,
                   email,
                   displayName,
-                  roles: t.roles,
-                  warehouseIds: t.warehouseIds ?? [],
+                  roles: s.roles,
+                  warehouseIds: s.warehouseIds ?? [],
+                  tenantId: s.tenantId,
                 },
                 lastRequestId: null,
+                primarySession: null,
               },
               version: 0,
-            })
+            }),
           );
         },
-        { tokens, email: role.email, displayName: role.displayName }
+        { session, email: role.email, displayName: role.displayName },
       );
 
       await context.storageState({ path: authPath(role.key) });
@@ -90,15 +92,15 @@ async function globalSetup(config: FullConfig): Promise<void> {
         JSON.stringify(
           {
             email: role.email,
-            roles: tokens.roles,
-            warehouseIds: tokens.warehouseIds ?? [],
-            tenantId: tokens.tenantId,
-            userId: tokens.userId,
+            roles: session.roles,
+            warehouseIds: session.warehouseIds ?? [],
+            tenantId: session.tenantId,
+            userId: session.userId,
           },
           null,
-          2
+          2,
         ),
-        'utf8'
+        'utf8',
       );
       await context.close();
     }

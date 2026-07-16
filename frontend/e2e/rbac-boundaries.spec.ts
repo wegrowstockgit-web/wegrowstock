@@ -35,14 +35,10 @@ test.describe('RBAC dual-axis boundaries', () => {
     );
 
     await pickerPage.evaluate(async () => {
-      const raw = localStorage.getItem('invsys-session');
-      const token = raw ? (JSON.parse(raw) as { state?: { accessToken?: string } }).state?.accessToken : null;
       await fetch('/api/v1/customers', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: 'Forbidden Customer',
           email: 'forbidden@example.test',

@@ -1,9 +1,11 @@
 package com.invsys;
 
+import com.invsys.auth.AuthCookieService;
 import com.invsys.auth.AuthService;
 import com.invsys.auth.dto.LoginRequest;
 import com.invsys.auth.dto.SignupRequest;
 import com.invsys.auth.dto.TokenResponse;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,11 +14,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import java.util.Map;
+import jakarta.servlet.http.Cookie;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -28,24 +31,25 @@ class AuthRefreshHttpTest extends AbstractIntegrationTest {
     @Autowired ObjectMapper objectMapper;
 
     @Test
-    void refreshEndpointRotatesAccessToken() throws Exception {
+    void refreshEndpointRotatesViaHttpOnlyCookie() throws Exception {
         String slug = "refr-" + UUID.randomUUID().toString().substring(0, 8);
         TokenResponse tokens = authService.signup(new SignupRequest(
                 "Refresh Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", tokens.refreshToken()))))
+                        .cookie(new Cookie(AuthCookieService.REFRESH_COOKIE, tokens.refreshToken())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(jsonPath("$.userId").isNotEmpty())
+                .andExpect(cookie().exists(AuthCookieService.ACCESS_COOKIE))
+                .andExpect(cookie().exists(AuthCookieService.REFRESH_COOKIE))
+                .andExpect(cookie().httpOnly(AuthCookieService.ACCESS_COOKIE, true))
                 .andReturn();
 
-        TokenResponse refreshed = objectMapper.readValue(result.getResponse().getContentAsString(), TokenResponse.class);
-        assertThat(refreshed.accessToken()).isNotBlank();
-        assertThat(refreshed.refreshToken()).isNotBlank();
-        // Refresh tokens are rotated; access JWT may collide within the same second.
-        assertThat(refreshed.refreshToken()).isNotEqualTo(tokens.refreshToken());
+        Cookie rotated = result.getResponse().getCookie(AuthCookieService.REFRESH_COOKIE);
+        assertThat(rotated).isNotNull();
+        assertThat(rotated.getValue()).isNotBlank().isNotEqualTo(tokens.refreshToken());
     }
 
     @Test
@@ -65,12 +69,12 @@ class AuthRefreshHttpTest extends AbstractIntegrationTest {
         TokenResponse loggedIn = authService.login(new LoginRequest("owner@" + slug + ".test", "password123"));
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", loggedIn.refreshToken()))))
+                        .cookie(new Cookie(AuthCookieService.REFRESH_COOKIE, loggedIn.refreshToken())))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        TokenResponse refreshed = objectMapper.readValue(result.getResponse().getContentAsString(), TokenResponse.class);
-        assertThat(refreshed.tenantId()).isEqualTo(loggedIn.tenantId());
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.get("tenantId").asText()).isEqualTo(loggedIn.tenantId().toString());
+        assertThat(body.has("accessToken")).isFalse();
     }
 }

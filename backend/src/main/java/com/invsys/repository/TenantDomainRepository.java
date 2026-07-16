@@ -11,4 +11,6 @@ public interface TenantDomainRepository extends JpaRepository<TenantDomain, UUID
     List<TenantDomain> findByTenantIdOrderByDomainNameAsc(UUID tenantId);
 
     Optional<TenantDomain> findByTenantIdAndId(UUID tenantId, UUID id);
+
+    Optional<TenantDomain> findByDomainNameIgnoreCaseAndVerificationStatus(String domainName, String verificationStatus);
 }

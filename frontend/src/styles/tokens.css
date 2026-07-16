@@ -20,9 +20,14 @@
   --color-text: #0f172a;
   --color-text-muted: #64748b;
   --color-text-inverse: #f8fafc;
-  --color-accent: #1d6fbf;
+  /* Primary action / table header blue — matches Connect Stripe & CTA buttons */
+  --color-accent: #1d70cb;
   --color-accent-hover: #55ACEE;
   --color-accent-muted: #dbeafe;
+  --color-table-header: #1d70cb;
+  --color-table-header-fg: #ffffff;
+  --color-row-hover: color-mix(in srgb, #1d70cb 8%, transparent);
+  --color-row-selected: color-mix(in srgb, #1d70cb 18%, transparent);
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-danger: #dc2626;
@@ -79,5 +84,9 @@
     --color-success: #4ade80;
     --color-warning: #fbbf24;
     --color-danger: #f87171;
+    --color-table-header: #1d70cb;
+    --color-table-header-fg: #ffffff;
+    --color-row-hover: color-mix(in srgb, #38bdf8 12%, transparent);
+    --color-row-selected: color-mix(in srgb, #38bdf8 22%, transparent);
   }
 }

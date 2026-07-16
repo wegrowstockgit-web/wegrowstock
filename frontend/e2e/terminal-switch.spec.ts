@@ -9,13 +9,23 @@ test.describe('Terminal PIN context switch', () => {
     const token = await sessionAccessToken(ownerPage);
     // Seed a PIN for the signed-in owner so the pad can switch (self).
     const pinRes = await ownerPage.request.post('/api/v1/auth/terminal-pin', {
-      headers: { Authorization: `Bearer ${token}` },
       data: { pin: '2468' },
     });
     expect(pinRes.ok()).toBeTruthy();
 
     await ownerPage.getByTestId('terminal-switch-open').click();
-    await expect(ownerPage.getByTestId('terminal-pin-pad')).toBeVisible();
+    const pad = ownerPage.getByTestId('terminal-pin-pad');
+    await expect(pad).toBeVisible();
+    // Pad must be portaled to <body> (not clipped by header backdrop-filter).
+    const parentIsBody = await pad.evaluate((el) => el.parentElement === document.body);
+    expect(parentIsBody).toBe(true);
+    const key1 = pad.getByTestId('terminal-pin-keys').locator('[data-pin-key="1"]');
+    const key3 = pad.getByTestId('terminal-pin-keys').locator('[data-pin-key="3"]');
+    await expect(key1).toBeVisible();
+    await expect(key3).toBeVisible();
+    const box = await key1.boundingBox();
+    expect(box).toBeTruthy();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
 
     for (const digit of ['2', '4', '6', '8']) {
       await ownerPage.getByTestId('terminal-pin-keys').locator(`[data-pin-key="${digit}"]`).click();
