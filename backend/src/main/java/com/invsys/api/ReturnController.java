@@ -1,7 +1,5 @@
 package com.invsys.api;
 
-
-
 import com.invsys.api.dto.ReturnLineResponse;
 
 import com.invsys.api.dto.ReturnResponse;
@@ -33,6 +31,8 @@ import com.invsys.repository.ReturnOrderRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 
 import com.invsys.repository.SalesOrderRepository;
+
+import com.invsys.media.MediaUploadService;
 
 import com.invsys.service.ReturnService;
 
@@ -66,8 +66,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import org.springframework.web.bind.annotation.RestController;
 
-
-
 import java.math.BigDecimal;
 
 import java.util.List;
@@ -78,8 +76,6 @@ import java.util.UUID;
 
 import java.util.stream.Collectors;
 
-
-
 @RestController
 
 @RequestMapping("/api/v1/returns")
@@ -87,8 +83,6 @@ import java.util.stream.Collectors;
 @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
 
 public class ReturnController {
-
-
 
     private final ReturnOrderRepository returnOrderRepository;
 
@@ -107,48 +101,29 @@ public class ReturnController {
     private final ProductRepository productRepository;
 
     private final ScanService scanService;
-
-
+    private final MediaUploadService mediaUploadService;
 
     public ReturnController(ReturnOrderRepository returnOrderRepository,
-
                             ReturnLineRepository returnLineRepository,
-
                             ReturnService returnService,
-
                             SalesOrderRepository salesOrderRepository,
-
                             SalesOrderLineRepository salesOrderLineRepository,
-
                             CustomerRepository customerRepository,
-
                             ProductVariantRepository variantRepository,
-
                             ProductRepository productRepository,
-
-                            ScanService scanService) {
-
+                            ScanService scanService,
+                            MediaUploadService mediaUploadService) {
         this.returnOrderRepository = returnOrderRepository;
-
         this.returnLineRepository = returnLineRepository;
-
         this.returnService = returnService;
-
         this.salesOrderRepository = salesOrderRepository;
-
         this.salesOrderLineRepository = salesOrderLineRepository;
-
         this.customerRepository = customerRepository;
-
         this.variantRepository = variantRepository;
-
         this.productRepository = productRepository;
-
         this.scanService = scanService;
-
+        this.mediaUploadService = mediaUploadService;
     }
-
-
 
     @GetMapping
 
@@ -166,8 +141,6 @@ public class ReturnController {
 
     }
 
-
-
     @GetMapping("/by-barcode/{barcode}")
 
     public ReturnResponse byBarcode(@PathVariable String barcode) {
@@ -176,8 +149,6 @@ public class ReturnController {
 
     }
 
-
-
     @GetMapping("/{id}")
 
     public ReturnResponse get(@PathVariable UUID id) {
@@ -185,8 +156,6 @@ public class ReturnController {
         return toResponse(returnOrderRepository.findById(id).orElseThrow());
 
     }
-
-
 
     @PostMapping
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
@@ -202,8 +171,6 @@ public class ReturnController {
 
     }
 
-
-
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public ReturnResponse approve(@PathVariable UUID id) {
@@ -212,7 +179,23 @@ public class ReturnController {
 
     }
 
+    @PostMapping("/{id}/review/approve-with-label")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public ReturnResponse approveWithLabel(@PathVariable UUID id) {
+        return toResponse(returnService.approveWithLabel(id));
+    }
 
+    @PostMapping("/{id}/review/approve-without-label")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public ReturnResponse approveWithoutLabel(@PathVariable UUID id) {
+        return toResponse(returnService.approveWithoutLabel(id));
+    }
+
+    @PostMapping("/{id}/review/deny")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public ReturnResponse denyReview(@PathVariable UUID id) {
+        return toResponse(returnService.denyAndClose(id));
+    }
 
     @PutMapping("/{returnId}/lines/{lineId}")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
@@ -228,8 +211,6 @@ public class ReturnController {
 
     }
 
-
-
     @PostMapping("/{returnId}/lines/{lineId}/receive")
 
     public ReturnLineResponse receiveLine(@PathVariable UUID returnId,
@@ -244,8 +225,6 @@ public class ReturnController {
 
     }
 
-
-
     @PostMapping("/lines/{lineId}/receipt")
 
     public ReturnLineResponse processReceipt(@PathVariable UUID lineId,
@@ -257,8 +236,6 @@ public class ReturnController {
         return toLineResponse(line);
 
     }
-
-
 
     @PostMapping("/lines/{lineId}/release-from-quarantine")
 
@@ -272,8 +249,6 @@ public class ReturnController {
 
     }
 
-
-
     private ReturnResponse toResponse(ReturnOrder returnOrder) {
 
         Map<UUID, SalesOrder> orders = salesOrderRepository.findAll().stream()
@@ -283,8 +258,6 @@ public class ReturnController {
         Map<UUID, String> customerNames = customerRepository.findAll().stream()
 
                 .collect(Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
-
-
 
         SalesOrder salesOrder = orders.get(returnOrder.getSalesOrderId());
 
@@ -296,39 +269,30 @@ public class ReturnController {
 
                 : null;
 
-
-
         List<ReturnLineResponse> lines = returnLineRepository.findByReturnId(returnOrder.getId()).stream()
-
                 .map(this::toLineResponse)
-
+                .toList();
+        List<String> evidenceUrls = lines.stream()
+                .map(ReturnLineResponse::evidenceUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .distinct()
                 .toList();
 
-
-
         return new ReturnResponse(
-
                 returnOrder.getId(),
-
                 returnOrder.getSalesOrderId(),
-
                 salesOrderNumber,
-
                 customerName,
-
                 returnOrder.getNumber(),
-
                 returnOrder.getStatus(),
-
-                null,
-
+                returnOrder.getReasonCode(),
+                returnOrder.getReturnLabelUrl(),
+                returnOrder.getEstimatedLabelCost(),
+                returnOrder.getLabelPurchaseMode(),
+                evidenceUrls,
                 lines,
-
                 returnOrder.getCreatedAt());
-
     }
-
-
 
     private ReturnLineResponse toLineResponse(ReturnLine line) {
 
@@ -360,29 +324,23 @@ public class ReturnController {
 
         }
 
+        String evidenceUrl = line.getMediaObjectId() != null
+                ? mediaUploadService.contentPath(line.getMediaObjectId())
+                : null;
         return new ReturnLineResponse(
-
                 line.getId(),
-
                 line.getReturnId(),
-
                 line.getSalesOrderLineId(),
-
                 sku,
-
                 productName,
-
                 line.getQuantityExpected(),
-
                 line.getQuantityReceived(),
-
                 line.getDisposition(),
-
-                putawayTarget);
-
+                putawayTarget,
+                line.getReasonCode(),
+                line.getMediaObjectId(),
+                evidenceUrl);
     }
-
-
 
     public record CreateReturnRequest(
 
@@ -394,8 +352,6 @@ public class ReturnController {
 
     }
 
-
-
     public record CreateReturnLineRequest(
 
             @NotNull UUID salesOrderLineId,
@@ -406,19 +362,13 @@ public class ReturnController {
 
     }
 
-
-
     public record UpdateDispositionRequest(@NotBlank String disposition) {
 
     }
 
-
-
     public record ReceiveLineRequest(BigDecimal quantity, UUID locationId) {
 
     }
-
-
 
     public record ProcessReceiptRequest(
 
@@ -430,12 +380,9 @@ public class ReturnController {
 
     }
 
-
-
     public record ReleaseQuarantineRequest(@NotBlank String disposition) {
 
     }
 
 }
-
 

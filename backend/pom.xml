@@ -241,6 +241,8 @@
                                 <exclude>com/invsys/tenancy/BootstrapJdbc.class</exclude>
                                 <exclude>com/invsys/service/ReportingAnalyticsService.class</exclude>
                                 <exclude>com/invsys/service/PortalService*.class</exclude>
+                                <exclude>com/invsys/service/PortalRmaService*.class</exclude>
+                                <exclude>com/invsys/service/BillingAccrualService*.class</exclude>
                                 <exclude>com/invsys/service/ReturnService*.class</exclude>
                                 <exclude>com/invsys/service/UserManagementService.class</exclude>
                                 <exclude>com/invsys/service/InvoicingService.class</exclude>
@@ -270,6 +272,8 @@
                                 <exclude>com/invsys/service/CycleCountService*.class</exclude>
                                 <exclude>com/invsys/service/EdiTranslationEngine.class</exclude>
                                 <exclude>com/invsys/service/ApOcrIngestionService*.class</exclude>
+                                <exclude>com/invsys/service/ApDocumentParseService*.class</exclude>
+                                <exclude>com/invsys/service/StorageAccrualWorker*.class</exclude>
                                 <exclude>com/invsys/service/PlatformAlertService*.class</exclude>
                                 <exclude>com/invsys/dns/**</exclude>
                                 <exclude>com/invsys/gateway/**</exclude>

@@ -104,6 +104,17 @@ public class MediaUploadService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Media not found"));
     }
 
+    /** Tenant + uploader ownership — for B2B portal evidence (prevents cross-customer media attach). */
+    @Transactional(readOnly = true)
+    public MediaObject requireUploadedByCurrentUser(UUID mediaId) {
+        MediaObject media = requireOwned(mediaId);
+        UUID userId = TenantContext.getUserId().orElse(null);
+        if (userId == null || media.getCreatedBy() == null || !userId.equals(media.getCreatedBy())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Media not owned by current user");
+        }
+        return media;
+    }
+
     @Transactional(readOnly = true)
     public InputStream openContent(UUID mediaId) {
         MediaObject media = requireOwned(mediaId);

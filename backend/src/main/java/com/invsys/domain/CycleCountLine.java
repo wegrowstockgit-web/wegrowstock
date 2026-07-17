@@ -26,6 +26,12 @@ public class CycleCountLine extends TenantScopedEntity {
     @Column(name = "counted_qty")
     private BigDecimal countedQty;
 
+    @Column(name = "variance_status", nullable = false, length = 30)
+    private String varianceStatus = "PENDING";
+
+    @Column(name = "financial_impact")
+    private BigDecimal financialImpact;
+
     public UUID getCycleCountId() {
         return cycleCountId;
     }
@@ -64,5 +70,21 @@ public class CycleCountLine extends TenantScopedEntity {
 
     public void setCountedQty(BigDecimal countedQty) {
         this.countedQty = countedQty;
+    }
+
+    public String getVarianceStatus() {
+        return varianceStatus;
+    }
+
+    public void setVarianceStatus(String varianceStatus) {
+        this.varianceStatus = varianceStatus;
+    }
+
+    public BigDecimal getFinancialImpact() {
+        return financialImpact;
+    }
+
+    public void setFinancialImpact(BigDecimal financialImpact) {
+        this.financialImpact = financialImpact;
     }
 }

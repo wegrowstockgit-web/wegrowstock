@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, ImagePlus, Loader2 } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Loader2, Tag } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -26,6 +26,7 @@ export interface ScannerHistoryItem {
   quantity?: number;
   /** GS1 lot present but variant is not lot-tracked — logged to ledger metadata. */
   lotLoggedNotTracked?: boolean;
+  isLotTracked?: boolean;
   timestamp: number;
 }
 
@@ -55,6 +56,12 @@ interface ScannerViewProps {
   showSkipFlag?: boolean;
   skipFlagPending?: boolean;
   onSkipFlag?: () => void;
+  /**
+   * Receive mode: lot-tracked SKU scanned without GS1 AI (10) — mint an internal lot.
+   */
+  showMissingVendorLot?: boolean;
+  mintLotPending?: boolean;
+  onMintInternalLot?: () => void;
   /** Parent-driven acoustic/haptic flash — drives success enter / error shake. */
   feedbackFlash?: ScanFeedbackType;
 }
@@ -78,6 +85,9 @@ export function ScannerView({
   showSkipFlag = false,
   skipFlagPending = false,
   onSkipFlag,
+  showMissingVendorLot = false,
+  mintLotPending = false,
+  onMintInternalLot,
   feedbackFlash = null,
 }: ScannerViewProps) {
   const captureRef = useRef<HTMLInputElement>(null);
@@ -159,14 +169,14 @@ export function ScannerView({
       </div>
       {scanning && <p className="mt-2 text-sm text-accent">Processing...</p>}
 
-      {gs1Active && gs1Fields && (
+      {(gs1Active || showMissingVendorLot) && gs1Fields && (
         <div
           className="mt-5 rounded-lg border-2 border-success/40 bg-success/10 p-4 text-left"
           data-testid="gs1-fields-card"
         >
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-bold uppercase tracking-wide text-success">
-              GS1 composite decoded
+              {gs1Active ? 'GS1 composite decoded' : 'Lot capture'}
             </p>
             {lotLoggedNotTracked && (
               <span
@@ -214,6 +224,32 @@ export function ScannerView({
               />
             </label>
           </div>
+        </div>
+      )}
+
+      {showMissingVendorLot && onMintInternalLot && (
+        <div className="mt-4">
+          <button
+            type="button"
+            data-testid="mint-internal-lot"
+            disabled={mintLotPending}
+            onClick={onMintInternalLot}
+            className={cn(
+              'flex w-full min-h-14 items-center justify-center gap-2 rounded-lg border-2 border-accent',
+              'bg-accent px-4 py-3 text-base font-bold text-text-inverse shadow-sm',
+              'active:scale-[0.98] disabled:opacity-60',
+            )}
+          >
+            {mintLotPending ? (
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            ) : (
+              <Tag className="h-5 w-5" aria-hidden />
+            )}
+            Missing Vendor Lot?
+          </button>
+          <p className="mt-2 text-xs text-text-muted">
+            Mints an internal lot, prints a ZPL label, and fills the lot field for this receipt.
+          </p>
         </div>
       )}
 

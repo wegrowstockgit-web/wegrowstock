@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -224,7 +225,29 @@ public class PickingWaveService {
     public PickingTask markTaskPicked(UUID taskId) {
         PickingTask task = taskRepository.findById(taskId).orElseThrow();
         task.setStatus("PICKED");
-        return taskRepository.save(task);
+        task = taskRepository.save(task);
+
+        PickingBatch batch = batchRepository.findById(task.getBatchId()).orElse(null);
+        if (batch != null) {
+            List<PickingTask> tasks = taskRepository.findByBatchIdOrderBySequenceOrderAsc(batch.getId());
+            boolean allDone = tasks.stream()
+                    .allMatch(t -> "PICKED".equals(t.getStatus()) || "SKIPPED".equals(t.getStatus()));
+            if (allDone) {
+                batch.setStatus("COMPLETED");
+                batch.setCompletedAt(Instant.now());
+                batchRepository.save(batch);
+                List<PickingBatch> waveBatches = batchRepository.findByWaveId(batch.getWaveId());
+                boolean waveDone = waveBatches.stream()
+                        .allMatch(b -> "COMPLETED".equals(b.getStatus()) || "DRAFT".equals(b.getStatus()));
+                if (waveDone) {
+                    waveRepository.findById(batch.getWaveId()).ifPresent(wave -> {
+                        wave.setStatus("COMPLETED");
+                        waveRepository.save(wave);
+                    });
+                }
+            }
+        }
+        return task;
     }
 
     /**
@@ -348,10 +371,14 @@ public class PickingWaveService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Wave not found");
         }
 
+        Instant claimedAt = Instant.now();
         List<UUID> allocationIds = new ArrayList<>();
         List<PickingBatch> batches = batchRepository.findByWaveId(waveId);
         for (PickingBatch batch : batches) {
             batch.setAssignedUserId(userId);
+            if (batch.getClaimedAt() == null) {
+                batch.setClaimedAt(claimedAt);
+            }
             batchRepository.save(batch);
             for (PickingTask task : taskRepository.findByBatchIdOrderBySequenceOrderAsc(batch.getId())) {
                 if (task.getAllocationId() != null) {

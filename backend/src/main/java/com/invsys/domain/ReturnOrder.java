@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -18,6 +19,18 @@ public class ReturnOrder extends TenantScopedEntity {
 
     @Column(nullable = false)
     private String status = "REQUESTED";
+
+    @Column(name = "reason_code")
+    private String reasonCode;
+
+    @Column(name = "return_label_url")
+    private String returnLabelUrl;
+
+    @Column(name = "estimated_label_cost")
+    private BigDecimal estimatedLabelCost;
+
+    @Column(name = "label_purchase_mode")
+    private String labelPurchaseMode;
 
     public UUID getSalesOrderId() {
         return salesOrderId;
@@ -41,5 +54,37 @@ public class ReturnOrder extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getReasonCode() {
+        return reasonCode;
+    }
+
+    public void setReasonCode(String reasonCode) {
+        this.reasonCode = reasonCode;
+    }
+
+    public String getReturnLabelUrl() {
+        return returnLabelUrl;
+    }
+
+    public void setReturnLabelUrl(String returnLabelUrl) {
+        this.returnLabelUrl = returnLabelUrl;
+    }
+
+    public BigDecimal getEstimatedLabelCost() {
+        return estimatedLabelCost;
+    }
+
+    public void setEstimatedLabelCost(BigDecimal estimatedLabelCost) {
+        this.estimatedLabelCost = estimatedLabelCost;
+    }
+
+    public String getLabelPurchaseMode() {
+        return labelPurchaseMode;
+    }
+
+    public void setLabelPurchaseMode(String labelPurchaseMode) {
+        this.labelPurchaseMode = labelPurchaseMode;
     }
 }

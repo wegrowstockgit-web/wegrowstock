@@ -4,6 +4,7 @@ import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.repository.InventoryLevelRepository;
 import com.invsys.service.InventoryService;
+import com.invsys.service.LotService;
 import com.invsys.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -26,10 +27,14 @@ public class InventoryController {
 
     private final InventoryService inventoryService;
     private final InventoryLevelRepository levelRepository;
+    private final LotService lotService;
 
-    public InventoryController(InventoryService inventoryService, InventoryLevelRepository levelRepository) {
+    public InventoryController(InventoryService inventoryService,
+                               InventoryLevelRepository levelRepository,
+                               LotService lotService) {
         this.inventoryService = inventoryService;
         this.levelRepository = levelRepository;
+        this.lotService = lotService;
     }
 
     @GetMapping("/levels")
@@ -39,6 +44,12 @@ public class InventoryController {
             return levelRepository.findByTenantIdAndVariantId(TenantContext.requireTenantId(), variantId);
         }
         return levelRepository.findAll();
+    }
+
+    @PostMapping("/lots/mint")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public LotService.MintedLot mintInternalLot(@Valid @RequestBody MintLotRequest request) {
+        return lotService.mintInternalLot(TenantContext.requireTenantId(), request.variantId());
     }
 
     @PostMapping("/receive")
@@ -72,6 +83,9 @@ public class InventoryController {
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public InventoryLedger reverse(@PathVariable UUID ledgerId) {
         return inventoryService.reverseLedgerEntry(ledgerId);
+    }
+
+    public record MintLotRequest(@NotNull UUID variantId) {
     }
 
     public record ReceiveRequest(

@@ -25,6 +25,12 @@ public class ReturnLine extends TenantScopedEntity {
 
     private String disposition;
 
+    @Column(name = "reason_code")
+    private String reasonCode;
+
+    @Column(name = "media_object_id")
+    private UUID mediaObjectId;
+
     public UUID getReturnId() {
         return returnId;
     }
@@ -63,5 +69,21 @@ public class ReturnLine extends TenantScopedEntity {
 
     public void setDisposition(String disposition) {
         this.disposition = disposition;
+    }
+
+    public String getReasonCode() {
+        return reasonCode;
+    }
+
+    public void setReasonCode(String reasonCode) {
+        this.reasonCode = reasonCode;
+    }
+
+    public UUID getMediaObjectId() {
+        return mediaObjectId;
+    }
+
+    public void setMediaObjectId(UUID mediaObjectId) {
+        this.mediaObjectId = mediaObjectId;
     }
 }

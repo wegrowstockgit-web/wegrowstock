@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode, TdHTMLAttributes } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useDensity } from '@/hooks/useDensity';
 import type { SortState } from '@/hooks/useClientSort';
@@ -42,12 +42,13 @@ export function TableRow({
   className,
   onClick,
   selected = false,
+  ...rest
 }: {
   children: ReactNode;
   className?: string;
   onClick?: () => void;
   selected?: boolean;
-}) {
+} & HTMLAttributes<HTMLTableRowElement>) {
   const { rowClass } = useDensity();
   return (
     <tr
@@ -61,6 +62,7 @@ export function TableRow({
         className,
       )}
       onClick={onClick}
+      {...rest}
     >
       {children}
     </tr>
@@ -151,13 +153,14 @@ export function TableCell({
   align = 'left',
   mono = false,
   colSpan,
+  ...rest
 }: {
   children: ReactNode;
   className?: string;
   align?: 'left' | 'right' | 'center';
   mono?: boolean;
   colSpan?: number;
-}) {
+} & TdHTMLAttributes<HTMLTableCellElement>) {
   const { cellClass } = useDensity();
   const alignClass = {
     left: 'text-left',
@@ -175,6 +178,7 @@ export function TableCell({
         mono && 'font-mono tabular-nums',
         className,
       )}
+      {...rest}
     >
       {children}
     </td>

@@ -2,6 +2,7 @@ package com.invsys.api;
 
 import com.invsys.domain.Shipment;
 import com.invsys.repository.ShipmentRepository;
+import com.invsys.service.CartonizationEngine;
 import com.invsys.service.ShipmentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -35,6 +36,13 @@ public class ShipmentController {
         return shipmentRepository.findBySalesOrderId(salesOrderId);
     }
 
+    @GetMapping("/cartonize-preview")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public CartonPreviewResponse cartonizePreview(@RequestParam UUID salesOrderId) {
+        CartonizationEngine.CartonizationResult result = shipmentService.previewCartonization(salesOrderId);
+        return CartonPreviewResponse.from(result);
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
     public Shipment create(@Valid @RequestBody CreateShipmentRequest request) {
@@ -54,7 +62,7 @@ public class ShipmentController {
 
     public record PackLabelRequest(
             @NotNull UUID salesOrderId,
-            @NotNull BigDecimal totalWeightLb,
+            BigDecimal totalWeightLb,
             String carrier
     ) {
     }
@@ -68,5 +76,30 @@ public class ShipmentController {
     }
 
     public record ShipLineRequest(@NotNull UUID salesOrderLineId, @NotNull BigDecimal quantity) {
+    }
+
+    public record CartonPreviewResponse(
+            UUID cartonId,
+            String cartonName,
+            BigDecimal lengthIn,
+            BigDecimal widthIn,
+            BigDecimal heightIn,
+            BigDecimal actualWeightLb,
+            BigDecimal volumetricWeightLb,
+            BigDecimal billableWeightLb,
+            BigDecimal totalVolumeCuIn
+    ) {
+        static CartonPreviewResponse from(CartonizationEngine.CartonizationResult result) {
+            return new CartonPreviewResponse(
+                    result.carton().getId(),
+                    result.carton().getName(),
+                    result.lengthIn(),
+                    result.widthIn(),
+                    result.heightIn(),
+                    result.actualWeightLb(),
+                    result.volumetricWeightLb(),
+                    result.billableWeightLb(),
+                    result.totalVolumeCuIn());
+        }
     }
 }

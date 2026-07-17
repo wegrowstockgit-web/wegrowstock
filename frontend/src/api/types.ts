@@ -240,6 +240,9 @@ export interface ReturnLine {
   quantityReceived: number;
   disposition?: 'RESTOCK' | 'SCRAP' | 'REPAIR' | string;
   putawayTarget?: string;
+  reasonCode?: string;
+  mediaObjectId?: string;
+  evidenceUrl?: string;
 }
 
 export interface Return {
@@ -248,11 +251,45 @@ export interface Return {
   salesOrderNumber?: string;
   customerName?: string;
   number: string;
-  status: 'REQUESTED' | 'APPROVED' | 'RECEIVED' | 'CLOSED' | 'REJECTED' | string;
+  status:
+    | 'REQUESTED'
+    | 'PENDING_REVIEW'
+    | 'APPROVED'
+    | 'EXPECTED'
+    | 'RECEIVED'
+    | 'CLOSED'
+    | 'REJECTED'
+    | string;
+  reasonCode?: string;
   returnLabelUrl?: string;
+  estimatedLabelCost?: number;
+  labelPurchaseMode?: string;
+  evidenceUrls?: string[];
   lines?: ReturnLine[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PortalRmaEligibleLine {
+  salesOrderLineId: string;
+  variantId: string;
+  sku: string;
+  name: string;
+  qtyReturnable: number;
+  unitPrice: number;
+  requiresReview: boolean;
+}
+
+export interface PortalRmaResponse {
+  id: string;
+  number: string;
+  status: string;
+  reviewReason?: string | null;
+  returnLabelUrl?: string | null;
+  estimatedLabelCost?: number | null;
+  merchandiseValue?: number;
+  labelPurchaseMode?: string | null;
+  shippingInstruction?: string | null;
 }
 
 export interface PortalCatalogItem {
@@ -287,6 +324,32 @@ export interface DashboardStats {
   lowStockCount: number;
   openOrdersCount: number;
   unpaidInvoicesCount: number;
+}
+
+export interface LaborVelocityHourlyPoint {
+  hour: string;
+  picks: number;
+}
+
+export interface LaborVelocityOperator {
+  userId: string;
+  operatorName: string;
+  totalPicks: number;
+  totalReceives: number;
+  activePph: number;
+  shiftPph: number;
+  utilizationPercent: number;
+  activeWaveHours: number;
+  shiftHours: number;
+  activePphDeltaVsAvg: number;
+  hourlyPicks: LaborVelocityHourlyPoint[];
+}
+
+export interface LaborVelocityResponse {
+  from: string;
+  to: string;
+  warehouseAvgActivePph: number;
+  operators: LaborVelocityOperator[];
 }
 
 export interface DashboardKpiTrends {
@@ -386,6 +449,49 @@ export interface PriorityAudit {
   createdAt: string;
 }
 
+export interface BlindCountSettings {
+  blindCycleCounts: boolean;
+  maxAutoAdjustValue: number | string;
+}
+
+export interface CycleCountLineView {
+  id: string;
+  cycleCountId: string;
+  variantId: string;
+  sku: string;
+  locationPath?: string | null;
+  lotId?: string | null;
+  expectedQty: number | string;
+  countedQty?: number | string | null;
+  varianceStatus: string;
+  financialImpact?: number | string | null;
+}
+
+export interface CycleCountDetail {
+  id: string;
+  locationId: string;
+  locationPath: string;
+  status: string;
+  notes?: string | null;
+  blindCycleCounts: boolean;
+  maxAutoAdjustValue: number | string;
+  lines: CycleCountLineView[];
+}
+
+export interface PendingVariance {
+  lineId: string;
+  cycleCountId: string;
+  locationId: string;
+  locationPath: string;
+  variantId: string;
+  sku: string;
+  expectedQty: number | string;
+  countedQty: number | string;
+  financialDelta: number | string;
+  varianceStatus: string;
+  updatedAt: string;
+}
+
 export interface SupplierPortalPo {
   id: string;
   number: string;
@@ -455,10 +561,37 @@ export interface PackLabelResponse {
   id: string;
   trackingNumber?: string;
   labelRef?: string;
+  labelFileType?: string;
   totalWeight?: number;
   postageAmount?: number;
   carrier?: string;
+  serviceLevel?: string;
+  cartonId?: string;
+  cartonName?: string;
+  length?: number;
+  width?: number;
+  height?: number;
+  volumetricWeight?: number;
   status: string;
+}
+
+export interface WorkstationSettings {
+  id?: string | null;
+  printMode: 'PDF' | 'ZPL';
+  zplPrinterName?: string | null;
+  labelFormat: string;
+}
+
+export interface CartonizePreviewResponse {
+  cartonId: string;
+  cartonName: string;
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
+  actualWeightLb: number;
+  volumetricWeightLb: number;
+  billableWeightLb: number;
+  totalVolumeCuIn: number;
 }
 
 export interface SalesOrderLineDetail {
@@ -593,6 +726,35 @@ export interface Customer {
   id: string;
   name: string;
   email?: string;
+}
+
+export interface CustomerBillingSla {
+  id?: string;
+  customerId?: string;
+  storageMode: 'PALLET_POSITION' | 'CUBIC_VOLUME';
+  ratePerUnit: number;
+  pickFeePerItem: number;
+}
+
+export interface BillingAccrualRow {
+  id: string;
+  accrualDate: string;
+  amount: number;
+  description: string;
+  status: string;
+}
+
+export interface CustomerBillingView {
+  sla: CustomerBillingSla | null;
+  unbilledAccruals: BillingAccrualRow[];
+  unbilledTotal: number;
+}
+
+export interface ShowroomBillingAccruals {
+  sla: Omit<CustomerBillingSla, 'id' | 'customerId'> | null;
+  monthStart: string;
+  monthToDateTotal: number;
+  accruals: BillingAccrualRow[];
 }
 
 export interface Supplier {

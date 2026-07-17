@@ -256,6 +256,8 @@ export function VirtualizedTable<T>({
                   <th
                     key={col.id}
                     scope="col"
+                    data-column-id={col.id}
+                    data-pinned={pinned ? 'true' : undefined}
                     aria-sort={
                       active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : canSort ? 'none' : undefined
                     }

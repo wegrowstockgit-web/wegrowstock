@@ -67,7 +67,10 @@ public class MediaController {
                                          @RequestParam String filename,
                                          @RequestParam String contentType) {
         String normalizedType = type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
-        if (!"USER_AVATAR".equals(normalizedType) && !hasOpsRole()) {
+        if (!"USER_AVATAR".equals(normalizedType)
+                && !"TRANSACTION".equals(normalizedType)
+                && !hasOpsRole()
+                && !hasB2bRole()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "Only operations roles may pre-sign non-avatar media");
         }
@@ -92,7 +95,9 @@ public class MediaController {
     public MediaObjectResponse upload(@RequestPart("file") MultipartFile file,
                                       @RequestParam(defaultValue = "EVIDENCE") String kind) {
         MediaUploadService.UploadKind uploadKind = parseKind(kind);
-        if (uploadKind != MediaUploadService.UploadKind.AVATAR && !hasOpsRole()) {
+        // B2B portal self-serve RMA evidence; avatars for all roles; ops for other kinds
+        boolean portalEvidence = uploadKind == MediaUploadService.UploadKind.EVIDENCE && hasB2bRole();
+        if (uploadKind != MediaUploadService.UploadKind.AVATAR && !portalEvidence && !hasOpsRole()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "Only operations roles may upload non-avatar media");
         }
@@ -102,7 +107,10 @@ public class MediaController {
 
     @GetMapping("/{id}/content")
     public ResponseEntity<InputStreamResource> content(@PathVariable UUID id) {
-        MediaObject media = uploadService.requireOwned(id);
+        // B2B portal users may only fetch media they uploaded (RMA evidence isolation)
+        MediaObject media = hasB2bRole() && !hasOpsRole()
+                ? uploadService.requireUploadedByCurrentUser(id)
+                : uploadService.requireOwned(id);
         InputStream stream = uploadService.openContent(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
@@ -169,15 +177,24 @@ public class MediaController {
     }
 
     private static boolean hasOpsRole() {
+        return hasRole("ROLE_OWNER", "ROLE_ADMIN", "ROLE_WAREHOUSE_MANAGER", "ROLE_PICKER");
+    }
+
+    private static boolean hasB2bRole() {
+        return hasRole("ROLE_B2B_CUSTOMER");
+    }
+
+    private static boolean hasRole(String... roles) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) {
             return false;
         }
         for (GrantedAuthority authority : auth.getAuthorities()) {
             String role = authority.getAuthority();
-            if ("ROLE_OWNER".equals(role) || "ROLE_ADMIN".equals(role)
-                    || "ROLE_WAREHOUSE_MANAGER".equals(role) || "ROLE_PICKER".equals(role)) {
-                return true;
+            for (String allowed : roles) {
+                if (allowed.equals(role)) {
+                    return true;
+                }
             }
         }
         return false;

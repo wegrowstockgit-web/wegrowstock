@@ -6,6 +6,7 @@ import type { Customer } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
   TableBody,
@@ -18,8 +19,15 @@ import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
+import { CustomerDetail } from '@/features/customers/CustomerDetail';
 
-function CustomersTable({ items }: { items: Customer[] }) {
+function CustomersTable({
+  items,
+  onPeek,
+}: {
+  items: Customer[];
+  onPeek: (customer: Customer) => void;
+}) {
   const { sort, toggle, sorted } = useClientSort(
     items,
     {
@@ -42,7 +50,12 @@ function CustomersTable({ items }: { items: Customer[] }) {
       </TableHeader>
       <TableBody>
         {sorted.map((c) => (
-          <TableRow key={c.id}>
+          <TableRow
+            key={c.id}
+            className="cursor-pointer"
+            onClick={() => onPeek(c)}
+            data-testid={`customer-row-${c.id}`}
+          >
             <TableCell>{c.name}</TableCell>
             <TableCell>{c.email ?? '—'}</TableCell>
           </TableRow>
@@ -101,6 +114,7 @@ export function CustomersPage() {
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN');
   const [modalOpen, setModalOpen] = useState(false);
+  const [peekCustomer, setPeekCustomer] = useState<Customer | null>(null);
 
   const { data, isLoading, isError, error, refetch } =
     useListQuery<Customer>(['customers'], '/api/v1/customers');
@@ -110,7 +124,7 @@ export function CustomersPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Customers</h1>
-          <p className="mt-1 text-sm text-text-muted">Buyer accounts</p>
+          <p className="mt-1 text-sm text-text-muted">Buyer accounts & 3PL billing</p>
         </div>
         {canCreate && (
           <Button onClick={() => setModalOpen(true)}>
@@ -144,10 +158,20 @@ export function CustomersPage() {
           ) : undefined
         }
       >
-        {(items) => <CustomersTable items={items} />}
+        {(items) => <CustomersTable items={items} onPeek={setPeekCustomer} />}
       </ListPageState>
 
       <AddCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />
+
+      <RightPeekDrawer
+        open={!!peekCustomer}
+        onClose={() => setPeekCustomer(null)}
+        title={peekCustomer?.name ?? 'Customer'}
+        description={peekCustomer?.email ?? 'Customer detail'}
+        width="lg"
+      >
+        {peekCustomer ? <CustomerDetail customer={peekCustomer} /> : null}
+      </RightPeekDrawer>
     </div>
   );
 }

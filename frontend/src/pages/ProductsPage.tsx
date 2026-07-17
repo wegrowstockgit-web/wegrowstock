@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
+import { SavedGridViews } from '@/components/ui/SavedGridViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
@@ -173,18 +174,48 @@ function ExternalSyncToggle({
   variantId,
   enabled,
   supported,
+  search,
 }: {
   variantId: string;
   enabled: boolean;
   supported: boolean;
+  search: string;
 }) {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (externalSyncEnabled: boolean) => {
-      await apiClient.patch(`/api/v1/variants/${variantId}`, { externalSyncEnabled });
+    mutationFn: async (nextEnabled: boolean) => {
+      await apiClient.patch(`/api/v1/variants/${variantId}/channel-sync`, {
+        enabled: nextEnabled,
+      });
     },
-    onSuccess: () => {
+    onMutate: async (nextEnabled) => {
+      await queryClient.cancelQueries({ queryKey: ['products'] });
+      const prev = queryClient.getQueryData(['products', search]);
+      queryClient.setQueryData(['products', search], (old: unknown) => {
+        const data = old as
+          | {
+              pages: Array<{ items: ProductVariant[] }>;
+              pageParams: unknown[];
+            }
+          | undefined;
+        if (!data) return old;
+        return {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) =>
+              item.id === variantId ? { ...item, externalSyncEnabled: nextEnabled } : item,
+            ),
+          })),
+        };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['products', search], ctx.prev);
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
@@ -197,6 +228,8 @@ function ExternalSyncToggle({
     <label className="inline-flex cursor-pointer items-center gap-2">
       <input
         type="checkbox"
+        data-testid={`channel-sync-${variantId}`}
+        aria-label="Channel sync"
         checked={enabled}
         disabled={mutation.isPending}
         onChange={(e) => mutation.mutate(e.target.checked)}
@@ -420,6 +453,7 @@ export function ProductsPage() {
                 variantId={product.id}
                 enabled={product.externalSyncEnabled ?? true}
                 supported={product.externalSyncEnabled !== undefined}
+                search={search}
               />
             ) : (
               <span className="text-xs text-text-muted">
@@ -432,7 +466,7 @@ export function ProductsPage() {
     }
 
     return cols;
-  }, [canManage, reorderMutation, syncSupported]);
+  }, [canManage, reorderMutation.mutateAsync, search, syncSupported]);
 
   const columnItems = useMemo(
     () =>
@@ -495,7 +529,10 @@ export function ProductsPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar columnItems={columnItems}>
+        <DataListToolbar
+          columnItems={columnItems}
+          trailing={<SavedGridViews gridId="products" />}
+        >
           <SavedFilterViews
             className="mb-0"
             storageKey="products-filters"

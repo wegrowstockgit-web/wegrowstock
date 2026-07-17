@@ -1,7 +1,12 @@
 package com.invsys.config;
 
+import com.invsys.integration.easypost.EasyPostGateway;
+import com.invsys.integration.easypost.EasyPostProperties;
+import com.invsys.integration.easypost.LiveEasyPostGateway;
+import com.invsys.integration.easypost.MockEasyPostGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -41,6 +46,10 @@ public class ProductionSecurityValidator implements ApplicationRunner {
     private final String jwtPublicKey;
     private final String integrationMasterKey;
     private final boolean publicSignupEnabled;
+    private final String shopifyWebhookSecret;
+    private final String easyPostWebhookSecret;
+    private final ObjectProvider<EasyPostGateway> easyPostGateway;
+    private final EasyPostProperties easyPostProperties;
 
     public ProductionSecurityValidator(
             Environment environment,
@@ -52,7 +61,11 @@ public class ProductionSecurityValidator implements ApplicationRunner {
             @Value("${invsys.jwt.private-key-pem:}") String jwtPrivateKey,
             @Value("${invsys.jwt.public-key-pem:}") String jwtPublicKey,
             @Value("${invsys.integration.master-key:}") String integrationMasterKey,
-            @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
+            @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled,
+            @Value("${invsys.webhooks.shopify-secret:}") String shopifyWebhookSecret,
+            @Value("${invsys.webhooks.easypost-secret:}") String easyPostWebhookSecret,
+            ObjectProvider<EasyPostGateway> easyPostGateway,
+            EasyPostProperties easyPostProperties) {
         this.environment = environment;
         this.stripeWebhookSecret = stripeWebhookSecret;
         this.stripePlatformWebhookSecret = stripePlatformWebhookSecret;
@@ -63,6 +76,10 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         this.jwtPublicKey = jwtPublicKey;
         this.integrationMasterKey = integrationMasterKey;
         this.publicSignupEnabled = publicSignupEnabled;
+        this.shopifyWebhookSecret = shopifyWebhookSecret;
+        this.easyPostWebhookSecret = easyPostWebhookSecret;
+        this.easyPostGateway = easyPostGateway;
+        this.easyPostProperties = easyPostProperties;
     }
 
     @Override
@@ -92,13 +109,21 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         if (integrationMasterKey == null || integrationMasterKey.isBlank()) {
             errors.add("INTEGRATION_MASTER_KEY must be configured in production");
         }
-        String shopifyWebhook = System.getenv().getOrDefault("SHOPIFY_WEBHOOK_SECRET", "");
-        if (isBlankOrMock(shopifyWebhook)) {
-            errors.add("SHOPIFY_WEBHOOK_SECRET must be set to a non-mock value");
+        if (isBlankOrMock(shopifyWebhookSecret)) {
+            errors.add("SHOPIFY_WEBHOOK_SECRET (invsys.webhooks.shopify-secret) must be set to a non-mock value");
         }
-        String easyPostWebhook = System.getenv().getOrDefault("EASYPOST_WEBHOOK_SECRET", "");
-        if (isBlankOrMock(easyPostWebhook)) {
-            errors.add("EASYPOST_WEBHOOK_SECRET must be set to a non-mock value");
+        if (isBlankOrMock(easyPostWebhookSecret)) {
+            errors.add("EASYPOST_WEBHOOK_SECRET (invsys.webhooks.easypost-secret) must be set to a non-mock value");
+        }
+        if (easyPostProperties.defaultFromAddress() == null) {
+            errors.add("EASYPOST_FROM_STREET1/CITY/STATE/ZIP (invsys.easypost.default-from.*) must be set for live label purchase");
+        }
+        EasyPostGateway gateway = easyPostGateway.getIfAvailable();
+        if (gateway instanceof MockEasyPostGateway) {
+            errors.add("MockEasyPostGateway must not be active in production — use LiveEasyPostGateway (profile prod)");
+        } else if (!(gateway instanceof LiveEasyPostGateway)) {
+            errors.add("LiveEasyPostGateway bean required in production (found: "
+                    + (gateway == null ? "none" : gateway.getClass().getName()) + ")");
         }
         if (publicSignupEnabled) {
             log.warn("Public signup is enabled in production — set invsys.security.public-signup-enabled=false if unintended");

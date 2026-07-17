@@ -9,6 +9,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import {
   Table,
   TableBody,
@@ -23,7 +24,15 @@ import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
 
-const STATUSES = ['ALL', 'REQUESTED', 'APPROVED', 'RECEIVED', 'CLOSED', 'REJECTED'] as const;
+const STATUSES = [
+  'ALL',
+  'PENDING_REVIEW',
+  'REQUESTED',
+  'APPROVED',
+  'RECEIVED',
+  'CLOSED',
+  'REJECTED',
+] as const;
 const DISPOSITIONS = ['RESTOCK', 'SCRAP', 'REPAIR'] as const;
 
 const RETURNABLE_STATUSES = ['SHIPPED', 'PARTIALLY_SHIPPED', 'CLOSED'];
@@ -145,11 +154,127 @@ function ReturnsCreateModal({ open, onClose }: { open: boolean; onClose: () => v
 
 const STATUS_STYLES: Record<string, string> = {
   REQUESTED: 'bg-warning/20 text-warning',
+  PENDING_REVIEW: 'bg-warning/30 text-warning',
   APPROVED: 'bg-accent-muted text-accent',
   RECEIVED: 'bg-success/20 text-success',
   CLOSED: 'bg-surface-overlay text-text-muted',
   REJECTED: 'bg-danger/20 text-danger',
 };
+
+function RmaReviewQueue({ canManage }: { canManage: boolean }) {
+  const queryClient = useQueryClient();
+  const { data: pending = [], isLoading } = useQuery({
+    queryKey: ['returns', 'PENDING_REVIEW'],
+    queryFn: async () =>
+      (await apiClient.get<Return[]>('/api/v1/returns?status=PENDING_REVIEW')).data,
+    retry: false,
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async ({
+      id,
+      action,
+    }: {
+      id: string;
+      action: 'approve-with-label' | 'approve-without-label' | 'deny';
+    }) => {
+      await apiClient.post(`/api/v1/returns/${id}/review/${action}`);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['returns'] });
+    },
+  });
+
+  if (isLoading || pending.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card className="mb-6" data-testid="rma-review-queue">
+      <CardHeader
+        title="RMA Review Queue"
+        description={`${pending.length} portal return${pending.length === 1 ? '' : 's'} awaiting decision`}
+      />
+      <div className="space-y-4">
+        {pending.map((rma) => (
+          <div
+            key={rma.id}
+            className="rounded-md border border-border bg-surface-raised p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono font-semibold text-text">{rma.number}</p>
+                <p className="text-sm text-text-muted">
+                  {rma.customerName ?? 'Customer'} · {rma.salesOrderNumber ?? rma.salesOrderId}
+                </p>
+                <p className="mt-1 text-sm text-text">
+                  Reason: <span className="font-medium">{rma.reasonCode ?? '—'}</span>
+                </p>
+                <p className="mt-1 text-sm text-text-muted">
+                  Est. return label cost:{' '}
+                  <span className="font-mono font-semibold text-text">
+                    {Number(rma.estimatedLabelCost ?? 0).toLocaleString(undefined, {
+                      style: 'currency',
+                      currency: 'USD',
+                    })}
+                  </span>
+                </p>
+              </div>
+              {canManage && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    loading={reviewMutation.isPending}
+                    onClick={() =>
+                      reviewMutation.mutate({ id: rma.id, action: 'approve-with-label' })
+                    }
+                  >
+                    Approve & Buy Label
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={reviewMutation.isPending}
+                    onClick={() =>
+                      reviewMutation.mutate({ id: rma.id, action: 'approve-without-label' })
+                    }
+                  >
+                    Approve without Label
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={reviewMutation.isPending}
+                    onClick={() => reviewMutation.mutate({ id: rma.id, action: 'deny' })}
+                  >
+                    Deny & Close
+                  </Button>
+                </div>
+              )}
+            </div>
+            {(rma.evidenceUrls?.length ?? 0) > 0 && (
+              <div className="mt-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+                  Evidence photos
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {rma.evidenceUrls!.map((url) => (
+                    <AuthenticatedImage
+                      key={url}
+                      src={url}
+                      alt="RMA evidence"
+                      className="h-24 w-24 rounded-md border border-border object-cover"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function DispositionSelect({
   line,
@@ -268,6 +393,8 @@ export function ReturnsPage() {
           )}
         </div>
       </div>
+
+      <RmaReviewQueue canManage={canManage} />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">

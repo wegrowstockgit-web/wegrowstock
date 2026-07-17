@@ -10,4 +10,6 @@ public interface CycleCountRepository extends JpaRepository<CycleCount, UUID> {
     List<CycleCount> findByTenantIdAndStatusOrderByCreatedAtDesc(UUID tenantId, String status);
 
     boolean existsByTenantIdAndLocationIdAndStatus(UUID tenantId, UUID locationId, String status);
+
+    java.util.Optional<CycleCount> findByIdAndTenantId(UUID id, UUID tenantId);
 }

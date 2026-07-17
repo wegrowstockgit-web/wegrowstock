@@ -5,6 +5,7 @@ import com.invsys.common.ApiException;
 import com.invsys.common.PageResponse;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.VariantBarcode;
+import com.invsys.integration.OutboxService;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.VariantBarcodeRepository;
 import com.invsys.service.SkuMaskService;
@@ -41,13 +42,16 @@ public class ProductVariantController {
     private final UomConversionService uomConversionService;
     private final VariantBarcodeRepository variantBarcodeRepository;
     private final SkuMaskService skuMaskService;
+    private final OutboxService outboxService;
 
     public ProductVariantController(ProductVariantRepository variantRepository,
                                     VariantCatalogService variantCatalogService,
                                     UomConversionService uomConversionService,
                                     VariantBarcodeRepository variantBarcodeRepository,
-                                    SkuMaskService skuMaskService) {
+                                    SkuMaskService skuMaskService,
+                                    OutboxService outboxService) {
         this.variantRepository = variantRepository;
+        this.outboxService = outboxService;
         this.variantCatalogService = variantCatalogService;
         this.uomConversionService = uomConversionService;
         this.variantBarcodeRepository = variantBarcodeRepository;
@@ -132,6 +136,30 @@ public class ProductVariantController {
         applyDims(variant, request.weight(), request.weightUnit(), request.length(),
                 request.width(), request.height(), request.dimUnit());
         return variantRepository.save(variant);
+    }
+
+    @PatchMapping("/{id}/channel-sync")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    @Transactional
+    public ProductVariant patchChannelSync(
+            @PathVariable UUID id,
+            @Valid @RequestBody ChannelSyncRequest request) {
+        ProductVariant variant = requireVariant(id);
+        boolean previous = variant.isExternalSyncEnabled();
+        boolean next = Boolean.TRUE.equals(request.enabled());
+        if (previous != next) {
+            variant.setExternalSyncEnabled(next);
+            variant = variantRepository.save(variant);
+            outboxService.append(
+                    "PRODUCT_VARIANT",
+                    variant.getId(),
+                    "CHANNEL_SYNC_TOGGLED",
+                    Map.of(
+                            "variantId", variant.getId(),
+                            "externalSyncEnabled", next,
+                            "sku", variant.getSku() != null ? variant.getSku() : ""));
+        }
+        return variant;
     }
 
     @GetMapping("/{id}/barcodes")
@@ -234,5 +262,8 @@ public class ProductVariantController {
     }
 
     public record AddBarcodeRequest(@NotBlank String barcode, String symbology) {
+    }
+
+    public record ChannelSyncRequest(@NotNull Boolean enabled) {
     }
 }

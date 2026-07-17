@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { RotateCcw, ShoppingCart } from 'lucide-react';
+import { PackageOpen, RotateCcw, ShoppingCart } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PortalCatalogItem, PortalOrder, PortalReorderLine } from '@/api/types';
 import { mapPortalCatalog, type PortalCatalogItemRaw } from '@/api/portal';
@@ -17,15 +18,20 @@ import {
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useShowroomCart } from '@/showroom/useShowroomCart';
+import { ReturnsWizard } from '@/features/showroom/ReturnsWizard';
+
+const RETURNABLE = new Set(['SHIPPED', 'PARTIALLY_SHIPPED', 'CLOSED']);
 
 function ShowroomOrdersTable({
   orders,
   reorderPending,
   onReorder,
+  onReturn,
 }: {
   orders: PortalOrder[];
   reorderPending: boolean;
   onReorder: (orderId: string) => void;
+  onReturn: (order: PortalOrder) => void;
 }) {
   const { sort, toggle, sorted } = useClientSort(
     orders,
@@ -72,15 +78,23 @@ function ShowroomOrdersTable({
             </TableCell>
             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
             <TableCell align="right">
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={reorderPending}
-                onClick={() => onReorder(order.id)}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Reorder
-              </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                {RETURNABLE.has(order.status) && (
+                  <Button size="sm" variant="secondary" onClick={() => onReturn(order)}>
+                    <PackageOpen className="h-3.5 w-3.5" />
+                    Return Items
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={reorderPending}
+                  onClick={() => onReorder(order.id)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reorder
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}
@@ -92,6 +106,7 @@ function ShowroomOrdersTable({
 export function ShowroomOrdersPage() {
   const navigate = useNavigate();
   const { addLines } = useShowroomCart();
+  const [returnOrder, setReturnOrder] = useState<PortalOrder | null>(null);
   const { data, isLoading, isError, error, refetch } = useListQuery<PortalOrder>(
     ['portal', 'orders'],
     '/api/v1/portal/orders',
@@ -128,7 +143,7 @@ export function ShowroomOrdersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-text">Order history</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Reorder past wholesale orders in one click
+          Reorder past wholesale orders or start a self-serve return
         </p>
       </div>
 
@@ -150,9 +165,19 @@ export function ShowroomOrdersPage() {
             orders={orders}
             reorderPending={reorderMutation.isPending}
             onReorder={(id) => reorderMutation.mutate(id)}
+            onReturn={setReturnOrder}
           />
         )}
       </ListPageState>
+
+      {returnOrder && (
+        <ReturnsWizard
+          open={!!returnOrder}
+          onClose={() => setReturnOrder(null)}
+          salesOrderId={returnOrder.id}
+          salesOrderNumber={returnOrder.number}
+        />
+      )}
     </div>
   );
 }

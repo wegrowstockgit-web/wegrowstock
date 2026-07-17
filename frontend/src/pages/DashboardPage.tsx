@@ -36,6 +36,7 @@ import type {
   ProductVariant,
 } from '@/api/types';
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
+import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
 import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
@@ -547,6 +548,7 @@ export function DashboardPage() {
         </div>
       )}
 
+      {canManageOrders && <LaborVelocityLeaderboard />}
       {canManageOrders && <LedgerHistoryTable />}
       {canManageOrders && <SyncConflictsPanel />}
 

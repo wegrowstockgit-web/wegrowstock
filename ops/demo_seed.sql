@@ -129,6 +129,37 @@ INSERT INTO product_variants (id, tenant_id, product_id, sku, barcode, attribute
     ('a0000000-0000-4000-8000-000000000808', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000705', 'BOX-LRG', '8901000000008', '{"size":"large"}', 3.50, 'USD', 40, 400)
 ON CONFLICT (tenant_id, sku) DO NOTHING;
 
+-- Variant dims (inches / lb) for cartonization demos
+UPDATE product_variants SET
+    length = 6, width = 4, height = 3, dim_unit = 'in',
+    weight = 0.75, weight_unit = 'lb'
+WHERE id = 'a0000000-0000-4000-8000-000000000801';
+UPDATE product_variants SET
+    length = 8, width = 5, height = 4, dim_unit = 'in',
+    weight = 1.10, weight_unit = 'lb'
+WHERE id = 'a0000000-0000-4000-8000-000000000802';
+UPDATE product_variants SET
+    length = 10, width = 6, height = 4, dim_unit = 'in',
+    weight = 2.40, weight_unit = 'lb'
+WHERE id IN ('a0000000-0000-4000-8000-000000000803', 'a0000000-0000-4000-8000-000000000804');
+UPDATE product_variants SET
+    length = 2, width = 1, height = 1, dim_unit = 'in',
+    weight = 0.15, weight_unit = 'lb'
+WHERE id IN ('a0000000-0000-4000-8000-000000000805', 'a0000000-0000-4000-8000-000000000806');
+UPDATE product_variants SET
+    length = 12, width = 10, height = 8, dim_unit = 'in',
+    weight = 0.55, weight_unit = 'lb'
+WHERE id IN ('a0000000-0000-4000-8000-000000000807', 'a0000000-0000-4000-8000-000000000808');
+
+INSERT INTO shipping_cartons (id, tenant_id, name, length, width, height, max_weight, empty_weight, dim_unit, weight_unit) VALUES
+    ('a0000000-0000-4000-8000-000000004101', 'a0000000-0000-4000-8000-000000000001',
+     'Small Mailer', 8, 6, 4, 5, 0.15, 'in', 'lb'),
+    ('a0000000-0000-4000-8000-000000004102', 'a0000000-0000-4000-8000-000000000001',
+     'Medium Corrugated', 14, 10, 8, 30, 0.65, 'in', 'lb'),
+    ('a0000000-0000-4000-8000-000000004103', 'a0000000-0000-4000-8000-000000000001',
+     'Large Corrugated', 20, 16, 12, 70, 1.25, 'in', 'lb')
+ON CONFLICT (tenant_id, name) DO NOTHING;
+
 INSERT INTO lots (id, tenant_id, variant_id, lot_number, expires_at, received_at) VALUES
     ('a0000000-0000-4000-8000-000000000901', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000801', 'LOT-2026-001', '2026-12-31', NOW() - INTERVAL '30 days'),
     ('a0000000-0000-4000-8000-000000000902', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000801', 'LOT-2026-002', '2027-06-30', NOW() - INTERVAL '10 days'),
@@ -602,6 +633,44 @@ ON CONFLICT (bom_id, operation_id) DO NOTHING;
 INSERT INTO team_labor_rates (id, tenant_id, user_id, hourly_rate) VALUES
     ('a0000000-0000-4000-8000-000000003621', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000204', 32.00)
 ON CONFLICT (tenant_id, user_id) DO NOTHING;
+
+-- 3PL billing SLAs (Metro = pallet positions, Retail = cubic volume)
+INSERT INTO billing_slas (id, tenant_id, customer_id, storage_mode, rate_per_unit, pick_fee_per_item) VALUES
+    ('a0000000-0000-4000-8000-000000004201', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001102', 'PALLET_POSITION', 1.25, 0.35),
+    ('a0000000-0000-4000-8000-000000004202', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001101', 'CUBIC_VOLUME', 0.05, 0.25)
+ON CONFLICT (tenant_id, customer_id) DO NOTHING;
+
+-- Attribute on-hand stock to 3PL owners for accrual demos
+UPDATE inventory_levels SET owner_customer_id = 'a0000000-0000-4000-8000-000000001102'
+WHERE tenant_id = 'a0000000-0000-4000-8000-000000000001'
+  AND location_id IN (
+      'a0000000-0000-4000-8000-000000000604',
+      'a0000000-0000-4000-8000-000000000605'
+  )
+  AND on_hand > 0;
+
+UPDATE inventory_levels SET owner_customer_id = 'a0000000-0000-4000-8000-000000001101'
+WHERE tenant_id = 'a0000000-0000-4000-8000-000000000001'
+  AND location_id = 'a0000000-0000-4000-8000-000000000613'
+  AND on_hand > 0;
+
+UPDATE product_variants SET volume = 0.05
+WHERE id IN (
+    'a0000000-0000-4000-8000-000000000801',
+    'a0000000-0000-4000-8000-000000000802',
+    'a0000000-0000-4000-8000-000000000803'
+);
+
+INSERT INTO billing_accruals (id, tenant_id, customer_id, accrual_date, amount, description, status) VALUES
+    ('a0000000-0000-4000-8000-000000004301', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001102', CURRENT_DATE - 2, 2.50, 'Daily storage accrual', 'UNBILLED'),
+    ('a0000000-0000-4000-8000-000000004302', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001102', CURRENT_DATE - 1, 2.50, 'Daily storage accrual', 'UNBILLED'),
+    ('a0000000-0000-4000-8000-000000004303', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001101', CURRENT_DATE - 1, 1.15, 'Daily storage accrual', 'UNBILLED')
+ON CONFLICT (tenant_id, customer_id, accrual_date, description) DO NOTHING;
 
 COMMIT;
 

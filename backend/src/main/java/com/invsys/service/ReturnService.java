@@ -1,12 +1,16 @@
 package com.invsys.service;
 
 import com.invsys.common.ApiException;
+import com.invsys.domain.Customer;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.Location;
 import com.invsys.domain.ReturnLine;
 import com.invsys.domain.ReturnOrder;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
+import com.invsys.integration.easypost.EasyPostGateway;
+import com.invsys.integration.easypost.EasyPostProperties;
+import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.InventoryLedgerRepository;
 import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ReturnLineRepository;
@@ -37,6 +41,9 @@ public class ReturnService {
     private final DocumentSequenceService sequenceService;
     private final LocationRepository locationRepository;
     private final InventoryLedgerRepository ledgerRepository;
+    private final EasyPostGateway easyPostClient;
+    private final EasyPostProperties easyPostProperties;
+    private final CustomerRepository customerRepository;
 
     public ReturnService(ReturnOrderRepository returnOrderRepository,
                          ReturnLineRepository returnLineRepository,
@@ -45,7 +52,10 @@ public class ReturnService {
                          InventoryService inventoryService,
                          DocumentSequenceService sequenceService,
                          LocationRepository locationRepository,
-                         InventoryLedgerRepository ledgerRepository) {
+                         InventoryLedgerRepository ledgerRepository,
+                         EasyPostGateway easyPostClient,
+                         EasyPostProperties easyPostProperties,
+                         CustomerRepository customerRepository) {
         this.returnOrderRepository = returnOrderRepository;
         this.returnLineRepository = returnLineRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -54,6 +64,9 @@ public class ReturnService {
         this.sequenceService = sequenceService;
         this.locationRepository = locationRepository;
         this.ledgerRepository = ledgerRepository;
+        this.easyPostClient = easyPostClient;
+        this.easyPostProperties = easyPostProperties;
+        this.customerRepository = customerRepository;
     }
 
     @Transactional
@@ -85,6 +98,10 @@ public class ReturnService {
         return returnOrder;
     }
 
+    void validateReturnQuantityPublic(SalesOrderLine sol, BigDecimal quantityExpected) {
+        validateReturnQuantity(sol, quantityExpected);
+    }
+
     private void validateReturnQuantity(SalesOrderLine sol, BigDecimal quantityExpected) {
         BigDecimal alreadyReturned = returnLineRepository.sumExpectedForLine(sol.getId());
         BigDecimal maxReturnable = sol.getQtyShipped().subtract(alreadyReturned);
@@ -97,10 +114,54 @@ public class ReturnService {
     @Transactional
     public ReturnOrder approve(UUID returnId) {
         ReturnOrder returnOrder = getReturn(returnId);
+        // PENDING_REVIEW must use review/approve-with-label or approve-without-label
         if (!"REQUESTED".equals(returnOrder.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Return is not in REQUESTED status");
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Return is not awaiting approval — use review endpoints for PENDING_REVIEW");
         }
         returnOrder.setStatus("APPROVED");
+        return returnOrderRepository.save(returnOrder);
+    }
+
+    @Transactional
+    public ReturnOrder approveWithLabel(UUID returnId) {
+        ReturnOrder returnOrder = getReturn(returnId);
+        if (!"PENDING_REVIEW".equals(returnOrder.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only PENDING_REVIEW RMAs can be approved with a purchased label");
+        }
+        SalesOrder order = salesOrderRepository.findById(returnOrder.getSalesOrderId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+        EasyPostGateway.ParcelSpec parcel = buildParcel(order, new BigDecimal("2.0"));
+        var label = easyPostClient.purchaseReturnLabel(parcel, returnOrder.getNumber());
+        returnOrder.setReturnLabelUrl(label.labelRef());
+        returnOrder.setEstimatedLabelCost(label.postageAmount());
+        returnOrder.setLabelPurchaseMode("SYSTEM");
+        returnOrder.setStatus("APPROVED");
+        return returnOrderRepository.save(returnOrder);
+    }
+
+    @Transactional
+    public ReturnOrder approveWithoutLabel(UUID returnId) {
+        ReturnOrder returnOrder = getReturn(returnId);
+        if (!"PENDING_REVIEW".equals(returnOrder.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only PENDING_REVIEW RMAs can be approved without a label");
+        }
+        returnOrder.setLabelPurchaseMode("CUSTOMER");
+        returnOrder.setStatus("APPROVED");
+        return returnOrderRepository.save(returnOrder);
+    }
+
+    @Transactional
+    public ReturnOrder denyAndClose(UUID returnId) {
+        ReturnOrder returnOrder = getReturn(returnId);
+        if (!List.of("PENDING_REVIEW", "REQUESTED").contains(returnOrder.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Return cannot be denied in its current status");
+        }
+        returnOrder.setLabelPurchaseMode("NONE");
+        returnOrder.setStatus("REJECTED");
         return returnOrderRepository.save(returnOrder);
     }
 
@@ -303,6 +364,17 @@ public class ReturnService {
     private ReturnOrder getReturn(UUID returnId) {
         return returnOrderRepository.findById(returnId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Return not found"));
+    }
+
+    private EasyPostGateway.ParcelSpec buildParcel(SalesOrder order, BigDecimal weightLb) {
+        Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
+        EasyPostGateway.AddressSpec to = customer != null
+                ? EasyPostGateway.AddressSpec.fromMap(customer.getShippingAddress(), customer.getName())
+                : null;
+        EasyPostGateway.AddressSpec from = easyPostProperties.defaultFromAddress();
+        return new EasyPostGateway.ParcelSpec(
+                new BigDecimal("12"), new BigDecimal("10"), new BigDecimal("8"),
+                weightLb, to, from, false);
     }
 
     public record ReturnLineInput(UUID salesOrderLineId, BigDecimal quantityExpected) {

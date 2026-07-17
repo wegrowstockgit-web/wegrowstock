@@ -84,7 +84,7 @@ public class SalesOrderController {
     }
 
     @GetMapping("/sales-orders")
-    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
     public List<SalesOrderResponse> listSalesOrders() {
         UUID tenantId = TenantContext.requireTenantId();
         Map<UUID, String> customerNames = customerRepository
@@ -149,7 +149,7 @@ public class SalesOrderController {
     }
 
     @GetMapping("/sales-orders/{id}")
-    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
     public SalesOrderDetailResponse getSalesOrder(@PathVariable UUID id) {
         SalesOrder order = salesOrderRepository.findById(id)
                 .orElseThrow(() -> new com.invsys.common.ApiException(

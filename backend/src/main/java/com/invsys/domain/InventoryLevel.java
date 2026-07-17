@@ -26,6 +26,9 @@ public class InventoryLevel extends TenantScopedEntity {
     @Column(nullable = false)
     private BigDecimal allocated = BigDecimal.ZERO;
 
+    @Column(name = "owner_customer_id")
+    private UUID ownerCustomerId;
+
     public UUID getVariantId() {
         return variantId;
     }
@@ -68,5 +71,13 @@ public class InventoryLevel extends TenantScopedEntity {
 
     public BigDecimal getAvailable() {
         return onHand.subtract(allocated);
+    }
+
+    public UUID getOwnerCustomerId() {
+        return ownerCustomerId;
+    }
+
+    public void setOwnerCustomerId(UUID ownerCustomerId) {
+        this.ownerCustomerId = ownerCustomerId;
     }
 }

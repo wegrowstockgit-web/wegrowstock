@@ -2,7 +2,13 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { CreditCard, FileText, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
-import type { PortalCatalogItem, PortalCreditSummary, PortalInvoice, PortalReorderLine } from '@/api/types';
+import type {
+  PortalCatalogItem,
+  PortalCreditSummary,
+  PortalInvoice,
+  PortalReorderLine,
+  ShowroomBillingAccruals,
+} from '@/api/types';
 import { mapPortalCatalog, type PortalCatalogItemRaw } from '@/api/portal';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { TableSkeleton } from '@/components/ui/Skeleton';
@@ -111,6 +117,13 @@ export function ShowroomBillingPage() {
     retry: false,
   });
 
+  const { data: storageBilling, isLoading: storageLoading } = useQuery({
+    queryKey: ['showroom', 'billing', 'accruals'],
+    queryFn: async () =>
+      (await apiClient.get<ShowroomBillingAccruals>('/api/v1/showroom/billing/accruals')).data,
+    retry: false,
+  });
+
   if (creditLoading) {
     return <TableSkeleton rows={4} cols={3} />;
   }
@@ -172,6 +185,71 @@ export function ShowroomBillingPage() {
             {available.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
           </span>
         </p>
+      </Card>
+
+      <Card className="mb-6" data-testid="showroom-storage-accruals">
+        <CardHeader
+          title="3PL storage (month-to-date)"
+          description={
+            storageBilling?.sla
+              ? `${storageBilling.sla.storageMode.replaceAll('_', ' ')} · ${Number(
+                  storageBilling.sla.ratePerUnit,
+                ).toLocaleString(undefined, { style: 'currency', currency: 'USD' })} / unit`
+              : 'Storage fees accrued under your warehouse SLA'
+          }
+        />
+        {storageBilling?.sla && (
+          <p
+            className="mb-2 text-xs font-mono uppercase tracking-wide text-text-muted"
+            data-testid="showroom-sla-mode"
+          >
+            {storageBilling.sla.storageMode}
+          </p>
+        )}
+        {storageLoading ? (
+          <TableSkeleton rows={3} cols={3} />
+        ) : (
+          <>
+            <p className="mb-3 text-sm text-text-muted">
+              MTD total:{' '}
+              <span className="font-mono font-semibold text-text">
+                {Number(storageBilling?.monthToDateTotal ?? 0).toLocaleString(undefined, {
+                  style: 'currency',
+                  currency: 'USD',
+                })}
+              </span>
+            </p>
+            {(storageBilling?.accruals?.length ?? 0) === 0 ? (
+              <p className="text-sm text-text-muted">No storage accruals this month.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead align="right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {storageBilling?.accruals.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>
+                        {new Date(row.accrualDate + 'T00:00:00').toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>{row.status}</TableCell>
+                      <TableCell align="right" mono>
+                        {Number(row.amount).toLocaleString(undefined, {
+                          style: 'currency',
+                          currency: 'USD',
+                        })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </>
+        )}
       </Card>
 
       <Card>

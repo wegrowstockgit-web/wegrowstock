@@ -90,6 +90,9 @@ public class ProductVariant extends TenantScopedEntity {
     @Column(name = "is_lot_tracked", nullable = false)
     private boolean lotTracked;
 
+    @Column(name = "rma_requires_review", nullable = false)
+    private boolean rmaRequiresReview;
+
     @Column(name = "sku_template")
     private String skuTemplate;
 
@@ -299,6 +302,14 @@ public class ProductVariant extends TenantScopedEntity {
 
     public void setLotTracked(boolean lotTracked) {
         this.lotTracked = lotTracked;
+    }
+
+    public boolean isRmaRequiresReview() {
+        return rmaRequiresReview;
+    }
+
+    public void setRmaRequiresReview(boolean rmaRequiresReview) {
+        this.rmaRequiresReview = rmaRequiresReview;
     }
 
     public String getSkuTemplate() {

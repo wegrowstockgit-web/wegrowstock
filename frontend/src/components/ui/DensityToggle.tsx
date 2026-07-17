@@ -88,16 +88,19 @@ export function DensityToggle({ className }: { className?: string }) {
   );
 }
 
-/** Flex row for list-page toolbars: filters on the left, density + columns on the right. */
+/** Flex row for list-page toolbars: filters on the left, views + columns + density on the right. */
 export function DataListToolbar({
   children,
   className,
   columnItems,
+  trailing,
 }: {
   children?: ReactNode;
   className?: string;
   /** When provided, shows the Column Visibility Toggle menu in the action deck. */
   columnItems?: ColumnVisibilityItem[];
+  /** Extra controls (e.g. SavedGridViews) rendered before Columns. */
+  trailing?: ReactNode;
 }) {
   return (
     <div
@@ -109,6 +112,7 @@ export function DataListToolbar({
     >
       <div className="min-w-0 flex-1">{children}</div>
       <div className="flex shrink-0 items-center gap-2">
+        {trailing}
         {columnItems && columnItems.length > 0 && (
           <ColumnVisibilityMenu columns={columnItems} />
         )}

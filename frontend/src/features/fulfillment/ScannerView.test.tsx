@@ -113,6 +113,40 @@ describe('ScannerView GS1 fields', () => {
     expect(screen.queryByTestId('gs1-fields-card')).not.toBeInTheDocument();
   });
 
+  it('shows Missing Vendor Lot escape hatch and fires mint callback', () => {
+    const onMint = vi.fn();
+    const fields: Gs1FieldState = { lotNumber: '', expiryDate: '', quantity: '' };
+    render(
+      <ScannerView
+        lastScan="8901000000001"
+        lastThumbUrl={null}
+        history={[
+          {
+            barcode: '8901000000001',
+            variantId: 'var-1',
+            sku: 'WIDGET-S',
+            success: true,
+            message: 'Received 1 unit(s)',
+            isLotTracked: true,
+            timestamp: Date.now(),
+          },
+        ]}
+        scanning={false}
+        mode="receive"
+        onThumbCaptured={vi.fn()}
+        gs1Fields={fields}
+        onGs1FieldsChange={vi.fn()}
+        showMissingVendorLot
+        onMintInternalLot={onMint}
+      />,
+    );
+
+    expect(screen.getByTestId('mint-internal-lot')).toBeInTheDocument();
+    expect(screen.getByTestId('gs1-fields-card')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('mint-internal-lot'));
+    expect(onMint).toHaveBeenCalledTimes(1);
+  });
+
   it('shows history rows with GS1 metadata', () => {
     render(
       <ScannerView

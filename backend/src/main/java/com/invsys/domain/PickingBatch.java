@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -21,6 +22,12 @@ public class PickingBatch extends TenantScopedEntity {
 
     @Column(nullable = false)
     private String status = "DRAFT";
+
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
 
     public UUID getWaveId() {
         return waveId;
@@ -52,5 +59,21 @@ public class PickingBatch extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Instant getClaimedAt() {
+        return claimedAt;
+    }
+
+    public void setClaimedAt(Instant claimedAt) {
+        this.claimedAt = claimedAt;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
+    }
+
+    public void setCompletedAt(Instant completedAt) {
+        this.completedAt = completedAt;
     }
 }

@@ -61,6 +61,9 @@ public class InventoryLedger extends TenantScopedEntity {
     @Column(columnDefinition = "jsonb", nullable = false)
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
+    @Column(name = "owner_customer_id")
+    private UUID ownerCustomerId;
+
     public UUID getVariantId() {
         return variantId;
     }
@@ -179,5 +182,13 @@ public class InventoryLedger extends TenantScopedEntity {
 
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata != null ? metadata : new LinkedHashMap<>();
+    }
+
+    public UUID getOwnerCustomerId() {
+        return ownerCustomerId;
+    }
+
+    public void setOwnerCustomerId(UUID ownerCustomerId) {
+        this.ownerCustomerId = ownerCustomerId;
     }
 }

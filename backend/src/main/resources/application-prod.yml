@@ -38,6 +38,17 @@ invsys:
     connect-return-url: ${STRIPE_CONNECT_RETURN_URL}
   easypost:
     api-key: ${EASYPOST_API_KEY}
+    default-from:
+      name: ${EASYPOST_FROM_NAME}
+      company: ${EASYPOST_FROM_COMPANY:}
+      street1: ${EASYPOST_FROM_STREET1}
+      street2: ${EASYPOST_FROM_STREET2:}
+      city: ${EASYPOST_FROM_CITY}
+      state: ${EASYPOST_FROM_STATE}
+      zip: ${EASYPOST_FROM_ZIP}
+      country: ${EASYPOST_FROM_COUNTRY:US}
+      phone: ${EASYPOST_FROM_PHONE:}
+      email: ${EASYPOST_FROM_EMAIL:}
   shopify:
     api-key: ${SHOPIFY_API_KEY}
     api-version: ${SHOPIFY_API_VERSION:2024-10}

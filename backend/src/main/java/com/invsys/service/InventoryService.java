@@ -52,7 +52,7 @@ public class InventoryService {
                             OutboxService outboxService,
                             SerialNumberService serialNumberService,
                             SerialNumberRepository serialNumberRepository,
-                            CycleCountService cycleCountService) {
+                            @org.springframework.context.annotation.Lazy CycleCountService cycleCountService) {
         this.ledgerRepository = ledgerRepository;
         this.levelRepository = levelRepository;
         this.settingsRepository = settingsRepository;

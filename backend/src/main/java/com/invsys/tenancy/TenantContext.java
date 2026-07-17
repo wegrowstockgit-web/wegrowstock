@@ -36,6 +36,10 @@ public final class TenantContext {
         return Optional.ofNullable(USER.get());
     }
 
+    public static UUID requireUserId() {
+        return getUserId().orElseThrow(() -> new IllegalStateException("User context not set"));
+    }
+
     public static void setCustomerId(UUID customerId) {
         CUSTOMER.set(customerId);
     }

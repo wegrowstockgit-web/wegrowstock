@@ -74,6 +74,18 @@ invsys:
     connect-return-url: ${STRIPE_CONNECT_RETURN_URL:http://localhost:3000/settings/billing?stripe=success}
   easypost:
     api-key: ${EASYPOST_API_KEY:easypost_mock_key}
+    # Ship-from defaults used by LiveEasyPostGateway (prod). Ignored by MockEasyPostGateway.
+    default-from:
+      name: ${EASYPOST_FROM_NAME:Demo Warehouse}
+      company: ${EASYPOST_FROM_COMPANY:InventorySystem}
+      street1: ${EASYPOST_FROM_STREET1:100 Warehouse Way}
+      street2: ${EASYPOST_FROM_STREET2:}
+      city: ${EASYPOST_FROM_CITY:Chicago}
+      state: ${EASYPOST_FROM_STATE:IL}
+      zip: ${EASYPOST_FROM_ZIP:60601}
+      country: ${EASYPOST_FROM_COUNTRY:US}
+      phone: ${EASYPOST_FROM_PHONE:}
+      email: ${EASYPOST_FROM_EMAIL:}
   shopify:
     api-key: ${SHOPIFY_API_KEY:shopify_mock_key}
     api-version: ${SHOPIFY_API_VERSION:2024-10}

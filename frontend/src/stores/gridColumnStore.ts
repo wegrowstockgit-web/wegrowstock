@@ -13,6 +13,8 @@ interface GridColumnStore extends GridColumnState {
   pinColumn: (id: string) => void;
   unpinColumn: (id: string) => void;
   setColumnOrder: (order: string[]) => void;
+  /** Replace layout from a saved view (also updates persist middleware → localStorage). */
+  applyLayout: (layout: Partial<GridColumnState>) => void;
   /**
    * Seeds order/visibility on first mount without wiping a customized
    * desktop workspace previously persisted to localStorage.
@@ -69,6 +71,13 @@ export const useGridColumnStore = create<GridColumnStore>()(
 
       setColumnOrder: (order) => set({ columnOrder: order }),
 
+      applyLayout: (layout) =>
+        set((state) => ({
+          columnVisibility: layout.columnVisibility ?? state.columnVisibility,
+          pinnedColumns: layout.pinnedColumns ?? state.pinnedColumns,
+          columnOrder: layout.columnOrder ?? state.columnOrder,
+        })),
+
       ensureColumns: (columnIds, defaults) => {
         const state = get();
         const hasOrder = state.columnOrder.length > 0;
@@ -92,14 +101,28 @@ export const useGridColumnStore = create<GridColumnStore>()(
           state.pinnedColumns.length > 0 ? state.pinnedColumns : seedPinned,
           columnIds,
         );
+        const pinned =
+          nextPinned.length > 0
+            ? nextPinned
+            : sanitizePinned([...DEFAULT_PINNED], columnIds);
+
+        const sameOrder =
+          nextOrder.length === state.columnOrder.length &&
+          nextOrder.every((id, i) => id === state.columnOrder[i]);
+        const samePinned =
+          pinned.length === state.pinnedColumns.length &&
+          pinned.every((id, i) => id === state.pinnedColumns[i]);
+        const sameVisibility = columnIds.every(
+          (id) => (nextVisibility[id] !== false) === (state.columnVisibility[id] !== false),
+        );
+        if (sameOrder && samePinned && sameVisibility) {
+          return;
+        }
 
         set({
           columnOrder: nextOrder,
           columnVisibility: nextVisibility,
-          pinnedColumns:
-            nextPinned.length > 0
-              ? nextPinned
-              : sanitizePinned([...DEFAULT_PINNED], columnIds),
+          pinnedColumns: pinned,
         });
       },
     }),

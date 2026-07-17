@@ -6,6 +6,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -23,6 +24,15 @@ public class TenantSettings extends TenantScopedEntity {
 
     @Column(name = "slack_webhook_url", length = 1024)
     private String slackWebhookUrl;
+
+    @Column(name = "rma_auto_approve_max_value", nullable = false)
+    private BigDecimal rmaAutoApproveMaxValue = new BigDecimal("100.00");
+
+    @Column(name = "blind_cycle_counts", nullable = false)
+    private boolean blindCycleCounts = true;
+
+    @Column(name = "max_auto_adjust_value", nullable = false)
+    private BigDecimal maxAutoAdjustValue = new BigDecimal("100.00");
 
     public Map<String, Object> getSettings() {
         return settings;
@@ -46,6 +56,34 @@ public class TenantSettings extends TenantScopedEntity {
 
     public void setSlackWebhookUrl(String slackWebhookUrl) {
         this.slackWebhookUrl = slackWebhookUrl;
+    }
+
+    public BigDecimal getRmaAutoApproveMaxValue() {
+        return rmaAutoApproveMaxValue;
+    }
+
+    public void setRmaAutoApproveMaxValue(BigDecimal rmaAutoApproveMaxValue) {
+        this.rmaAutoApproveMaxValue = rmaAutoApproveMaxValue != null
+                ? rmaAutoApproveMaxValue
+                : new BigDecimal("100.00");
+    }
+
+    public boolean isBlindCycleCounts() {
+        return blindCycleCounts;
+    }
+
+    public void setBlindCycleCounts(boolean blindCycleCounts) {
+        this.blindCycleCounts = blindCycleCounts;
+    }
+
+    public BigDecimal getMaxAutoAdjustValue() {
+        return maxAutoAdjustValue;
+    }
+
+    public void setMaxAutoAdjustValue(BigDecimal maxAutoAdjustValue) {
+        this.maxAutoAdjustValue = maxAutoAdjustValue != null
+                ? maxAutoAdjustValue
+                : new BigDecimal("100.00");
     }
 
     public static TenantSettings withDefaults(UUID tenantId) {

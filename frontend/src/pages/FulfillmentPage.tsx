@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, ScanLine, Scale } from 'lucide-react';
+import { AlertTriangle, ScanLine, Scale, Settings2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
   FulfillmentScanResponse,
+  CartonizePreviewResponse,
   PackLabelResponse,
   PaginatedResponse,
   PickingTask,
@@ -46,6 +47,8 @@ import {
   ReplenishmentQueue,
 } from '@/features/fulfillment/ReplenishmentQueue';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
+import { usePrintStore } from '@/stores/usePrintStore';
+import { ScannerSettings } from '@/features/settings/ScannerSettings';
 
 function isStagingLocationBarcode(code: string, prompt: CrossDockPrompt): boolean {
   const normalized = code.trim().toUpperCase();
@@ -228,13 +231,23 @@ export function FulfillmentPage() {
   const [serialCapture, setSerialCapture] = useState<SerialCaptureState | null>(null);
   const [packingMode, setPackingMode] = useState(false);
   const [packSalesOrderId, setPackSalesOrderId] = useState('');
+  const [manualWeightLb, setManualWeightLb] = useState('');
   const [labelMessage, setLabelMessage] = useState('');
+  const [lastPackLabel, setLastPackLabel] = useState<PackLabelResponse | null>(null);
   const [showQuarantine, setShowQuarantine] = useState(false);
   const [showReplenishment, setShowReplenishment] = useState(false);
+  const [showScannerSettings, setShowScannerSettings] = useState(false);
+  const executePrint = usePrintStore((s) => s.executePrint);
+  const setBoundPrinterName = usePrintStore((s) => s.setBoundPrinterName);
+  const [mintLotPending, setMintLotPending] = useState(false);
   const [gs1Fields, setGs1Fields] = useState<Gs1FieldState>(EMPTY_GS1);
   const [gs1Active, setGs1Active] = useState(false);
   const [lotLoggedNotTracked, setLotLoggedNotTracked] = useState(false);
   const lastParsedRef = useRef<ParsedBarcode | null>(null);
+  /** Survives plain (non-GS1) rescans so minted / typed lots still bind on receive. */
+  const activeLotRef = useRef<string>('');
+  const gs1FieldsRef = useRef(gs1Fields);
+  gs1FieldsRef.current = gs1Fields;
   const gs1FeedbackPendingRef = useRef(false);
   const scale = useBluetoothScale();
   const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
@@ -274,26 +287,75 @@ export function FulfillmentPage() {
     retry: false,
   });
 
+  const { data: cartonPreview, isFetching: cartonPreviewLoading } = useQuery({
+    queryKey: ['shipments', 'cartonize-preview', packSalesOrderId],
+    queryFn: async () =>
+      (await apiClient.get<CartonizePreviewResponse>('/api/v1/shipments/cartonize-preview', {
+        params: { salesOrderId: packSalesOrderId },
+      })).data,
+    enabled: packingMode && !!packSalesOrderId,
+    retry: false,
+  });
+
+  const { data: workstation } = useQuery({
+    queryKey: ['users', 'me', 'workstation'],
+    queryFn: async () =>
+      (await apiClient.get<{ printMode: string; zplPrinterName?: string | null }>(
+        '/api/v1/users/me/workstation',
+      )).data,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (workstation?.zplPrinterName) {
+      setBoundPrinterName(workstation.zplPrinterName);
+    }
+  }, [workstation?.zplPrinterName, setBoundPrinterName]);
+
   const packLabelMutation = useMutation({
     mutationFn: async (totalWeightLb: number) => {
       const res = await apiClient.post<PackLabelResponse>('/api/v1/shipments/pack-label', {
         salesOrderId: packSalesOrderId,
         totalWeightLb,
-        carrier: 'EASYPOST',
       });
       return res.data;
     },
     onSuccess: (label) => {
       triggerSuccess();
+      setLastPackLabel(label);
+      const carton = label.cartonName ? `Use Box: ${label.cartonName}` : 'Carton selected';
+      const carrier = [label.carrier, label.serviceLevel].filter(Boolean).join(' ');
       setLabelMessage(
-        `Label ${label.trackingNumber} created · ${label.totalWeight?.toFixed(2)} lb · postage $${label.postageAmount?.toFixed(2)}`
+        `${carton} · ${carrier} · Tracking ${label.trackingNumber} · ${label.totalWeight?.toFixed?.(2) ?? label.totalWeight} lb · $${Number(label.postageAmount ?? 0).toFixed(2)}`,
       );
+      const format =
+        (label.labelFileType ?? workstation?.printMode ?? 'PDF').toUpperCase() === 'ZPL'
+          ? 'ZPL'
+          : 'PDF';
+      if (label.labelRef) {
+        void executePrint(label.labelRef, format).then((route) => {
+          setLabelMessage((msg) => `${msg} · printed via ${route}`);
+        });
+      }
     },
     onError: () => {
       triggerError();
-      setLabelMessage('Could not generate label. Select a sales order and try again.');
+      setLastPackLabel(null);
+      setLabelMessage('Could not cartonize / purchase label. Check order lines and carton masters.');
     },
   });
+
+  const resolvePackWeightLb = (): number | null => {
+    const scaleLb = scale.reading?.weightLb ?? 0;
+    if (scaleLb > 0) return scaleLb;
+    const manual = Number(manualWeightLb);
+    if (Number.isFinite(manual) && manual > 0) return manual;
+    if (cartonPreview?.billableWeightLb && cartonPreview.billableWeightLb > 0) {
+      return Number(cartonPreview.billableWeightLb);
+    }
+    return null;
+  };
 
   const { data: batchTasks = [], refetch: refetchTasks } = useQuery({
     queryKey: ['picking', 'batch-tasks'],
@@ -321,6 +383,18 @@ export function FulfillmentPage() {
     return attempted && !lotFromFields && !lotFromParse;
   })();
 
+  const showMissingVendorLot = (() => {
+    if (mode !== 'receive') return false;
+    const latest = history[0];
+    if (!latest?.success || !latest.variantId) return false;
+    const cached = lookupVariant(latest.variantId);
+    const lotTracked = latest.isLotTracked === true || cached?.isLotTracked === true;
+    if (!lotTracked) return false;
+    const lotFromFields = gs1Fields.lotNumber.trim();
+    const lotFromParse = lastParsedRef.current?.lotNumber?.trim() ?? '';
+    return !lotFromFields && !lotFromParse;
+  })();
+
   const pickTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       await apiClient.post(`/api/v1/picking/tasks/${taskId}/pick`);
@@ -331,21 +405,25 @@ export function FulfillmentPage() {
   const buildScanPayload = (barcode: string, serialNumber?: string): FulfillmentScanPayload => {
     const parsed = lastParsedRef.current;
     const qtyParsed = gs1Fields.quantity.trim() ? Number(gs1Fields.quantity) : undefined;
+    const lot =
+      gs1Fields.lotNumber.trim() ||
+      activeLotRef.current.trim() ||
+      parsed?.lotNumber;
     const payload: FulfillmentScanPayload = {
       barcode,
       warehouseId: warehouse?.id,
       mode: serialCapture?.mode ?? mode,
       serialNumber,
     };
+    // Minted internal lots and GS1 AI(10) both ride on lotNumber for receive binding.
+    if (lot) payload.lotNumber = lot;
     if (parsed?.isGs1 || gs1Active) {
       payload.isGs1 = true;
       payload.gtin = parsed?.sku ?? barcode;
       payload.rawBarcode = parsed?.raw;
-      const lot = gs1Fields.lotNumber.trim() || parsed?.lotNumber;
       const expiry = gs1Fields.expiryDate.trim() || parsed?.expiryDate;
       const quantity =
         qtyParsed != null && Number.isFinite(qtyParsed) ? qtyParsed : parsed?.quantity;
-      if (lot) payload.lotNumber = lot;
       if (expiry) payload.expiryDate = expiry;
       if (quantity != null) payload.quantity = quantity;
 
@@ -364,6 +442,37 @@ export function FulfillmentPage() {
       }
     }
     return payload;
+  };
+
+  const handleMintInternalLot = async () => {
+    const latest = history[0];
+    if (!latest?.variantId) return;
+    setMintLotPending(true);
+    try {
+      const res = await apiClient.post<{
+        id: string;
+        lotNumber: string;
+        variantId: string;
+        sku: string;
+        zpl: string;
+      }>('/api/v1/inventory/lots/mint', { variantId: latest.variantId });
+      const minted = res.data;
+      activeLotRef.current = minted.lotNumber;
+      setGs1Active(true);
+      setGs1Fields((prev) => ({ ...prev, lotNumber: minted.lotNumber }));
+      // Keep the SKU in the scan buffer; lot rides in gs1Fields / activeLotRef for submit.
+      if (latest.sku || lastScan) {
+        useScanBufferStore.getState().commit(latest.sku ?? lastScan!);
+      }
+      if (minted.zpl) {
+        await executePrint(minted.zpl, 'ZPL');
+      }
+      triggerSuccess();
+    } catch {
+      triggerError();
+    } finally {
+      setMintLotPending(false);
+    }
   };
 
   const submitScan = async (barcode: string, serialNumber?: string): Promise<FulfillmentScanResponse> => {
@@ -461,6 +570,7 @@ export function FulfillmentPage() {
           expiryDate: gs1Fields.expiryDate || undefined,
           quantity: gs1Fields.quantity ? Number(gs1Fields.quantity) : undefined,
           lotLoggedNotTracked: logged,
+          isLotTracked: !!result.isLotTracked,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -575,8 +685,10 @@ export function FulfillmentPage() {
     onGs1Scan: (parsed) => {
       lastParsedRef.current = parsed;
       setGs1Active(true);
+      const lotNumber = parsed.lotNumber ?? '';
+      activeLotRef.current = lotNumber;
       setGs1Fields({
-        lotNumber: parsed.lotNumber ?? '',
+        lotNumber,
         expiryDate: parsed.expiryDate ?? '',
         quantity: parsed.quantity != null ? String(parsed.quantity) : '',
       });
@@ -609,10 +721,20 @@ export function FulfillmentPage() {
       }
       if (parsed && !parsed.isGs1) {
         lastParsedRef.current = null;
-        setGs1Active(false);
-        setGs1Fields(EMPTY_GS1);
         setLotLoggedNotTracked(false);
         gs1FeedbackPendingRef.current = false;
+        // Preserve minted/manual lot across SKU rescans (do not wipe INT-* escape hatch).
+        const keepLot =
+          gs1FieldsRef.current.lotNumber.trim() || activeLotRef.current.trim();
+        if (keepLot) {
+          activeLotRef.current = keepLot;
+          setGs1Active(true);
+          setGs1Fields({ lotNumber: keepLot, expiryDate: '', quantity: '' });
+        } else {
+          activeLotRef.current = '';
+          setGs1Active(false);
+          setGs1Fields(EMPTY_GS1);
+        }
       }
       if (serialCapture) {
         serialScanMutation.mutate(code);
@@ -630,6 +752,17 @@ export function FulfillmentPage() {
         <div className="mb-2 flex items-center justify-center gap-2">
           <ScanLine className="h-6 w-6 text-accent" />
           <h1 className="text-2xl font-bold text-text">Fulfillment</h1>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="ml-1"
+            aria-label="Scanner settings"
+            data-testid="scanner-settings-open"
+            onClick={() => setShowScannerSettings(true)}
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
         </div>
         <p className="text-sm text-text-muted">
           {warehouse?.name ?? 'No warehouse selected'} ·{' '}
@@ -746,7 +879,12 @@ export function FulfillmentPage() {
                 className="mt-3"
                 label="Sales order"
                 value={packSalesOrderId}
-                onChange={(e) => setPackSalesOrderId(e.target.value)}
+                onChange={(e) => {
+                  setPackSalesOrderId(e.target.value);
+                  setLabelMessage('');
+                  setLastPackLabel(null);
+                  setManualWeightLb('');
+                }}
               >
                 <option value="">Select order to ship…</option>
                 {packOrders
@@ -757,46 +895,112 @@ export function FulfillmentPage() {
                     </option>
                   ))}
               </Select>
-              {!scale.supported ? (
-                <p className="mt-2 text-sm text-text-muted">
-                  Web Bluetooth is unavailable — enter weight manually or use a supported browser.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  <p className="text-sm text-text-muted">
-                    {scale.connected
-                      ? `Scale connected · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
-                      : 'Connect a shipping scale to auto-read parcel weight.'}
-                  </p>
-                  {scale.error && <p className="text-sm text-danger">{scale.error}</p>}
-                  <div className="flex flex-wrap gap-2">
-                    {!scale.connected ? (
-                      <Button loading={scale.connecting} onClick={() => void scale.connect()}>
-                        Connect scale
-                      </Button>
-                    ) : (
-                      <Button variant="secondary" onClick={scale.disconnect}>
-                        Disconnect
-                      </Button>
-                    )}
-                    <Button
-                      loading={packLabelMutation.isPending}
-                      disabled={!packSalesOrderId}
-                      onClick={() => {
-                        const weightLb = scale.reading?.weightLb ?? 0;
-                        if (weightLb <= 0) {
-                          setLabelMessage('No weight reading — step on the scale or connect hardware.');
-                          return;
-                        }
-                        packLabelMutation.mutate(weightLb);
-                      }}
-                    >
-                      Generate label
-                    </Button>
-                  </div>
-                  {labelMessage && <p className="text-sm text-success">{labelMessage}</p>}
+
+              {packSalesOrderId && (
+                <div className="mt-3 rounded-md border border-border bg-surface px-3 py-2">
+                  {cartonPreviewLoading && (
+                    <p className="text-sm text-text-muted">Calculating best carton…</p>
+                  )}
+                  {!cartonPreviewLoading && cartonPreview && (
+                    <>
+                      <p className="text-sm font-semibold text-text">
+                        Use Box: {cartonPreview.cartonName}
+                      </p>
+                      <p className="mt-1 text-xs text-text-muted">
+                        {Number(cartonPreview.lengthIn)}×{Number(cartonPreview.widthIn)}×
+                        {Number(cartonPreview.heightIn)} in · billable{' '}
+                        {Number(cartonPreview.billableWeightLb).toFixed(2)} lb
+                        (actual {Number(cartonPreview.actualWeightLb).toFixed(2)} / dim{' '}
+                        {Number(cartonPreview.volumetricWeightLb).toFixed(2)})
+                      </p>
+                    </>
+                  )}
+                  {!cartonPreviewLoading && !cartonPreview && (
+                    <p className="text-sm text-danger">
+                      Could not cartonize this order — check variant dimensions and carton masters.
+                    </p>
+                  )}
                 </div>
               )}
+
+              <div className="mt-3 space-y-3">
+                {!scale.supported ? (
+                  <p className="text-sm text-text-muted">
+                    Web Bluetooth unavailable — using carton billable weight, or enter a manual override.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm text-text-muted">
+                      {scale.connected
+                        ? `Scale connected · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
+                        : 'Connect a shipping scale, or use computed billable weight below.'}
+                    </p>
+                    {scale.error && <p className="text-sm text-danger">{scale.error}</p>}
+                    <div className="flex flex-wrap gap-2">
+                      {!scale.connected ? (
+                        <Button loading={scale.connecting} onClick={() => void scale.connect()}>
+                          Connect scale
+                        </Button>
+                      ) : (
+                        <Button variant="secondary" onClick={scale.disconnect}>
+                          Disconnect
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  label="Weight override (lb)"
+                  value={manualWeightLb}
+                  onChange={(e) => setManualWeightLb(e.target.value)}
+                  placeholder={
+                    cartonPreview
+                      ? String(Number(cartonPreview.billableWeightLb).toFixed(2))
+                      : 'Optional'
+                  }
+                />
+
+                <Button
+                  loading={packLabelMutation.isPending}
+                  disabled={!packSalesOrderId || !cartonPreview}
+                  onClick={() => {
+                    const weightLb = resolvePackWeightLb();
+                    if (weightLb == null || weightLb <= 0) {
+                      setLabelMessage('Enter a weight, connect a scale, or wait for cartonization.');
+                      return;
+                    }
+                    packLabelMutation.mutate(weightLb);
+                  }}
+                >
+                  Complete Pack
+                </Button>
+
+                {lastPackLabel && (
+                  <div className="rounded-md border border-success/40 bg-surface px-3 py-2 text-sm">
+                    <p className="font-semibold text-text">
+                      Use Box: {lastPackLabel.cartonName ?? cartonPreview?.cartonName ?? '—'}
+                    </p>
+                    <p className="mt-1 text-text">
+                      {[lastPackLabel.carrier, lastPackLabel.serviceLevel].filter(Boolean).join(' ') ||
+                        'Carrier selected'}
+                    </p>
+                    <p className="mt-1 text-text-muted">
+                      Tracking {lastPackLabel.trackingNumber ?? '—'} · postage $
+                      {Number(lastPackLabel.postageAmount ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                {labelMessage && !lastPackLabel && (
+                  <p className="text-sm text-danger">{labelMessage}</p>
+                )}
+                {labelMessage && lastPackLabel && (
+                  <p className="text-sm text-success">{labelMessage}</p>
+                )}
+              </div>
             </Card>
           )}
 
@@ -890,11 +1094,17 @@ export function FulfillmentPage() {
         feedbackFlash={flash}
         gs1Active={gs1Active}
         gs1Fields={gs1Fields}
-        onGs1FieldsChange={setGs1Fields}
+        onGs1FieldsChange={(fields) => {
+          activeLotRef.current = fields.lotNumber.trim();
+          setGs1Fields(fields);
+        }}
         lotLoggedNotTracked={lotLoggedNotTracked}
         showSkipFlag={lotMissingForTrackedPick}
         skipFlagPending={skipFlagPending}
         onSkipFlag={() => void handleSkipFlag()}
+        showMissingVendorLot={showMissingVendorLot}
+        mintLotPending={mintLotPending}
+        onMintInternalLot={() => void handleMintInternalLot()}
         onThumbCaptured={(url, variantId) => {
           setLastThumbUrl(url);
           setHistory((h) =>
@@ -918,6 +1128,11 @@ export function FulfillmentPage() {
         message={pendingMisScan?.message ?? ''}
         onUndo={undoMisScan}
         onDismiss={() => void useWarehouseUXStore.getState().commitMisScan()}
+      />
+
+      <ScannerSettings
+        open={showScannerSettings}
+        onClose={() => setShowScannerSettings(false)}
       />
     </div>
   );

@@ -19,6 +19,14 @@ export const STAGING_BARCODE = 'S-01';
 export const RESERVE_BIN_PATH = 'Z-A/A-1/B-01';
 export const SHIPPED_SO_ID = 'a0000000-0000-4000-8000-000000001501';
 export const SHIPPED_SO_LINE_ID = 'a0000000-0000-4000-8000-000000001601';
+/** Client A — Metro Distributors (seed B2B portal user). */
+export const CLIENT_A_METRO_ID = 'a0000000-0000-4000-8000-000000001102';
+/** Client B — Retail Partners LLC (cubic volume SLA). */
+export const CLIENT_B_RETAIL_ID = 'a0000000-0000-4000-8000-000000001101';
+export const DEMO_PICKER_USER_ID = 'a0000000-0000-4000-8000-000000000204';
+export const PICK_BIN_ID = 'a0000000-0000-4000-8000-000000000604';
+/** Secondary pick bin — quieter than shipping staging for cycle-count E2E. */
+export const PICK_BIN_B02_ID = 'a0000000-0000-4000-8000-000000000605';
 
 type JourneyRole = 'owner' | 'admin' | 'manager' | 'picker' | 'b2b';
 
@@ -270,10 +278,17 @@ export async function createZeroStockSellableVariant(
  */
 export async function createShippedSalesOrder(
   page: Page,
-  opts: { variantId: string; customerId: string; quantity?: number },
+  opts: {
+    variantId: string;
+    customerId: string;
+    quantity?: number;
+    unitPrice?: number;
+    numberPrefix?: string;
+  },
 ): Promise<{ salesOrderId: string; salesOrderLineId: string; number: string }> {
   const qty = opts.quantity ?? 2;
-  const binId = 'a0000000-0000-4000-8000-000000000604';
+  const unitPrice = opts.unitPrice ?? 12.5;
+  const binId = PICK_BIN_ID;
 
   // Top up free stock at the pick bin so allocate + ship can succeed.
   const receiveRes = await page.request.post('/api/v1/inventory/receive', {
@@ -292,8 +307,9 @@ export async function createShippedSalesOrder(
     method: 'POST',
     body: JSON.stringify({
       customerId: opts.customerId,
-      number: `SO-RMA-${Date.now()}`,
-      lines: [{ variantId: opts.variantId, qtyOrdered: qty, unitPrice: 12.5 }],
+      channel: 'B2B',
+      number: `${opts.numberPrefix ?? 'SO-RMA'}-${Date.now()}`,
+      lines: [{ variantId: opts.variantId, qtyOrdered: qty, unitPrice }],
     }),
   });
   await page.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
@@ -323,6 +339,47 @@ export async function createShippedSalesOrder(
   }
 
   return { salesOrderId: so.id, salesOrderLineId: line.id, number: so.number };
+}
+
+/** Invite + accept a B2B_CUSTOMER portal user linked to a customer. */
+export async function inviteAndAcceptB2b(
+  browser: Browser,
+  adminPage: Page,
+  opts: { email: string; customerId: string; displayName?: string },
+): Promise<{ context: BrowserContext; page: Page; close: () => Promise<void> }> {
+  const invite = await apiJson<{ token: string }>(adminPage, '/api/v1/users/invitations', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: opts.email,
+      role: 'B2B_CUSTOMER',
+      customerId: opts.customerId,
+    }),
+  });
+
+  const acceptCtx = await browser.newContext({
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+  });
+  const acceptPage = await acceptCtx.newPage();
+  try {
+    await acceptPage.goto(`/invite/${invite.token}`);
+    await expect(acceptPage.getByTestId('invite-accept-page')).toBeVisible({ timeout: 15_000 });
+    await acceptPage.getByLabel('First Name').fill(opts.displayName ?? 'Client');
+    await acceptPage.getByLabel('Last Name').fill('B');
+    await acceptPage.getByLabel('Password', { exact: true }).fill(DEMO_PASSWORD);
+    await acceptPage.getByLabel('Confirm Password').fill(DEMO_PASSWORD);
+    const acceptWait = acceptPage.waitForResponse(
+      (res) => res.url().includes('/api/v1/invitations/accept') && res.request().method() === 'POST',
+    );
+    await acceptPage.getByRole('button', { name: 'Join team' }).click();
+    const acceptRes = await acceptWait;
+    if (!acceptRes.ok()) {
+      throw new Error(`Invite accept failed: ${acceptRes.status()} ${await acceptRes.text()}`);
+    }
+  } finally {
+    await acceptCtx.close();
+  }
+
+  return freshLogin(browser, opts.email, DEMO_PASSWORD);
 }
 
 export { expect, hidScan };

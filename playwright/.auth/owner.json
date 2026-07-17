@@ -1,0 +1,49 @@
+{
+  "cookies": [
+    {
+      "name": "invsys_refresh",
+      "value": "f71ef20c-c27e-4c73-a462-e5ad222b61c3",
+      "domain": "localhost",
+      "path": "/api/v1/auth",
+      "expires": 1784839797,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "invsys_access",
+      "value": "eyJhbGciOiJSUzI1NiJ9.eyJ0ZW5hbnRfaWQiOiJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJzdWIiOiJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAyMDEiLCJleHAiOjE3ODQyMzU4OTcsImlhdCI6MTc4NDIzNDk5Nywid2FyZWhvdXNlX2lkcyI6WyJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA2MDEiLCJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA2MTEiLCJhMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA2MjEiXSwicm9sZXMiOlsiT1dORVIiXX0.nz1MmhfQwxIvIgZAsaHQ1NPZTfDWgXs70Ab00bNda1tS_OXxtYxxT_WDLBq_Z3NWMZh9B0uVBrjWwY6HottWeKkebwOvZzt0deZM-VprNZVp8ovTqB7hKs1mKGxvoMR81jd0tmIQvO1r-6I24vFQN9T4uadOSkos96m_1aPzzvMwF3YX2mhpaWpAwImU0OmKZJFv4JVHKxsPDFRE0snf6E-92lzisuOD6VfBdbxAfK_NN8yf44EqtT_oDP1IRkNELeJgvXHpwXqpGPON8ENF_ek_pLVT9khbNv1hWshVx1f1wfkd7vtMidfFr41-Rii5LqdlHI0u86DzNnrMQnopzQ",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1784235897,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "JSESSIONID",
+      "value": "79B34AA6D5369CADBEDA4202C91BC15F",
+      "domain": "localhost",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "invsys-session",
+          "value": "{\"state\":{\"authenticated\":true,\"user\":{\"id\":\"a0000000-0000-4000-8000-000000000201\",\"email\":\"owner@demo.test\",\"displayName\":\"Demo Owner\",\"roles\":[\"OWNER\"],\"warehouseIds\":[\"a0000000-0000-4000-8000-000000000601\",\"a0000000-0000-4000-8000-000000000611\",\"a0000000-0000-4000-8000-000000000621\"],\"tenantId\":\"a0000000-0000-4000-8000-000000000001\"},\"lastRequestId\":null,\"primarySession\":null},\"version\":0}"
+        },
+        {
+          "name": "invsys-icon-rail",
+          "value": "{\"state\":{\"pinned\":false},\"version\":0}"
+        }
+      ]
+    }
+  ]
+}
