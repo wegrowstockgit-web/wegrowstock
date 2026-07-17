@@ -216,3 +216,67 @@ export function evaluateLotGrace(
   }
   return { lotLoggedNotTracked: false };
 }
+
+/** Expected pick-line facts held in local batch state for pre-validation. */
+export interface ExpectedPickAllocation {
+  sku?: string | null;
+  barcode?: string | null;
+  quantity?: number | null;
+}
+
+export interface PickScanValidation {
+  ok: boolean;
+  reason?: 'SKU_MISMATCH' | 'QTY_MISMATCH' | 'NO_EXPECTED';
+  message?: string;
+}
+
+function normalizeIdentity(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+/**
+ * Strict local pre-validation against the expected pick allocation.
+ * Blocks wrong SKU/GTIN and GS1 quantity (AI 30) mismatches before HTTP.
+ */
+export function validatePickScan(
+  expected: ExpectedPickAllocation | null | undefined,
+  parsed: ParsedBarcode,
+  rawCode?: string,
+): PickScanValidation {
+  if (!expected?.sku && !expected?.barcode) {
+    return { ok: true };
+  }
+
+  const scanned = normalizeIdentity(parsed.sku || rawCode);
+  const expectedSku = normalizeIdentity(expected.sku);
+  const expectedBarcode = normalizeIdentity(expected.barcode);
+  const identities = [expectedSku, expectedBarcode].filter(Boolean);
+
+  if (identities.length > 0 && !identities.includes(scanned)) {
+    // Also allow plain scan of the human SKU when GS1 GTIN was expected (or vice versa).
+    const rawNorm = normalizeIdentity(rawCode);
+    if (!rawNorm || !identities.includes(rawNorm)) {
+      return {
+        ok: false,
+        reason: 'SKU_MISMATCH',
+        message: `Expected ${expected.sku ?? expected.barcode}, scanned ${parsed.sku || rawCode}`,
+      };
+    }
+  }
+
+  if (
+    parsed.isGs1 &&
+    parsed.quantity != null &&
+    expected.quantity != null &&
+    Number.isFinite(Number(expected.quantity)) &&
+    Number(parsed.quantity) !== Number(expected.quantity)
+  ) {
+    return {
+      ok: false,
+      reason: 'QTY_MISMATCH',
+      message: `Expected qty ${expected.quantity}, scanned ${parsed.quantity}`,
+    };
+  }
+
+  return { ok: true };
+}

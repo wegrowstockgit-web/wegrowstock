@@ -78,6 +78,11 @@ public class SalesOrderService {
         String after = totalAllocated.signum() <= 0 ? "BACKORDERED" : "ALLOCATED";
         order.setStatus(after);
         order = salesOrderRepository.save(order);
+        if ("ALLOCATED".equals(after)) {
+            outboxService.append("SALES_ORDER", order.getId(), "ORDER_ALLOCATED", Map.of(
+                    "orderId", order.getId(),
+                    "qtyAllocated", totalAllocated));
+        }
         auditService.record("SALES_ORDER_ALLOCATE", "SALES_ORDER", order.getId(), Map.of(
                 "status", Map.of("before", before, "after", order.getStatus()),
                 "qtyOrdered", totalOrdered,

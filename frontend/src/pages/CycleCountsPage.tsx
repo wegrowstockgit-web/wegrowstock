@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/Table';
 import { CycleCountScanner } from '@/features/fulfillment/CycleCountScanner';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useDashboardStream } from '@/hooks/useDashboardStream';
 import { useSessionStore } from '@/stores/session';
 
 function money(value: number | string): string {
@@ -179,7 +180,6 @@ export function CycleCountsPage() {
       const res = await apiClient.get<PriorityAudit[]>('/api/v1/cycle-counts/priority-audits');
       return res.data;
     },
-    refetchInterval: 30_000,
     retry: false,
   });
 
@@ -190,9 +190,10 @@ export function CycleCountsPage() {
       return res.data;
     },
     enabled: canReview,
-    refetchInterval: 15_000,
     retry: false,
   });
+
+  useDashboardStream(true);
 
   const approve = useMutation({
     mutationFn: async (lineId: string) => {

@@ -14,12 +14,12 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
- * Enriches every request log line with {@code request_id} (and hosts tenant/user once JWT runs).
- * Clears MDC in {@code finally} to prevent virtual-thread / pool leakage.
- * {@code tenant_id} / {@code user_id} are populated by {@code JwtAuthFilter} after authentication.
+ * Request-id MDC enrichment. Tenant ThreadLocal cleanup is owned by
+ * {@link com.invsys.tenancy.TenantIsolationFilter} (outer absolute guard) and
+ * {@link com.invsys.auth.JwtAuthFilter} (auth-path guard).
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class MdcLoggingFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Request-Id";

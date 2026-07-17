@@ -26,12 +26,26 @@ class CartonizationEngineTest {
                 List.of(item("6", "4", "3", "0.75", "10")),
                 cartons);
 
-        // 10×(6×4×3)×1.1 ≈ 792 in³ → Medium (1120) beats Small (192)
-        assertThat(result.carton().getName()).isEqualTo("Medium Corrugated");
+        // 10×(6×4×3)=720 in³ fits Medium by volume, but axis-aligned FFD needs Large
+        // (14×10×8 packs ≤8 of that SKU without guillotine splitting).
+        assertThat(result.carton().getName()).isEqualTo("Large Corrugated");
+        assertThat(result.packing()).hasSize(10);
         assertThat(result.actualWeightLb()).isGreaterThan(BigDecimal.ZERO);
         assertThat(result.volumetricWeightLb()).isGreaterThan(BigDecimal.ZERO);
         assertThat(result.billableWeightLb())
                 .isEqualByComparingTo(result.actualWeightLb().max(result.volumetricWeightLb()));
+    }
+
+    @Test
+    void firstFitDecreasingPlacesSingleUnitAtOrigin() {
+        List<ShippingCarton> cartons = List.of(carton("Medium Corrugated", "14", "10", "8", "30"));
+        CartonizationEngine.CartonizationResult result = engine.selectCarton(
+                List.of(item("6", "4", "3", "0.75", "1")),
+                cartons);
+        assertThat(result.packing()).hasSize(1);
+        assertThat(result.packing().getFirst().xIn()).isEqualByComparingTo("0");
+        assertThat(result.packing().getFirst().yIn()).isEqualByComparingTo("0");
+        assertThat(result.packing().getFirst().zIn()).isEqualByComparingTo("0");
     }
 
     @Test

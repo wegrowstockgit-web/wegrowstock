@@ -328,6 +328,8 @@ Entities live in `com.invsys.domain`. Most extend `TenantScopedEntity` (`id`, ti
 | `InventoryLevel` | Current on-hand / allocated by location (+ lot) |
 | `InventoryLedger` | Immutable movement history (`RECEIVE`, `ADJUST`, `SHIP`, …) |
 | `Lot` / `SerialNumber` | Traceability |
+| `LicensePlate` | LPN pallet / tote (`OPEN` → `DISPATCHED`) |
+| `WalkableEdge` | Digital Twin travel graph edge |
 | `Allocation` | Promise against SO line (`ACTIVE`, `CROSS_DOCK_ROUTED`, …) |
 | `CycleCount` / `CycleCountLine` | Cycle count audits |
 | `IdempotencyKey` | Replay-safe mutation responses |
@@ -340,8 +342,8 @@ Entities live in `com.invsys.domain`. Most extend `TenantScopedEntity` (`id`, ti
 | `Supplier` / `PurchaseOrder` / `PurchaseOrderLine` | Procurement |
 | `Customer` / credit / price / catalog restriction | Selling |
 | `SalesOrder` / `SalesOrderLine` | Outbound demand (`DRAFT`→`CONFIRMED`→`BACKORDERED`/`ALLOCATED`→ship) |
-| `PickingWave` / `PickingBatch` / `PickingTask` | Wave picking |
-| `Shipment` / `ShipmentLine` | Ship / pack-label |
+| `PickingWave` / `PickingBatch` / `PickingTask` | Wave picking (`toteIdentifier` for MIB) |
+| `Shipment` / `ShipmentLine` | Ship / pack-label / ship-by-LPN |
 | `ReturnOrder` / `ReturnLine` | RMA + disposition |
 
 #### Manufacturing
@@ -416,7 +418,9 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 | `AuthService` | Credential login, refresh rotation, warehouse PIN, terminal switch |
 | `AuthCookieService` | HttpOnly cookie write/clear |
 | `JwtService` | RS256 issue/validate |
-| `JwtAuthFilter` | Request → SecurityContext + TenantContext |
+| `TenantIsolationFilter` | Outermost absolute `try/finally` → `TenantContext.clear()` (worker-pool isolation) |
+| `JwtAuthFilter` | Bind tenant/user from RS256 JWT; `filterChain.doFilter` always in `try/finally` with `TenantContext.clear()` |
+| `MdcLoggingFilter` | Request-id MDC enrichment (clears MDC in `finally`) |
 | `SecurityConfig` | Filter chain, permitAll public routes |
 | `JwksController` | `/.well-known/jwks.json` |
 | `MagicLoginService` | Magic-link tokens |
@@ -440,13 +444,17 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 
 | Service | Responsibility |
 |---------|----------------|
-| `InventoryService` | Receive / adjust / transfer / ship / quarantine / reverse; lot+serial; outbox stock events |
+| `InventoryService` | Receive / adjust / transfer / ship / quarantine / reverse; LPN consolidate/move/ship-level; lot+serial; outbox stock events |
+| `LpnService` | Mint LPN + ZPL; pack levels/barcodes onto LPN; ship LPN contents; contents query |
 | `PurchaseOrderService` | Submit; receive lines; **cross-dock intercept**; landed-cost multi-receive |
 | `SalesOrderService` | Confirm; allocate → `ALLOCATED` or **`BACKORDERED`**; cancel + audit |
 | `AllocationService` | Reserve stock; kit explode; claim/consume/release for pick |
 | `CrossDockService` | Match inbound to open SO demand; staging location; fulfill backorders |
-| `PickingWaveService` / `PickingService` | Wave generate/optimize/release/claim; path optimization |
-| `ShipmentService` | Create shipment; consume allocations; EasyPost labels |
+| `PickingWaveService` / `PickingService` | Wave generate/optimize/release/claim; **hierarchical location-path** pick sort; A* wayfinding polylines |
+| `DashboardKpiService` / `DashboardSseHub` | CQRS KPI snapshot + SSE fan-out from `OutboxDispatchedEvent` |
+| `TaskInterleavingService` | Closest next floor task (pick / count / putaway LPN) after a commit |
+| `SpatialMapService` | Coordinate PATCH, 7-day ledger heatmap, walkable-edge CRUD |
+| `ShipmentService` | Create shipment; consume allocations; EasyPost labels; optional `lpnBarcode` bulk ship |
 | `ReturnService` | RMA lifecycle + quarantine |
 | `ManufacturingService` / `ManufacturingLaborService` | BOM, production allocate/assemble, labor |
 | `KitService` / `SoftKitExplosionService` | Hard kits vs soft kits |
@@ -645,8 +653,12 @@ Picker / Manager
        │ InventoryService.receive (reason PO_RECEIVE)
        │ refresh PO PARTIALLY_RECEIVED / RECEIVED
        ▼
- inventory_ledger RECEIVE  +  inventory_levels.on_hand ↑
+ inventory_ledger RECEIVE
+       → inventory_level_deltas (+on_hand)   [lock-free append]
+       → InventoryLevelFlushWorker (VT)      [batch upsert inventory_levels]
 ```
+
+Outbound shipping cartonization uses First-Fit Decreasing 3D packing (`CartonizationEngine`) and returns `packing[]` placements from `/shipments/cartonize-preview`. Floor packing uses `useDigitalScale` (Web Serial + Web Bluetooth); a stable scale reading auto-triggers pack-label. PWA `sw.js` applies **cache-first** to `/api/v1/media/*`. JDBC URLs set `prepareThreshold=0` for PgBouncer transaction pooling.
 
 ### 9.3 Sales order → allocate → wave → pick → ship
 
@@ -837,6 +849,16 @@ JPA: `ddl-auto: validate` (schema owned by Flyway).
 
 Staging bins (`Z-SHIP` / `S-01`) are seeded in `ops/demo_seed.sql` (not Flyway inserts — FORCE RLS blocks migrator inserts without BYPASSRLS).
 
+Recent warehouse pillar migrations (keep Flyway head current):
+
+| Version | Purpose |
+|---------|---------|
+| `V071` | Blind cycle-count settings + variance columns |
+| `V072` | `license_plates`, `lpn_id` on levels/ledger, `picking_tasks.tote_identifier` |
+| `V073` | LPN status `DISPATCHED` |
+| `V074` | `coord_x/y/z` on `locations`, `walkable_edges` + RLS |
+| `V075` | `dashboard_kpi_snapshots` CQRS read model for `/dashboard/stats` |
+
 ### 11.2 Seed
 
 ```
@@ -847,7 +869,7 @@ deploy.bat seed
 Demo login (slugless): `owner@demo.test` / `password123` (tenant inferred from email).  
 Extra tenants: `ops/demo_seed_tenants_extra.sql` (manual; not in `deploy.bat seed`).
 
-**Do not** manually insert `inventory_levels` in seed — levels are trigger-maintained from ledger.
+**Do not** manually insert `inventory_levels` in seed — `on_hand` is flushed from ledger deltas (`V076`); seed via ledger receives.
 
 ---
 
@@ -896,8 +918,26 @@ Playwright specs under `frontend/e2e/journeys/`. Helpers: `helpers.ts` (`context
 | 9 | `09-offline-conflict.spec.ts` | Offline violation → conflict |
 | 10–12 | `10-hardware-scanning.spec.ts` | HID / intent shim / haptics |
 | 13 | `13-cross-docking-orchestration.spec.ts` | Backorder → staging receive → ALLOCATED |
+| 19 | `19-blind-cycle-count.spec.ts` | Blind count + variance escalation |
+| 20 | `20-internal-lot-mint.spec.ts` | Internal lot mint + ZPL on receive |
+| 21 | `21-lpn-tote-interleave.spec.ts` | LPN mint/pack/move, MIB totes, next-best-action |
+| 22 | `22-pallet-builder.spec.ts` | Build Pallet mint → pack → ship-by-LPN |
+| 23 | `23-digital-twin-astar.spec.ts` | Coordinates, heatmap, A* wayfinding, mini-map |
+| 24 | `24-cqrs-sse-gs1-path.spec.ts` | CQRS stats, SSE stream, client GS1 reject, hierarchical path |
 
-Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + MinIO), clustered under `backend/src/test/java/com/invsys`.
+Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + MinIO), clustered under `backend/src/test/java/com/invsys`. High-signal coverage for this pillar:
+
+| Test | Covers |
+|------|--------|
+| `LpnMoveHttpTest` | Bulk LPN move + ledger lines |
+| `LpnPalletizationHttpTest` | Mint → pack → ship → `DISPATCHED` |
+| `TaskInterleavingHttpTest` | `GET /tasks/next-best-action` closest COUNT |
+| `PickingWaveToteHttpTest` | Wave `toteIdentifier` assignment |
+| `AStarPathfindingTest` | Wayfinding polyline over walkable graph |
+| `SpatialMapHttpTest` | Coordinate PATCH, heatmap, walkable edges |
+| `PathOptimizationHeuristicTest` | Hierarchical path sort |
+| `DashboardKpiCqrsHttpTest` | Snapshot read model for `/dashboard/stats` |
+| `DashboardStreamHttpTest` | SSE `/dashboard/stream` auth + subscribe |
 
 ---
 
@@ -1008,7 +1048,13 @@ ACTIVE → (picked/consumed) | CROSS_DOCK_ROUTED | released on cancel
 | `FulfillmentPage` scan | `POST /api/v1/fulfillment/scan` |
 | Cross-dock overlay | Scan response fields `crossDock`, `stagingPath`, `crossDockInstruction` |
 | Wave buttons | `/api/v1/picking/waves/*` |
-| Pack label | `/api/v1/shipments` pack-label |
+| LPN Move / Build Pallet | `/api/v1/inventory/lpns/mint`, `/pack`, `/move` |
+| Next interleaved task | `GET /api/v1/tasks/next-best-action` |
+| Wayfinding mini-map | `GET /api/v1/picking/wayfinding` |
+| Digital Twin map | `PATCH /locations/{id}/coordinates`, `GET /locations/heatmap` |
+| Dashboard CQRS stats | `GET /api/v1/dashboard/stats` → `dashboard_kpi_snapshots` |
+| Dashboard SSE | `GET /api/v1/dashboard/stream` (`text/event-stream`) |
+| Pack label | `/api/v1/shipments` pack-label (+ optional `lpnBarcode`) |
 | Skip & Flag | `/api/v1/fulfillment/exceptions/report` |
 | Office resolve | `/api/v1/office/exceptions/*` |
 | Offline conflicts | `/api/v1/offline-sync-conflicts` |

@@ -38,6 +38,7 @@ import type {
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
 import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
 import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
+import { useDashboardStream } from '@/hooks/useDashboardStream';
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
@@ -320,9 +321,11 @@ export function DashboardPage() {
       return all.filter((ex) => ex.resolutionStatus === 'OPEN');
     },
     enabled: canManageOrders,
-    refetchInterval: 5_000,
     retry: false,
   });
+
+  // Reactive invalidation via SSE (replaces refetchInterval polling).
+  useDashboardStream(true);
 
   const draftPoMutation = useMutation({
     mutationFn: async (variantIds: string[]) => {

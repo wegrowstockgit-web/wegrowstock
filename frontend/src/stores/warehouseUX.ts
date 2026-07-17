@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { apiClient } from '@/api/client';
+import type { NextBestAction } from '@/api/types';
 import { enqueueMutation, type QueuedMutation } from '@/offline/mutationQueue';
 
 export interface PendingMisScan {
@@ -21,6 +23,12 @@ interface WarehouseUXState {
   undoMisScan: () => void;
   commitMisScan: () => Promise<void>;
   clearMisScan: () => void;
+
+  /** Closest interleaved floor task after a successful pick / putaway. */
+  nextBestAction: NextBestAction | null;
+  nextBestActionLoading: boolean;
+  fetchNextBestAction: (currentLocationId: string) => Promise<NextBestAction | null>;
+  clearNextBestAction: () => void;
 }
 
 let commitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -34,6 +42,8 @@ function clearCommitTimer() {
 
 export const useWarehouseUXStore = create<WarehouseUXState>((set, get) => ({
   pendingMisScan: null,
+  nextBestAction: null,
+  nextBestActionLoading: false,
 
   bufferMisScan: ({ barcode, message, mutation, durationMs = 5000 }) => {
     clearCommitTimer();
@@ -68,4 +78,29 @@ export const useWarehouseUXStore = create<WarehouseUXState>((set, get) => ({
     clearCommitTimer();
     set({ pendingMisScan: null });
   },
+
+  fetchNextBestAction: async (currentLocationId: string) => {
+    if (!currentLocationId || !navigator.onLine) {
+      set({ nextBestAction: null, nextBestActionLoading: false });
+      return null;
+    }
+    set({ nextBestActionLoading: true });
+    try {
+      const res = await apiClient.get<NextBestAction>('/api/v1/tasks/next-best-action', {
+        params: { currentLocationId },
+      });
+      const action = res.data;
+      if (!action?.taskType) {
+        set({ nextBestAction: null, nextBestActionLoading: false });
+        return null;
+      }
+      set({ nextBestAction: action, nextBestActionLoading: false });
+      return action;
+    } catch {
+      set({ nextBestAction: null, nextBestActionLoading: false });
+      return null;
+    }
+  },
+
+  clearNextBestAction: () => set({ nextBestAction: null }),
 }));

@@ -4,24 +4,31 @@ import com.invsys.common.ApiException;
 import com.invsys.domain.Allocation;
 import com.invsys.domain.InventoryLedger;
 import com.invsys.domain.InventoryLevel;
+import com.invsys.domain.LicensePlate;
+import com.invsys.domain.Location;
 import com.invsys.domain.Lot;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.TenantSettings;
 import com.invsys.integration.OutboxService;
 import com.invsys.repository.AllocationRepository;
 import com.invsys.repository.InventoryLedgerRepository;
+import com.invsys.repository.InventoryLevelDeltaFlushRepository;
 import com.invsys.repository.InventoryLevelRepository;
+import com.invsys.repository.LicensePlateRepository;
+import com.invsys.repository.LocationRepository;
 import com.invsys.repository.LotRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SerialNumberRepository;
 import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.tenancy.TenantContext;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +48,10 @@ public class InventoryService {
     private final SerialNumberService serialNumberService;
     private final SerialNumberRepository serialNumberRepository;
     private final CycleCountService cycleCountService;
+    private final LicensePlateRepository licensePlateRepository;
+    private final LocationRepository locationRepository;
+    private final InventoryLevelDeltaFlushRepository deltaFlushRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public InventoryService(InventoryLedgerRepository ledgerRepository,
                             InventoryLevelRepository levelRepository,
@@ -52,7 +63,11 @@ public class InventoryService {
                             OutboxService outboxService,
                             SerialNumberService serialNumberService,
                             SerialNumberRepository serialNumberRepository,
-                            @org.springframework.context.annotation.Lazy CycleCountService cycleCountService) {
+                            @org.springframework.context.annotation.Lazy CycleCountService cycleCountService,
+                            LicensePlateRepository licensePlateRepository,
+                            LocationRepository locationRepository,
+                            InventoryLevelDeltaFlushRepository deltaFlushRepository,
+                            ApplicationEventPublisher eventPublisher) {
         this.ledgerRepository = ledgerRepository;
         this.levelRepository = levelRepository;
         this.settingsRepository = settingsRepository;
@@ -64,6 +79,10 @@ public class InventoryService {
         this.serialNumberService = serialNumberService;
         this.serialNumberRepository = serialNumberRepository;
         this.cycleCountService = cycleCountService;
+        this.licensePlateRepository = licensePlateRepository;
+        this.locationRepository = locationRepository;
+        this.deltaFlushRepository = deltaFlushRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -316,9 +335,176 @@ public class InventoryService {
     public UUID transfer(UUID variantId, UUID fromLocationId, UUID toLocationId, UUID lotId, BigDecimal quantity) {
         validateNegative(quantity.negate(), variantId, fromLocationId, lotId);
         UUID groupId = UUID.randomUUID();
-        appendMovement("TRANSFER_OUT", variantId, fromLocationId, lotId, quantity.negate(), null, null, null, groupId, null, null);
-        appendMovement("TRANSFER_IN", variantId, toLocationId, lotId, quantity.abs(), null, null, null, groupId, null, null);
+        appendMovement("TRANSFER_OUT", variantId, fromLocationId, lotId, null, quantity.negate(),
+                null, null, null, groupId, null, null, null);
+        appendMovement("TRANSFER_IN", variantId, toLocationId, lotId, null, quantity.abs(),
+                null, null, null, groupId, null, null, null);
         return groupId;
+    }
+
+    /**
+     * Resolve a scanned bin code or full location path to a location id.
+     */
+    @Transactional(readOnly = true)
+    public UUID resolveLocationId(String barcodeOrPath) {
+        UUID tenantId = TenantContext.requireTenantId();
+        String key = barcodeOrPath == null ? "" : barcodeOrPath.trim();
+        if (key.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "LOCATION_REQUIRED", "Location barcode required");
+        }
+        return locationRepository.findByTenantIdAndCode(tenantId, key)
+                .or(() -> locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+                        .filter(l -> key.equalsIgnoreCase(l.getPath())
+                                || key.equalsIgnoreCase(l.getCode())
+                                || (l.getPath() != null && l.getPath().toUpperCase().endsWith("/" + key.toUpperCase())))
+                        .findFirst())
+                .map(Location::getId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LOCATION_NOT_FOUND",
+                        "Location not found for barcode: " + key));
+    }
+
+    @Transactional
+    public LicensePlate createLicensePlate(String lpnBarcode, UUID locationId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        String barcode = lpnBarcode == null || lpnBarcode.isBlank()
+                ? "LPN-" + Long.toString(System.currentTimeMillis(), 36).toUpperCase()
+                : lpnBarcode.trim().toUpperCase();
+        if (licensePlateRepository.findByTenantIdAndLpnBarcode(tenantId, barcode).isPresent()) {
+            throw new ApiException(HttpStatus.CONFLICT, "LPN_EXISTS", "LPN barcode already exists");
+        }
+        Location location = locationRepository.findById(locationId)
+                .filter(l -> tenantId.equals(l.getTenantId()))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LOCATION_NOT_FOUND", "Location not found"));
+        LicensePlate lpn = new LicensePlate();
+        lpn.setTenantId(tenantId);
+        lpn.setLpnBarcode(barcode);
+        lpn.setLocationId(location.getId());
+        lpn.setStatus("OPEN");
+        return licensePlateRepository.save(lpn);
+    }
+
+    /**
+     * Receive stock onto an LPN (bulk pallet / tote) at the LPN's current location.
+     */
+    @Transactional
+    public InventoryLedger receiveOntoLpn(UUID variantId, UUID lpnId, BigDecimal quantity) {
+        UUID tenantId = TenantContext.requireTenantId();
+        LicensePlate lpn = licensePlateRepository.findByIdAndTenantId(lpnId, tenantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LPN_NOT_FOUND", "License plate not found"));
+        if (lpn.getLocationId() == null) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "LPN_NO_LOCATION",
+                    "License plate has no location");
+        }
+        serialNumberService.requireVariant(variantId);
+        return appendMovement("RECEIVE", variantId, lpn.getLocationId(), null, lpn.getId(),
+                quantity.abs(), "LPN_RECEIVE", null, null, null, null, null, null);
+    }
+
+    /**
+     * Consolidate stock from a source LPN (nullable = loose floor) onto a target LPN.
+     * Posts TRANSFER_OUT / TRANSFER_IN with reason {@code LPN_CONSOLIDATION}.
+     */
+    @Transactional
+    public void consolidateOntoLpn(UUID variantId,
+                                   UUID fromLocationId,
+                                   UUID toLocationId,
+                                   UUID lotId,
+                                   UUID sourceLpnId,
+                                   UUID targetLpnId,
+                                   BigDecimal quantity) {
+        BigDecimal qty = quantity.abs();
+        validateOnHand(qty.negate(), variantId, fromLocationId, lotId);
+        UUID groupId = UUID.randomUUID();
+        appendMovement("TRANSFER_OUT", variantId, fromLocationId, lotId, sourceLpnId,
+                qty.negate(), "LPN_CONSOLIDATION", "LICENSE_PLATE", targetLpnId, groupId, null, null, null);
+        appendMovement("TRANSFER_IN", variantId, toLocationId, lotId, targetLpnId,
+                qty, "LPN_CONSOLIDATION", "LICENSE_PLATE", targetLpnId, groupId, null, null, null);
+    }
+
+    /**
+     * Ship an LPN-scoped inventory level (bulk pallet outbound).
+     */
+    @Transactional
+    public InventoryLedger shipLpnLevel(InventoryLevel level, UUID salesOrderId, UUID shipmentId) {
+        BigDecimal qty = level.getOnHand().abs();
+        validateOnHand(qty.negate(), level.getVariantId(), level.getLocationId(), level.getLotId());
+        BigDecimal unitCost = costingService.snapshotShipCost(level.getVariantId());
+        InventoryLedger entry = appendMovement("SHIP", level.getVariantId(), level.getLocationId(),
+                level.getLotId(), level.getLpnId(), qty.negate(), "LPN_SHIP",
+                shipmentId != null ? "SHIPMENT" : "SALES_ORDER",
+                shipmentId != null ? shipmentId : salesOrderId,
+                null, unitCost, null, null);
+        emitIntegrationEvents(entry, level.getVariantId());
+        return entry;
+    }
+
+    /**
+     * Bulk-move every inventory level tied to an LPN to {@code destinationLocationId}
+     * in one transaction (TRANSFER_OUT / TRANSFER_IN per SKU line + LPN header update).
+     */
+    @Transactional
+    public MoveLpnResult moveLpn(UUID tenantId, String lpnBarcode, UUID destinationLocationId) {
+        UUID contextTenant = TenantContext.requireTenantId();
+        if (!contextTenant.equals(tenantId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "TENANT_MISMATCH", "Tenant mismatch");
+        }
+        String barcode = lpnBarcode == null ? "" : lpnBarcode.trim().toUpperCase();
+        LicensePlate lpn = licensePlateRepository.findByTenantIdAndLpnBarcode(tenantId, barcode)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LPN_NOT_FOUND", "License plate not found"));
+        Location destination = locationRepository.findById(destinationLocationId)
+                .filter(l -> tenantId.equals(l.getTenantId()))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LOCATION_NOT_FOUND", "Destination not found"));
+        if (destination.getId().equals(lpn.getLocationId())) {
+            return new MoveLpnResult(lpn.getId(), lpn.getLpnBarcode(), destination.getId(), 0, List.of());
+        }
+
+        List<InventoryLevel> levels = levelRepository.findByTenantIdAndLpnId(tenantId, lpn.getId()).stream()
+                .filter(l -> l.getOnHand() != null && l.getOnHand().signum() > 0)
+                .toList();
+        if (levels.isEmpty()) {
+            lpn.setLocationId(destination.getId());
+            lpn.setStatus("OPEN");
+            licensePlateRepository.save(lpn);
+            return new MoveLpnResult(lpn.getId(), lpn.getLpnBarcode(), destination.getId(), 0, List.of());
+        }
+
+        UUID groupId = UUID.randomUUID();
+        List<MovedLpnLine> moved = new ArrayList<>();
+        lpn.setStatus("IN_TRANSIT");
+        licensePlateRepository.save(lpn);
+
+        for (InventoryLevel level : levels) {
+            BigDecimal qty = level.getOnHand();
+            UUID fromLoc = level.getLocationId();
+            appendMovement("TRANSFER_OUT", level.getVariantId(), fromLoc, level.getLotId(), lpn.getId(),
+                    qty.negate(), "LPN_MOVE", "LICENSE_PLATE", lpn.getId(), groupId, null, null, null);
+            appendMovement("TRANSFER_IN", level.getVariantId(), destination.getId(), level.getLotId(), lpn.getId(),
+                    qty, "LPN_MOVE", "LICENSE_PLATE", lpn.getId(), groupId, null, null, null);
+            moved.add(new MovedLpnLine(level.getVariantId(), level.getLotId(), qty, fromLoc, destination.getId()));
+        }
+
+        lpn.setLocationId(destination.getId());
+        lpn.setStatus("OPEN");
+        licensePlateRepository.save(lpn);
+        return new MoveLpnResult(lpn.getId(), lpn.getLpnBarcode(), destination.getId(), moved.size(), moved);
+    }
+
+    public record MoveLpnResult(
+            UUID lpnId,
+            String lpnBarcode,
+            UUID destinationLocationId,
+            int linesMoved,
+            List<MovedLpnLine> lines
+    ) {
+    }
+
+    public record MovedLpnLine(
+            UUID variantId,
+            UUID lotId,
+            BigDecimal quantity,
+            UUID fromLocationId,
+            UUID toLocationId
+    ) {
     }
 
     /**
@@ -477,11 +663,19 @@ public class InventoryService {
     private InventoryLedger appendMovement(String type, UUID variantId, UUID locationId, UUID lotId,
                                            BigDecimal delta, String reasonCode, String refType, UUID refId,
                                            UUID transferGroupId, BigDecimal unitCost, UUID serialNumberId) {
-        return appendMovement(type, variantId, locationId, lotId, delta, reasonCode, refType, refId,
+        return appendMovement(type, variantId, locationId, lotId, null, delta, reasonCode, refType, refId,
                 transferGroupId, unitCost, serialNumberId, null);
     }
 
     private InventoryLedger appendMovement(String type, UUID variantId, UUID locationId, UUID lotId,
+                                           BigDecimal delta, String reasonCode, String refType, UUID refId,
+                                           UUID transferGroupId, BigDecimal unitCost, UUID serialNumberId,
+                                           Map<String, Object> metadata) {
+        return appendMovement(type, variantId, locationId, lotId, null, delta, reasonCode, refType, refId,
+                transferGroupId, unitCost, serialNumberId, metadata);
+    }
+
+    private InventoryLedger appendMovement(String type, UUID variantId, UUID locationId, UUID lotId, UUID lpnId,
                                            BigDecimal delta, String reasonCode, String refType, UUID refId,
                                            UUID transferGroupId, BigDecimal unitCost, UUID serialNumberId,
                                            Map<String, Object> metadata) {
@@ -490,6 +684,7 @@ public class InventoryService {
         entry.setVariantId(variantId);
         entry.setLocationId(locationId);
         entry.setLotId(lotId);
+        entry.setLpnId(lpnId);
         entry.setMovementType(type);
         entry.setQuantityDelta(delta);
         entry.setReasonCode(reasonCode);
@@ -501,6 +696,7 @@ public class InventoryService {
         entry.setMetadata(metadata != null ? metadata : Map.of());
         entry.setCreatedBy(TenantContext.getUserId().orElse(null));
         InventoryLedger saved = ledgerRepository.save(entry);
+        eventPublisher.publishEvent(new LedgerCommittedEvent(saved.getTenantId(), saved.getId()));
         if ("ADJUST".equals(type) || "TRANSFER_OUT".equals(type) || "TRANSFER_IN".equals(type) || "SHIP".equals(type)) {
             cycleCountService.evaluateLocationVelocity(locationId);
         }
@@ -574,12 +770,14 @@ public class InventoryService {
         if (allowNegative) {
             return;
         }
-        List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(TenantContext.requireTenantId(), variantId);
+        UUID tenantId = TenantContext.requireTenantId();
+        List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(tenantId, variantId);
         BigDecimal available = levels.stream()
                 .filter(l -> l.getLocationId().equals(locationId))
                 .filter(l -> (lotId == null && l.getLotId() == null) || (lotId != null && lotId.equals(l.getLotId())))
                 .map(InventoryLevel::getAvailable)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        available = available.add(deltaFlushRepository.sumPendingOnHand(tenantId, variantId, locationId, lotId));
         if (available.add(delta).compareTo(BigDecimal.ZERO) < 0) {
             throw new com.invsys.common.exception.InsufficientStockException("Insufficient available inventory");
         }
@@ -596,12 +794,15 @@ public class InventoryService {
         if (allowNegative) {
             return;
         }
-        List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(TenantContext.requireTenantId(), variantId);
+        UUID tenantId = TenantContext.requireTenantId();
+        List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(tenantId, variantId);
         BigDecimal onHand = levels.stream()
                 .filter(l -> l.getLocationId().equals(locationId))
                 .filter(l -> (lotId == null && l.getLotId() == null) || (lotId != null && lotId.equals(l.getLotId())))
                 .map(InventoryLevel::getOnHand)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Include unflushed async deltas so outbound checks stay correct under load.
+        onHand = onHand.add(deltaFlushRepository.sumPendingOnHand(tenantId, variantId, locationId, lotId));
         if (onHand.add(delta).compareTo(BigDecimal.ZERO) < 0) {
             throw new com.invsys.common.exception.InsufficientStockException("Insufficient stock");
         }

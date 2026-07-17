@@ -54,6 +54,37 @@ class PickingServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void hierarchicalPathSortOrdersWarehouseZoneAisleBay() {
+        UUID tenantId = testDataHelper.createTenant("Hier Path", "hier-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+
+        Location bay10 = saveLoc(tenantId, "WH-01/Z-A/A-2/B-10");
+        Location zoneB = saveLoc(tenantId, "WH-01/Z-B/A-1/B-01");
+        Location bay01 = saveLoc(tenantId, "WH-01/Z-A/A-2/B-01");
+        Location aisle1 = saveLoc(tenantId, "WH-01/Z-A/A-1/B-01");
+
+        Map<UUID, String> paths = Map.of(
+                bay10.getId(), bay10.getPath(),
+                zoneB.getId(), zoneB.getPath(),
+                bay01.getId(), bay01.getPath(),
+                aisle1.getId(), aisle1.getPath());
+
+        var route = pickingService.optimizePickSequence(
+                List.of(alloc(bay10.getId()), alloc(zoneB.getId()), alloc(bay01.getId()), alloc(aisle1.getId())),
+                paths);
+
+        assertThat(route).extracting(Allocation::getLocationId).containsExactly(
+                aisle1.getId(), bay01.getId(), bay10.getId(), zoneB.getId());
+    }
+
+    @Test
+    void locationPathKeyParsesNumericBayOrdering() {
+        var a = PickingService.LocationPathKey.parse("WH-01/Z-A/A-1/B-2");
+        var b = PickingService.LocationPathKey.parse("WH-01/Z-A/A-1/B-10");
+        assertThat(a.compareTo(b)).isLessThan(0);
+    }
+
+    @Test
     void buildStopsIncludesZoneAndSequence() {
         UUID tenantId = testDataHelper.createTenant("Pick Stop", "pickstp-" + UUID.randomUUID().toString().substring(0, 8));
         TenantContext.setTenantId(tenantId);

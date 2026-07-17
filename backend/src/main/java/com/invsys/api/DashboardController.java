@@ -14,7 +14,7 @@ import com.invsys.repository.InventoryLevelRepository;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderRepository;
-import com.invsys.repository.TenantSettingsRepository;
+import com.invsys.service.DashboardKpiService;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,84 +41,33 @@ public class DashboardController {
     private final ProductVariantRepository variantRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final InvoiceRepository invoiceRepository;
-    private final TenantSettingsRepository tenantSettingsRepository;
     private final CustomerRepository customerRepository;
     private final ProductRepository productRepository;
     private final DemandForecastRepository forecastRepository;
+    private final DashboardKpiService dashboardKpiService;
 
     public DashboardController(InventoryLevelRepository levelRepository,
                                ProductVariantRepository variantRepository,
                                SalesOrderRepository salesOrderRepository,
                                InvoiceRepository invoiceRepository,
-                               TenantSettingsRepository tenantSettingsRepository,
                                CustomerRepository customerRepository,
                                ProductRepository productRepository,
-                               DemandForecastRepository forecastRepository) {
+                               DemandForecastRepository forecastRepository,
+                               DashboardKpiService dashboardKpiService) {
         this.levelRepository = levelRepository;
         this.variantRepository = variantRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.invoiceRepository = invoiceRepository;
-        this.tenantSettingsRepository = tenantSettingsRepository;
         this.customerRepository = customerRepository;
         this.productRepository = productRepository;
         this.forecastRepository = forecastRepository;
+        this.dashboardKpiService = dashboardKpiService;
     }
 
     @GetMapping("/stats")
     public DashboardStatsResponse stats() {
-        TenantContext.requireTenantId();
-
-        List<String> openStatuses = List.of("CONFIRMED", "ALLOCATED", "PARTIALLY_SHIPPED");
-        List<String> unpaidStatuses = List.of("OPEN", "PARTIALLY_PAID");
-
-        long openOrdersCount = salesOrderRepository.findAll().stream()
-                .filter(order -> openStatuses.contains(order.getStatus()))
-                .count();
-        long unpaidInvoicesCount = invoiceRepository.findAll().stream()
-                .filter(invoice -> unpaidStatuses.contains(invoice.getStatus()))
-                .count();
-
-        List<InventoryLevel> levels = levelRepository.findAll();
-        List<ProductVariant> variants = variantRepository.findAll();
-
-        Map<UUID, BigDecimal> onHandByVariant = levels.stream()
-                .collect(Collectors.groupingBy(
-                        InventoryLevel::getVariantId,
-                        Collectors.mapping(InventoryLevel::getOnHand,
-                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))));
-
-        Map<UUID, BigDecimal> availableByVariant = levels.stream()
-                .collect(Collectors.groupingBy(
-                        InventoryLevel::getVariantId,
-                        Collectors.mapping(InventoryLevel::getAvailable,
-                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))));
-
-        BigDecimal stockValue = variants.stream()
-                .map(variant -> onHandByVariant
-                        .getOrDefault(variant.getId(), BigDecimal.ZERO)
-                        .multiply(variant.getPrice()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        long lowStockCount = variants.stream()
-                .filter(variant -> availableByVariant
-                        .getOrDefault(variant.getId(), BigDecimal.ZERO)
-                        .compareTo(variant.getReorderPoint()) < 0)
-                .count();
-
-        String currency = tenantSettingsRepository.findAll().stream()
-                .findFirst()
-                .map(settings -> settings.getSettings().get("currency"))
-                .filter(String.class::isInstance)
-                .map(String.class::cast)
-                .orElse("USD");
-
-        return new DashboardStatsResponse(
-                stockValue,
-                currency,
-                lowStockCount,
-                openOrdersCount,
-                unpaidInvoicesCount
-        );
+        // CQRS: exclusive read from dashboard_kpi_snapshots (lazy-warmed on miss).
+        return dashboardKpiService.readStats();
     }
 
     @GetMapping("/recent-orders")

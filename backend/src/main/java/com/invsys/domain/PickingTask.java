@@ -25,6 +25,9 @@ public class PickingTask extends TenantScopedEntity {
     @Column(nullable = false)
     private String status = "PENDING";
 
+    @Column(name = "tote_identifier", length = 20)
+    private String toteIdentifier;
+
     public UUID getBatchId() {
         return batchId;
     }
@@ -63,5 +66,13 @@ public class PickingTask extends TenantScopedEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getToteIdentifier() {
+        return toteIdentifier;
+    }
+
+    public void setToteIdentifier(String toteIdentifier) {
+        this.toteIdentifier = toteIdentifier;
     }
 }

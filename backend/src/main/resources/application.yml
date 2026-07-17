@@ -9,10 +9,14 @@ spring:
       max-file-size: 15MB
       max-request-size: 16MB
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:invsys}
+    # prepareThreshold=0: inline binds (safe for PgBouncer transaction pooling and direct Postgres).
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:invsys}?prepareThreshold=0
     username: ${DB_USER:app_user}
     password: ${DB_PASSWORD:app_user_secret}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # Fail-closed RLS wipe whenever Hikari validates/creates a physical connection.
+      connection-init-sql: "SELECT set_config('app.current_tenant', '', false)"
   flyway:
     enabled: true
     user: ${FLYWAY_USER:app_owner}
@@ -113,6 +117,11 @@ invsys:
     debounce-minutes: ${ALERT_DEBOUNCE_MINUTES:60}
   observability:
     alert-scan-interval-ms: ${ALERT_SCAN_INTERVAL_MS:300000}
+  inventory:
+    level-flush:
+      enabled: true
+      batch-size: 200
+      poll-interval-ms: 100
   integration:
     master-key: ${INTEGRATION_MASTER_KEY:}
     outbox:

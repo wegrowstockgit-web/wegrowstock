@@ -6,6 +6,7 @@ import type { TenantLocation } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
+import { DigitalTwinMap } from '@/features/settings/DigitalTwinMap';
 
 const HIERARCHY = ['WAREHOUSE', 'ZONE', 'AISLE', 'BIN'] as const;
 type LocationType = (typeof HIERARCHY)[number] | string;
@@ -239,6 +240,8 @@ export function WarehouseVisualizer({ locations, onAddWarehouse }: WarehouseVisu
           Add warehouse
         </Button>
       </div>
+
+      {locations.length > 0 && <DigitalTwinMap locations={locations} />}
 
       {warehouses.length === 0 ? (
         <button

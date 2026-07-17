@@ -13,6 +13,8 @@ public interface InventoryLevelRepository extends JpaRepository<InventoryLevel, 
 
     List<InventoryLevel> findByTenantIdAndLocationId(UUID tenantId, UUID locationId);
 
+    List<InventoryLevel> findByTenantIdAndLpnId(UUID tenantId, UUID lpnId);
+
     @Query(value = """
             SELECT il.* FROM inventory_levels il
             WHERE il.tenant_id = :tenantId

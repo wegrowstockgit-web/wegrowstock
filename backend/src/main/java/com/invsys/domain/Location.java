@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -31,6 +32,15 @@ public class Location extends TenantScopedEntity {
     /** STANDARD | PICK_FACE | RESERVE | RECEIVING */
     @Column(name = "zone_behavior", nullable = false)
     private String zoneBehavior = "STANDARD";
+
+    @Column(name = "coord_x", precision = 19, scale = 4)
+    private BigDecimal coordX;
+
+    @Column(name = "coord_y", precision = 19, scale = 4)
+    private BigDecimal coordY;
+
+    @Column(name = "coord_z", precision = 19, scale = 4)
+    private BigDecimal coordZ;
 
     public UUID getParentLocationId() {
         return parentLocationId;
@@ -86,5 +96,29 @@ public class Location extends TenantScopedEntity {
 
     public void setZoneBehavior(String zoneBehavior) {
         this.zoneBehavior = zoneBehavior;
+    }
+
+    public BigDecimal getCoordX() {
+        return coordX;
+    }
+
+    public void setCoordX(BigDecimal coordX) {
+        this.coordX = coordX;
+    }
+
+    public BigDecimal getCoordY() {
+        return coordY;
+    }
+
+    public void setCoordY(BigDecimal coordY) {
+        this.coordY = coordY;
+    }
+
+    public BigDecimal getCoordZ() {
+        return coordZ;
+    }
+
+    public void setCoordZ(BigDecimal coordZ) {
+        this.coordZ = coordZ;
     }
 }

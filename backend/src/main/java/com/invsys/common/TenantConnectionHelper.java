@@ -3,6 +3,7 @@ package com.invsys.common;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.UUID;
 
 public final class TenantConnectionHelper {
@@ -24,14 +25,21 @@ public final class TenantConnectionHelper {
     }
 
     /**
-     * Resets {@code app.current_tenant} to the empty string (session-level wipe) before a
-     * connection returns to the pool. RLS policies treat empty as "no tenant" (fail closed).
+     * Fail-closed wipe before a connection returns to the pool:
+     * <ul>
+     *   <li>clear {@code app.current_tenant} (session-level)</li>
+     *   <li>{@code DEALLOCATE ALL} so prepared plans cannot ride the pooled backend</li>
+     * </ul>
+     * Complements PgBouncer {@code server_reset_query = DISCARD ALL}.
      */
     public static void clearTenant(Connection connection) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT set_config('app.current_tenant', ?, false)")) {
             ps.setString(1, "");
             ps.execute();
+        }
+        try (Statement st = connection.createStatement()) {
+            st.execute("DEALLOCATE ALL");
         }
     }
 }

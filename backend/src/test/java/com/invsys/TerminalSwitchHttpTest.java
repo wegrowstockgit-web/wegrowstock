@@ -113,6 +113,10 @@ class TerminalSwitchHttpTest extends AbstractIntegrationTest {
         String access = result.getResponse().getCookie(AuthCookieService.ACCESS_COOKIE).getValue();
         JWTClaimsSet claims = jwtService.validateAndParse(access);
         assertThat(claims.getClaim("token_type")).isEqualTo("TERMINAL_SWITCH");
+        assertThat(claims.getStringClaim("tenant_id")).isEqualTo(tenantId.toString());
+        assertThat(claims.getStringClaim("bind_tenant_id")).isEqualTo(tenantId.toString());
+        long ttlSeconds = (claims.getExpirationTime().getTime() - claims.getIssueTime().getTime()) / 1000L;
+        assertThat(ttlSeconds).isEqualTo(300L);
         @SuppressWarnings("unchecked")
         List<String> warehouses = (List<String>) claims.getClaim("warehouse_ids");
         assertThat(warehouses).containsExactly(wh01.getId().toString());

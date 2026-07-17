@@ -252,23 +252,39 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN", "Invalid terminal PIN");
         }
 
+        // Hard multi-tenant boundary: PIN lookup is tenant-scoped; refuse any hop.
+        if (!tenantId.equals(target.getTenantId())) {
+            terminalPinBruteForceGuard.recordFailure(tenantId, switchedFrom);
+            throw new ApiException(HttpStatus.FORBIDDEN, "TENANT_MISMATCH",
+                    "Terminal switch target is outside the active tenant");
+        }
+
         terminalPinBruteForceGuard.recordSuccess(tenantId, switchedFrom);
         List<String> roles = userRoleRepository.findRoleCodesByUserId(target.getId());
         List<UUID> warehouseIds = resolveWarehouseIds(tenantId, target.getId(), roles);
-        return buildTerminalSwitchResponse(target, roles, warehouseIds, switchedFrom);
+        return buildTerminalSwitchResponse(tenantId, target, roles, warehouseIds, switchedFrom);
     }
 
-    public String issueTerminalAccessToken(User user, List<String> roles, List<UUID> warehouseIds) {
-        return jwtService.generateTerminalSwitchToken(user.getId(), user.getTenantId(), roles, warehouseIds);
+    public String issueTerminalAccessToken(UUID sessionTenantId, User user, List<String> roles, List<UUID> warehouseIds) {
+        if (sessionTenantId == null || user == null || !sessionTenantId.equals(user.getTenantId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "TENANT_MISMATCH",
+                    "Terminal switch target is outside the active tenant");
+        }
+        return jwtService.generateTerminalSwitchToken(user.getId(), sessionTenantId, roles, warehouseIds);
     }
 
-    TerminalSwitchResponse buildTerminalSwitchResponse(User target,
+    TerminalSwitchResponse buildTerminalSwitchResponse(UUID sessionTenantId,
+                                                       User target,
                                                        List<String> roles,
                                                        List<UUID> warehouseIds,
                                                        UUID switchedFrom) {
+        if (!sessionTenantId.equals(target.getTenantId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "TENANT_MISMATCH",
+                    "Terminal switch target is outside the active tenant");
+        }
         int ttlMinutes = jwtProperties.getTerminalSwitchTokenMinutes();
         String access = jwtService.generateTerminalSwitchToken(
-                target.getId(), target.getTenantId(), roles, warehouseIds);
+                target.getId(), sessionTenantId, roles, warehouseIds);
         return new TerminalSwitchResponse(
                 access,
                 target.getTenantId(),

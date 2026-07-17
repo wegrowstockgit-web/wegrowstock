@@ -8,9 +8,10 @@ spring:
     hikari:
       maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:15}
       minimum-idle: ${HIKARI_MIN_IDLE:2}
+      connection-init-sql: "SELECT set_config('app.current_tenant', '', false)"
   flyway:
     # Prefer a direct Postgres endpoint for migrations when available.
-    url: jdbc:postgresql://${FLYWAY_HOST:${DB_HOST:pgbouncer}}:${FLYWAY_PORT:5432}/${DB_NAME:invsys}
+    url: jdbc:postgresql://${FLYWAY_HOST:${DB_HOST:pgbouncer}}:${FLYWAY_PORT:5432}/${DB_NAME:invsys}?prepareThreshold=0
 
 management:
   endpoints:

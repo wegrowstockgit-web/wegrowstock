@@ -38,10 +38,10 @@ public abstract class AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void configure(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.url", () -> withPrepareThreshold(POSTGRES.getJdbcUrl()));
         registry.add("spring.datasource.username", () -> "app_user");
         registry.add("spring.datasource.password", () -> "app_user_secret");
-        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.url", () -> withPrepareThreshold(POSTGRES.getJdbcUrl()));
         registry.add("spring.flyway.user", () -> "app_owner");
         registry.add("spring.flyway.password", () -> "app_owner_secret");
 
@@ -53,5 +53,14 @@ public abstract class AbstractIntegrationTest {
         registry.add("invsys.media.region", () -> "us-east-1");
         registry.add("invsys.media.path-style-access", () -> "true");
         registry.add("invsys.media.create-bucket-if-missing", () -> "true");
+    }
+
+    private static String withPrepareThreshold(String jdbcUrl) {
+        if (jdbcUrl == null || jdbcUrl.contains("prepareThreshold=")) {
+            return jdbcUrl;
+        }
+        return jdbcUrl.contains("?")
+                ? jdbcUrl + "&prepareThreshold=0"
+                : jdbcUrl + "?prepareThreshold=0";
     }
 }

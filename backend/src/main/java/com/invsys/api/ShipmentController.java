@@ -46,11 +46,13 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
     public Shipment create(@Valid @RequestBody CreateShipmentRequest request) {
-        List<ShipmentService.ShipLineRequest> lines = request.lines().stream()
-                .map(l -> new ShipmentService.ShipLineRequest(l.salesOrderLineId(), l.quantity()))
-                .toList();
+        List<ShipmentService.ShipLineRequest> lines = request.lines() == null
+                ? List.of()
+                : request.lines().stream()
+                        .map(l -> new ShipmentService.ShipLineRequest(l.salesOrderLineId(), l.quantity()))
+                        .toList();
         return shipmentService.createShipment(request.salesOrderId(), request.carrier(),
-                request.trackingNumber(), lines);
+                request.trackingNumber(), lines, request.lpnBarcode());
     }
 
     @PostMapping("/pack-label")
@@ -71,11 +73,24 @@ public class ShipmentController {
             @NotNull UUID salesOrderId,
             String carrier,
             String trackingNumber,
-            List<ShipLineRequest> lines
+            List<ShipLineRequest> lines,
+            /** When set, ships all inventory_levels on the LPN and marks it DISPATCHED. */
+            String lpnBarcode
     ) {
     }
 
     public record ShipLineRequest(@NotNull UUID salesOrderLineId, @NotNull BigDecimal quantity) {
+    }
+
+    public record PackPlacementResponse(
+            UUID variantId,
+            BigDecimal xIn,
+            BigDecimal yIn,
+            BigDecimal zIn,
+            BigDecimal lengthIn,
+            BigDecimal widthIn,
+            BigDecimal heightIn
+    ) {
     }
 
     public record CartonPreviewResponse(
@@ -87,9 +102,17 @@ public class ShipmentController {
             BigDecimal actualWeightLb,
             BigDecimal volumetricWeightLb,
             BigDecimal billableWeightLb,
-            BigDecimal totalVolumeCuIn
+            BigDecimal totalVolumeCuIn,
+            List<PackPlacementResponse> packing
     ) {
         static CartonPreviewResponse from(CartonizationEngine.CartonizationResult result) {
+            List<PackPlacementResponse> packing = result.packing() == null
+                    ? List.of()
+                    : result.packing().stream()
+                            .map(p -> new PackPlacementResponse(
+                                    p.variantId(), p.xIn(), p.yIn(), p.zIn(),
+                                    p.lengthIn(), p.widthIn(), p.heightIn()))
+                            .toList();
             return new CartonPreviewResponse(
                     result.carton().getId(),
                     result.carton().getName(),
@@ -99,7 +122,8 @@ public class ShipmentController {
                     result.actualWeightLb(),
                     result.volumetricWeightLb(),
                     result.billableWeightLb(),
-                    result.totalVolumeCuIn());
+                    result.totalVolumeCuIn(),
+                    packing);
         }
     }
 }

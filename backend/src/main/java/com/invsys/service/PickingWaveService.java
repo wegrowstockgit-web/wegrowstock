@@ -6,11 +6,13 @@ import com.invsys.domain.Location;
 import com.invsys.domain.PickingBatch;
 import com.invsys.domain.PickingTask;
 import com.invsys.domain.PickingWave;
+import com.invsys.domain.SalesOrderLine;
 import com.invsys.repository.AllocationRepository;
 import com.invsys.repository.LocationRepository;
 import com.invsys.repository.PickingBatchRepository;
 import com.invsys.repository.PickingTaskRepository;
 import com.invsys.repository.PickingWaveRepository;
+import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.tenancy.TenantContext;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -39,6 +41,7 @@ public class PickingWaveService {
     private final PickingService pickingService;
     private final CrossDockService crossDockService;
     private final AllocationService allocationService;
+    private final SalesOrderLineRepository salesOrderLineRepository;
     private final DSLContext dsl;
 
     public PickingWaveService(PickingWaveRepository waveRepository,
@@ -49,6 +52,7 @@ public class PickingWaveService {
                               PickingService pickingService,
                               CrossDockService crossDockService,
                               AllocationService allocationService,
+                              SalesOrderLineRepository salesOrderLineRepository,
                               DSLContext dsl) {
         this.waveRepository = waveRepository;
         this.batchRepository = batchRepository;
@@ -58,6 +62,7 @@ public class PickingWaveService {
         this.pickingService = pickingService;
         this.crossDockService = crossDockService;
         this.allocationService = allocationService;
+        this.salesOrderLineRepository = salesOrderLineRepository;
         this.dsl = dsl;
     }
 
@@ -115,6 +120,7 @@ public class PickingWaveService {
             task.setStatus("PENDING");
             tasks.add(taskRepository.save(task));
         }
+        assignToteIdentifiers(tasks);
 
         return new WaveResult(wave, batch, tasks);
     }
@@ -292,21 +298,9 @@ public class PickingWaveService {
         List<Allocation> grouped = new ArrayList<>();
         byVariant.values().forEach(grouped::addAll);
 
+        // A* nearest-neighbor route — do not re-sort by path (would discard the spatial optimum).
         List<Allocation> optimizedRoute = pickingService.optimizePickSequence(
                 grouped, locationPaths, sequenceIndexes);
-
-        // Stable secondary sort by path segments for deterministic Surface B manifests.
-        optimizedRoute = optimizedRoute.stream()
-                .sorted((a, b) -> {
-                    String pa = locationPaths.getOrDefault(a.getLocationId(), "");
-                    String pb = locationPaths.getOrDefault(b.getLocationId(), "");
-                    int pathCmp = pa.compareToIgnoreCase(pb);
-                    if (pathCmp != 0) {
-                        return pathCmp;
-                    }
-                    return a.getVariantId().compareTo(b.getVariantId());
-                })
-                .toList();
 
         PickingWave wave = new PickingWave();
         wave.setTenantId(tenantId);
@@ -346,8 +340,34 @@ public class PickingWaveService {
                     pathSegments(path)));
             seq++;
         }
+        assignToteIdentifiers(tasks);
 
         return new OptimizeResult(wave.getId(), batch.getId(), wave.getStatus(), manifest, tasks);
+    }
+
+    /**
+     * MIB tote routing: one tote letter per distinct sales order in the wave.
+     */
+    private void assignToteIdentifiers(List<PickingTask> tasks) {
+        Map<UUID, String> soToTote = new LinkedHashMap<>();
+        for (PickingTask task : tasks) {
+            Allocation allocation = allocationRepository.findById(task.getAllocationId()).orElse(null);
+            UUID salesOrderId = null;
+            if (allocation != null && allocation.getSalesOrderLineId() != null) {
+                salesOrderId = salesOrderLineRepository.findById(allocation.getSalesOrderLineId())
+                        .map(SalesOrderLine::getSalesOrderId)
+                        .orElse(null);
+            }
+            String tote;
+            if (salesOrderId == null) {
+                tote = "Tote ?";
+            } else {
+                tote = soToTote.computeIfAbsent(salesOrderId,
+                        id -> "Tote " + (char) ('A' + Math.min(soToTote.size(), 25)));
+            }
+            task.setToteIdentifier(tote);
+            taskRepository.save(task);
+        }
     }
 
     private static List<String> pathSegments(String path) {

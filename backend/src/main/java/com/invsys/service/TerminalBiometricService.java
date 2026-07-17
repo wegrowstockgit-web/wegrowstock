@@ -134,7 +134,10 @@ public class TerminalBiometricService {
         credentialRepository.save(cred);
 
         User target = userRepository.findById(cred.getUserId()).orElse(null);
-        if (target == null || !"ACTIVE".equals(target.getStatus())) {
+        // Same-tenant only — refuse credential→user edges that cross tenant boundaries.
+        if (target == null
+                || !tenantId.equals(target.getTenantId())
+                || !"ACTIVE".equals(target.getStatus())) {
             terminalPinBruteForceGuard.recordFailure(tenantId, switchedFrom);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_ASSERTION",
                     "Biometric assertion failed");
@@ -143,7 +146,7 @@ public class TerminalBiometricService {
         terminalPinBruteForceGuard.recordSuccess(tenantId, switchedFrom);
         List<String> roles = userRoleRepository.findRoleCodesByUserId(target.getId());
         List<UUID> warehouseIds = authService.resolveWarehouseIds(tenantId, target.getId(), roles);
-        String access = authService.issueTerminalAccessToken(target, roles, warehouseIds);
+        String access = authService.issueTerminalAccessToken(tenantId, target, roles, warehouseIds);
         int ttl = jwtProperties.getTerminalSwitchTokenMinutes() * 60;
         return new TerminalSwitchResponse(
                 access, tenantId, target.getId(), roles, warehouseIds, ttl, "TERMINAL_SWITCH", switchedFrom);

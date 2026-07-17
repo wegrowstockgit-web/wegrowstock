@@ -9,9 +9,10 @@ spring:
     hikari:
       maximum-pool-size: 15
       minimum-idle: 2
+      connection-init-sql: "SELECT set_config('app.current_tenant', '', false)"
   flyway:
     # Migrations stay on direct Postgres (advisory locks / DDL are session-sensitive).
-    url: jdbc:postgresql://db:5432/invsys
+    url: jdbc:postgresql://db:5432/invsys?prepareThreshold=0
   data:
     redis:
       host: ${REDIS_HOST:redis}

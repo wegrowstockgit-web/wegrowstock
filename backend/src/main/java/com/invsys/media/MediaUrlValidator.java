@@ -13,7 +13,10 @@ import java.util.Set;
 
 /**
  * Blocks SSRF-prone external media URLs. Allows relative authenticated media paths
- * and public HTTPS hosts that resolve to public addresses only.
+ * and public HTTPS hosts that resolve only to public addresses.
+ * <p>
+ * Resolution checks every A/AAAA answer against RFC 1918, link-local (incl. cloud
+ * metadata {@code 169.254.169.254}), loopback, CGNAT, and unique-local IPv6.
  */
 @Component
 public class MediaUrlValidator {
@@ -58,37 +61,101 @@ public class MediaUrlValidator {
                 || host.endsWith(".internal")) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEDIA_URL", "Host is not allowed");
         }
-        if (isPrivateOrLocalAddress(host)) {
+        if (resolvesToBlockedAddress(host)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEDIA_URL",
                     "URL must not resolve to a private or loopback address");
         }
         return uri.normalize().toString();
     }
 
-    private boolean isPrivateOrLocalAddress(String host) {
+    private boolean resolvesToBlockedAddress(String host) {
         try {
             InetAddress[] addresses = InetAddress.getAllByName(host);
             for (InetAddress address : addresses) {
-                if (address.isAnyLocalAddress()
-                        || address.isLoopbackAddress()
-                        || address.isLinkLocalAddress()
-                        || address.isSiteLocalAddress()
-                        || address.isMulticastAddress()) {
+                if (isBlockedAddress(address)) {
                     return true;
-                }
-                byte[] b = address.getAddress();
-                if (b.length == 4) {
-                    int a0 = b[0] & 0xFF;
-                    int a1 = b[1] & 0xFF;
-                    // 100.64.0.0/10 CGNAT, 169.254.0.0/16 link-local already covered
-                    if (a0 == 100 && a1 >= 64 && a1 <= 127) {
-                        return true;
-                    }
                 }
             }
             return false;
         } catch (UnknownHostException ex) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEDIA_URL", "Unable to resolve host");
         }
+    }
+
+    /**
+     * Strict blocklist: loopback, RFC 1918, link-local (169.254/16 incl. metadata),
+     * CGNAT, multicast, and IPv6 ULA / link-local. Also unwraps IPv4-mapped IPv6.
+     */
+    static boolean isBlockedAddress(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) {
+            return true;
+        }
+
+        byte[] raw = address.getAddress();
+        if (raw.length == 16 && isIpv4Mapped(raw)) {
+            raw = new byte[]{raw[12], raw[13], raw[14], raw[15]};
+        }
+
+        if (raw.length == 4) {
+            return isBlockedIpv4(raw);
+        }
+        if (raw.length == 16) {
+            return isBlockedIpv6(raw);
+        }
+        return true;
+    }
+
+    private static boolean isIpv4Mapped(byte[] b) {
+        for (int i = 0; i < 10; i++) {
+            if (b[i] != 0) {
+                return false;
+            }
+        }
+        return (b[10] & 0xFF) == 0xFF && (b[11] & 0xFF) == 0xFF;
+    }
+
+    private static boolean isBlockedIpv4(byte[] b) {
+        int a0 = b[0] & 0xFF;
+        int a1 = b[1] & 0xFF;
+        // 0.0.0.0/8
+        if (a0 == 0) {
+            return true;
+        }
+        // 10.0.0.0/8
+        if (a0 == 10) {
+            return true;
+        }
+        // 127.0.0.0/8
+        if (a0 == 127) {
+            return true;
+        }
+        // 169.254.0.0/16 (link-local / cloud metadata 169.254.169.254)
+        if (a0 == 169 && a1 == 254) {
+            return true;
+        }
+        // 172.16.0.0/12
+        if (a0 == 172 && a1 >= 16 && a1 <= 31) {
+            return true;
+        }
+        // 192.168.0.0/16
+        if (a0 == 192 && a1 == 168) {
+            return true;
+        }
+        // 100.64.0.0/10 CGNAT
+        if (a0 == 100 && a1 >= 64 && a1 <= 127) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isBlockedIpv6(byte[] b) {
+        // ::1 already covered by isLoopbackAddress; fe80::/10 link-local by isLinkLocalAddress.
+        // fc00::/7 unique local
+        int b0 = b[0] & 0xFF;
+        return (b0 & 0xFE) == 0xFC;
     }
 }

@@ -65,6 +65,50 @@ describe('ScannerView GS1 fields', () => {
     vi.clearAllMocks();
   });
 
+  it('shows LPN Move panel and destination prompt', () => {
+    const { rerender } = render(
+      <ScannerView
+        lastScan={null}
+        lastThumbUrl={null}
+        history={[]}
+        scanning={false}
+        mode="lpn"
+        onThumbCaptured={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('lpn-move-panel')).toHaveTextContent('Scan LPN barcode to begin');
+
+    rerender(
+      <ScannerView
+        lastScan="LPN-1"
+        lastThumbUrl={null}
+        history={[]}
+        scanning={false}
+        mode="lpn"
+        lpnBarcodePending="LPN-1"
+        onThumbCaptured={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('lpn-move-panel')).toHaveTextContent('Scan destination bin');
+    expect(screen.getByTestId('lpn-move-panel')).toHaveTextContent('LPN-1');
+  });
+
+  it('shows massive PLACE IN TOTE indicator for MIB picks', () => {
+    render(
+      <ScannerView
+        lastScan="SKU-1"
+        lastThumbUrl={null}
+        history={[]}
+        scanning={false}
+        mode="pick"
+        toteIdentifier="Tote B"
+        onThumbCaptured={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('place-in-tote-banner')).toHaveTextContent('Tote B');
+    expect(screen.getByTestId('place-in-tote-banner')).toHaveTextContent('Place in tote');
+  });
+
   it('renders and edits Lot / Expiry / Qty when GS1 is active', () => {
     const onChange = vi.fn();
     const fields: Gs1FieldState = {

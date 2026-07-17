@@ -29,6 +29,9 @@ public class InventoryLevel extends TenantScopedEntity {
     @Column(name = "owner_customer_id")
     private UUID ownerCustomerId;
 
+    @Column(name = "lpn_id")
+    private UUID lpnId;
+
     public UUID getVariantId() {
         return variantId;
     }
@@ -79,5 +82,13 @@ public class InventoryLevel extends TenantScopedEntity {
 
     public void setOwnerCustomerId(UUID ownerCustomerId) {
         this.ownerCustomerId = ownerCustomerId;
+    }
+
+    public UUID getLpnId() {
+        return lpnId;
+    }
+
+    public void setLpnId(UUID lpnId) {
+        this.lpnId = lpnId;
     }
 }

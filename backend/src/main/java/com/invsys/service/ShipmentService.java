@@ -3,6 +3,7 @@ package com.invsys.service;
 import com.invsys.common.ApiException;
 import com.invsys.domain.Allocation;
 import com.invsys.domain.Customer;
+import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
@@ -43,6 +44,7 @@ public class ShipmentService {
     private final ProductVariantRepository productVariantRepository;
     private final ShippingCartonRepository shippingCartonRepository;
     private final InventoryService inventoryService;
+    private final LpnService lpnService;
     private final OutboxService outboxService;
     private final KitService kitService;
     private final CartonizationEngine cartonizationEngine;
@@ -59,6 +61,7 @@ public class ShipmentService {
                            ProductVariantRepository productVariantRepository,
                            ShippingCartonRepository shippingCartonRepository,
                            InventoryService inventoryService,
+                           LpnService lpnService,
                            OutboxService outboxService,
                            KitService kitService,
                            CartonizationEngine cartonizationEngine,
@@ -74,6 +77,7 @@ public class ShipmentService {
         this.productVariantRepository = productVariantRepository;
         this.shippingCartonRepository = shippingCartonRepository;
         this.inventoryService = inventoryService;
+        this.lpnService = lpnService;
         this.easyPostClient = easyPostClient;
         this.outboxService = outboxService;
         this.kitService = kitService;
@@ -86,8 +90,21 @@ public class ShipmentService {
     @Transactional
     public Shipment createShipment(UUID salesOrderId, String carrier, String trackingNumber,
                                    List<ShipLineRequest> lines) {
+        return createShipment(salesOrderId, carrier, trackingNumber, lines, null);
+    }
+
+    @Transactional
+    public Shipment createShipment(UUID salesOrderId, String carrier, String trackingNumber,
+                                   List<ShipLineRequest> lines, String lpnBarcode) {
         SalesOrder order = salesOrderRepository.findById(salesOrderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+
+        boolean hasLpn = lpnBarcode != null && !lpnBarcode.isBlank();
+        List<ShipLineRequest> shipLines = lines != null ? lines : List.of();
+        if (!hasLpn && shipLines.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SHIP_LINES_REQUIRED",
+                    "Provide shipment lines and/or an lpnBarcode");
+        }
 
         Shipment shipment = new Shipment();
         shipment.setTenantId(TenantContext.requireTenantId());
@@ -97,7 +114,11 @@ public class ShipmentService {
         shipment.setStatus("SHIPPED");
         shipment = shipmentRepository.save(shipment);
 
-        for (ShipLineRequest req : lines) {
+        if (hasLpn) {
+            shipByLpn(order, shipment, lpnBarcode.trim());
+        }
+
+        for (ShipLineRequest req : shipLines) {
             SalesOrderLine soLine = salesOrderLineRepository.findById(req.salesOrderLineId())
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "SO line not found"));
             List<Allocation> allocations = allocationRepository.findBySalesOrderLineIdAndStatus(soLine.getId(), "ACTIVE");
@@ -128,6 +149,31 @@ public class ShipmentService {
                     "trackingNumber", trackingNumber == null ? "" : trackingNumber));
         }
         return shipment;
+    }
+
+    private void shipByLpn(SalesOrder order, Shipment shipment, String lpnBarcode) {
+        LpnService.LpnContents contents = lpnService.contents(lpnBarcode);
+        List<SalesOrderLine> soLines = salesOrderLineRepository.findBySalesOrderId(order.getId());
+
+        lpnService.shipLpn(lpnBarcode, order.getId(), shipment.getId());
+
+        for (InventoryLevel level : contents.levels()) {
+            SalesOrderLine soLine = soLines.stream()
+                    .filter(l -> level.getVariantId().equals(l.getVariantId()))
+                    .findFirst()
+                    .orElse(null);
+            if (soLine != null) {
+                soLine.setQtyShipped(soLine.getQtyShipped().add(level.getOnHand()));
+                salesOrderLineRepository.save(soLine);
+
+                ShipmentLine sl = new ShipmentLine();
+                sl.setTenantId(TenantContext.requireTenantId());
+                sl.setShipmentId(shipment.getId());
+                sl.setSalesOrderLineId(soLine.getId());
+                sl.setQuantity(level.getOnHand());
+                shipmentLineRepository.save(sl);
+            }
+        }
     }
 
     /**

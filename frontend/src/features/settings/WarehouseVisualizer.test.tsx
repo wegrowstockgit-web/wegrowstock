@@ -8,6 +8,8 @@ import { apiClient } from '@/api/client';
 vi.mock('@/api/client', () => ({
   apiClient: {
     post: vi.fn(),
+    get: vi.fn().mockResolvedValue({ data: [] }),
+    patch: vi.fn(),
   },
 }));
 

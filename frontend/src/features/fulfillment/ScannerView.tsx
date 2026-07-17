@@ -36,12 +36,14 @@ export interface Gs1FieldState {
   quantity: string;
 }
 
+export type ScannerMode = 'pick' | 'receive' | 'lpn' | 'pallet';
+
 interface ScannerViewProps {
   lastScan: string | null;
   lastThumbUrl: string | null;
   history: ScannerHistoryItem[];
   scanning: boolean;
-  mode: 'pick' | 'receive';
+  mode: ScannerMode;
   onThumbCaptured: (url: string, variantId: string) => void;
   receiveQcSlot?: ReactNode;
   /** Auto-filled from client-side GS1 parse; editable for operator override. */
@@ -64,6 +66,10 @@ interface ScannerViewProps {
   onMintInternalLot?: () => void;
   /** Parent-driven acoustic/haptic flash — drives success enter / error shake. */
   feedbackFlash?: ScanFeedbackType;
+  /** LPN Move: barcode captured, awaiting destination bin scan. */
+  lpnBarcodePending?: string | null;
+  /** MIB wave pick: massive tote placement cue. */
+  toteIdentifier?: string | null;
 }
 
 /**
@@ -89,6 +95,8 @@ export function ScannerView({
   mintLotPending = false,
   onMintInternalLot,
   feedbackFlash = null,
+  lpnBarcodePending = null,
+  toteIdentifier = null,
 }: ScannerViewProps) {
   const captureRef = useRef<HTMLInputElement>(null);
   const { triggerSuccess, triggerError } = useScanFeedback();
@@ -153,12 +161,14 @@ export function ScannerView({
         className={cn(deckMotionClass)}
         data-testid="scan-verification-deck"
       >
-      <p className="text-sm text-text-muted">Last scan</p>
+      <p className="text-sm text-text-muted">
+        {mode === 'lpn' ? 'LPN Move' : mode === 'pallet' ? 'Build Pallet' : 'Last scan'}
+      </p>
       <div
         className="mt-3 flex items-center justify-center gap-4"
         data-testid="scan-detail-target"
       >
-        {(lastThumbUrl || latest?.success) && (
+        {mode !== 'lpn' && (lastThumbUrl || latest?.success) && (
           <VariantThumb
             url={lastThumbUrl ?? latest?.primaryMediaUrl}
             alt={latest?.name ?? latest?.sku ?? 'Scanned item'}
@@ -168,6 +178,42 @@ export function ScannerView({
         <p className="font-mono text-2xl font-bold text-text">{lastScan ?? 'Ready to scan'}</p>
       </div>
       {scanning && <p className="mt-2 text-sm text-accent">Processing...</p>}
+
+      {mode === 'lpn' && (
+        <div
+          className="mt-5 rounded-lg border-2 border-accent/50 bg-accent/10 p-4 text-left"
+          data-testid="lpn-move-panel"
+        >
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">License plate move</p>
+          {lpnBarcodePending ? (
+            <>
+              <p className="mt-2 font-mono text-xl font-bold text-text">{lpnBarcodePending}</p>
+              <p className="mt-3 text-base font-semibold text-text">Scan destination bin</p>
+              <p className="mt-1 text-sm text-text-muted">
+                All stock on this LPN will transfer to the scanned location in one move.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-base font-semibold text-text">Scan LPN barcode to begin</p>
+          )}
+        </div>
+      )}
+
+      {toteIdentifier && mode === 'pick' && (
+        <div
+          className="mt-5 rounded-xl border-4 border-accent bg-accent px-4 py-6 text-center shadow-md"
+          data-testid="place-in-tote-banner"
+          role="status"
+          aria-live="assertive"
+        >
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-text-inverse/90">
+            Place in tote
+          </p>
+          <p className="mt-2 text-4xl font-black leading-none text-text-inverse sm:text-5xl">
+            {toteIdentifier}
+          </p>
+        </div>
+      )}
 
       {(gs1Active || showMissingVendorLot) && gs1Fields && (
         <div

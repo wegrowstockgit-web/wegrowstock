@@ -78,39 +78,23 @@ import { ShowroomCheckoutPage } from '@/pages/showroom/ShowroomCheckoutPage';
 
 import { ShowroomBillingPage } from '@/pages/showroom/ShowroomBillingPage';
 
-import { useSessionStore, useIsAuthenticated } from '@/stores/session';
-
-
+import { useIsAuthenticated, useSessionRoles, isExclusiveRole } from '@/stores/session';
 
 function RootRedirect() {
-
   const authenticated = useIsAuthenticated();
-
-  const isB2bCustomerOnly = useSessionStore((s) => s.isB2bCustomerOnly);
+  const sessionRoles = useSessionRoles();
 
   if (!authenticated) {
-
     return <Navigate to="/login" replace />;
-
   }
 
-  const isPickerOnly = useSessionStore.getState().isPickerOnly();
+  const destination = isExclusiveRole(sessionRoles, 'B2B_CUSTOMER')
+    ? '/showroom/catalog'
+    : isExclusiveRole(sessionRoles, 'PICKER')
+      ? '/fulfillment'
+      : '/dashboard';
 
-  return (
-
-    <Navigate
-      to={
-        isB2bCustomerOnly()
-          ? '/showroom/catalog'
-          : isPickerOnly
-            ? '/fulfillment'
-            : '/dashboard'
-      }
-      replace
-    />
-
-  );
-
+  return <Navigate to={destination} replace />;
 }
 
 

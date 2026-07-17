@@ -6,13 +6,14 @@ import { apiClient } from '@/api/client';
 import type {
   FulfillmentScanResponse,
   CartonizePreviewResponse,
+  MoveLpnResult,
   PackLabelResponse,
   PaginatedResponse,
   PickingTask,
   ProductVariant,
   SalesOrder,
 } from '@/api/types';
-import { useBluetoothScale } from '@/hooks/useBluetoothScale';
+import { useDigitalScale } from '@/hooks/useDigitalScale';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
@@ -21,7 +22,7 @@ import { useSessionStore } from '@/stores/session';
 import { useOfflineStore } from '@/stores/offlineStore';
 import { useVariantCacheStore } from '@/stores/variantCacheStore';
 import { cn, generateIdempotencyKey } from '@/lib/utils';
-import { evaluateLotGrace, type ParsedBarcode } from '@/utils/gs1Parser';
+import { evaluateLotGrace, validatePickScan, type ParsedBarcode } from '@/utils/gs1Parser';
 import { enqueueMutation } from '@/offline/mutationQueue';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
@@ -41,6 +42,13 @@ import {
   type Gs1FieldState,
   type ScannerHistoryItem,
 } from '@/features/fulfillment/ScannerView';
+import {
+  PalletBuilder,
+  mintAndPrintLpn,
+  packScanOntoLpn,
+  type MintedLpn,
+} from '@/features/fulfillment/PalletBuilder';
+import { WayfindingMiniMap } from '@/features/fulfillment/WayfindingMiniMap';
 import { QuarantineReview } from '@/features/fulfillment/QuarantineReview';
 import {
   ReplenishmentBadge,
@@ -195,6 +203,8 @@ interface SerialCaptureState {
   required: number;
 }
 
+type FloorMode = 'pick' | 'receive' | 'lpn' | 'pallet';
+
 const EMPTY_GS1: Gs1FieldState = { lotNumber: '', expiryDate: '', quantity: '' };
 
 /** Offline / online scan body with client-decoded GS1 fields so the API need not re-parse. */
@@ -223,7 +233,13 @@ export function FulfillmentPage() {
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
   const [history, setHistory] = useState<ScannerHistoryItem[]>([]);
   const [lastThumbUrl, setLastThumbUrl] = useState<string | null>(null);
-  const [mode, setMode] = useState<'pick' | 'receive'>('pick');
+  const [mode, setMode] = useState<FloorMode>('pick');
+  const [lpnBarcodePending, setLpnBarcodePending] = useState<string | null>(null);
+  const [activePallet, setActivePallet] = useState<MintedLpn | null>(null);
+  const [palletItemCount, setPalletItemCount] = useState(0);
+  const [palletMinting, setPalletMinting] = useState(false);
+  const [palletPacking, setPalletPacking] = useState(false);
+  const [lastPackedSku, setLastPackedSku] = useState<string | null>(null);
   const [crossDockPrompt, setCrossDockPrompt] = useState<CrossDockPrompt | null>(null);
   const crossDockPromptRef = useRef<CrossDockPrompt | null>(null);
   crossDockPromptRef.current = crossDockPrompt;
@@ -249,10 +265,13 @@ export function FulfillmentPage() {
   const gs1FieldsRef = useRef(gs1Fields);
   gs1FieldsRef.current = gs1Fields;
   const gs1FeedbackPendingRef = useRef(false);
-  const scale = useBluetoothScale();
+  const scale = useDigitalScale();
   const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
   const bufferMisScan = useWarehouseUXStore((s) => s.bufferMisScan);
   const undoMisScan = useWarehouseUXStore((s) => s.undoMisScan);
+  const nextBestAction = useWarehouseUXStore((s) => s.nextBestAction);
+  const fetchNextBestAction = useWarehouseUXStore((s) => s.fetchNextBestAction);
+  const clearNextBestAction = useWarehouseUXStore((s) => s.clearNextBestAction);
   const upsertVariants = useVariantCacheStore((s) => s.upsertMany);
   const upsertVariant = useVariantCacheStore((s) => s.upsert);
   const lookupVariant = useVariantCacheStore((s) => s.lookup);
@@ -357,6 +376,37 @@ export function FulfillmentPage() {
     return null;
   };
 
+  const autoLabelKeyRef = useRef<string | null>(null);
+  const packLabelMutate = packLabelMutation.mutate;
+  const packLabelPending = packLabelMutation.isPending;
+  useEffect(() => {
+    if (!packingMode || !packSalesOrderId || !cartonPreview || packLabelPending) {
+      return;
+    }
+    if (!scale.connected || !scale.reading?.stable) {
+      return;
+    }
+    const weightLb = scale.reading.weightLb;
+    if (!(weightLb > 0)) {
+      return;
+    }
+    const key = `${packSalesOrderId}:${weightLb.toFixed(2)}`;
+    if (autoLabelKeyRef.current === key) {
+      return;
+    }
+    autoLabelKeyRef.current = key;
+    packLabelMutate(weightLb);
+  }, [
+    packingMode,
+    packSalesOrderId,
+    cartonPreview,
+    scale.connected,
+    scale.reading?.stable,
+    scale.reading?.weightLb,
+    packLabelPending,
+    packLabelMutate,
+  ]);
+
   const { data: batchTasks = [], refetch: refetchTasks } = useQuery({
     queryKey: ['picking', 'batch-tasks'],
     queryFn: async () => {
@@ -369,6 +419,11 @@ export function FulfillmentPage() {
   });
 
   const nextTask = batchTasks.find((t) => t.status === 'PENDING');
+  const previousPicked = [...batchTasks]
+    .filter((t) => t.status === 'PICKED' && t.locationId)
+    .sort((a, b) => b.sequenceOrder - a.sequenceOrder)[0];
+  const wayfindingFromId =
+    previousPicked?.locationId ?? warehouse?.id ?? nextTask?.locationId ?? null;
 
   const lotMissingForTrackedPick = (() => {
     if (mode !== 'pick' || !batchMode || !nextTask?.allocationId) return false;
@@ -396,11 +451,112 @@ export function FulfillmentPage() {
   })();
 
   const pickTaskMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      await apiClient.post(`/api/v1/picking/tasks/${taskId}/pick`);
+    mutationFn: async (input: { taskId: string; locationId?: string | null }) => {
+      await apiClient.post(`/api/v1/picking/tasks/${input.taskId}/pick`);
+      return input;
     },
-    onSuccess: () => void refetchTasks(),
+    onSuccess: (result) => {
+      void refetchTasks();
+      if (result.locationId) {
+        void fetchNextBestAction(result.locationId);
+      }
+    },
   });
+
+  const moveLpnMutation = useMutation({
+    mutationFn: async (input: { lpnBarcode: string; destinationBarcode: string }) => {
+      const res = await apiClient.post<MoveLpnResult>('/api/v1/inventory/lpns/move', {
+        lpnBarcode: input.lpnBarcode,
+        destinationBarcode: input.destinationBarcode,
+      });
+      return res.data;
+    },
+    onSuccess: (result) => {
+      triggerSuccess();
+      setLpnBarcodePending(null);
+      setHistory((h) => [
+        {
+          barcode: result.lpnBarcode,
+          success: true,
+          message: `LPN moved · ${result.linesMoved} line${result.linesMoved === 1 ? '' : 's'}`,
+          timestamp: Date.now(),
+        },
+        ...h.slice(0, 19),
+      ]);
+      if (result.destinationLocationId) {
+        void fetchNextBestAction(result.destinationLocationId);
+      }
+    },
+    onError: (_err, vars) => {
+      triggerError();
+      setHistory((h) => [
+        {
+          barcode: vars.destinationBarcode,
+          success: false,
+          message: 'LPN move failed — check LPN and destination bin',
+          timestamp: Date.now(),
+        },
+        ...h.slice(0, 19),
+      ]);
+    },
+  });
+
+  const handleMintPallet = async () => {
+    setPalletMinting(true);
+    try {
+      const minted = await mintAndPrintLpn(warehouse?.id, executePrint);
+      setActivePallet(minted);
+      setPalletItemCount(0);
+      setLastPackedSku(null);
+      triggerSuccess();
+      setHistory((h) => [
+        {
+          barcode: minted.lpnBarcode,
+          success: true,
+          message: 'LPN minted · pallet label sent to printer',
+          timestamp: Date.now(),
+        },
+        ...h.slice(0, 19),
+      ]);
+    } catch {
+      triggerError();
+    } finally {
+      setPalletMinting(false);
+    }
+  };
+
+  const handlePackOntoPallet = async (scan: string) => {
+    if (!activePallet) return;
+    setPalletPacking(true);
+    try {
+      const result = await packScanOntoLpn(activePallet.lpnBarcode, scan);
+      setPalletItemCount(result.itemCount);
+      setLastPackedSku(scan);
+      triggerSuccess();
+      setHistory((h) => [
+        {
+          barcode: scan,
+          success: true,
+          message: `Packed onto ${result.lpnBarcode} · ${result.itemCount} line${result.itemCount === 1 ? '' : 's'} on pallet`,
+          timestamp: Date.now(),
+        },
+        ...h.slice(0, 19),
+      ]);
+    } catch {
+      triggerError();
+      setHistory((h) => [
+        {
+          barcode: scan,
+          success: false,
+          message: 'Pack failed — no loose stock for this scan',
+          timestamp: Date.now(),
+        },
+        ...h.slice(0, 19),
+      ]);
+    } finally {
+      setPalletPacking(false);
+    }
+  };
 
   const buildScanPayload = (barcode: string, serialNumber?: string): FulfillmentScanPayload => {
     const parsed = lastParsedRef.current;
@@ -409,10 +565,12 @@ export function FulfillmentPage() {
       gs1Fields.lotNumber.trim() ||
       activeLotRef.current.trim() ||
       parsed?.lotNumber;
+    const scanMode: 'pick' | 'receive' =
+      serialCapture?.mode ?? (mode === 'receive' ? 'receive' : 'pick');
     const payload: FulfillmentScanPayload = {
       barcode,
       warehouseId: warehouse?.id,
-      mode: serialCapture?.mode ?? mode,
+      mode: scanMode,
       serialNumber,
     };
     // Minted internal lots and GS1 AI(10) both ride on lotNumber for receive binding.
@@ -509,11 +667,12 @@ export function FulfillmentPage() {
     mutationFn: (barcode: string) => submitScan(barcode),
     onSuccess: (result, barcode) => {
       if (result.requiresSerial && !serialCapture) {
+        const captureMode: 'pick' | 'receive' = mode === 'receive' ? 'receive' : 'pick';
         setSerialCapture({
           barcode,
           sku: result.sku,
           name: result.name,
-          mode,
+          mode: captureMode,
           captured: [],
           required: 1,
         });
@@ -526,7 +685,10 @@ export function FulfillmentPage() {
       }
       gs1FeedbackPendingRef.current = false;
       if (batchMode && nextTask) {
-        pickTaskMutation.mutate(nextTask.id);
+        pickTaskMutation.mutate({
+          taskId: nextTask.id,
+          locationId: nextTask.locationId,
+        });
       }
       if (result.variantId) {
         upsertVariant({
@@ -552,6 +714,10 @@ export function FulfillmentPage() {
         });
       } else if (mode === 'receive') {
         setCrossDockPrompt(null);
+        // After putaway / receive commit, interleave the closest floor task.
+        if (warehouse?.id) {
+          void fetchNextBestAction(warehouse.id);
+        }
       }
       setHistory((h) => [
         {
@@ -719,6 +885,30 @@ export function FulfillmentPage() {
         setCrossDockPrompt(null);
         return;
       }
+      if (mode === 'lpn') {
+        clearNextBestAction();
+        if (!lpnBarcodePending) {
+          setLpnBarcodePending(code.trim().toUpperCase());
+          triggerSuccess();
+          useScanBufferStore.getState().commit(code);
+          return;
+        }
+        moveLpnMutation.mutate({
+          lpnBarcode: lpnBarcodePending,
+          destinationBarcode: code.trim(),
+        });
+        useScanBufferStore.getState().commit(code);
+        return;
+      }
+      if (mode === 'pallet') {
+        useScanBufferStore.getState().commit(code);
+        if (!activePallet) {
+          triggerError();
+          return;
+        }
+        void handlePackOntoPallet(code.trim());
+        return;
+      }
       if (parsed && !parsed.isGs1) {
         lastParsedRef.current = null;
         setLotLoggedNotTracked(false);
@@ -734,6 +924,37 @@ export function FulfillmentPage() {
           activeLotRef.current = '';
           setGs1Active(false);
           setGs1Fields(EMPTY_GS1);
+        }
+      }
+      // Strict client-side GS1 / SKU pre-validation against the expected pick allocation.
+      if (batchMode && mode === 'pick' && nextTask && !serialCapture) {
+        const expected = {
+          sku: nextTask.sku,
+          barcode: nextTask.barcode,
+          quantity: nextTask.quantity != null ? Number(nextTask.quantity) : null,
+        };
+        const parsedForCheck =
+          parsed ??
+          ({
+            sku: code,
+            isGs1: false,
+          } satisfies ParsedBarcode);
+        const check = validatePickScan(expected, parsedForCheck, code);
+        if (!check.ok) {
+          triggerError();
+          setHistory((h) => [
+            {
+              barcode: code,
+              sku: parsedForCheck.sku || code,
+              name: 'Scan rejected',
+              success: false,
+              message: check.message ?? 'Does not match expected pick',
+              timestamp: Date.now(),
+            },
+            ...h.slice(0, 19),
+          ]);
+          useScanBufferStore.getState().commit(code);
+          return;
         }
       }
       if (serialCapture) {
@@ -770,7 +991,15 @@ export function FulfillmentPage() {
             ? 'Serial capture'
             : batchMode
               ? 'Batch pick'
-              : `Scan to ${mode}`}
+              : mode === 'lpn'
+                ? lpnBarcodePending
+                  ? 'Scan destination bin'
+                  : 'Scan LPN barcode'
+                : mode === 'pallet'
+                  ? activePallet
+                    ? 'Scan items onto pallet'
+                    : 'Mint an LPN to begin'
+                  : `Scan to ${mode}`}
         </p>
         {quarantineCount > 0 && (
           <button
@@ -852,6 +1081,8 @@ export function FulfillmentPage() {
               onClick={() => {
                 setBatchMode(true);
                 setPackingMode(false);
+                setMode('pick');
+                setLpnBarcodePending(null);
                 void queryClient.invalidateQueries({ queryKey: ['picking', 'batch-tasks'] });
               }}
             >
@@ -862,6 +1093,7 @@ export function FulfillmentPage() {
               onClick={() => {
                 setPackingMode(true);
                 setBatchMode(false);
+                setLpnBarcodePending(null);
                 setLabelMessage('');
               }}
             >
@@ -926,21 +1158,40 @@ export function FulfillmentPage() {
               <div className="mt-3 space-y-3">
                 {!scale.supported ? (
                   <p className="text-sm text-text-muted">
-                    Web Bluetooth unavailable — using carton billable weight, or enter a manual override.
+                    Web Serial / Bluetooth unavailable — using carton billable weight, or enter a
+                    manual override.
                   </p>
                 ) : (
                   <>
                     <p className="text-sm text-text-muted">
                       {scale.connected
-                        ? `Scale connected · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
-                        : 'Connect a shipping scale, or use computed billable weight below.'}
+                        ? `Scale connected (${scale.transport ?? 'edge'})${
+                            scale.reading?.stable ? ' · stable' : ''
+                          } · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
+                        : 'Connect a shipping-bay scale (Serial or Bluetooth). A stable weight auto-buys the label.'}
                     </p>
                     {scale.error && <p className="text-sm text-danger">{scale.error}</p>}
                     <div className="flex flex-wrap gap-2">
                       {!scale.connected ? (
-                        <Button loading={scale.connecting} onClick={() => void scale.connect()}>
-                          Connect scale
-                        </Button>
+                        <>
+                          {scale.serialSupported && (
+                            <Button
+                              loading={scale.connecting}
+                              onClick={() => void scale.connectSerial()}
+                            >
+                              Connect Serial scale
+                            </Button>
+                          )}
+                          {scale.bluetoothSupported && (
+                            <Button
+                              variant="secondary"
+                              loading={scale.connecting}
+                              onClick={() => void scale.connectBluetooth()}
+                            >
+                              Connect Bluetooth scale
+                            </Button>
+                          )}
+                        </>
                       ) : (
                         <Button variant="secondary" onClick={scale.disconnect}>
                           Disconnect
@@ -1005,12 +1256,15 @@ export function FulfillmentPage() {
           )}
 
           {!batchMode && !packingMode && (
-            <div className="mb-6 flex gap-3" role="radiogroup" aria-label="Scan mode">
+            <div className="mb-6 flex flex-wrap gap-3" role="radiogroup" aria-label="Scan mode">
               <BigButton
                 variant={mode === 'pick' ? 'primary' : 'secondary'}
                 role="radio"
                 aria-checked={mode === 'pick'}
-                onClick={() => setMode('pick')}
+                onClick={() => {
+                  setMode('pick');
+                  setLpnBarcodePending(null);
+                }}
               >
                 Pick
               </BigButton>
@@ -1018,11 +1272,89 @@ export function FulfillmentPage() {
                 variant={mode === 'receive' ? 'success' : 'secondary'}
                 role="radio"
                 aria-checked={mode === 'receive'}
-                onClick={() => setMode('receive')}
+                onClick={() => {
+                  setMode('receive');
+                  setLpnBarcodePending(null);
+                }}
               >
                 Receive
               </BigButton>
+              <BigButton
+                variant={mode === 'lpn' ? 'primary' : 'secondary'}
+                role="radio"
+                aria-checked={mode === 'lpn'}
+                data-testid="lpn-move-mode"
+                onClick={() => {
+                  setMode('lpn');
+                  setLpnBarcodePending(null);
+                  clearNextBestAction();
+                }}
+              >
+                LPN Move
+              </BigButton>
+              <BigButton
+                variant={mode === 'pallet' ? 'primary' : 'secondary'}
+                role="radio"
+                aria-checked={mode === 'pallet'}
+                data-testid="build-pallet-mode"
+                onClick={() => {
+                  setMode('pallet');
+                  setLpnBarcodePending(null);
+                  clearNextBestAction();
+                }}
+              >
+                Build Pallet
+              </BigButton>
             </div>
+          )}
+
+          <PalletBuilder
+            active={mode === 'pallet' && !batchMode && !packingMode}
+            activeLpn={activePallet}
+            itemCount={palletItemCount}
+            packing={palletPacking}
+            minting={palletMinting}
+            lastPackedSku={lastPackedSku}
+            onMint={() => void handleMintPallet()}
+            onClear={() => {
+              setActivePallet(null);
+              setPalletItemCount(0);
+              setLastPackedSku(null);
+            }}
+          />
+
+          {nextBestAction && (
+            <Card
+              className="mb-6 border-2 border-accent bg-accent-muted p-4"
+              data-testid="next-best-action"
+            >
+              <p className="text-xs font-bold uppercase tracking-wide text-accent">
+                Next interleaved task · {nextBestAction.taskType}
+              </p>
+              <p className="mt-2 text-xl font-bold text-text">
+                {nextBestAction.instruction ?? nextBestAction.summary}
+              </p>
+              {nextBestAction.locationPath && (
+                <LocationBreadcrumb
+                  locationPath={nextBestAction.locationPath}
+                  className="mt-2"
+                />
+              )}
+              {nextBestAction.toteIdentifier && (
+                <p className="mt-3 text-lg font-black text-accent">
+                  PLACE IN TOTE: {nextBestAction.toteIdentifier}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-text-muted">{nextBestAction.summary}</p>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-3 min-h-11"
+                onClick={() => clearNextBestAction()}
+              >
+                Dismiss
+              </Button>
+            </Card>
           )}
 
           {batchMode && !packingMode && (
@@ -1034,12 +1366,30 @@ export function FulfillmentPage() {
                     {nextTask.locationPath.split('/').pop()}
                   </p>
                   <LocationBreadcrumb locationPath={nextTask.locationPath} className="mt-3" />
+                  {nextTask.toteIdentifier && (
+                    <div
+                      className="mt-4 rounded-xl border-4 border-accent bg-accent px-3 py-5 text-center"
+                      data-testid="batch-place-in-tote"
+                    >
+                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-text-inverse/90">
+                        Place in tote
+                      </p>
+                      <p className="mt-1 text-4xl font-black text-text-inverse sm:text-5xl">
+                        {nextTask.toteIdentifier}
+                      </p>
+                    </div>
+                  )}
                   {nextTask.zone && (
                     <p className="mt-1 text-sm font-medium text-accent">Zone {nextTask.zone}</p>
                   )}
                   <p className="mt-1 text-sm text-text-muted">
                     Stop {nextTask.sequenceOrder} of {batchTasks.length}
                   </p>
+                  <WayfindingMiniMap
+                    fromLocationId={wayfindingFromId}
+                    toLocationId={nextTask.locationId}
+                    destinationLabel={nextTask.locationPath.split('/').pop()}
+                  />
                   <div className="mt-4 space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Optimized route</p>
                     {batchTasks.map((task) => (
@@ -1089,7 +1439,11 @@ export function FulfillmentPage() {
         lastScan={lastScan}
         lastThumbUrl={lastThumbUrl}
         history={history}
-        scanning={scanMutation.isPending || serialScanMutation.isPending}
+        scanning={
+          scanMutation.isPending ||
+          serialScanMutation.isPending ||
+          moveLpnMutation.isPending
+        }
         mode={mode}
         feedbackFlash={flash}
         gs1Active={gs1Active}
@@ -1105,6 +1459,10 @@ export function FulfillmentPage() {
         showMissingVendorLot={showMissingVendorLot}
         mintLotPending={mintLotPending}
         onMintInternalLot={() => void handleMintInternalLot()}
+        lpnBarcodePending={lpnBarcodePending}
+        toteIdentifier={
+          batchMode && mode === 'pick' ? (nextTask?.toteIdentifier ?? null) : null
+        }
         onThumbCaptured={(url, variantId) => {
           setLastThumbUrl(url);
           setHistory((h) =>

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateLotGrace, gs1LookupSku, parseGs1 } from '@/utils/gs1Parser';
+import {
+  evaluateLotGrace,
+  gs1LookupSku,
+  parseGs1,
+  validatePickScan,
+} from '@/utils/gs1Parser';
 
 describe('parseGs1', () => {
   it('parses concatenated AI 01 / 17 / 10', () => {
@@ -68,6 +73,39 @@ describe('evaluateLotGrace', () => {
   it('does not warn on cache miss', () => {
     const parsed = parseGs1('(01)01234567890128(10)LOT123');
     expect(evaluateLotGrace(parsed, undefined).lotLoggedNotTracked).toBe(false);
+  });
+});
+
+describe('validatePickScan', () => {
+  it('rejects SKU mismatch against expected allocation', () => {
+    const parsed = parseGs1('WRONG-SKU');
+    const result = validatePickScan(
+      { sku: 'WIDGET-S', barcode: '8901000000001', quantity: 2 },
+      parsed,
+      'WRONG-SKU',
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('SKU_MISMATCH');
+  });
+
+  it('accepts matching barcode identity', () => {
+    const parsed = parseGs1('8901000000001');
+    const result = validatePickScan(
+      { sku: 'WIDGET-S', barcode: '8901000000001', quantity: 1 },
+      parsed,
+      '8901000000001',
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects GS1 quantity mismatch', () => {
+    const parsed = parseGs1('(01)01234567890128(30)9');
+    const result = validatePickScan(
+      { sku: '01234567890128', barcode: '01234567890128', quantity: 2 },
+      parsed,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('QTY_MISMATCH');
   });
 });
 

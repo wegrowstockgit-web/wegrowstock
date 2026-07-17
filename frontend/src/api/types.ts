@@ -57,6 +57,10 @@ export interface TenantLocation {
   path: string;
   /** STANDARD | PICK_FACE | RESERVE | RECEIVING */
   zoneBehavior?: string;
+  /** Digital Twin floor coordinates */
+  coordX?: number | null;
+  coordY?: number | null;
+  coordZ?: number | null;
 }
 
 export interface TenantUser {
@@ -582,6 +586,16 @@ export interface WorkstationSettings {
   labelFormat: string;
 }
 
+export interface PackPlacement {
+  variantId: string;
+  xIn: number;
+  yIn: number;
+  zIn: number;
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
+}
+
 export interface CartonizePreviewResponse {
   cartonId: string;
   cartonName: string;
@@ -592,6 +606,8 @@ export interface CartonizePreviewResponse {
   volumetricWeightLb: number;
   billableWeightLb: number;
   totalVolumeCuIn: number;
+  /** FFD 3D packing configuration (inches from carton origin). */
+  packing?: PackPlacement[];
 }
 
 export interface SalesOrderLineDetail {
@@ -621,6 +637,63 @@ export interface PickingTask {
   zone?: string;
   sequenceOrder: number;
   status: string;
+  /** MIB tote label assigned per sales order within a wave (e.g. "Tote A"). */
+  toteIdentifier?: string | null;
+  locationId?: string | null;
+  coordX?: number | null;
+  coordY?: number | null;
+  /** Expected catalog SKU for client-side pre-validation. */
+  sku?: string | null;
+  /** Expected barcode / GTIN for client-side pre-validation. */
+  barcode?: string | null;
+  /** Expected allocation quantity for GS1 AI (30) checks. */
+  quantity?: number | null;
+}
+
+export interface WayfindingPoint {
+  x: number;
+  y: number;
+  locationId?: string;
+  code?: string;
+}
+
+export interface WayfindingPath {
+  fromLocationId: string;
+  toLocationId: string;
+  travelCost: number;
+  points: WayfindingPoint[];
+}
+
+export interface NextBestAction {
+  taskType: string | null;
+  taskId: string | null;
+  locationId: string | null;
+  locationPath: string | null;
+  instruction: string | null;
+  toteIdentifier?: string | null;
+  summary: string;
+}
+
+export interface MoveLpnResult {
+  lpnId: string;
+  lpnBarcode: string;
+  destinationLocationId: string;
+  linesMoved: number;
+}
+
+export interface MintedLpnResponse {
+  id: string;
+  lpnBarcode: string;
+  locationId?: string | null;
+  status: string;
+  zpl: string;
+}
+
+export interface PackLpnResult {
+  lpnId: string;
+  lpnBarcode: string;
+  linesPacked: number;
+  itemCount: number;
 }
 
 export interface FulfillmentException {

@@ -1,5 +1,11 @@
 import { Navigate, useLocation } from 'react-router-dom';
-import { useSessionStore, useSessionHydrated, useIsAuthenticated } from '@/stores/session';
+import {
+  useSessionHydrated,
+  useIsAuthenticated,
+  useSessionRoles,
+  rolesInclude,
+  isExclusiveRole,
+} from '@/stores/session';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -10,6 +16,10 @@ interface ProtectedRouteProps {
   b2bOnly?: boolean;
 }
 
+/**
+ * Layout gate reads frozen role snapshots from the store selector.
+ * Does not call replaceable store methods or mutate role arrays locally.
+ */
 export function ProtectedRoute({
   children,
   roles,
@@ -18,8 +28,7 @@ export function ProtectedRoute({
 }: ProtectedRouteProps) {
   const hydrated = useSessionHydrated();
   const authenticated = useIsAuthenticated();
-  const hasRole = useSessionStore((s) => s.hasRole);
-  const isB2bCustomerOnly = useSessionStore((s) => s.isB2bCustomerOnly);
+  const sessionRoles = useSessionRoles();
   const location = useLocation();
 
   if (!hydrated) {
@@ -34,20 +43,22 @@ export function ProtectedRoute({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (b2bOnly && !hasRole('B2B_CUSTOMER')) {
+  const b2bOnlyUser = isExclusiveRole(sessionRoles, 'B2B_CUSTOMER');
+  const pickerOnly = isExclusiveRole(sessionRoles, 'PICKER');
+
+  if (b2bOnly && !rolesInclude(sessionRoles, 'B2B_CUSTOMER')) {
     return <Navigate to="/dashboard" replace />;
   }
 
-  if (officeOnly && isB2bCustomerOnly()) {
+  if (officeOnly && b2bOnlyUser) {
     return <Navigate to="/showroom/catalog" replace />;
   }
 
-  if (roles && !hasRole(...roles)) {
-    if (isB2bCustomerOnly()) {
+  if (roles && !rolesInclude(sessionRoles, ...roles)) {
+    if (b2bOnlyUser) {
       return <Navigate to="/showroom/catalog" replace />;
     }
-    const isPickerOnly = useSessionStore.getState().isPickerOnly();
-    return <Navigate to={isPickerOnly ? '/fulfillment' : '/dashboard'} replace />;
+    return <Navigate to={pickerOnly ? '/fulfillment' : '/dashboard'} replace />;
   }
 
   return <>{children}</>;

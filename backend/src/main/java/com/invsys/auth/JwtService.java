@@ -24,11 +24,23 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class JwtService {
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
+
+    /** Only RS256 asymmetric signatures are accepted — blocks alg:none and HMAC key-confusion. */
+    private static final JWSAlgorithm REQUIRED_ALG = JWSAlgorithm.RS256;
+    private static final Set<JWSAlgorithm> ALLOWED_ALGS = Set.of(REQUIRED_ALG);
+    private static final long CLOCK_SKEW_SECONDS = 30L;
+    public static final String CLAIM_TOKEN_TYPE = "token_type";
+    public static final String CLAIM_TENANT_ID = "tenant_id";
+    /** Bound session tenant for TERMINAL_SWITCH — must equal {@code tenant_id}. */
+    public static final String CLAIM_BIND_TENANT_ID = "bind_tenant_id";
+    public static final String TOKEN_TYPE_TERMINAL_SWITCH = "TERMINAL_SWITCH";
 
     private final JwtProperties properties;
     private RSAPrivateKey privateKey;
@@ -46,7 +58,7 @@ public class JwtService {
         if (privatePem != null && !privatePem.isBlank() && publicPem != null && !publicPem.isBlank()) {
             privateKey = (RSAPrivateKey) PemUtils.readPrivateKey(privatePem);
             publicKey = (RSAPublicKey) PemUtils.readPublicKey(publicPem);
-            log.info("JWT keys loaded from configuration");
+            log.info("JWT keys loaded from configuration (RS256)");
         } else {
             log.warn("JWT keys not configured; generating ephemeral RSA keypair for this process");
             KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
@@ -80,17 +92,19 @@ public class JwtService {
     }
 
     /**
-     * Short-lived JWT for shared-terminal PIN context swap. Does not issue a refresh token;
-     * the primary device session remains intact on the client.
+     * Short-lived RS256 JWT for shared-terminal PIN context swap. Bound to a single tenant
+     * ({@code tenant_id} + {@code bind_tenant_id}) with a hard TTL from configuration
+     * ({@code invsys.jwt.terminal-switch-token-minutes}, default 5).
      */
     public String generateTerminalSwitchToken(UUID userId, UUID tenantId, List<String> roles, List<UUID> warehouseIds) {
+        Objects.requireNonNull(tenantId, "tenantId");
         return generateAccessToken(
                 userId,
                 tenantId,
                 roles,
                 warehouseIds,
                 properties.getTerminalSwitchTokenMinutes() * 60L,
-                "TERMINAL_SWITCH");
+                TOKEN_TYPE_TERMINAL_SWITCH);
     }
 
     private String generateAccessToken(UUID userId,
@@ -106,15 +120,20 @@ public class JwtService {
                     : warehouseIds.stream().map(UUID::toString).toList();
             JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
                     .subject(userId.toString())
-                    .claim("tenant_id", tenantId.toString())
+                    .claim(CLAIM_TENANT_ID, tenantId.toString())
                     .claim("roles", roles)
                     .claim("warehouse_ids", warehouseClaim)
                     .issueTime(Date.from(now))
                     .expirationTime(Date.from(now.plusSeconds(ttlSeconds)));
             if (tokenType != null) {
-                builder.claim("token_type", tokenType);
+                builder.claim(CLAIM_TOKEN_TYPE, tokenType);
             }
-            SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), builder.build());
+            if (TOKEN_TYPE_TERMINAL_SWITCH.equals(tokenType)) {
+                // Cryptographic same-tenant bind: reject tokens that hop tenants under verification.
+                builder.claim(CLAIM_BIND_TENANT_ID, tenantId.toString());
+            }
+            SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(REQUIRED_ALG).type(com.nimbusds.jose.JOSEObjectType.JWT).build(),
+                    builder.build());
             jwt.sign(new RSASSASigner(privateKey));
             return jwt.serialize();
         } catch (JOSEException e) {
@@ -127,13 +146,13 @@ public class JwtService {
             Instant now = Instant.now();
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                     .subject("supplier-portal")
-                    .claim("tenant_id", tenantId.toString())
+                    .claim(CLAIM_TENANT_ID, tenantId.toString())
                     .claim("purchase_order_id", purchaseOrderId.toString())
-                    .claim("token_type", "SUPPLIER_PORTAL")
+                    .claim(CLAIM_TOKEN_TYPE, "SUPPLIER_PORTAL")
                     .issueTime(Date.from(now))
                     .expirationTime(Date.from(now.plusSeconds(expiryHours * 3600L)))
                     .build();
-            SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims);
+            SignedJWT jwt = new SignedJWT(new JWSHeader(REQUIRED_ALG), claims);
             jwt.sign(new RSASSASigner(privateKey));
             return jwt.serialize();
         } catch (JOSEException e) {
@@ -147,11 +166,11 @@ public class JwtService {
             if (!"supplier-portal".equals(claims.getSubject())) {
                 throw new IllegalArgumentException("Invalid supplier portal token");
             }
-            if (!"SUPPLIER_PORTAL".equals(claims.getClaim("token_type"))) {
+            if (!"SUPPLIER_PORTAL".equals(claims.getClaim(CLAIM_TOKEN_TYPE))) {
                 throw new IllegalArgumentException("Invalid supplier portal token type");
             }
             return new SupplierPortalClaims(
-                    UUID.fromString(claims.getStringClaim("tenant_id")),
+                    UUID.fromString(claims.getStringClaim(CLAIM_TENANT_ID)),
                     UUID.fromString(claims.getStringClaim("purchase_order_id")));
         } catch (java.text.ParseException e) {
             throw new IllegalArgumentException("Invalid supplier portal token claims", e);
@@ -161,19 +180,80 @@ public class JwtService {
     public record SupplierPortalClaims(UUID tenantId, UUID purchaseOrderId) {
     }
 
+    /**
+     * Verifies RS256 signature against the configured public key, rejects {@code alg:none}
+     * and symmetric algorithms (HMAC key-confusion), and enforces server-time {@code exp}/{@code iat}.
+     * TERMINAL_SWITCH tokens additionally require same-tenant {@code bind_tenant_id} and a TTL
+     * capped at {@code terminal-switch-token-minutes}.
+     */
     public JWTClaimsSet validateAndParse(String token) {
         try {
-            SignedJWT jwt = SignedJWT.parse(token);
+            SignedJWT jwt;
+            try {
+                jwt = SignedJWT.parse(token);
+            } catch (java.text.ParseException parseEx) {
+                // Unsecured JWTs (alg:none / PlainJWT) and malformed headers fail parse as JWS.
+                throw new IllegalArgumentException("JWT algorithm not allowed; RS256 required", parseEx);
+            }
+            assertAllowedAlgorithm(jwt.getHeader());
+
             if (!jwt.verify(new RSASSAVerifier(publicKey))) {
                 throw new IllegalArgumentException("Invalid JWT signature");
             }
+
             JWTClaimsSet claims = jwt.getJWTClaimsSet();
-            if (claims.getExpirationTime().before(new Date())) {
-                throw new IllegalArgumentException("JWT expired");
-            }
+            assertValidTimeClaims(claims);
+            assertTerminalSwitchPolicy(claims);
             return claims;
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid JWT: " + e.getMessage(), e);
+        }
+    }
+
+    private static void assertAllowedAlgorithm(JWSHeader header) {
+        JWSAlgorithm alg = header != null ? header.getAlgorithm() : null;
+        if (alg == null || JWSAlgorithm.NONE.equals(alg) || !ALLOWED_ALGS.contains(alg)) {
+            throw new IllegalArgumentException("JWT algorithm not allowed; RS256 required");
+        }
+    }
+
+    private void assertValidTimeClaims(JWTClaimsSet claims) {
+        Date exp = claims.getExpirationTime();
+        Date iat = claims.getIssueTime();
+        if (exp == null || iat == null) {
+            throw new IllegalArgumentException("JWT missing required time claims");
+        }
+        Instant now = Instant.now();
+        if (exp.toInstant().isBefore(now.minusSeconds(CLOCK_SKEW_SECONDS))) {
+            throw new IllegalArgumentException("JWT expired");
+        }
+        if (iat.toInstant().isAfter(now.plusSeconds(CLOCK_SKEW_SECONDS))) {
+            throw new IllegalArgumentException("JWT issue time is in the future");
+        }
+        if (!exp.toInstant().isAfter(iat.toInstant())) {
+            throw new IllegalArgumentException("JWT expiration must be after issue time");
+        }
+    }
+
+    private void assertTerminalSwitchPolicy(JWTClaimsSet claims) throws java.text.ParseException {
+        Object tokenType = claims.getClaim(CLAIM_TOKEN_TYPE);
+        if (!TOKEN_TYPE_TERMINAL_SWITCH.equals(tokenType)) {
+            return;
+        }
+        String tenantId = claims.getStringClaim(CLAIM_TENANT_ID);
+        String bindTenantId = claims.getStringClaim(CLAIM_BIND_TENANT_ID);
+        if (tenantId == null || tenantId.isBlank()
+                || bindTenantId == null || bindTenantId.isBlank()
+                || !tenantId.equals(bindTenantId)) {
+            throw new IllegalArgumentException("TERMINAL_SWITCH tenant binding mismatch");
+        }
+        Instant iat = claims.getIssueTime().toInstant();
+        Instant exp = claims.getExpirationTime().toInstant();
+        long maxTtlSeconds = properties.getTerminalSwitchTokenMinutes() * 60L + CLOCK_SKEW_SECONDS;
+        if (exp.isAfter(iat.plusSeconds(maxTtlSeconds))) {
+            throw new IllegalArgumentException("TERMINAL_SWITCH TTL exceeds policy");
         }
     }
 

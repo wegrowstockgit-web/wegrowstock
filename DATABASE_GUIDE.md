@@ -35,7 +35,9 @@ These tables answer the question: *"Who is using the system, and what are they a
 
 These tables map out the physical world: the building itself and the boxes sitting on the shelves.
 
-* **`locations`**: This is a hierarchy. It isn't just "Warehouse 1". It maps out the exact physical spot: `Warehouse -> Zone -> Aisle -> Bin`. This tells the warehouse worker exactly where to walk.
+* **`locations`**: This is a hierarchy. It isn't just "Warehouse 1". It maps out the exact physical spot: `Warehouse -> Zone -> Aisle -> Bin`. Optional **`coord_x` / `coord_y` / `coord_z`** turn each bin into a Digital Twin point for A* wayfinding.
+* **`walkable_edges`**: The warehouse floor graph — undirected edges between location nodes with a travel `distance`, used by A* pick routing.
+* **`license_plates`**: Pallet / tote LPNs for bulk moves (`OPEN`, `IN_TRANSIT`, `CLOSED`, `DISPATCHED`). Stock on an LPN is tracked via `inventory_levels.lpn_id` / `inventory_ledger.lpn_id`.
 * **`products`**: The high-level concept of an item (e.g., "Industrial T-Shirt").
 * **`product_variants`**: The specific, sellable version of that product (e.g., "Industrial T-Shirt, Size Medium, Blue"). This is what actually gets a barcode.
 * **`lots`**: Important for things that expire or get recalled (like food or medical supplies). It tracks the specific batch a variant belongs to.
@@ -46,9 +48,9 @@ These tables map out the physical world: the building itself and the boxes sitti
 
 This is the most important part of the database. How do we know how many items we have?
 
-* **`inventory_ledger`**: The master historical record. Every time a box enters the building, leaves the building, gets assembled, or goes missing, a row is permanently added here. **No rows are ever updated or deleted.**
+* **`inventory_ledger`**: The master historical record. Every time a box enters the building, leaves the building, gets assembled, or goes missing, a row is permanently added here. **No rows are ever updated or deleted.** Optional `lpn_id` records pallet consolidations and bulk ships.
 * **`allocations`**: The "Promise" table. If someone buys a shirt online, we haven't shipped it yet, but we can't sell it to anyone else either. An "allocation" reserves that specific shirt.
-* **`inventory_levels`**: The "Dashboard Gauge." Calculating the sum of millions of ledger rows every time a user loads a page is too slow. So, whenever a ledger row is added, invisible database robots (Triggers) instantly update this table so we know exactly what is `on_hand` and what is `allocated` in real-time.
+* **`inventory_levels`**: The "Dashboard Gauge." Calculating the sum of millions of ledger rows every time a user loads a page is too slow. Ledger inserts append lock-free rows to **`inventory_level_deltas`** (Flyway `V076`); a virtual-thread flush worker applies those deltas into `inventory_levels` in batches (`FOR UPDATE SKIP LOCKED`) so hotspot row locks no longer sit on the receive path. Allocation still updates `allocated` synchronously. Levels may be scoped to an LPN (`lpn_id`) for palletized stock.
 
 > **The Math:** `Available to Promise = (On Hand - Allocated)`
 
@@ -143,7 +145,10 @@ Maps where inventory physically exists in the world.
 
 | Table Name | Description |
 | :--- | :--- |
-| `locations` | Hierarchical map of physical storage: `WAREHOUSE` -> `ZONE` -> `AISLE` -> `BIN`. |
+| `locations` | Hierarchical map of physical storage: `WAREHOUSE` -> `ZONE` -> `AISLE` -> `BIN`. Digital Twin columns: `coord_x`, `coord_y`, `coord_z`, plus walk-order `sequence_index`. |
+| `walkable_edges` | Undirected travel graph (`node_a_id`, `node_b_id`, `distance`) for A* pathfinding between locations. RLS-scoped by `tenant_id`. |
+| `license_plates` | License Plate Numbers (LPNs) for palletization / bulk moves. Status: `OPEN`, `IN_TRANSIT`, `CLOSED`, `DISPATCHED`. |
+| `dashboard_kpi_snapshots` | CQRS read model for `/dashboard/stats` (stock value, open orders, unpaid invoices, low stock). Refreshed from outbox events — not queried live from `inventory_ledger`. |
 | `vehicle_assignments` | Maps mobile locations (like a Service Van) to a specific technician. |
 
 ## 4. Inventory Core (The Ledger)
@@ -151,11 +156,12 @@ The unalterable financial truth of the warehouse.
 
 | Table Name | Description |
 | :--- | :--- |
-| `inventory_ledger` | The append-only ledger. Records every single `RECEIVE`, `SHIP`, `ADJUST`, `TRANSFER`, and `ASSEMBLY`. |
+| `inventory_ledger` | The append-only ledger. Records every single `RECEIVE`, `SHIP`, `ADJUST`, `TRANSFER`, and `ASSEMBLY`. Optional `lpn_id` ties a movement to a license plate (e.g. `LPN_CONSOLIDATION`, `LPN_MOVE`, `LPN_SHIP`). |
 | `allocations` | Soft-reservations. Stock promised to a Sales Order that hasn't shipped yet. |
-| `inventory_levels` | A trigger-maintained summary table. Instantly calculates `on_hand` and `allocated` for fast dashboard loads. |
+| `inventory_levels` | Summary gauge for `on_hand` / `allocated`. Unique key is `(tenant_id, variant_id, location_id, lot_id, lpn_id)` with `NULLS NOT DISTINCT` (Flyway `V072`). `on_hand` is maintained asynchronously from `inventory_level_deltas` (`V076`); `allocated` remains trigger-maintained from allocations. |
+| `inventory_level_deltas` | Append-only on-hand deltas written by the ledger trigger (`V076`). Flushed into `inventory_levels` by `InventoryLevelFlushWorker` (virtual threads + SKIP LOCKED). |
 | `cycle_counts` | The header for a physical bin-counting session. |
-| `cycle_count_lines` | The specific items counted vs. expected, which generates `ADJUST` ledger rows upon approval. |
+| `cycle_count_lines` | The specific items counted vs. expected, which generates `ADJUST` ledger rows upon approval. Includes `variance_status` / `financial_impact` for blind-count escalation. |
 
 ## 5. Inbound Supply Chain (Purchasing)
 Getting stock into the building.
@@ -175,8 +181,9 @@ Getting stock out of the building.
 | `customers` | The businesses or people buying goods. |
 | `sales_orders` | The customer's order (Header). |
 | `sales_order_lines` | What the customer ordered, tracking `qty_ordered` vs `qty_allocated` vs `qty_shipped`. |
-| `shipments` | The physical package leaving the dock. Holds EasyPost tracking numbers and carrier info. |
+| `shipments` | The physical package leaving the dock. Holds EasyPost tracking numbers and carrier info. May ship an entire LPN via `lpnBarcode`. |
 | `shipment_lines` | What is inside the specific physical shipment box. |
+| `picking_waves` / `picking_batches` / `picking_tasks` | Wave picking. `picking_tasks.tote_identifier` is the MIB tote label (e.g. `Tote A`) for multi-order batch picks. |
 | `returns` (RMA) | Customer returns (Header). |
 | `return_lines` | Expected items returning, determining if they go to `RESTOCK`, `SCRAP`, or `REPAIR`. |
 

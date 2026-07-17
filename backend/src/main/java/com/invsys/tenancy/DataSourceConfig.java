@@ -42,6 +42,7 @@ public class DataSourceConfig {
             @Value("${spring.flyway.user:app_owner}") String flywayUser,
             @Value("${spring.flyway.password:app_owner_secret}") String flywayPassword) {
         String url = (flywayUrl != null && !flywayUrl.isBlank()) ? flywayUrl : properties.determineUrl();
+        url = ensurePrepareThresholdDisabled(url);
         return DataSourceBuilder.create()
                 .type(HikariDataSource.class)
                 .url(url)
@@ -49,5 +50,15 @@ public class DataSourceConfig {
                 .password(flywayPassword)
                 .driverClassName(properties.getDriverClassName())
                 .build();
+    }
+
+    /** PgBouncer transaction pooling: disable server-side prepared statements. */
+    static String ensurePrepareThresholdDisabled(String jdbcUrl) {
+        if (jdbcUrl == null || jdbcUrl.isBlank() || jdbcUrl.contains("prepareThreshold=")) {
+            return jdbcUrl;
+        }
+        return jdbcUrl.contains("?")
+                ? jdbcUrl + "&prepareThreshold=0"
+                : jdbcUrl + "?prepareThreshold=0";
     }
 }

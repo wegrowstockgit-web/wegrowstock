@@ -22,6 +22,19 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Resolves the authenticated principal and binds {@link TenantContext}.
+ * Downstream execution is always wrapped so ThreadLocals cannot leak into the pool:
+ * <pre>
+ * try {
+ *   TenantContext.setTenantId(...);
+ *   TenantContext.setUserId(...);
+ *   filterChain.doFilter(request, response);
+ * } finally {
+ *   TenantContext.clear();
+ * }
+ * </pre>
+ */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -41,65 +54,68 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         try {
-            String token = resolveAccessToken(request);
-            if (token != null) {
-                try {
-                    JWTClaimsSet claims = jwtService.validateAndParse(token);
-                    UUID userId = UUID.fromString(claims.getSubject());
-                    UUID tenantId = UUID.fromString((String) claims.getClaim("tenant_id"));
-                    @SuppressWarnings("unchecked")
-                    List<String> roles = (List<String>) claims.getClaim("roles");
-                    if (roles == null) {
-                        roles = List.of();
-                    }
-
-                    List<UUID> warehouseIds = parseWarehouseIds(claims.getClaim("warehouse_ids"));
-
-                    TenantContext.setTenantId(tenantId);
-                    TenantContext.setUserId(userId);
-                    TenantContext.setAuthorizedWarehouseIds(warehouseIds);
-                    MDC.put(com.invsys.common.MdcSupport.TENANT_ID, tenantId.toString());
-                    MDC.put(com.invsys.common.MdcSupport.USER_ID, userId.toString());
-                    MDC.put("tenantId", tenantId.toString());
-                    MDC.put("userId", userId.toString());
-
-                    if (roles.contains("B2B_CUSTOMER")) {
-                        customerUserMappingRepository.findByUserId(userId)
-                                .ifPresent(m -> TenantContext.setCustomerId(m.getCustomerId()));
-                    }
-                    if (roles.contains("SUPPLIER")) {
-                        supplierUserMappingRepository.findByUserId(userId)
-                                .ifPresent(m -> TenantContext.setSupplierId(m.getSupplierId()));
-                    }
-
-                    List<SimpleGrantedAuthority> authorities = roles.stream()
-                            .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
-                            .collect(Collectors.toList());
-                    var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                } catch (Exception ignored) {
-                    // Stale/invalid cookie or Bearer must not block public auth routes
-                    // (e.g. POST /login while an expired invsys_access cookie is still present).
-                    SecurityContextHolder.clearContext();
-                    TenantContext.clear();
-                }
-            }
-            chain.doFilter(request, response);
+            // Resolve tenant from cookies/Bearer and bind context (no-op when unauthenticated).
+            bindTenantFromTokenIfPresent(request);
+            filterChain.doFilter(request, response);
         } finally {
-            // Virtual threads may reuse carrier frames — never leave tenant/MDC residue.
+            // Absolute guard against thread pollution in the worker / virtual-thread pool.
             TenantContext.clear();
             MDC.clear();
             SecurityContextHolder.clearContext();
         }
     }
 
-    /**
-     * Prefer HttpOnly cookie; Bearer remains for server-side/integration callers that
-     * obtained a token via {@link AuthService} (never from JSON responses).
-     */
+    private void bindTenantFromTokenIfPresent(HttpServletRequest request) {
+        String token = resolveAccessToken(request);
+        if (token == null) {
+            return;
+        }
+        try {
+            // RS256 + exp/iat + TERMINAL_SWITCH tenant bind enforced inside JwtService.
+            JWTClaimsSet claims = jwtService.validateAndParse(token);
+            UUID userId = UUID.fromString(claims.getSubject());
+            UUID tenantId = UUID.fromString((String) claims.getClaim(JwtService.CLAIM_TENANT_ID));
+            @SuppressWarnings("unchecked")
+            List<String> roles = (List<String>) claims.getClaim("roles");
+            if (roles == null) {
+                roles = List.of();
+            }
+
+            List<UUID> warehouseIds = parseWarehouseIds(claims.getClaim("warehouse_ids"));
+
+            TenantContext.setTenantId(tenantId);
+            TenantContext.setUserId(userId);
+            TenantContext.setAuthorizedWarehouseIds(warehouseIds);
+            MDC.put(com.invsys.common.MdcSupport.TENANT_ID, tenantId.toString());
+            MDC.put(com.invsys.common.MdcSupport.USER_ID, userId.toString());
+            MDC.put("tenantId", tenantId.toString());
+            MDC.put("userId", userId.toString());
+
+            if (roles.contains("B2B_CUSTOMER")) {
+                customerUserMappingRepository.findByUserId(userId)
+                        .ifPresent(m -> TenantContext.setCustomerId(m.getCustomerId()));
+            }
+            if (roles.contains("SUPPLIER")) {
+                supplierUserMappingRepository.findByUserId(userId)
+                        .ifPresent(m -> TenantContext.setSupplierId(m.getSupplierId()));
+            }
+
+            List<SimpleGrantedAuthority> authorities = roles.stream()
+                    .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
+                    .collect(Collectors.toList());
+            var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
+            SecurityContextHolder.getContext().setAuthentication(auth);
+        } catch (Exception ignored) {
+            // Stale/invalid cookie or Bearer must not block public auth routes
+            // (e.g. POST /login while an expired invsys_access cookie is still present).
+            SecurityContextHolder.clearContext();
+            TenantContext.clear();
+        }
+    }
+
     private String resolveAccessToken(HttpServletRequest request) {
         String cookieToken = authCookieService.readAccessToken(request);
         if (cookieToken != null && !cookieToken.isBlank()) {
@@ -112,7 +128,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         return null;
     }
 
-    @SuppressWarnings("unchecked")
     private static List<UUID> parseWarehouseIds(Object claim) {
         if (!(claim instanceof List<?> raw) || raw.isEmpty()) {
             return List.of();
@@ -123,7 +138,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 ids.add(UUID.fromString(item.toString()));
             }
         }
-        return ids;
+        return List.copyOf(ids);
     }
 
     @Override

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,18 +33,21 @@ public class OutboxDispatcher {
     private final IntegrationProperties integrationProperties;
     private final Map<String, OutboxEventHandler> handlers;
     private final ExecutorService virtualThreadExecutor;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OutboxDispatcher(
             OutboxEventRepository outboxEventRepository,
             IntegrationProperties integrationProperties,
             List<OutboxEventHandler> handlerList,
-            @Qualifier("virtualThreadExecutor") ExecutorService virtualThreadExecutor) {
+            @Qualifier("virtualThreadExecutor") ExecutorService virtualThreadExecutor,
+            ApplicationEventPublisher eventPublisher) {
         this.outboxEventRepository = outboxEventRepository;
         this.integrationProperties = integrationProperties;
         this.handlers = handlerList.stream()
                 .flatMap(handler -> handler.eventTypes().stream().map(type -> Map.entry(type, handler)))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
         this.virtualThreadExecutor = virtualThreadExecutor;
+        this.eventPublisher = eventPublisher;
     }
 
     public void dispatch() {
@@ -76,6 +80,7 @@ public class OutboxDispatcher {
             if (handler == null) {
                 log.warn("No handler for outbox event type={} id={}", event.eventType(), event.id());
                 outboxEventRepository.markPublished(event.id());
+                publishDispatched(event);
                 return true;
             }
             Exception handlerFailure = runHandlerOnVirtualThread(event, handler);
@@ -85,11 +90,21 @@ public class OutboxDispatcher {
                 return true;
             }
             outboxEventRepository.markPublished(event.id());
+            publishDispatched(event);
             return true;
         } finally {
             TenantContext.clear();
             MDC.clear();
         }
+    }
+
+    private void publishDispatched(ClaimedOutboxEvent event) {
+        eventPublisher.publishEvent(new OutboxDispatchedEvent(
+                event.tenantId(),
+                event.id(),
+                event.eventType(),
+                event.aggregateId(),
+                event.payload()));
     }
 
     private Exception runHandlerOnVirtualThread(ClaimedOutboxEvent event, OutboxEventHandler handler) {

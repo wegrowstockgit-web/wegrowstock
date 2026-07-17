@@ -7,20 +7,21 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Selects the smallest shipping carton that fits allocated order volume + weight.
- * Volumetric (dim) weight uses the US domestic divisor 166 for inches.
+ * First-Fit Decreasing 3D bin packing over active {@link ShippingCarton} masters.
+ * Units are expanded, sorted by volume descending, then placed into extreme-point
+ * free spaces (axis-aligned, 6 orientations).
  */
 @Component
 public class CartonizationEngine {
 
     /** EasyPost / UPS domestic dimensional-weight divisor (in³ → lb). */
     public static final BigDecimal DIM_WEIGHT_DIVISOR = new BigDecimal("166");
-    private static final BigDecimal PACK_FACTOR = new BigDecimal("1.10");
     private static final BigDecimal CM_TO_IN = new BigDecimal("0.393701");
     private static final BigDecimal KG_TO_LB = new BigDecimal("2.20462");
 
@@ -36,6 +37,17 @@ public class CartonizationEngine {
     ) {
     }
 
+    public record PackPlacement(
+            UUID variantId,
+            BigDecimal xIn,
+            BigDecimal yIn,
+            BigDecimal zIn,
+            BigDecimal lengthIn,
+            BigDecimal widthIn,
+            BigDecimal heightIn
+    ) {
+    }
+
     public record CartonizationResult(
             ShippingCarton carton,
             BigDecimal actualWeightLb,
@@ -44,7 +56,8 @@ public class CartonizationEngine {
             BigDecimal totalVolumeCuIn,
             BigDecimal lengthIn,
             BigDecimal widthIn,
-            BigDecimal heightIn
+            BigDecimal heightIn,
+            List<PackPlacement> packing
     ) {
     }
 
@@ -58,103 +71,155 @@ public class CartonizationEngine {
                     "No active shipping cartons configured for this tenant");
         }
 
-        BigDecimal totalVolumeCuIn = BigDecimal.ZERO;
-        BigDecimal totalWeightLb = BigDecimal.ZERO;
-        BigDecimal maxLen = BigDecimal.ZERO;
-        BigDecimal maxWid = BigDecimal.ZERO;
-        BigDecimal maxHt = BigDecimal.ZERO;
+        List<Unit> units = expandUnits(lines);
+        if (units.isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_LINES",
+                    "No order lines available to cartonize");
+        }
+        units.sort(Comparator.comparing(Unit::volume).reversed());
 
+        BigDecimal totalWeightLb = units.stream()
+                .map(Unit::weightLb)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalVolumeCuIn = units.stream()
+                .map(Unit::volume)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<ShippingCarton> ranked = cartons.stream()
+                .filter(ShippingCarton::isActive)
+                .sorted(Comparator
+                        .comparing(this::cartonVolumeCuIn)
+                        .thenComparing(ShippingCarton::getMaxWeight))
+                .toList();
+
+        for (ShippingCarton carton : ranked) {
+            BigDecimal cL = toInches(carton.getLength(), carton.getDimUnit());
+            BigDecimal cW = toInches(carton.getWidth(), carton.getDimUnit());
+            BigDecimal cH = toInches(carton.getHeight(), carton.getDimUnit());
+            BigDecimal emptyLb = toPounds(carton.getEmptyWeight(), carton.getWeightUnit());
+            BigDecimal maxLb = toPounds(carton.getMaxWeight(), carton.getWeightUnit());
+            BigDecimal packedWeight = totalWeightLb.add(emptyLb);
+            if (maxLb.compareTo(packedWeight) < 0) {
+                continue;
+            }
+
+            List<PackPlacement> packing = tryPackFfd(units, cL, cW, cH);
+            if (packing == null) {
+                continue;
+            }
+
+            BigDecimal actualWeightLb = packedWeight.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal volumetricWeightLb = cL.multiply(cW).multiply(cH)
+                    .divide(DIM_WEIGHT_DIVISOR, 2, RoundingMode.HALF_UP);
+            BigDecimal billable = actualWeightLb.max(volumetricWeightLb);
+            return new CartonizationResult(
+                    carton,
+                    actualWeightLb,
+                    volumetricWeightLb,
+                    billable,
+                    totalVolumeCuIn.setScale(2, RoundingMode.HALF_UP),
+                    cL,
+                    cW,
+                    cH,
+                    packing);
+        }
+
+        throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_FITTING_CARTON",
+                "No shipping carton fits the order volume/weight — add a larger carton");
+    }
+
+    /**
+     * First-Fit Decreasing with extreme-point free rectangles (shelf-style 3D).
+     * Returns null when the unit list cannot be placed in the carton.
+     */
+    List<PackPlacement> tryPackFfd(List<Unit> units, BigDecimal boxL, BigDecimal boxW, BigDecimal boxH) {
+        List<FreeSpace> spaces = new ArrayList<>();
+        spaces.add(new FreeSpace(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, boxL, boxW, boxH));
+        List<PackPlacement> placed = new ArrayList<>(units.size());
+
+        for (Unit unit : units) {
+            boolean fitted = false;
+            for (int orientation = 0; orientation < 6 && !fitted; orientation++) {
+                BigDecimal[] dims = orient(unit.l(), unit.w(), unit.h(), orientation);
+                BigDecimal ul = dims[0];
+                BigDecimal uw = dims[1];
+                BigDecimal uh = dims[2];
+                for (int si = 0; si < spaces.size(); si++) {
+                    FreeSpace space = spaces.get(si);
+                    if (space.l().compareTo(ul) < 0
+                            || space.w().compareTo(uw) < 0
+                            || space.h().compareTo(uh) < 0) {
+                        continue;
+                    }
+                    placed.add(new PackPlacement(
+                            unit.variantId(),
+                            space.x(), space.y(), space.z(),
+                            ul, uw, uh));
+                    spaces.remove(si);
+                    // Split remaining free space (right / forward / above).
+                    BigDecimal remL = space.l().subtract(ul);
+                    BigDecimal remW = space.w().subtract(uw);
+                    BigDecimal remH = space.h().subtract(uh);
+                    if (remL.signum() > 0) {
+                        spaces.add(new FreeSpace(
+                                space.x().add(ul), space.y(), space.z(),
+                                remL, space.w(), space.h()));
+                    }
+                    if (remW.signum() > 0) {
+                        spaces.add(new FreeSpace(
+                                space.x(), space.y().add(uw), space.z(),
+                                ul, remW, space.h()));
+                    }
+                    if (remH.signum() > 0) {
+                        spaces.add(new FreeSpace(
+                                space.x(), space.y(), space.z().add(uh),
+                                ul, uw, remH));
+                    }
+                    fitted = true;
+                    break;
+                }
+            }
+            if (!fitted) {
+                return null;
+            }
+        }
+        return placed;
+    }
+
+    private static BigDecimal[] orient(BigDecimal l, BigDecimal w, BigDecimal h, int orientation) {
+        return switch (orientation) {
+            case 0 -> new BigDecimal[]{l, w, h};
+            case 1 -> new BigDecimal[]{l, h, w};
+            case 2 -> new BigDecimal[]{w, l, h};
+            case 3 -> new BigDecimal[]{w, h, l};
+            case 4 -> new BigDecimal[]{h, l, w};
+            default -> new BigDecimal[]{h, w, l};
+        };
+    }
+
+    private List<Unit> expandUnits(List<LineItem> lines) {
+        List<Unit> units = new ArrayList<>();
         for (LineItem line : lines) {
             BigDecimal qty = nullSafe(line.quantity());
-            if (qty.signum() <= 0) {
+            int count = qty.setScale(0, RoundingMode.CEILING).intValue();
+            if (count <= 0) {
                 continue;
             }
             BigDecimal l = toInches(nullSafe(line.length()), line.dimUnit());
             BigDecimal w = toInches(nullSafe(line.width()), line.dimUnit());
             BigDecimal h = toInches(nullSafe(line.height()), line.dimUnit());
             if (l.signum() <= 0 || w.signum() <= 0 || h.signum() <= 0) {
-                // Fallback cube for undimensioned SKUs (6×6×6 in)
                 l = w = h = new BigDecimal("6");
             }
-            BigDecimal unitVol = l.multiply(w).multiply(h);
-            totalVolumeCuIn = totalVolumeCuIn.add(unitVol.multiply(qty));
-            totalWeightLb = totalWeightLb.add(toPounds(nullSafe(line.weight()), line.weightUnit()).multiply(qty));
-            maxLen = maxLen.max(l);
-            maxWid = maxWid.max(w);
-            maxHt = maxHt.max(h);
-        }
-
-        if (totalVolumeCuIn.signum() <= 0) {
-            totalVolumeCuIn = new BigDecimal("216"); // 6³
-        }
-        BigDecimal requiredVolume = totalVolumeCuIn.multiply(PACK_FACTOR);
-
-        List<ShippingCarton> ranked = cartons.stream()
-                .filter(ShippingCarton::isActive)
-                .sorted(Comparator
-                        .comparing((ShippingCarton c) -> cartonVolumeCuIn(c))
-                        .thenComparing(ShippingCarton::getMaxWeight))
-                .toList();
-
-        ShippingCarton selected = null;
-        for (ShippingCarton carton : ranked) {
-            BigDecimal cL = toInches(carton.getLength(), carton.getDimUnit());
-            BigDecimal cW = toInches(carton.getWidth(), carton.getDimUnit());
-            BigDecimal cH = toInches(carton.getHeight(), carton.getDimUnit());
-            BigDecimal cVol = cL.multiply(cW).multiply(cH);
-            BigDecimal emptyLb = toPounds(carton.getEmptyWeight(), carton.getWeightUnit());
-            BigDecimal maxLb = toPounds(carton.getMaxWeight(), carton.getWeightUnit());
-            BigDecimal packedWeight = totalWeightLb.add(emptyLb);
-
-            boolean volumeOk = cVol.compareTo(requiredVolume) >= 0;
-            boolean weightOk = maxLb.compareTo(packedWeight) >= 0;
-            boolean axisOk = fitsAxes(cL, cW, cH, maxLen, maxWid, maxHt);
-            if (volumeOk && weightOk && axisOk) {
-                selected = carton;
-                break;
+            BigDecimal weightLb = toPounds(nullSafe(line.weight()), line.weightUnit());
+            for (int i = 0; i < count; i++) {
+                units.add(new Unit(line.variantId(), l, w, h, weightLb));
             }
         }
-        if (selected == null) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_FITTING_CARTON",
-                    "No shipping carton fits the order volume/weight — add a larger carton");
-        }
-
-        BigDecimal lengthIn = toInches(selected.getLength(), selected.getDimUnit());
-        BigDecimal widthIn = toInches(selected.getWidth(), selected.getDimUnit());
-        BigDecimal heightIn = toInches(selected.getHeight(), selected.getDimUnit());
-        BigDecimal emptyLb = toPounds(selected.getEmptyWeight(), selected.getWeightUnit());
-        BigDecimal actualWeightLb = totalWeightLb.add(emptyLb).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal volumetricWeightLb = lengthIn.multiply(widthIn).multiply(heightIn)
-                .divide(DIM_WEIGHT_DIVISOR, 2, RoundingMode.HALF_UP);
-        BigDecimal billable = actualWeightLb.max(volumetricWeightLb);
-
-        return new CartonizationResult(
-                selected,
-                actualWeightLb,
-                volumetricWeightLb,
-                billable,
-                totalVolumeCuIn.setScale(2, RoundingMode.HALF_UP),
-                lengthIn,
-                widthIn,
-                heightIn);
+        return units;
     }
 
-    private static boolean fitsAxes(BigDecimal cL, BigDecimal cW, BigDecimal cH,
-                                    BigDecimal iL, BigDecimal iW, BigDecimal iH) {
-        BigDecimal[] carton = sorted(cL, cW, cH);
-        BigDecimal[] item = sorted(iL, iW, iH);
-        return carton[0].compareTo(item[0]) >= 0
-                && carton[1].compareTo(item[1]) >= 0
-                && carton[2].compareTo(item[2]) >= 0;
-    }
-
-    private static BigDecimal[] sorted(BigDecimal a, BigDecimal b, BigDecimal c) {
-        BigDecimal[] v = {a, b, c};
-        java.util.Arrays.sort(v);
-        return v;
-    }
-
-    private static BigDecimal cartonVolumeCuIn(ShippingCarton c) {
+    private BigDecimal cartonVolumeCuIn(ShippingCarton c) {
         return toInches(c.getLength(), c.getDimUnit())
                 .multiply(toInches(c.getWidth(), c.getDimUnit()))
                 .multiply(toInches(c.getHeight(), c.getDimUnit()));
@@ -187,5 +252,17 @@ public class CartonizationEngine {
 
     private static BigDecimal nullSafe(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    record Unit(UUID variantId, BigDecimal l, BigDecimal w, BigDecimal h, BigDecimal weightLb) {
+        BigDecimal volume() {
+            return l.multiply(w).multiply(h);
+        }
+    }
+
+    private record FreeSpace(
+            BigDecimal x, BigDecimal y, BigDecimal z,
+            BigDecimal l, BigDecimal w, BigDecimal h
+    ) {
     }
 }

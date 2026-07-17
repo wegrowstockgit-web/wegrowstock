@@ -1,10 +1,13 @@
 package com.invsys.api;
 
 import com.invsys.domain.Allocation;
+import com.invsys.domain.Location;
 import com.invsys.domain.PickingTask;
 import com.invsys.domain.ProductVariant;
 import com.invsys.repository.AllocationRepository;
+import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ProductVariantRepository;
+import com.invsys.service.PickingService;
 import com.invsys.service.PickingWaveService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
@@ -26,13 +30,19 @@ public class PickingController {
     private final PickingWaveService pickingWaveService;
     private final AllocationRepository allocationRepository;
     private final ProductVariantRepository variantRepository;
+    private final LocationRepository locationRepository;
+    private final PickingService pickingService;
 
     public PickingController(PickingWaveService pickingWaveService,
                              AllocationRepository allocationRepository,
-                             ProductVariantRepository variantRepository) {
+                             ProductVariantRepository variantRepository,
+                             LocationRepository locationRepository,
+                             PickingService pickingService) {
         this.pickingWaveService = pickingWaveService;
         this.allocationRepository = allocationRepository;
         this.variantRepository = variantRepository;
+        this.locationRepository = locationRepository;
+        this.pickingService = pickingService;
     }
 
     @PostMapping("/waves/generate")
@@ -103,6 +113,13 @@ public class PickingController {
                 .toList();
     }
 
+    @GetMapping("/wayfinding")
+    public PickingService.WayfindingPath wayfinding(
+            @RequestParam UUID fromLocationId,
+            @RequestParam UUID toLocationId) {
+        return pickingService.wayfinding(fromLocationId, toLocationId);
+    }
+
     @PostMapping("/tasks/{taskId}/pick")
     public TaskResponse pickTask(@PathVariable UUID taskId) {
         return toTaskResponse(pickingWaveService.markTaskPicked(taskId));
@@ -118,14 +135,34 @@ public class PickingController {
 
     private TaskResponse toTaskResponse(PickingTask task) {
         UUID variantId = null;
+        UUID locationId = null;
+        BigDecimal coordX = null;
+        BigDecimal coordY = null;
+        BigDecimal quantity = null;
+        String sku = null;
+        String barcode = null;
         boolean lotTracked = false;
         if (task.getAllocationId() != null) {
             Allocation allocation = allocationRepository.findById(task.getAllocationId()).orElse(null);
             if (allocation != null) {
                 variantId = allocation.getVariantId();
-                lotTracked = variantRepository.findById(variantId)
-                        .map(ProductVariant::isLotTracked)
-                        .orElse(false);
+                locationId = allocation.getLocationId();
+                quantity = allocation.getQuantity();
+                ProductVariant variant = variantId != null
+                        ? variantRepository.findById(variantId).orElse(null)
+                        : null;
+                if (variant != null) {
+                    lotTracked = variant.isLotTracked();
+                    sku = variant.getSku();
+                    barcode = variant.getBarcode();
+                }
+                if (locationId != null) {
+                    Location loc = locationRepository.findById(locationId).orElse(null);
+                    if (loc != null) {
+                        coordX = loc.getCoordX();
+                        coordY = loc.getCoordY();
+                    }
+                }
             }
         }
         return new TaskResponse(
@@ -136,7 +173,14 @@ public class PickingController {
                 task.getLocationPath(),
                 resolveZone(task.getLocationPath()),
                 task.getSequenceOrder(),
-                task.getStatus());
+                task.getStatus(),
+                task.getToteIdentifier(),
+                locationId,
+                coordX,
+                coordY,
+                sku,
+                barcode,
+                quantity);
     }
 
     private static String resolveZone(String path) {
@@ -188,7 +232,14 @@ public class PickingController {
             String locationPath,
             String zone,
             int sequenceOrder,
-            String status
+            String status,
+            String toteIdentifier,
+            UUID locationId,
+            BigDecimal coordX,
+            BigDecimal coordY,
+            String sku,
+            String barcode,
+            BigDecimal quantity
     ) {
     }
 

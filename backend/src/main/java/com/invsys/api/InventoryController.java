@@ -5,6 +5,7 @@ import com.invsys.domain.InventoryLevel;
 import com.invsys.repository.InventoryLevelRepository;
 import com.invsys.service.InventoryService;
 import com.invsys.service.LotService;
+import com.invsys.service.LpnService;
 import com.invsys.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -28,13 +29,16 @@ public class InventoryController {
     private final InventoryService inventoryService;
     private final InventoryLevelRepository levelRepository;
     private final LotService lotService;
+    private final LpnService lpnService;
 
     public InventoryController(InventoryService inventoryService,
                                InventoryLevelRepository levelRepository,
-                               LotService lotService) {
+                               LotService lotService,
+                               LpnService lpnService) {
         this.inventoryService = inventoryService;
         this.levelRepository = levelRepository;
         this.lotService = lotService;
+        this.lpnService = lpnService;
     }
 
     @GetMapping("/levels")
@@ -50,6 +54,59 @@ public class InventoryController {
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
     public LotService.MintedLot mintInternalLot(@Valid @RequestBody MintLotRequest request) {
         return lotService.mintInternalLot(TenantContext.requireTenantId(), request.variantId());
+    }
+
+    @PostMapping("/lpns")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public LicensePlateResponse createLpn(@Valid @RequestBody CreateLpnRequest request) {
+        var lpn = inventoryService.createLicensePlate(request.lpnBarcode(), request.locationId());
+        return new LicensePlateResponse(lpn.getId(), lpn.getLpnBarcode(), lpn.getLocationId(), lpn.getStatus());
+    }
+
+    @PostMapping("/lpns/mint")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public LpnService.MintedLpn mintLpn(@RequestBody(required = false) MintLpnRequest request) {
+        return lpnService.mint(request != null ? request.locationId() : null);
+    }
+
+    @PostMapping("/lpns/{lpnBarcode}/pack")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public LpnService.PackResult packLpn(@PathVariable String lpnBarcode,
+                                         @RequestBody(required = false) PackLpnRequest request) {
+        PackLpnRequest body = request != null ? request : new PackLpnRequest(List.of(), List.of(), List.of());
+        return lpnService.pack(lpnBarcode, body.inventoryLevelIds(), body.allocationIds(), body.barcodes());
+    }
+
+    @GetMapping("/lpns/{lpnBarcode}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
+    public LpnService.LpnContents lpnContents(@PathVariable String lpnBarcode) {
+        return lpnService.contents(lpnBarcode);
+    }
+
+    @PostMapping("/lpns/move")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public InventoryService.MoveLpnResult moveLpn(@Valid @RequestBody MoveLpnRequest request) {
+        UUID destinationId = request.destinationLocationId();
+        if (destinationId == null && request.destinationBarcode() != null
+                && !request.destinationBarcode().isBlank()) {
+            destinationId = inventoryService.resolveLocationId(request.destinationBarcode());
+        }
+        if (destinationId == null) {
+            throw new com.invsys.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "DESTINATION_REQUIRED",
+                    "destinationLocationId or destinationBarcode is required");
+        }
+        return inventoryService.moveLpn(
+                TenantContext.requireTenantId(),
+                request.lpnBarcode(),
+                destinationId);
+    }
+
+    @PostMapping("/lpns/{lpnId}/receive")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
+    public InventoryLedger receiveOntoLpn(@PathVariable UUID lpnId, @Valid @RequestBody ReceiveOntoLpnRequest request) {
+        return inventoryService.receiveOntoLpn(request.variantId(), lpnId, request.quantity());
     }
 
     @PostMapping("/receive")
@@ -86,6 +143,32 @@ public class InventoryController {
     }
 
     public record MintLotRequest(@NotNull UUID variantId) {
+    }
+
+    public record CreateLpnRequest(String lpnBarcode, @NotNull UUID locationId) {
+    }
+
+    public record MintLpnRequest(UUID locationId) {
+    }
+
+    public record PackLpnRequest(
+            List<UUID> inventoryLevelIds,
+            List<UUID> allocationIds,
+            List<String> barcodes
+    ) {
+    }
+
+    public record MoveLpnRequest(
+            @NotNull String lpnBarcode,
+            UUID destinationLocationId,
+            String destinationBarcode
+    ) {
+    }
+
+    public record ReceiveOntoLpnRequest(@NotNull UUID variantId, @NotNull BigDecimal quantity) {
+    }
+
+    public record LicensePlateResponse(UUID id, String lpnBarcode, UUID locationId, String status) {
     }
 
     public record ReceiveRequest(
