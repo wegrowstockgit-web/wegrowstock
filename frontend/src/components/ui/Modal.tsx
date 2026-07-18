@@ -39,7 +39,7 @@ export function Modal({ open, onClose, title, description, children }: ModalProp
           <h2 className="text-lg font-semibold text-text">{title}</h2>
           {description && <p className="mt-0.5 text-sm text-text-muted">{description}</p>}
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close dialog">
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} aria-label="Close dialog">
           <X className="h-4 w-4" />
         </Button>
       </div>

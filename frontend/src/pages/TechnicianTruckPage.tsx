@@ -7,6 +7,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { useSessionStore } from '@/stores/session';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import { Card } from '@/components/ui/Card';
@@ -50,13 +51,20 @@ export function TechnicianTruckPage() {
       (await apiClient.get<TenantLocation[]>('/api/v1/locations', { params: { type: 'VEHICLE' } })).data,
   });
 
-  const { data: stock = [], isLoading } = useQuery({
+  const {
+    data: stock = [],
+    isLoading,
+    isError: stockError,
+    error: stockErr,
+    refetch: refetchStock,
+  } = useQuery({
     queryKey: ['field-van-stock', locationId],
     enabled: !!locationId,
     queryFn: async () =>
       (await apiClient.get<VanStockLevel[]>('/api/v1/field/van/stock', {
         params: { locationId },
       })).data,
+    retry: false,
   });
 
   const assignMutation = useMutation({
@@ -210,16 +218,24 @@ export function TechnicianTruckPage() {
 
           <div className="mb-6 space-y-3">
             <p className="text-sm font-medium text-text-muted">Van stock</p>
-            {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-            {!isLoading && stock.length === 0 && (
-              <p className="text-sm text-text-muted">No stock on this vehicle</p>
-            )}
-            {stock.map((row) => (
+            <ListPageState
+              isLoading={isLoading}
+              isError={stockError}
+              error={stockErr}
+              data={stock}
+              refetch={() => void refetchStock()}
+              emptyIcon={Truck}
+              emptyTitle="No stock on this vehicle"
+              emptyDescription="Replenish from a warehouse or scan after stock is transferred."
+            >
+              {(rows) => (
+                <div className="space-y-3">
+                  {rows.map((row) => (
               <button
                 key={`${row.variantId}-${row.lotId ?? 'none'}`}
                 type="button"
                 onClick={() => setSelectedVariantId(row.variantId)}
-                className={`w-full rounded-xl border p-4 text-left ${
+                className={`min-h-14 w-full rounded-xl border p-4 text-left ${
                   selectedVariantId === row.variantId
                     ? 'border-accent bg-accent-muted'
                     : 'border-border bg-surface-raised'
@@ -230,7 +246,10 @@ export function TechnicianTruckPage() {
                   On hand {row.onHand} · available {row.available}
                 </p>
               </button>
-            ))}
+                  ))}
+                </div>
+              )}
+            </ListPageState>
           </div>
 
           {selectedVariantId && (

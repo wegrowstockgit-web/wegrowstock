@@ -52,6 +52,9 @@ public class Shipment extends TenantScopedEntity {
     @Column(name = "label_file_type")
     private String labelFileType;
 
+    @Column(name = "requires_dg_documentation", nullable = false)
+    private boolean requiresDgDocumentation;
+
     public UUID getSalesOrderId() {
         return salesOrderId;
     }
@@ -170,5 +173,13 @@ public class Shipment extends TenantScopedEntity {
 
     public void setLabelFileType(String labelFileType) {
         this.labelFileType = labelFileType;
+    }
+
+    public boolean isRequiresDgDocumentation() {
+        return requiresDgDocumentation;
+    }
+
+    public void setRequiresDgDocumentation(boolean requiresDgDocumentation) {
+        this.requiresDgDocumentation = requiresDgDocumentation;
     }
 }

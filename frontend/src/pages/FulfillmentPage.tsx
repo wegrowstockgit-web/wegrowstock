@@ -14,6 +14,7 @@ import type {
   SalesOrder,
 } from '@/api/types';
 import { useDigitalScale } from '@/hooks/useDigitalScale';
+import { usePackingScale } from '@/hooks/usePackingScale';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
@@ -266,10 +267,12 @@ export function FulfillmentPage() {
   gs1FieldsRef.current = gs1Fields;
   const gs1FeedbackPendingRef = useRef(false);
   const scale = useDigitalScale();
+  const packingScale = usePackingScale();
   const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
   const bufferMisScan = useWarehouseUXStore((s) => s.bufferMisScan);
   const undoMisScan = useWarehouseUXStore((s) => s.undoMisScan);
   const nextBestAction = useWarehouseUXStore((s) => s.nextBestAction);
+  const nextBestActionFresh = useWarehouseUXStore((s) => s.nextBestActionFresh);
   const fetchNextBestAction = useWarehouseUXStore((s) => s.fetchNextBestAction);
   const clearNextBestAction = useWarehouseUXStore((s) => s.clearNextBestAction);
   const upsertVariants = useVariantCacheStore((s) => s.upsertMany);
@@ -366,6 +369,9 @@ export function FulfillmentPage() {
   });
 
   const resolvePackWeightLb = (): number | null => {
+    if (packingScale.stableWeightLb != null && packingScale.stableWeightLb > 0) {
+      return packingScale.stableWeightLb;
+    }
     const scaleLb = scale.reading?.weightLb ?? 0;
     if (scaleLb > 0) return scaleLb;
     const manual = Number(manualWeightLb);
@@ -383,11 +389,10 @@ export function FulfillmentPage() {
     if (!packingMode || !packSalesOrderId || !cartonPreview || packLabelPending) {
       return;
     }
-    if (!scale.connected || !scale.reading?.stable) {
-      return;
-    }
-    const weightLb = scale.reading.weightLb;
-    if (!(weightLb > 0)) {
+    const weightLb =
+      packingScale.stableWeightLb ??
+      (scale.connected && scale.reading?.stable ? scale.reading.weightLb : null);
+    if (weightLb == null || !(weightLb > 0)) {
       return;
     }
     const key = `${packSalesOrderId}:${weightLb.toFixed(2)}`;
@@ -400,6 +405,7 @@ export function FulfillmentPage() {
     packingMode,
     packSalesOrderId,
     cartonPreview,
+    packingScale.stableWeightLb,
     scale.connected,
     scale.reading?.stable,
     scale.reading?.weightLb,
@@ -407,7 +413,12 @@ export function FulfillmentPage() {
     packLabelMutate,
   ]);
 
-  const { data: batchTasks = [], refetch: refetchTasks } = useQuery({
+  const {
+    data: batchTasks = [],
+    isLoading: batchTasksLoading,
+    isError: batchTasksError,
+    refetch: refetchTasks,
+  } = useQuery({
     queryKey: ['picking', 'batch-tasks'],
     queryFn: async () => {
       const res = await apiClient.get<PickingTask[]>('/api/v1/picking/batches/current/tasks');
@@ -1156,30 +1167,37 @@ export function FulfillmentPage() {
               )}
 
               <div className="mt-3 space-y-3">
-                {!scale.supported ? (
+                {!packingScale.serialSupported && !scale.supported ? (
                   <p className="text-sm text-text-muted">
                     Web Serial / Bluetooth unavailable — using carton billable weight, or enter a
                     manual override.
                   </p>
                 ) : (
                   <>
-                    <p className="text-sm text-text-muted">
-                      {scale.connected
-                        ? `Scale connected (${scale.transport ?? 'edge'})${
-                            scale.reading?.stable ? ' · stable' : ''
-                          } · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
-                        : 'Connect a shipping-bay scale (Serial or Bluetooth). A stable weight auto-buys the label.'}
+                    <p className="text-sm text-text-muted" data-testid="packing-scale-status">
+                      {packingScale.connected
+                        ? `Packing scale (Serial)${
+                            packingScale.reading?.stable ? ' · stable' : ''
+                          } · ${packingScale.reading?.rawValue ?? 'Awaiting reading...'}`
+                        : scale.connected
+                          ? `Scale connected (${scale.transport ?? 'edge'})${
+                              scale.reading?.stable ? ' · stable' : ''
+                            } · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
+                          : 'Connect packing scale (Serial 9600). Stable weight auto-buys the label.'}
                     </p>
-                    {scale.error && <p className="text-sm text-danger">{scale.error}</p>}
+                    {(packingScale.error || scale.error) && (
+                      <p className="text-sm text-danger">{packingScale.error ?? scale.error}</p>
+                    )}
                     <div className="flex flex-wrap gap-2">
-                      {!scale.connected ? (
+                      {!packingScale.connected && !scale.connected ? (
                         <>
-                          {scale.serialSupported && (
+                          {packingScale.serialSupported && (
                             <Button
-                              loading={scale.connecting}
-                              onClick={() => void scale.connectSerial()}
+                              loading={packingScale.connecting}
+                              onClick={() => void packingScale.connect()}
+                              data-testid="packing-scale-connect"
                             >
-                              Connect Serial scale
+                              Connect packing scale
                             </Button>
                           )}
                           {scale.bluetoothSupported && (
@@ -1193,7 +1211,13 @@ export function FulfillmentPage() {
                           )}
                         </>
                       ) : (
-                        <Button variant="secondary" onClick={scale.disconnect}>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            packingScale.disconnect();
+                            scale.disconnect();
+                          }}
+                        >
                           Disconnect
                         </Button>
                       )}
@@ -1325,11 +1349,15 @@ export function FulfillmentPage() {
 
           {nextBestAction && (
             <Card
-              className="mb-6 border-2 border-accent bg-accent-muted p-4"
+              className={cn(
+                'mb-6 border-2 border-accent bg-accent-muted p-4',
+                nextBestActionFresh && 'ring-2 ring-accent ring-offset-2',
+              )}
               data-testid="next-best-action"
             >
               <p className="text-xs font-bold uppercase tracking-wide text-accent">
                 Next interleaved task · {nextBestAction.taskType}
+                {nextBestActionFresh ? ' · go now' : ''}
               </p>
               <p className="mt-2 text-xl font-bold text-text">
                 {nextBestAction.instruction ?? nextBestAction.summary}
@@ -1345,7 +1373,12 @@ export function FulfillmentPage() {
                   PLACE IN TOTE: {nextBestAction.toteIdentifier}
                 </p>
               )}
-              <p className="mt-1 text-xs text-text-muted">{nextBestAction.summary}</p>
+              <p className="mt-1 text-xs text-text-muted">
+                {nextBestAction.summary}
+                {nextBestAction.travelScore != null
+                  ? ` · score ${Math.round(nextBestAction.travelScore)}`
+                  : ''}
+              </p>
               <Button
                 size="sm"
                 variant="secondary"
@@ -1359,6 +1392,24 @@ export function FulfillmentPage() {
 
           {batchMode && !packingMode && (
             <Card className="mb-6 border-accent bg-accent-muted p-4">
+              {batchTasksLoading && (
+                <p className="text-sm text-text-muted" data-testid="list-page-loading">
+                  Loading batch tasks…
+                </p>
+              )}
+              {batchTasksError && !batchTasksLoading && (
+                <div className="space-y-3" data-testid="list-page-error">
+                  <p className="text-sm text-text">Unable to load batch tasks.</p>
+                  <Button size="sm" onClick={() => void refetchTasks()} data-testid="list-page-retry">
+                    Retry
+                  </Button>
+                </div>
+              )}
+              {!batchTasksLoading && !batchTasksError && !nextTask && (
+                <p className="text-sm text-text-muted" data-testid="list-page-empty">
+                  No pending picks in the current batch.
+                </p>
+              )}
               {nextTask ? (
                 <>
                   <p className="text-xs font-medium uppercase tracking-wide text-accent">Next bin</p>

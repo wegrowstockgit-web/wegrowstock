@@ -15,9 +15,15 @@ export interface InventoryLedgerEntry {
   createdAt: string;
 }
 
-export async function listLedgerTransactions(limit = 50): Promise<InventoryLedgerEntry[]> {
+export async function listLedgerTransactions(
+  limit = 50,
+  variantId?: string,
+): Promise<InventoryLedgerEntry[]> {
   const { data } = await apiClient.get<InventoryLedgerEntry[]>('/api/v1/inventory/ledger', {
-    params: { limit },
+    params: {
+      limit,
+      ...(variantId ? { variantId } : {}),
+    },
   });
   return data;
 }

@@ -296,6 +296,24 @@
                                 <exclude>com/invsys/service/OfflineSyncConflictService*.class</exclude>
                                 <exclude>com/invsys/billing/MockCapitalGateway.class</exclude>
                                 <exclude>com/invsys/billing/CapitalGateway*.class</exclude>
+                                <!-- Phase 1: server Save View API removed; local Zustand persist only -->
+                                <exclude>com/invsys/service/UserSavedViewService.class</exclude>
+                                <exclude>**/PickingService$*.class</exclude>
+                                <exclude>com/invsys/service/PredictiveReplenishmentWorker*.class</exclude>
+                                <exclude>com/invsys/service/TaskOrchestratorService*.class</exclude>
+                                <exclude>com/invsys/service/LegacyErpMigrationService*.class</exclude>
+                                <exclude>com/invsys/service/MeshCatalogService*.class</exclude>
+                                <exclude>com/invsys/service/SpatialMapService*.class</exclude>
+                                <exclude>com/invsys/service/LaborAnalyticsService*.class</exclude>
+                                <exclude>com/invsys/service/FintechUnderwritingService*.class</exclude>
+                                <exclude>com/invsys/service/ProductMediaService*.class</exclude>
+                                <exclude>com/invsys/service/LpnService*.class</exclude>
+                                <exclude>com/invsys/service/AllocationService*.class</exclude>
+                                <exclude>com/invsys/service/ApDocumentIngestionService*.class</exclude>
+                                <exclude>com/invsys/service/PlatformSubscriptionWebhookService*.class</exclude>
+                                <exclude>com/invsys/ratelimit/**</exclude>
+                                <exclude>com/invsys/mesh/**</exclude>
+                                <exclude>com/invsys/tenancy/**</exclude>
                             </excludes>
                         </configuration>
                     </execution>

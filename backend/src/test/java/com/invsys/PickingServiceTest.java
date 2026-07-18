@@ -2,7 +2,11 @@ package com.invsys;
 
 import com.invsys.domain.Allocation;
 import com.invsys.domain.Location;
+import com.invsys.domain.Product;
+import com.invsys.domain.ProductVariant;
 import com.invsys.repository.LocationRepository;
+import com.invsys.repository.ProductRepository;
+import com.invsys.repository.ProductVariantRepository;
 import com.invsys.service.PickingService;
 import com.invsys.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +25,8 @@ class PickingServiceTest extends AbstractIntegrationTest {
     @Autowired TestDataHelper testDataHelper;
     @Autowired PickingService pickingService;
     @Autowired LocationRepository locationRepository;
+    @Autowired ProductRepository productRepository;
+    @Autowired ProductVariantRepository productVariantRepository;
 
     @AfterEach
     void cleanup() {
@@ -78,6 +84,48 @@ class PickingServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void fragileVariantsAreSequencedLastInPickPath() {
+        UUID tenantId = testDataHelper.createTenant("Fragile Pick", "frag-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+
+        Location early = saveLoc(tenantId, "WH/A/01");
+        Location late = saveLoc(tenantId, "WH/Z/99");
+
+        Product product = new Product();
+        product.setTenantId(tenantId);
+        product.setSkuRoot("FRG");
+        product.setName("Fragile kit");
+        product = productRepository.save(product);
+
+        ProductVariant sturdy = new ProductVariant();
+        sturdy.setTenantId(tenantId);
+        sturdy.setProductId(product.getId());
+        sturdy.setSku("FRG-STURDY");
+        sturdy.setFragile(false);
+        sturdy = productVariantRepository.save(sturdy);
+
+        ProductVariant fragile = new ProductVariant();
+        fragile.setTenantId(tenantId);
+        fragile.setProductId(product.getId());
+        fragile.setSku("FRG-GLASS");
+        fragile.setFragile(true);
+        fragile = productVariantRepository.save(fragile);
+
+        Allocation fragileEarly = alloc(early.getId(), fragile.getId());
+        Allocation sturdyLate = alloc(late.getId(), sturdy.getId());
+
+        Map<UUID, String> paths = Map.of(
+                early.getId(), early.getPath(),
+                late.getId(), late.getPath());
+
+        List<Allocation> route = pickingService.optimizePickSequence(
+                List.of(fragileEarly, sturdyLate), paths);
+
+        assertThat(route.get(0).getVariantId()).isEqualTo(sturdy.getId());
+        assertThat(route.get(1).getVariantId()).isEqualTo(fragile.getId());
+    }
+
+    @Test
     void locationPathKeyParsesNumericBayOrdering() {
         var a = PickingService.LocationPathKey.parse("WH-01/Z-A/A-1/B-2");
         var b = PickingService.LocationPathKey.parse("WH-01/Z-A/A-1/B-10");
@@ -109,9 +157,14 @@ class PickingServiceTest extends AbstractIntegrationTest {
     }
 
     private static Allocation alloc(UUID locationId) {
+        return alloc(locationId, null);
+    }
+
+    private static Allocation alloc(UUID locationId, UUID variantId) {
         Allocation a = new Allocation();
         a.setId(UUID.randomUUID());
         a.setLocationId(locationId);
+        a.setVariantId(variantId);
         a.setQuantity(BigDecimal.ONE);
         return a;
     }

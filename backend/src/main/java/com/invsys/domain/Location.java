@@ -3,8 +3,12 @@ package com.invsys.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -41,6 +45,41 @@ public class Location extends TenantScopedEntity {
 
     @Column(name = "coord_z", precision = 19, scale = 4)
     private BigDecimal coordZ;
+
+    /** Facility logistics address (street, city, state, postalCode, country). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "logistics_address", columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> logisticsAddress = new LinkedHashMap<>();
+
+    @Column(name = "gross_square_footage", precision = 19, scale = 4)
+    private BigDecimal grossSquareFootage;
+
+    @Column(name = "office_area_square_footage", precision = 19, scale = 4)
+    private BigDecimal officeAreaSquareFootage;
+
+    @Column(name = "clear_height_feet", precision = 10, scale = 2)
+    private BigDecimal clearHeightFeet;
+
+    @Column(name = "total_dock_doors")
+    private Integer totalDockDoors;
+
+    @Column(name = "weight_capacity_limit", precision = 19, scale = 4)
+    private BigDecimal weightCapacityLimit;
+
+    /** Industry-standard floor load boundary (lbs); kept in sync with weightCapacityLimit. */
+    @Column(name = "floor_load_capacity_lbs", precision = 19, scale = 4)
+    private BigDecimal floorLoadCapacityLbs;
+
+    /** AMBIENT | REFRIGERATED | FROZEN — putaway temperature compliance. */
+    @Column(name = "storage_temp_zone", nullable = false)
+    private String storageTempZone = "AMBIENT";
+
+    @Column(name = "allows_hazmat", nullable = false)
+    private boolean allowsHazmat;
+
+    /** Max Ti×Hi pallet positions this bin can hold; null = unlimited. */
+    @Column(name = "max_pallet_positions")
+    private Integer maxPalletPositions;
 
     public UUID getParentLocationId() {
         return parentLocationId;
@@ -120,5 +159,91 @@ public class Location extends TenantScopedEntity {
 
     public void setCoordZ(BigDecimal coordZ) {
         this.coordZ = coordZ;
+    }
+
+    public Map<String, Object> getLogisticsAddress() {
+        return logisticsAddress;
+    }
+
+    public void setLogisticsAddress(Map<String, Object> logisticsAddress) {
+        this.logisticsAddress = logisticsAddress != null ? logisticsAddress : new LinkedHashMap<>();
+    }
+
+    public BigDecimal getGrossSquareFootage() {
+        return grossSquareFootage;
+    }
+
+    public void setGrossSquareFootage(BigDecimal grossSquareFootage) {
+        this.grossSquareFootage = grossSquareFootage;
+    }
+
+    public BigDecimal getOfficeAreaSquareFootage() {
+        return officeAreaSquareFootage;
+    }
+
+    public void setOfficeAreaSquareFootage(BigDecimal officeAreaSquareFootage) {
+        this.officeAreaSquareFootage = officeAreaSquareFootage;
+    }
+
+    public BigDecimal getClearHeightFeet() {
+        return clearHeightFeet;
+    }
+
+    public void setClearHeightFeet(BigDecimal clearHeightFeet) {
+        this.clearHeightFeet = clearHeightFeet;
+    }
+
+    public Integer getTotalDockDoors() {
+        return totalDockDoors;
+    }
+
+    public void setTotalDockDoors(Integer totalDockDoors) {
+        this.totalDockDoors = totalDockDoors;
+    }
+
+    public BigDecimal getWeightCapacityLimit() {
+        return weightCapacityLimit;
+    }
+
+    public void setWeightCapacityLimit(BigDecimal weightCapacityLimit) {
+        this.weightCapacityLimit = weightCapacityLimit;
+        if (weightCapacityLimit != null && this.floorLoadCapacityLbs == null) {
+            this.floorLoadCapacityLbs = weightCapacityLimit;
+        }
+    }
+
+    public BigDecimal getFloorLoadCapacityLbs() {
+        return floorLoadCapacityLbs != null ? floorLoadCapacityLbs : weightCapacityLimit;
+    }
+
+    public void setFloorLoadCapacityLbs(BigDecimal floorLoadCapacityLbs) {
+        this.floorLoadCapacityLbs = floorLoadCapacityLbs;
+        if (floorLoadCapacityLbs != null) {
+            this.weightCapacityLimit = floorLoadCapacityLbs;
+        }
+    }
+
+    public String getStorageTempZone() {
+        return storageTempZone;
+    }
+
+    public void setStorageTempZone(String storageTempZone) {
+        this.storageTempZone = storageTempZone != null ? storageTempZone : "AMBIENT";
+    }
+
+    public boolean isAllowsHazmat() {
+        return allowsHazmat;
+    }
+
+    public void setAllowsHazmat(boolean allowsHazmat) {
+        this.allowsHazmat = allowsHazmat;
+    }
+
+    public Integer getMaxPalletPositions() {
+        return maxPalletPositions;
+    }
+
+    public void setMaxPalletPositions(Integer maxPalletPositions) {
+        this.maxPalletPositions = maxPalletPositions;
     }
 }

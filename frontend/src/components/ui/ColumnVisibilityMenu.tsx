@@ -7,7 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useGridColumnStore } from '@/stores/gridColumnStore';
+import { selectGridLayout, useGridColumnStore } from '@/stores/gridColumnStore';
 import { cn } from '@/lib/utils';
 
 export interface ColumnVisibilityItem {
@@ -17,19 +17,25 @@ export interface ColumnVisibilityItem {
 
 interface ColumnVisibilityMenuProps {
   columns: ColumnVisibilityItem[];
+  /** Isolates localStorage layout per table (default: products). */
+  gridId?: string;
   className?: string;
 }
 
 /**
  * Top-rail column visibility toggle — shadcn/Radix DropdownMenu with
- * checkbox items bound to gridColumnStore.columnVisibility.
+ * checkbox items bound to gridColumnStore layouts[gridId].
  */
-export function ColumnVisibilityMenu({ columns, className }: ColumnVisibilityMenuProps) {
-  const columnVisibility = useGridColumnStore((s) => s.columnVisibility);
-  const pinnedColumns = useGridColumnStore((s) => s.pinnedColumns);
+export function ColumnVisibilityMenu({
+  columns,
+  gridId = 'products',
+  className,
+}: ColumnVisibilityMenuProps) {
+  const layout = useGridColumnStore((s) => selectGridLayout(s, gridId));
   const toggleColumnVisibility = useGridColumnStore((s) => s.toggleColumnVisibility);
   const pinColumn = useGridColumnStore((s) => s.pinColumn);
   const unpinColumn = useGridColumnStore((s) => s.unpinColumn);
+  const { columnVisibility, pinnedColumns } = layout;
 
   return (
     <DropdownMenu>
@@ -48,8 +54,16 @@ export function ColumnVisibilityMenu({ columns, className }: ColumnVisibilityMen
           <span className="hidden sm:inline">Columns</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+      <DropdownMenuContent
+        align="end"
+        side="bottom"
+        collisionPadding={12}
+        data-testid="column-visibility-menu"
+        className="flex max-h-[min(70vh,28rem)] w-56 flex-col overflow-y-auto overscroll-contain p-1"
+      >
+        <DropdownMenuLabel className="sticky top-0 z-10 bg-surface-raised">
+          Toggle columns
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {columns.map((col) => {
           const pinned = pinnedColumns.includes(col.id);
@@ -59,7 +73,7 @@ export function ColumnVisibilityMenu({ columns, className }: ColumnVisibilityMen
               key={col.id}
               checked={visible}
               disabled={pinned}
-              onCheckedChange={() => toggleColumnVisibility(col.id)}
+              onCheckedChange={() => toggleColumnVisibility(gridId, col.id)}
               onSelect={(e) => e.preventDefault()}
               data-testid={`column-visibility-${col.id}`}
             >
@@ -73,7 +87,9 @@ export function ColumnVisibilityMenu({ columns, className }: ColumnVisibilityMen
           );
         })}
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>Pin identifiers</DropdownMenuLabel>
+        <DropdownMenuLabel className="sticky top-0 z-10 bg-surface-raised">
+          Pin identifiers
+        </DropdownMenuLabel>
         {columns.map((col) => {
           const pinned = pinnedColumns.includes(col.id);
           return (
@@ -81,8 +97,8 @@ export function ColumnVisibilityMenu({ columns, className }: ColumnVisibilityMen
               key={`pin-${col.id}`}
               checked={pinned}
               onCheckedChange={(next) => {
-                if (next) pinColumn(col.id);
-                else unpinColumn(col.id);
+                if (next) pinColumn(gridId, col.id);
+                else unpinColumn(gridId, col.id);
               }}
               onSelect={(e) => e.preventDefault()}
               data-testid={`column-pin-${col.id}`}

@@ -80,7 +80,48 @@ public class SalesOrderController {
         customer.setEmail(request.email());
         customer.setBillingAddress(request.billingAddress() != null ? request.billingAddress() : Map.of());
         customer.setShippingAddress(request.shippingAddress() != null ? request.shippingAddress() : Map.of());
+        customer.setTaxId(request.taxId() != null ? request.taxId() : request.ein());
+        if (request.paymentTerms() != null && !request.paymentTerms().isBlank()) {
+            customer.setPaymentTerms(normalizePaymentTerms(request.paymentTerms()));
+        }
+        customer.setCreditLimit(request.creditLimit());
+        String currency = request.currencyPreference() != null
+                ? request.currencyPreference()
+                : request.defaultCurrency();
+        if (currency != null && !currency.isBlank()) {
+            customer.setCurrencyPreference(currency.trim().toUpperCase());
+            customer.setDefaultCurrency(currency.trim().toUpperCase());
+        }
+        if (request.customerStatus() != null && !request.customerStatus().isBlank()) {
+            customer.setCustomerStatus(normalizeCustomerStatus(request.customerStatus()));
+        }
         return customerRepository.save(customer);
+    }
+
+    private static String normalizeCustomerStatus(String raw) {
+        String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_');
+        return switch (key) {
+            case "ACTIVE" -> "ACTIVE";
+            case "HOLD", "CREDIT_HOLD", "CREDITHOLD" -> "HOLD";
+            case "PROSPECT" -> "PROSPECT";
+            default -> throw new com.invsys.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "VALIDATION",
+                    "customerStatus must be ACTIVE, HOLD (CreditHold), or PROSPECT");
+        };
+    }
+
+    private static String normalizePaymentTerms(String raw) {
+        String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_');
+        return switch (key) {
+            case "NET30", "NET_30", "N30" -> "NET30";
+            case "NET60", "NET_60", "N60" -> "NET60";
+            case "DUE_ON_RECEIPT", "DUEONRECEIPT", "COD", "DUE" -> "DUE_ON_RECEIPT";
+            default -> throw new com.invsys.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "VALIDATION",
+                    "paymentTerms must be NET30, NET60, or DUE_ON_RECEIPT");
+        };
     }
 
     @GetMapping("/sales-orders")
@@ -196,7 +237,14 @@ public class SalesOrderController {
             @NotBlank String name,
             String email,
             Map<String, Object> billingAddress,
-            Map<String, Object> shippingAddress
+            Map<String, Object> shippingAddress,
+            String taxId,
+            String ein,
+            String paymentTerms,
+            java.math.BigDecimal creditLimit,
+            String currencyPreference,
+            String defaultCurrency,
+            String customerStatus
     ) {
     }
 

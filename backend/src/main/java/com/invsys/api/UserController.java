@@ -3,6 +3,7 @@ package com.invsys.api;
 import com.invsys.auth.AuthService;
 import com.invsys.auth.dto.SetTerminalPinRequest;
 import com.invsys.domain.Invitation;
+import com.invsys.domain.User;
 import com.invsys.repository.UserRoleRepository;
 import com.invsys.service.TerminalBiometricService;
 import com.invsys.service.UserManagementService;
@@ -47,12 +48,21 @@ public class UserController {
     @GetMapping
     public List<UserResponse> listUsers() {
         return userManagementService.listUsers().stream()
-                .map(user -> new UserResponse(
-                        user.getId(),
-                        user.getEmail(),
-                        user.getDisplayName(),
-                        user.getStatus(),
-                        userRoleRepository.findRoleCodesByUserId(user.getId())))
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @GetMapping("/invitations")
+    public List<PendingInvitationResponse> listPendingInvitations() {
+        return userManagementService.listPendingInvitations().stream()
+                .map(p -> new PendingInvitationResponse(
+                        p.id(),
+                        p.email(),
+                        p.role(),
+                        p.expiresAt(),
+                        p.invitedBy(),
+                        p.customerId(),
+                        p.supplierId()))
                 .toList();
     }
 
@@ -75,6 +85,31 @@ public class UserController {
         userManagementService.changeRole(id, request.role());
     }
 
+    /**
+     * Admin-only organizational scope: role, warehouse LBAC, timezone, locale, department, shift.
+     */
+    @PatchMapping("/{id}/org-scope")
+    public UserResponse updateOrgScope(@PathVariable UUID id,
+                                       @Valid @RequestBody OrgScopeRequest request) {
+        boolean clearAssigned = Boolean.TRUE.equals(request.clearAssignedWarehouse());
+        UserManagementService.OrgScopeResult result = userManagementService.updateOrgScope(
+                id,
+                new UserManagementService.OrgScopeUpdate(
+                        request.role(),
+                        request.corporateDepartment() != null
+                                ? request.corporateDepartment()
+                                : request.department(),
+                        request.timezonePreference(),
+                        request.localeLanguage(),
+                        request.shiftScheduleType() != null
+                                ? request.shiftScheduleType()
+                                : request.shiftSchedule(),
+                        clearAssigned ? null : request.assignedWarehouseId(),
+                        clearAssigned,
+                        request.warehouseIds()));
+        return toResponse(result.user(), result.roles(), result.warehouseIds());
+    }
+
     @PostMapping("/{id}/deactivate")
     public void deactivate(@PathVariable UUID id) {
         userManagementService.deactivate(id);
@@ -94,6 +129,31 @@ public class UserController {
                 id, request != null ? request.label() : null);
     }
 
+    private UserResponse toResponse(User user) {
+        return toResponse(
+                user,
+                userRoleRepository.findRoleCodesByUserId(user.getId()),
+                userManagementService.warehouseIdsForUser(user.getId()));
+    }
+
+    private UserResponse toResponse(User user, List<String> roles, List<UUID> warehouseIds) {
+        return new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getDisplayName(),
+                user.getStatus(),
+                roles,
+                user.getCorporateDepartment(),
+                user.getDepartment(),
+                user.getTimezonePreference(),
+                user.getLocaleLanguage(),
+                user.getAssignedWarehouseId(),
+                user.isMfaEnabled(),
+                user.getShiftScheduleType(),
+                user.getShiftSchedule(),
+                warehouseIds);
+    }
+
     public record InviteRequest(
             @NotBlank @Email String email,
             @NotBlank String role,
@@ -108,19 +168,38 @@ public class UserController {
     public record PasskeyLabelRequest(String label) {
     }
 
+    public record OrgScopeRequest(
+            String role,
+            String corporateDepartment,
+            String department,
+            String timezonePreference,
+            String localeLanguage,
+            String shiftScheduleType,
+            String shiftSchedule,
+            UUID assignedWarehouseId,
+            Boolean clearAssignedWarehouse,
+            List<UUID> warehouseIds
+    ) {
+    }
+
     public record UserResponse(
             UUID id,
             String email,
             String displayName,
             String status,
-            List<String> roles
+            List<String> roles,
+            String corporateDepartment,
+            String department,
+            String timezonePreference,
+            String localeLanguage,
+            UUID assignedWarehouseId,
+            boolean mfaEnabled,
+            String shiftScheduleType,
+            String shiftSchedule,
+            List<UUID> warehouseIds
     ) {
     }
 
-    /**
-     * Invite response. {@code token} is the one-time accept secret (also logged in non-prod).
-     * {@code tokenHash} is the persisted SHA-256 digest for DB correlation in tests/ops.
-     */
     public record InviteResponse(
             UUID id,
             String email,
@@ -128,6 +207,17 @@ public class UserController {
             String tokenHash,
             String token,
             Instant expiresAt
+    ) {
+    }
+
+    public record PendingInvitationResponse(
+            UUID id,
+            String email,
+            String role,
+            Instant expiresAt,
+            UUID invitedBy,
+            UUID customerId,
+            UUID supplierId
     ) {
     }
 }

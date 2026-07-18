@@ -358,7 +358,111 @@ public class AuthService {
                 user.getDisplayName(),
                 roles,
                 warehouseIds,
-                user.getAvatarUrl());
+                user.getAvatarUrl(),
+                user.getDepartment(),
+                user.getCorporateDepartment(),
+                user.getTimezonePreference(),
+                user.getLocaleLanguage(),
+                user.getAssignedWarehouseId(),
+                user.isMfaEnabled(),
+                user.getShiftSchedule(),
+                user.getShiftScheduleType(),
+                user.getPhone(),
+                user.getAddressLine1(),
+                user.getAddressLine2(),
+                user.getAddressCity(),
+                user.getAddressRegion(),
+                user.getAddressPostalCode(),
+                user.getAddressCountry(),
+                user.getUiDensityPreference());
+    }
+
+    /**
+     * Self-service personal profile only. Organizational fields (role, warehouses, department,
+     * timezone, locale, shift) must be changed via admin org-scope APIs.
+     */
+    @Transactional
+    public User updateMyProfile(
+            String displayName,
+            String phone,
+            String addressLine1,
+            String addressLine2,
+            String addressCity,
+            String addressRegion,
+            String addressPostalCode,
+            String addressCountry,
+            Boolean mfaEnabled,
+            String uiDensityPreference) {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        if (displayName != null) {
+            if (displayName.isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "displayName cannot be blank");
+            }
+            user.setDisplayName(displayName.trim());
+        }
+        if (phone != null) {
+            user.setPhone(phone.isBlank() ? null : phone.trim());
+        }
+        if (addressLine1 != null) {
+            user.setAddressLine1(addressLine1.isBlank() ? null : addressLine1.trim());
+        }
+        if (addressLine2 != null) {
+            user.setAddressLine2(addressLine2.isBlank() ? null : addressLine2.trim());
+        }
+        if (addressCity != null) {
+            user.setAddressCity(addressCity.isBlank() ? null : addressCity.trim());
+        }
+        if (addressRegion != null) {
+            user.setAddressRegion(addressRegion.isBlank() ? null : addressRegion.trim());
+        }
+        if (addressPostalCode != null) {
+            user.setAddressPostalCode(addressPostalCode.isBlank() ? null : addressPostalCode.trim());
+        }
+        if (addressCountry != null) {
+            String country = addressCountry.isBlank() ? null : addressCountry.trim().toUpperCase();
+            if (country != null && country.length() != 2) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                        "addressCountry must be a 2-letter ISO code");
+            }
+            user.setAddressCountry(country);
+        }
+        if (mfaEnabled != null) {
+            user.setMfaEnabled(mfaEnabled);
+        }
+        if (uiDensityPreference != null) {
+            String density = uiDensityPreference.isBlank() ? null : uiDensityPreference.trim().toUpperCase();
+            if (density != null
+                    && !density.equals("COMPACT")
+                    && !density.equals("COMFORTABLE")
+                    && !density.equals("SPACIOUS")) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                        "uiDensityPreference must be COMPACT, COMFORTABLE, or SPACIOUS");
+            }
+            user.setUiDensityPreference(density);
+        }
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public void changeMyPassword(String currentPassword, String newPassword) {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        if (currentPassword == null || currentPassword.isBlank()
+                || newPassword == null || newPassword.length() < 8) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "currentPassword is required and newPassword must be at least 8 characters");
+        }
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PASSWORD", "Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        refreshTokenRepository.revokeAllForUser(userId, Instant.now());
     }
 
     @Transactional

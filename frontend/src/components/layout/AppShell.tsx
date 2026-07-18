@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette, useCommandPalette } from './CommandPalette';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
 import { useSessionStore, useIsAuthenticated } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
@@ -13,6 +14,7 @@ import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import { cn } from '@/lib/utils';
+import { ScrollFadePort } from '@/components/ui/ScrollFadePort';
 
 function isWarehouseRoute(pathname: string): boolean {
   return (
@@ -23,6 +25,22 @@ function isWarehouseRoute(pathname: string): boolean {
     pathname.startsWith('/issue-supplies') ||
     pathname.startsWith('/field/truck')
   );
+}
+
+/** Settings shells that own ScrollFadePort(s) — clip main so no outer scrollbar. */
+function isSettingsOwnedScrollRoute(pathname: string): boolean {
+  if (pathname === '/settings') return true;
+  return (
+    pathname.startsWith('/settings/profile') ||
+    pathname.startsWith('/settings/billing') ||
+    pathname.startsWith('/settings/fintech') ||
+    pathname.startsWith('/settings/users')
+  );
+}
+
+/** Document pages that scroll in main with hidden bars + fold cues. */
+function isMainFadeScrollRoute(pathname: string): boolean {
+  return pathname === '/' || pathname === '/dashboard';
 }
 
 interface MeResponse {
@@ -185,9 +203,39 @@ export function AppShell() {
           Document pages scroll here. Virtualized grid pages set a viewport-locked
           root (calc 100dvh − header) with overflow-hidden so only the table
           scrollport moves — the outer window never gains a second scrollbar.
+          Settings / dashboard use ScrollFadePort (hidden bar + fold cues).
         */}
-        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <Outlet />
+        <main
+          className={cn(
+            'flex min-h-0 flex-1 flex-col overscroll-contain',
+            isSettingsOwnedScrollRoute(location.pathname) ||
+              isMainFadeScrollRoute(location.pathname)
+              ? 'overflow-hidden'
+              : 'overflow-y-auto',
+          )}
+        >
+          {isMainFadeScrollRoute(location.pathname) ? (
+            <ScrollFadePort
+              data-testid="app-main-scroll"
+              measureKey={location.pathname}
+              shellClassName="min-h-0 flex-1"
+              className="h-full overflow-y-auto overflow-x-hidden"
+            >
+              <ErrorBoundary
+                boundaryName={`route:${location.pathname}`}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <Outlet />
+              </ErrorBoundary>
+            </ScrollFadePort>
+          ) : (
+            <ErrorBoundary
+              boundaryName={`route:${location.pathname}`}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <Outlet />
+            </ErrorBoundary>
+          )}
         </main>
       </div>
 

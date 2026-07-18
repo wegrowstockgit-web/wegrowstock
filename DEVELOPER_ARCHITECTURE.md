@@ -418,6 +418,8 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 | `AuthService` | Credential login, refresh rotation, warehouse PIN, terminal switch |
 | `AuthCookieService` | HttpOnly cookie write/clear |
 | `JwtService` | RS256 issue/validate |
+| `TaskOrchestratorService` | Dynamic interleaving (pick / putaway / count / predictive REPLENISH) via coords + hierarchy |
+| `PredictiveReplenishmentWorker` | VT worker: 48h demand vs pick-face qty → `wave_replenishment_triggers` |
 | `TenantIsolationFilter` | Outermost absolute `try/finally` → `TenantContext.clear()` (worker-pool isolation) |
 | `JwtAuthFilter` | Bind tenant/user from RS256 JWT; `filterChain.doFilter` always in `try/finally` with `TenantContext.clear()` |
 | `MdcLoggingFilter` | Request-id MDC enrichment (clears MDC in `finally`) |
@@ -858,6 +860,13 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V073` | LPN status `DISPATCHED` |
 | `V074` | `coord_x/y/z` on `locations`, `walkable_edges` + RLS |
 | `V075` | `dashboard_kpi_snapshots` CQRS read model for `/dashboard/stats` |
+| `V076` | Async `inventory_level_deltas` hotspot flush (virtual threads) |
+| `V077` | `wave_replenishment_triggers` predictive replenishment |
+| `V078` | Enterprise master data (facility specs, customer/supplier/user fields) |
+| `V079` | `floor_load_capacity_lbs` + FSMA `vendor_lot_captured` ledger index |
+| `V080` | ProductVariant enterprise trade/handling/lifecycle + location putaway constraints + shipment DG flag |
+
+**Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 
 ### 11.2 Seed
 

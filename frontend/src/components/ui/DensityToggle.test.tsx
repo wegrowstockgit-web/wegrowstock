@@ -4,16 +4,22 @@ import userEvent from '@testing-library/user-event';
 import { DataListToolbar, DensityToggle } from './DensityToggle';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 import { usePreferencesStore } from '@/stores/preferencesStore';
-import { useGridColumnStore } from '@/stores/gridColumnStore';
+import { selectGridLayout, useGridColumnStore } from '@/stores/gridColumnStore';
+
+const GRID = 'products';
 
 describe('DensityToggle', () => {
   beforeEach(() => {
     localStorage.clear();
     usePreferencesStore.setState({ densityMode: 'cozy' });
     useGridColumnStore.setState({
-      columnVisibility: { sku: true, barcode: true },
-      pinnedColumns: ['sku'],
-      columnOrder: ['sku', 'barcode'],
+      layouts: {
+        [GRID]: {
+          columnVisibility: { sku: true, barcode: true },
+          pinnedColumns: ['sku'],
+          columnOrder: ['sku', 'barcode'],
+        },
+      },
     });
   });
 
@@ -43,6 +49,7 @@ describe('DensityToggle', () => {
     const user = userEvent.setup();
     render(
       <DataListToolbar
+        gridId={GRID}
         columnItems={[
           { id: 'sku', label: 'SKU' },
           { id: 'barcode', label: 'Barcode' },
@@ -56,16 +63,22 @@ describe('DensityToggle', () => {
       expect(screen.getByText('Toggle columns')).toBeInTheDocument();
     });
     await user.click(screen.getByTestId('column-visibility-barcode'));
-    expect(useGridColumnStore.getState().columnVisibility.barcode).toBe(false);
+    expect(selectGridLayout(useGridColumnStore.getState(), GRID).columnVisibility.barcode).toBe(
+      false,
+    );
   });
 });
 
 describe('ColumnVisibilityMenu', () => {
   beforeEach(() => {
     useGridColumnStore.setState({
-      columnVisibility: { sku: true, barcode: true },
-      pinnedColumns: ['sku'],
-      columnOrder: ['sku', 'barcode'],
+      layouts: {
+        [GRID]: {
+          columnVisibility: { sku: true, barcode: true },
+          pinnedColumns: ['sku'],
+          columnOrder: ['sku', 'barcode'],
+        },
+      },
     });
   });
 
@@ -73,6 +86,7 @@ describe('ColumnVisibilityMenu', () => {
     const user = userEvent.setup();
     render(
       <ColumnVisibilityMenu
+        gridId={GRID}
         columns={[
           { id: 'sku', label: 'SKU' },
           { id: 'barcode', label: 'Barcode' },
@@ -80,9 +94,15 @@ describe('ColumnVisibilityMenu', () => {
       />,
     );
     await user.click(screen.getByTestId('column-visibility-toggle'));
+    expect(screen.getByTestId('column-visibility-menu')).toBeInTheDocument();
+    expect(screen.getByTestId('column-visibility-menu').className).toMatch(/overflow-y-auto/);
     await user.click(screen.getByTestId('column-pin-barcode'));
-    expect(useGridColumnStore.getState().pinnedColumns).toContain('barcode');
+    expect(selectGridLayout(useGridColumnStore.getState(), GRID).pinnedColumns).toContain(
+      'barcode',
+    );
     await user.click(screen.getByTestId('column-pin-barcode'));
-    expect(useGridColumnStore.getState().pinnedColumns).not.toContain('barcode');
+    expect(selectGridLayout(useGridColumnStore.getState(), GRID).pinnedColumns).not.toContain(
+      'barcode',
+    );
   });
 });

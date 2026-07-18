@@ -68,4 +68,23 @@ describe('apiClient warehouse header', () => {
 
     expect(config.headers['X-Warehouse-Id']).toBeUndefined();
   });
+
+  it('clears Content-Type for FormData so multipart boundary is set', async () => {
+    const handlers = (apiClient.interceptors.request as unknown as {
+      handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }>;
+    }).handlers;
+    const requestInterceptor = handlers.find((h) => h.fulfilled)?.fulfilled;
+    const headers = {
+      'Content-Type': 'application/json',
+      set: vi.fn(),
+    } as unknown as InternalAxiosRequestConfig['headers'];
+
+    await requestInterceptor!({
+      headers,
+      url: '/api/v1/ingestion/preflight',
+      data: new FormData(),
+    } as InternalAxiosRequestConfig);
+
+    expect(headers.set).toHaveBeenCalledWith('Content-Type', false);
+  });
 });

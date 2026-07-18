@@ -10,6 +10,24 @@ public record MeResponse(
         String displayName,
         List<String> roles,
         List<UUID> warehouseIds,
-        String avatarUrl
+        String avatarUrl,
+        /** Org-scope (admin-managed); mirrored as corporateDepartment. */
+        String department,
+        String corporateDepartment,
+        String timezonePreference,
+        String localeLanguage,
+        UUID assignedWarehouseId,
+        boolean mfaEnabled,
+        /** Org-scope shift; mirrored as shiftScheduleType. */
+        String shiftSchedule,
+        String shiftScheduleType,
+        String phone,
+        String addressLine1,
+        String addressLine2,
+        String addressCity,
+        String addressRegion,
+        String addressPostalCode,
+        String addressCountry,
+        String uiDensityPreference
 ) {
 }

@@ -232,6 +232,7 @@ function ProductionOrdersTable({
               <VariantThumb
                 url={order.primaryMediaUrl}
                 alt={order.parentName ?? order.parentSku ?? 'Finished good'}
+                previewCaption={order.parentSku ?? order.parentName ?? order.number}
                 size="sm"
               />
             </TableCell>
@@ -297,7 +298,7 @@ export function ManufacturingOrdersPage() {
   });
 
   return (
-    <div className="p-6">
+    <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Production Orders</h1>

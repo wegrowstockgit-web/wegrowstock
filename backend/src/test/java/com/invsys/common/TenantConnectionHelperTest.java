@@ -5,6 +5,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,10 +33,12 @@ class TenantConnectionHelperTest {
     }
 
     @Test
-    void clearTenantWipesSessionGuc() throws Exception {
+    void clearTenantWipesSessionGucAndDeallocates() throws Exception {
         Connection connection = mock(Connection.class);
         PreparedStatement ps = mock(PreparedStatement.class);
+        Statement st = mock(Statement.class);
         when(connection.prepareStatement(anyString())).thenReturn(ps);
+        when(connection.createStatement()).thenReturn(st);
 
         TenantConnectionHelper.clearTenant(connection);
 
@@ -44,5 +47,6 @@ class TenantConnectionHelperTest {
         assertThat(sql.getValue()).isEqualTo("SELECT set_config('app.current_tenant', ?, false)");
         verify(ps).setString(1, "");
         verify(ps).execute();
+        verify(st).execute("DEALLOCATE ALL");
     }
 }

@@ -8,4 +8,6 @@ import java.util.UUID;
 
 public interface UserWarehouseRepository extends JpaRepository<UserWarehouse, UUID> {
     List<UserWarehouse> findByTenantIdAndUserId(UUID tenantId, UUID userId);
+
+    void deleteByTenantIdAndUserId(UUID tenantId, UUID userId);
 }

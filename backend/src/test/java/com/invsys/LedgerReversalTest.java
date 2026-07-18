@@ -13,6 +13,7 @@ import com.invsys.repository.InventoryLevelRepository;
 import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ProductRepository;
 import com.invsys.repository.ProductVariantRepository;
+import com.invsys.service.InventoryLevelFlushWorker;
 import com.invsys.service.InventoryService;
 import com.invsys.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
@@ -43,6 +44,7 @@ class LedgerReversalTest extends AbstractIntegrationTest {
     @Autowired LocationRepository locationRepository;
     @Autowired InventoryLevelRepository levelRepository;
     @Autowired InventoryService inventoryService;
+    @Autowired InventoryLevelFlushWorker flushWorker;
 
     @AfterEach
     void tearDown() {
@@ -110,7 +112,41 @@ class LedgerReversalTest extends AbstractIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void ledgerListFiltersByVariantId() throws Exception {
+        Fixture fx = seed("rev-filter");
+        TenantContext.setTenantId(fx.tenantId());
+
+        Product product2 = new Product();
+        product2.setTenantId(fx.tenantId());
+        product2.setSkuRoot("REV2");
+        product2.setName("Other SKU");
+        product2 = productRepository.save(product2);
+
+        ProductVariant variant2 = new ProductVariant();
+        variant2.setTenantId(fx.tenantId());
+        variant2.setProductId(product2.getId());
+        variant2.setSku("REV2-1");
+        variant2 = variantRepository.save(variant2);
+
+        InventoryLedger keep = inventoryService.receive(
+                fx.variantId(), fx.locationId(), null, new BigDecimal("3"), null, null);
+        inventoryService.receive(
+                variant2.getId(), fx.locationId(), null, new BigDecimal("7"), null, null);
+        TenantContext.clear();
+
+        mockMvc.perform(get("/api/v1/inventory/ledger")
+                        .param("variantId", fx.variantId().toString())
+                        .param("limit", "20")
+                        .header("Authorization", "Bearer " + fx.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(keep.getId().toString()))
+                .andExpect(jsonPath("$[0].variantId").value(fx.variantId().toString()))
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
     private void assertOnHand(Fixture fx, String expected) {
+        flushWorker.flushOnce();
         List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(fx.tenantId(), fx.variantId());
         BigDecimal onHand = levels.stream()
                 .filter(l -> l.getLocationId().equals(fx.locationId()))

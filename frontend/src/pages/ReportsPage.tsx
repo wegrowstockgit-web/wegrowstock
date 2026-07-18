@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Download, FileBarChart } from 'lucide-react';
+import { AlertCircle, Download, FileBarChart, RefreshCw } from 'lucide-react';
+import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
+import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
 import { apiClient } from '@/api/client';
 import type {
   CogsLedgerReport,
@@ -26,6 +29,7 @@ import {
 } from '@/components/reports/ReportCharts';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 type ReportTab =
@@ -38,7 +42,9 @@ type ReportTab =
   | 'fulfillment'
   | 'purchases'
   | 'returns'
-  | 'demand';
+  | 'demand'
+  | 'labor'
+  | 'audit';
 
 const TABS: { id: ReportTab; label: string }[] = [
   { id: 'valuation', label: 'Inventory valuation' },
@@ -51,7 +57,16 @@ const TABS: { id: ReportTab; label: string }[] = [
   { id: 'purchases', label: 'Purchase spend' },
   { id: 'returns', label: 'Returns' },
   { id: 'demand', label: 'Demand sensing' },
+  { id: 'labor', label: 'Labor & Velocity' },
+  { id: 'audit', label: 'Inventory Audit' },
 ];
+
+const REPORT_TAB_IDS = new Set<string>(TABS.map((t) => t.id));
+
+function parseReportTab(raw: string | null): ReportTab {
+  if (raw && REPORT_TAB_IDS.has(raw)) return raw as ReportTab;
+  return 'profit';
+}
 
 type AsOfValuationResponse = {
   asOfDate: string;
@@ -90,8 +105,18 @@ function groupByWarehouse(rows: InventoryValuationReport['rows']): ReportChartPo
 }
 
 export function ReportsPage() {
-  const [tab, setTab] = useState<ReportTab>('profit');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<ReportTab>(() => parseReportTab(searchParams.get('tab')));
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    setTab(parseReportTab(searchParams.get('tab')));
+  }, [searchParams]);
+
+  const selectTab = (next: ReportTab) => {
+    setTab(next);
+    setSearchParams(next === 'profit' ? {} : { tab: next }, { replace: true });
+  };
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -229,7 +254,9 @@ export function ReportsPage() {
                     ? purchases
                     : tab === 'demand'
                       ? demandChart
-                      : returns;
+                      : tab === 'labor' || tab === 'audit'
+                        ? { isLoading: false, isError: false, error: null, data: true, refetch: () => undefined }
+                        : returns;
 
   const historyChart = useMemo(
     () =>
@@ -313,7 +340,11 @@ export function ReportsPage() {
             </p>
           </div>
         </div>
-        <Button variant="secondary" onClick={exportCsv} disabled={!active.data}>
+        <Button
+          variant="secondary"
+          onClick={exportCsv}
+          disabled={!active.data || tab === 'labor' || tab === 'audit'}
+        >
           <Download className="mr-2 h-4 w-4" />
           Export CSV
         </Button>
@@ -321,13 +352,42 @@ export function ReportsPage() {
 
       <div className="mb-6 flex flex-wrap gap-2">
         {TABS.map(({ id, label }) => (
-          <Button key={id} variant={tab === id ? 'primary' : 'secondary'} onClick={() => setTab(id)}>
+          <Button
+            key={id}
+            variant={tab === id ? 'primary' : 'secondary'}
+            onClick={() => selectTab(id)}
+            data-testid={`reports-tab-${id}`}
+          >
             {label}
           </Button>
         ))}
       </div>
 
-      {active.isLoading && <TableSkeleton rows={10} cols={6} />}
+      {active.isLoading && (
+        <div data-testid="list-page-loading">
+          <TableSkeleton rows={10} cols={6} />
+        </div>
+      )}
+
+      {active.isError && !active.isLoading && (
+        <div className="mb-6" data-testid="list-page-error">
+          <EmptyState
+            icon={AlertCircle}
+            title="Unable to load report"
+            description={
+              active.error instanceof Error
+                ? active.error.message
+                : 'Failed to load this report. Please try again.'
+            }
+            action={
+              <Button onClick={() => void active.refetch()} data-testid="list-page-retry">
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+            }
+          />
+        </div>
+      )}
 
       {tab === 'valuation' && valuation.data && (
         <div className="space-y-6">
@@ -754,6 +814,18 @@ export function ReportsPage() {
               `${formatNumber(p.confidenceScore)}%`,
             ])}
           />
+        </div>
+      )}
+
+      {tab === 'labor' && (
+        <div data-testid="reports-labor-panel">
+          <LaborVelocityLeaderboard mode="full" />
+        </div>
+      )}
+
+      {tab === 'audit' && (
+        <div data-testid="reports-audit-panel">
+          <LedgerHistoryTable limit={100} />
         </div>
       )}
     </div>

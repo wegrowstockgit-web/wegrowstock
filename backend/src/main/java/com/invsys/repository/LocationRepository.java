@@ -10,5 +10,6 @@ import java.util.UUID;
 public interface LocationRepository extends JpaRepository<Location, UUID> {
     List<Location> findByTenantIdOrderByPathAsc(UUID tenantId);
     Optional<Location> findByTenantIdAndCode(UUID tenantId, String code);
+    Optional<Location> findByTenantIdAndPath(UUID tenantId, String path);
     List<Location> findByTenantIdAndType(UUID tenantId, String type);
 }

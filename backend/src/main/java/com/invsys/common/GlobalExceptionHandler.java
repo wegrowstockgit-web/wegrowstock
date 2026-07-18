@@ -15,6 +15,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
@@ -90,13 +91,26 @@ public class GlobalExceptionHandler {
         log.warn("Request validation failed: {}", detail);
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
         pd.setTitle("VALIDATION_ERROR");
+        pd.setType(URI.create("about:blank"));
+        pd.setProperty("code", "VALIDATION_ERROR");
+        Map<String, String> fields = ex.getBindingResult().getFieldErrors().stream()
+                .collect(Collectors.toMap(
+                        org.springframework.validation.FieldError::getField,
+                        e -> e.getDefaultMessage() != null ? e.getDefaultMessage() : "invalid",
+                        (a, b) -> a,
+                        java.util.LinkedHashMap::new));
+        pd.setProperty("errors", fields);
         return pd;
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ProblemDetail handleAuth(AuthenticationException ex) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        // SOC 2: never echo raw auth internals / stack fragments to clients
+        log.warn("Authentication failed: {}", ex.getClass().getSimpleName());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNAUTHORIZED, "Authentication required");
         pd.setTitle("UNAUTHORIZED");
+        pd.setType(URI.create("about:blank"));
         return pd;
     }
 
@@ -104,6 +118,16 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleAccess(AccessDeniedException ex) {
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Access denied");
         pd.setTitle("FORBIDDEN");
+        return pd;
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ProblemDetail handleNotFound(NoResourceFoundException ex) {
+        log.warn("No resource for {} {}", ex.getHttpMethod(), ex.getResourcePath());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Resource not found");
+        pd.setTitle("NOT_FOUND");
+        pd.setType(URI.create("about:blank"));
+        pd.setProperty("code", "NOT_FOUND");
         return pd;
     }
 

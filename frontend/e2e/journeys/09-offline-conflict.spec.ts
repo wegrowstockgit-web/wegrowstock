@@ -88,10 +88,6 @@ test.describe.serial('Journey 09: Offline Zustand/IndexedDB conflict resolution'
       writeJourneyState({ events: [`OFFLINE_PICK_REPLAY:${flushed.status()}`] });
 
       await manager.page.goto('/dashboard');
-      await expect(manager.page.getByTestId('sync-conflicts-panel')).toBeVisible({
-        timeout: 20_000,
-      });
-
       if (flushed.status() === 202) {
         await expect
           .poll(async () => {
@@ -102,12 +98,22 @@ test.describe.serial('Journey 09: Offline Zustand/IndexedDB conflict resolution'
             return ((await res.json()) as unknown[]).length;
           }, { timeout: 25_000 })
           .toBeGreaterThan(0);
+        await expect(manager.page.getByTestId('sync-conflict-alert-banner')).toBeVisible({
+          timeout: 20_000,
+        });
+        await manager.page.getByTestId('sync-conflict-resolve-now').click();
+        await expect(manager.page).toHaveURL(/\/exceptions\?tab=sync/);
+        await expect(manager.page.getByTestId('sync-conflicts-panel')).toBeVisible({
+          timeout: 20_000,
+        });
         await expect(
           manager.page.getByText(/Force Retry|Dismiss|PENDING|conflict|BLIND|receiving/i).first(),
         ).toBeVisible({ timeout: 15_000 });
       } else {
-        // Client quarantined the mutation — still surface office panel + picker quarantine
-        await expect(manager.page.getByTestId('sync-conflicts-panel')).toBeVisible();
+        await manager.page.goto('/exceptions?tab=sync');
+        await expect(manager.page.getByTestId('sync-conflicts-panel')).toBeVisible({
+          timeout: 20_000,
+        });
         await picker.page.goto('/fulfillment');
         await expect(
           picker.page

@@ -52,6 +52,7 @@ public class InventoryService {
     private final LocationRepository locationRepository;
     private final InventoryLevelDeltaFlushRepository deltaFlushRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PutawayValidationService putawayValidationService;
 
     public InventoryService(InventoryLedgerRepository ledgerRepository,
                             InventoryLevelRepository levelRepository,
@@ -67,7 +68,8 @@ public class InventoryService {
                             LicensePlateRepository licensePlateRepository,
                             LocationRepository locationRepository,
                             InventoryLevelDeltaFlushRepository deltaFlushRepository,
-                            ApplicationEventPublisher eventPublisher) {
+                            ApplicationEventPublisher eventPublisher,
+                            PutawayValidationService putawayValidationService) {
         this.ledgerRepository = ledgerRepository;
         this.levelRepository = levelRepository;
         this.settingsRepository = settingsRepository;
@@ -83,6 +85,7 @@ public class InventoryService {
         this.locationRepository = locationRepository;
         this.deltaFlushRepository = deltaFlushRepository;
         this.eventPublisher = eventPublisher;
+        this.putawayValidationService = putawayValidationService;
     }
 
     /**
@@ -119,7 +122,8 @@ public class InventoryService {
             return new ResolvedLot(null, meta, captured != null);
         }
         if (lotNumber != null && !lotNumber.isBlank()) {
-            return new ResolvedLot(findOrCreateLot(variant.getId(), lotNumber.trim()), meta, false);
+            Instant expiresAt = parseLotExpiry(meta.get("lot_expires_at"));
+            return new ResolvedLot(findOrCreateLot(variant.getId(), lotNumber.trim(), expiresAt), meta, false);
         }
         return new ResolvedLot(null, meta, false);
     }
@@ -161,14 +165,22 @@ public class InventoryService {
     @Transactional
     public InventoryLedger receiveInitialMigration(UUID variantId, UUID locationId,
                                                    BigDecimal quantity, BigDecimal unitCost) {
-        return receive(variantId, locationId, null, null, quantity, "INITIAL_MIGRATION",
-                "LEGACY_ERP_MIGRATION", null, unitCost, null, null);
+        return receiveInitialMigration(variantId, locationId, quantity, unitCost, null, null);
+    }
+
+    @Transactional
+    public InventoryLedger receiveInitialMigration(UUID variantId, UUID locationId,
+                                                   BigDecimal quantity, BigDecimal unitCost,
+                                                   String lotNumber, Map<String, Object> metadata) {
+        return receive(variantId, locationId, null, lotNumber, quantity, "INITIAL_MIGRATION",
+                "LEGACY_ERP_MIGRATION", null, unitCost, null, metadata);
     }
 
     @Transactional
     public InventoryLedger receive(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
                                    BigDecimal quantity, String reasonCode, String referenceType, UUID referenceId,
                                    BigDecimal unitCost, String serialCode, Map<String, Object> metadata) {
+        putawayValidationService.validatePutaway(variantId, locationId, extractManagerOverridePin(metadata));
         ProductVariant variant = serialNumberService.requireVariant(variantId);
         serialNumberService.validateSerializedQuantity(variant, quantity);
         UUID serialId = null;
@@ -333,6 +345,13 @@ public class InventoryService {
 
     @Transactional
     public UUID transfer(UUID variantId, UUID fromLocationId, UUID toLocationId, UUID lotId, BigDecimal quantity) {
+        return transfer(variantId, fromLocationId, toLocationId, lotId, quantity, null);
+    }
+
+    @Transactional
+    public UUID transfer(UUID variantId, UUID fromLocationId, UUID toLocationId, UUID lotId, BigDecimal quantity,
+                         String managerOverridePin) {
+        putawayValidationService.validatePutaway(variantId, toLocationId, managerOverridePin);
         validateNegative(quantity.negate(), variantId, fromLocationId, lotId);
         UUID groupId = UUID.randomUUID();
         appendMovement("TRANSFER_OUT", variantId, fromLocationId, lotId, null, quantity.negate(),
@@ -340,6 +359,14 @@ public class InventoryService {
         appendMovement("TRANSFER_IN", variantId, toLocationId, lotId, null, quantity.abs(),
                 null, null, null, groupId, null, null, null);
         return groupId;
+    }
+
+    private static String extractManagerOverridePin(Map<String, Object> metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        Object pin = metadata.get("managerOverridePin");
+        return pin == null ? null : String.valueOf(pin);
     }
 
     /**
@@ -388,6 +415,11 @@ public class InventoryService {
      */
     @Transactional
     public InventoryLedger receiveOntoLpn(UUID variantId, UUID lpnId, BigDecimal quantity) {
+        return receiveOntoLpn(variantId, lpnId, quantity, null);
+    }
+
+    @Transactional
+    public InventoryLedger receiveOntoLpn(UUID variantId, UUID lpnId, BigDecimal quantity, String managerOverridePin) {
         UUID tenantId = TenantContext.requireTenantId();
         LicensePlate lpn = licensePlateRepository.findByIdAndTenantId(lpnId, tenantId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LPN_NOT_FOUND", "License plate not found"));
@@ -395,6 +427,7 @@ public class InventoryService {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "LPN_NO_LOCATION",
                     "License plate has no location");
         }
+        putawayValidationService.validatePutaway(variantId, lpn.getLocationId(), managerOverridePin);
         serialNumberService.requireVariant(variantId);
         return appendMovement("RECEIVE", variantId, lpn.getLocationId(), null, lpn.getId(),
                 quantity.abs(), "LPN_RECEIVE", null, null, null, null, null, null);
@@ -585,9 +618,16 @@ public class InventoryService {
 
     @Transactional(readOnly = true)
     public List<InventoryLedger> listRecentLedger(int limit) {
+        return listRecentLedger(limit, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InventoryLedger> listRecentLedger(int limit, UUID variantId) {
         UUID tenantId = TenantContext.requireTenantId();
         int capped = Math.min(Math.max(limit, 1), 100);
-        List<InventoryLedger> rows = ledgerRepository.findTop100ByTenantIdOrderByCreatedAtDesc(tenantId);
+        List<InventoryLedger> rows = variantId != null
+                ? ledgerRepository.findByTenantIdAndVariantIdOrderByCreatedAtDesc(tenantId, variantId)
+                : ledgerRepository.findTop100ByTenantIdOrderByCreatedAtDesc(tenantId);
         if (rows.size() <= capped) {
             return rows;
         }
@@ -703,18 +743,50 @@ public class InventoryService {
         return saved;
     }
 
-    private UUID findOrCreateLot(UUID variantId, String lotNumber) {
+    private UUID findOrCreateLot(UUID variantId, String lotNumber, Instant expiresAt) {
         UUID tenantId = TenantContext.requireTenantId();
         return lotRepository.findByTenantIdAndVariantIdAndLotNumber(tenantId, variantId, lotNumber)
-                .map(Lot::getId)
+                .map(existing -> {
+                    if (expiresAt != null && existing.getExpiresAt() == null) {
+                        existing.setExpiresAt(expiresAt);
+                        return lotRepository.save(existing).getId();
+                    }
+                    return existing.getId();
+                })
                 .orElseGet(() -> {
                     Lot lot = new Lot();
                     lot.setTenantId(tenantId);
                     lot.setVariantId(variantId);
                     lot.setLotNumber(lotNumber);
                     lot.setReceivedAt(Instant.now());
+                    if (expiresAt != null) {
+                        lot.setExpiresAt(expiresAt);
+                    }
                     return lotRepository.save(lot).getId();
                 });
+    }
+
+    private static Instant parseLotExpiry(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        String text = String.valueOf(raw).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            if (text.length() == 10) {
+                return java.time.LocalDate.parse(text).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+            }
+            return Instant.parse(text);
+        } catch (Exception ignored) {
+            try {
+                return java.time.LocalDate.parse(text, java.time.format.DateTimeFormatter.ofPattern("M/d/yyyy"))
+                        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+            } catch (Exception ignoredAgain) {
+                return null;
+            }
+        }
     }
 
     private String lookupLotNumber(UUID lotId) {

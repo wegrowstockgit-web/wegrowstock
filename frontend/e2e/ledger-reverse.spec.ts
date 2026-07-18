@@ -36,7 +36,8 @@ test.describe('Ledger reverse transaction (Surface A)', () => {
     const ledger = await ledgerRes.json();
     expect(ledger.some((row: { id: string }) => row.id === received.id)).toBeTruthy();
 
-    await page.goto('/dashboard');
+    await page.goto('/reports?tab=audit');
+    await expect(page.getByTestId('reports-audit-panel')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('ledger-history-table')).toBeVisible({ timeout: 20_000 });
 
     const undo = page.getByTestId(`reverse-ledger-${received.id}`);

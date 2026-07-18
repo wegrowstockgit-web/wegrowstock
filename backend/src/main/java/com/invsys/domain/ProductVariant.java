@@ -96,6 +96,36 @@ public class ProductVariant extends TenantScopedEntity {
     @Column(name = "sku_template")
     private String skuTemplate;
 
+    @Column(name = "hs_tariff_code", length = 32)
+    private String hsTariffCode;
+
+    @Column(name = "country_of_origin", length = 2)
+    private String countryOfOrigin;
+
+    @Column(name = "is_hazmat", nullable = false)
+    private boolean hazmat;
+
+    @Column(name = "pallet_tie")
+    private Integer palletTie;
+
+    @Column(name = "pallet_high")
+    private Integer palletHigh;
+
+    /** AMBIENT | REFRIGERATED | FROZEN */
+    @Column(name = "storage_temp_zone", nullable = false)
+    private String storageTempZone = "AMBIENT";
+
+    @Column(name = "is_fragile", nullable = false)
+    private boolean fragile;
+
+    /** A | B | C */
+    @Column(name = "abc_classification", nullable = false, length = 1)
+    private String abcClassification = "C";
+
+    /** PRE_RELEASE | ACTIVE | PHASE_OUT | DISCONTINUED */
+    @Column(name = "lifecycle_status", nullable = false)
+    private String lifecycleStatus = "ACTIVE";
+
     public UUID getProductId() {
         return productId;
     }
@@ -318,5 +348,77 @@ public class ProductVariant extends TenantScopedEntity {
 
     public void setSkuTemplate(String skuTemplate) {
         this.skuTemplate = skuTemplate;
+    }
+
+    public String getHsTariffCode() {
+        return hsTariffCode;
+    }
+
+    public void setHsTariffCode(String hsTariffCode) {
+        this.hsTariffCode = hsTariffCode;
+    }
+
+    public String getCountryOfOrigin() {
+        return countryOfOrigin;
+    }
+
+    public void setCountryOfOrigin(String countryOfOrigin) {
+        this.countryOfOrigin = countryOfOrigin;
+    }
+
+    public boolean isHazmat() {
+        return hazmat;
+    }
+
+    public void setHazmat(boolean hazmat) {
+        this.hazmat = hazmat;
+    }
+
+    public Integer getPalletTie() {
+        return palletTie;
+    }
+
+    public void setPalletTie(Integer palletTie) {
+        this.palletTie = palletTie;
+    }
+
+    public Integer getPalletHigh() {
+        return palletHigh;
+    }
+
+    public void setPalletHigh(Integer palletHigh) {
+        this.palletHigh = palletHigh;
+    }
+
+    public String getStorageTempZone() {
+        return storageTempZone;
+    }
+
+    public void setStorageTempZone(String storageTempZone) {
+        this.storageTempZone = storageTempZone != null ? storageTempZone : "AMBIENT";
+    }
+
+    public boolean isFragile() {
+        return fragile;
+    }
+
+    public void setFragile(boolean fragile) {
+        this.fragile = fragile;
+    }
+
+    public String getAbcClassification() {
+        return abcClassification;
+    }
+
+    public void setAbcClassification(String abcClassification) {
+        this.abcClassification = abcClassification != null ? abcClassification : "C";
+    }
+
+    public String getLifecycleStatus() {
+        return lifecycleStatus;
+    }
+
+    public void setLifecycleStatus(String lifecycleStatus) {
+        this.lifecycleStatus = lifecycleStatus != null ? lifecycleStatus : "ACTIVE";
     }
 }

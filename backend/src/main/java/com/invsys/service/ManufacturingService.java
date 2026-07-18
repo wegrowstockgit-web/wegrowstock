@@ -8,6 +8,7 @@ import com.invsys.domain.BomOperation;
 import com.invsys.domain.BomOutput;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.InventoryLedger;
+import com.invsys.domain.Location;
 import com.invsys.domain.ManufacturingWorkCenter;
 import com.invsys.domain.ProductVariant;
 import com.invsys.domain.ProductionOrder;
@@ -23,6 +24,7 @@ import com.invsys.repository.ManufacturingWorkCenterRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.ProductionOrderRepository;
 import com.invsys.tenancy.TenantContext;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +51,7 @@ public class ManufacturingService {
     private final CostingService costingService;
     private final ManufacturingLaborService laborService;
     private final BomOutputRepository bomOutputRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ManufacturingService(BomRepository bomRepository,
                               BomLineRepository bomLineRepository,
@@ -63,7 +66,8 @@ public class ManufacturingService {
                               DocumentSequenceService sequenceService,
                               CostingService costingService,
                               ManufacturingLaborService laborService,
-                              BomOutputRepository bomOutputRepository) {
+                              BomOutputRepository bomOutputRepository,
+                              ApplicationEventPublisher eventPublisher) {
         this.bomRepository = bomRepository;
         this.bomLineRepository = bomLineRepository;
         this.bomOperationRepository = bomOperationRepository;
@@ -78,6 +82,13 @@ public class ManufacturingService {
         this.costingService = costingService;
         this.laborService = laborService;
         this.bomOutputRepository = bomOutputRepository;
+        this.eventPublisher = eventPublisher;
+    }
+
+    private InventoryLedger saveLedger(InventoryLedger entry) {
+        InventoryLedger saved = ledgerRepository.save(entry);
+        eventPublisher.publishEvent(new LedgerCommittedEvent(saved.getTenantId(), saved.getId()));
+        return saved;
     }
 
     @Transactional
@@ -251,9 +262,14 @@ public class ManufacturingService {
         List<Object[]> exploded = bomLineRepository.explodeBom(tenantId, order.getParentVariantId());
         List<Allocation> allocations = allocationRepository.findByProductionOrderIdAndStatus(productionOrderId, "ACTIVE");
 
-        UUID outputLocation = locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+        // Prefer the floor location where components were allocated so FG lands for disassembly.
+        UUID outputLocation = allocations.stream()
+                .map(Allocation::getLocationId)
+                .filter(id -> id != null)
                 .findFirst()
-                .map(l -> l.getId())
+                .or(() -> locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream()
+                        .map(Location::getId)
+                        .findFirst())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "NO_LOCATION", "No warehouse location"));
 
         BigDecimal materialCost = BigDecimal.ZERO;
@@ -288,7 +304,7 @@ public class ManufacturingService {
                 out.setReferenceType("PRODUCTION_ORDER");
                 out.setReferenceId(productionOrderId);
                 out.setCreatedBy(TenantContext.getUserId().orElse(null));
-                ledgerRepository.save(out);
+                saveLedger(out);
                 remainingNeeded = remainingNeeded.subtract(consumeQty);
             }
             if (remainingNeeded.signum() > 0) {
@@ -317,7 +333,7 @@ public class ManufacturingService {
             in.setReferenceType("PRODUCTION_ORDER");
             in.setReferenceId(productionOrderId);
             in.setCreatedBy(TenantContext.getUserId().orElse(null));
-            ledgerRepository.save(in);
+            saveLedger(in);
             costingService.applyReceiveCost(order.getParentVariantId(), qtyToProduce, finishedUnitCost);
         } else {
             BigDecimal ratioSum = outputs.stream()
@@ -345,7 +361,7 @@ public class ManufacturingService {
                 in.setReferenceId(productionOrderId);
                 in.setReasonCode(output.getOutputType());
                 in.setCreatedBy(TenantContext.getUserId().orElse(null));
-                ledgerRepository.save(in);
+                saveLedger(in);
                 costingService.applyReceiveCost(output.getVariantId(), outputQty, unitCost);
             }
         }
@@ -436,11 +452,9 @@ public class ManufacturingService {
         bomRepository.findByTenantIdAndParentVariantId(tenantId, variantId)
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "NO_BOM", "No BOM for variant"));
 
-        BigDecimal available = levelRepository.findByTenantIdAndVariantId(tenantId, variantId).stream()
-                .filter(l -> l.getLocationId().equals(locationId))
-                .map(InventoryLevel::getAvailable)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (available.compareTo(qty) < 0) {
+        // Ledger is the source of truth (levels may lag behind V076 async flush).
+        BigDecimal onHand = ledgerRepository.sumQuantityAtLocation(tenantId, variantId, locationId);
+        if (onHand == null || onHand.compareTo(qty) < 0) {
             throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", "Insufficient finished goods at location");
         }
 
@@ -455,7 +469,7 @@ public class ManufacturingService {
         parentOut.setUnitCost(parentUnitCost);
         parentOut.setReferenceType("DISASSEMBLY");
         parentOut.setCreatedBy(TenantContext.getUserId().orElse(null));
-        ledgerRepository.save(parentOut);
+        saveLedger(parentOut);
 
         List<Object[]> exploded = bomLineRepository.explodeBom(tenantId, variantId);
         for (Object[] row : exploded) {
@@ -471,7 +485,7 @@ public class ManufacturingService {
             componentIn.setQuantityDelta(componentQty);
             componentIn.setReferenceType("DISASSEMBLY");
             componentIn.setCreatedBy(TenantContext.getUserId().orElse(null));
-            ledgerRepository.save(componentIn);
+            saveLedger(componentIn);
 
             ProductVariant component = variantRepository.findById(componentVariantId).orElseThrow();
             BigDecimal componentCost = component.getAvgCost() != null ? component.getAvgCost() : BigDecimal.ZERO;

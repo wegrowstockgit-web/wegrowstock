@@ -22,8 +22,10 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -84,6 +86,28 @@ public class ForecastingWorker {
             Map<UUID, BigDecimal> incomingPo = incomingPoByVariant();
 
             for (ProductVariant variant : variantRepository.findAll()) {
+                if (isExcludedFromReplenishment(variant)) {
+                    DemandForecast forecast = forecastRepository.findByTenantIdAndVariantId(tenantId, variant.getId())
+                            .orElseGet(() -> {
+                                DemandForecast f = new DemandForecast();
+                                f.setTenantId(tenantId);
+                                f.setVariantId(variant.getId());
+                                return f;
+                            });
+                    forecast.setRecommendedPoQty(BigDecimal.ZERO);
+                    forecast.setVelocity30d(velocityByVariant.getOrDefault(variant.getId(), BigDecimal.ZERO));
+                    forecast.setSeasonalityIndex(BigDecimal.ONE);
+                    forecast.setConfidenceScore(BigDecimal.ONE);
+                    Map<String, Object> signals = new LinkedHashMap<>();
+                    signals.put("model", "lifecycle_exclusion");
+                    signals.put("lifecycleStatus", variant.getLifecycleStatus());
+                    signals.put("excludedFromReplenishment", true);
+                    forecast.setExternalSignals(signals);
+                    forecast.setCalculatedAt(Instant.now());
+                    forecastRepository.save(forecast);
+                    continue;
+                }
+
                 BigDecimal velocity = velocityByVariant.getOrDefault(variant.getId(), BigDecimal.ZERO);
                 BigDecimal stock = onHand.getOrDefault(variant.getId(), BigDecimal.ZERO);
                 BigDecimal incoming = incomingPo.getOrDefault(variant.getId(), BigDecimal.ZERO);
@@ -105,6 +129,11 @@ public class ForecastingWorker {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    private static boolean isExcludedFromReplenishment(ProductVariant variant) {
+        String status = variant.getLifecycleStatus();
+        return status != null && Set.of("PHASE_OUT", "DISCONTINUED").contains(status.trim().toUpperCase());
     }
 
     private Map<UUID, BigDecimal> incomingPoByVariant() {

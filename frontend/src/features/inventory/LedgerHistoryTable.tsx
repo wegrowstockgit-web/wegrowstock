@@ -32,15 +32,25 @@ function formatDelta(value: number | string): string {
   return `${sign}${formatNumber(n)}`;
 }
 
-export function LedgerHistoryTable() {
+export function LedgerHistoryTable({
+  variantId,
+  limit = 50,
+  embedded = false,
+}: {
+  /** When set, only show movements for this SKU/variant. */
+  variantId?: string;
+  limit?: number;
+  /** Compact chrome for peek drawers / report panels. */
+  embedded?: boolean;
+}) {
   const { toast } = useToast();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canUndo = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const { data = [], isLoading, isError } = useQuery({
-    queryKey: ['inventory_ledger'],
-    queryFn: () => listLedgerTransactions(50),
+  const { data = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ['inventory_ledger', variantId ?? 'all', limit],
+    queryFn: () => listLedgerTransactions(limit, variantId),
     staleTime: 0,
     retry: false,
   });
@@ -59,26 +69,39 @@ export function LedgerHistoryTable() {
 
   return (
     <section
-      className="rounded-2xl bg-surface-raised p-5 shadow-card"
+      className={
+        embedded
+          ? 'space-y-3'
+          : 'rounded-2xl bg-surface-raised p-5 shadow-card'
+      }
       data-testid="ledger-history-table"
     >
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-text">Ledger history</h2>
-        <p className="text-sm text-text-muted">
-          Recent inventory movements. Reverse data-entry mistakes with a compensating adjustment.
-        </p>
-      </div>
+      {!embedded && (
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-text">Ledger history</h2>
+          <p className="text-sm text-text-muted">
+            Recent inventory movements. Reverse data-entry mistakes with a compensating adjustment.
+          </p>
+        </div>
+      )}
 
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" data-testid="list-page-loading">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}
         </div>
       ) : isError ? (
-        <p className="text-sm text-danger">Could not load ledger history.</p>
+        <div data-testid="list-page-error">
+          <p className="text-sm text-danger">Could not load ledger history.</p>
+          <Button size="sm" variant="ghost" className="mt-2" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        </div>
       ) : data.length === 0 ? (
-        <p className="text-sm text-text-muted">No ledger movements yet.</p>
+        <p className="text-sm text-text-muted" data-testid="list-page-empty">
+          {variantId ? 'No ledger movements for this item yet.' : 'No ledger movements yet.'}
+        </p>
       ) : (
         <Table>
           <TableHeader>

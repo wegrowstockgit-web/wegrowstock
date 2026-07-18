@@ -161,6 +161,8 @@ public class LandedCostService {
             row.put("poLineId", line.getId().toString());
             row.put("variantId", variant.getId().toString());
             row.put("sku", variant.getSku());
+            row.put("hsTariffCode", variant.getHsTariffCode());
+            row.put("countryOfOrigin", variant.getCountryOfOrigin());
             row.put("qtyReceived", qty);
             row.put("allocatedFreight", share);
             row.put("perUnitLanded", perUnit);
@@ -188,6 +190,11 @@ public class LandedCostService {
         payload.put("eventType", eventType.name());
         payload.put("strategy", auditStrategy);
         payload.put("ledgerIds", ledgerIds.stream().map(UUID::toString).toList());
+        payload.put("hsTariffCodes", breakdown.stream()
+                .map(row -> row.get("hsTariffCode"))
+                .filter(code -> code != null && !String.valueOf(code).isBlank())
+                .distinct()
+                .toList());
         outboxService.append("LANDED_COST", audit.getId(), "LANDED_COST_ALLOCATED", payload);
 
         return new LandedCostResult(audit.getId(), invoice.getId(), po.getId(), totalCost, auditStrategy, breakdown);

@@ -91,6 +91,14 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
         ? crypto.randomUUID()
         : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   }
+  // Let the browser set multipart boundary — default application/json breaks FormData uploads.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    if (typeof config.headers.set === 'function') {
+      config.headers.set('Content-Type', false as unknown as string);
+    } else {
+      delete (config.headers as Record<string, unknown>)['Content-Type'];
+    }
+  }
   return config;
 });
 

@@ -9,12 +9,12 @@ import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
-import { SavedGridViews } from '@/components/ui/SavedGridViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { MediaPicker } from '@/components/ui/MediaPicker';
 import { ProductMediaDropZone } from '@/components/ui/ProductMediaDropZone';
+import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
 import {
   VirtualizedTable,
   type VirtualizedColumnDef,
@@ -32,29 +32,87 @@ function AddProductModal({ open, onClose }: { open: boolean; onClose: () => void
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
+  const [length, setLength] = useState('');
+  const [width, setWidth] = useState('');
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState('');
+  const [dimUnit, setDimUnit] = useState('in');
+  const [weightUnit, setWeightUnit] = useState('lb');
+  const [hsTariffCode, setHsTariffCode] = useState('');
+  const [countryOfOrigin, setCountryOfOrigin] = useState('');
+  const [isHazmat, setIsHazmat] = useState(false);
+  const [palletTie, setPalletTie] = useState('');
+  const [palletHigh, setPalletHigh] = useState('');
+  const [storageTempZone, setStorageTempZone] = useState('AMBIENT');
+  const [isFragile, setIsFragile] = useState(false);
+  const [abcClassification, setAbcClassification] = useState('C');
+  const [lifecycleStatus, setLifecycleStatus] = useState('ACTIVE');
+  const [tradeOpen, setTradeOpen] = useState(false);
+  const [handlingOpen, setHandlingOpen] = useState(false);
   const [error, setError] = useState('');
+
+  const dimsReady =
+    Number(length) > 0 && Number(width) > 0 && Number(height) > 0 && Number(weight) > 0;
+
+  const resetForm = () => {
+    setName('');
+    setSku('');
+    setBarcode('');
+    setLength('');
+    setWidth('');
+    setHeight('');
+    setWeight('');
+    setDimUnit('in');
+    setWeightUnit('lb');
+    setHsTariffCode('');
+    setCountryOfOrigin('');
+    setIsHazmat(false);
+    setPalletTie('');
+    setPalletHigh('');
+    setStorageTempZone('AMBIENT');
+    setIsFragile(false);
+    setAbcClassification('C');
+    setLifecycleStatus('ACTIVE');
+    setTradeOpen(false);
+    setHandlingOpen(false);
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
+      // Use the full SKU as skuRoot so hyphenated SKUs (e.g. ENT-ABC123) do not
+      // collide on a shared prefix under products_tenant_id_sku_root_key.
       const productRes = await apiClient.post<{ id: string }>('/api/v1/products', {
-        skuRoot: sku.split('-')[0] || sku,
+        skuRoot: sku.trim(),
         name,
       });
       await apiClient.post('/api/v1/variants', {
         productId: productRes.data.id,
         sku,
         barcode: barcode || undefined,
+        length: Number(length),
+        width: Number(width),
+        height: Number(height),
+        weight: Number(weight),
+        dimUnit,
+        weightUnit,
+        hsTariffCode: hsTariffCode || undefined,
+        countryOfOrigin: countryOfOrigin || undefined,
+        isHazmat,
+        palletTie: palletTie ? Number(palletTie) : undefined,
+        palletHigh: palletHigh ? Number(palletHigh) : undefined,
+        storageTempZone,
+        isFragile,
+        abcClassification,
+        lifecycleStatus,
       });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setName('');
-      setSku('');
-      setBarcode('');
+      resetForm();
       onClose();
     },
-    onError: () => setError('Could not create product. Check SKU is unique.'),
+    onError: () => setError('Could not create product. Check SKU is unique and dimensions are valid.'),
   });
 
   return (
@@ -65,15 +123,121 @@ function AddProductModal({ open, onClose }: { open: boolean; onClose: () => void
           setError('');
           mutation.mutate();
         }}
-        className="space-y-4"
+        className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
       >
         <Input label="Product name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
         <Input label="SKU" value={sku} onChange={(e) => setSku(e.target.value)} required placeholder="WIDGET-001" />
         <Input label="Barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Optional" />
+
+        <div>
+          <p className="mb-2 text-sm font-medium text-text">Dimensions <span className="text-danger">*</span></p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Input label="Length" type="number" min="0.0001" step="any" value={length} onChange={(e) => setLength(e.target.value)} required />
+            <Input label="Width" type="number" min="0.0001" step="any" value={width} onChange={(e) => setWidth(e.target.value)} required />
+            <Input label="Height" type="number" min="0.0001" step="any" value={height} onChange={(e) => setHeight(e.target.value)} required />
+          </div>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Input label="Weight" type="number" min="0.0001" step="any" value={weight} onChange={(e) => setWeight(e.target.value)} required />
+            <Input label="Dim unit" value={dimUnit} onChange={(e) => setDimUnit(e.target.value)} required />
+            <Input label="Weight unit" value={weightUnit} onChange={(e) => setWeightUnit(e.target.value)} required />
+          </div>
+        </div>
+
+        <details
+          className="rounded-lg border border-border"
+          open={tradeOpen}
+          onToggle={(e) => setTradeOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-text">
+            Trade &amp; Compliance
+          </summary>
+          <div className="space-y-3 border-t border-border px-3 py-3">
+            <Input label="HS tariff code" value={hsTariffCode} onChange={(e) => setHsTariffCode(e.target.value)} placeholder="e.g. 8471.30" />
+            <Input label="Country of origin" value={countryOfOrigin} onChange={(e) => setCountryOfOrigin(e.target.value)} placeholder="US" maxLength={2} />
+            <label className="flex items-center gap-2 text-sm text-text">
+              <input
+                id="add-product-hazmat"
+                name="isHazmat"
+                type="checkbox"
+                checked={isHazmat}
+                onChange={(e) => setIsHazmat(e.target.checked)}
+              />
+              Hazmat / dangerous goods
+            </label>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-text-muted">ABC classification</span>
+                <select
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-text"
+                  value={abcClassification}
+                  onChange={(e) => setAbcClassification(e.target.value)}
+                >
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-text-muted">Lifecycle</span>
+                <select
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-text"
+                  value={lifecycleStatus}
+                  onChange={(e) => setLifecycleStatus(e.target.value)}
+                >
+                  <option value="PRE_RELEASE">Pre-release</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="PHASE_OUT">Phase out</option>
+                  <option value="DISCONTINUED">Discontinued</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details
+          className="rounded-lg border border-border"
+          open={handlingOpen}
+          onToggle={(e) => setHandlingOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-text">
+            Advanced Handling
+          </summary>
+          <div className="space-y-3 border-t border-border px-3 py-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input label="Pallet tie (Ti)" type="number" min="1" step="1" value={palletTie} onChange={(e) => setPalletTie(e.target.value)} />
+              <Input label="Pallet high (Hi)" type="number" min="1" step="1" value={palletHigh} onChange={(e) => setPalletHigh(e.target.value)} />
+              <label className="block text-sm">
+                <span className="mb-1 block text-text-muted">Temp zone</span>
+                <select
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-text"
+                  value={storageTempZone}
+                  onChange={(e) => setStorageTempZone(e.target.value)}
+                >
+                  <option value="AMBIENT">Ambient</option>
+                  <option value="REFRIGERATED">Refrigerated</option>
+                  <option value="FROZEN">Frozen</option>
+                </select>
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-text">
+              <input
+                id="add-product-fragile"
+                name="isFragile"
+                type="checkbox"
+                checked={isFragile}
+                onChange={(e) => setIsFragile(e.target.checked)}
+              />
+              Fragile — pick last in wave path
+            </label>
+          </div>
+        </details>
+
         {error && <p className="text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={mutation.isPending} disabled={!name || !sku}>Add product</Button>
+          <Button type="submit" loading={mutation.isPending} disabled={!name || !sku || !dimsReady}>
+            Add product
+          </Button>
         </div>
       </form>
     </Modal>
@@ -225,8 +389,10 @@ function ExternalSyncToggle({
   }
 
   return (
-    <label className="inline-flex cursor-pointer items-center gap-2">
+    <label className="inline-flex cursor-pointer items-center gap-2" htmlFor={`channel-sync-${variantId}`}>
       <input
+        id={`channel-sync-${variantId}`}
+        name={`channelSync-${variantId}`}
         type="checkbox"
         data-testid={`channel-sync-${variantId}`}
         aria-label="Channel sync"
@@ -247,6 +413,7 @@ export function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [uomVariant, setUomVariant] = useState<ProductVariant | null>(null);
   const [peekProductId, setPeekProductId] = useState<string | null>(null);
+  const [peekTab, setPeekTab] = useState<'details' | 'ledger'>('details');
 
   const {
     data,
@@ -326,8 +493,17 @@ export function ProductsPage() {
         hideable: false,
         align: 'center',
         cell: (product) => (
-          <div className="flex justify-center">
-            <VariantThumb url={product.primaryMediaUrl} alt={product.name} size="sm" />
+          <div
+            className="flex justify-center"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <VariantThumb
+              url={product.primaryMediaUrl}
+              alt={product.name}
+              previewCaption={product.sku}
+              size="sm"
+            />
           </div>
         ),
       },
@@ -344,10 +520,15 @@ export function ProductsPage() {
       {
         id: 'name',
         header: 'Name',
-        width: 180,
+        width: 220,
+        flexGrow: true,
         sortable: true,
         sortValue: (product) => product.name,
-        cell: (product) => <span className="truncate text-text">{product.name}</span>,
+        cell: (product) => (
+          <span className="block truncate text-text" title={product.name}>
+            {product.name}
+          </span>
+        ),
       },
       {
         id: 'barcode',
@@ -416,6 +597,113 @@ export function ProductsPage() {
           ) : (
             <span className="font-mono tabular-nums">{qty(product.reorderPoint)}</span>
           ),
+      },
+      {
+        id: 'weight',
+        header: 'Weight',
+        width: 88,
+        align: 'right',
+        defaultHidden: true,
+        sortable: true,
+        sortValue: (product) => product.weight ?? 0,
+        cell: (product) => (
+          <span className="font-mono tabular-nums text-text-muted">
+            {product.weight != null ? `${product.weight} ${product.weightUnit ?? ''}`.trim() : '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'dims',
+        header: 'L×W×H',
+        width: 120,
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="font-mono text-xs text-text-muted">
+            {product.length != null && product.width != null && product.height != null
+              ? `${product.length}×${product.width}×${product.height} ${product.dimUnit ?? ''}`.trim()
+              : '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'hsTariffCode',
+        header: 'HS code',
+        width: 100,
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="font-mono text-xs text-text-muted">{product.hsTariffCode ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'countryOfOrigin',
+        header: 'Origin',
+        width: 72,
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="font-mono text-xs text-text-muted">{product.countryOfOrigin ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'isHazmat',
+        header: 'Hazmat',
+        width: 72,
+        align: 'center',
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="text-xs text-text-muted">{product.isHazmat ? 'Yes' : 'No'}</span>
+        ),
+      },
+      {
+        id: 'palletTiHi',
+        header: 'Ti×Hi',
+        width: 72,
+        align: 'center',
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="font-mono text-xs text-text-muted">
+            {product.palletTie != null && product.palletHigh != null
+              ? `${product.palletTie}×${product.palletHigh}`
+              : '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'storageTempZone',
+        header: 'Temp',
+        width: 100,
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="text-xs text-text-muted">{product.storageTempZone ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'isFragile',
+        header: 'Fragile',
+        width: 72,
+        align: 'center',
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="text-xs text-text-muted">{product.isFragile ? 'Yes' : 'No'}</span>
+        ),
+      },
+      {
+        id: 'abcClassification',
+        header: 'ABC',
+        width: 56,
+        align: 'center',
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="font-mono text-xs text-text-muted">{product.abcClassification ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'lifecycleStatus',
+        header: 'Lifecycle',
+        width: 110,
+        defaultHidden: true,
+        cell: (product) => (
+          <span className="text-xs text-text-muted">{product.lifecycleStatus ?? '—'}</span>
+        ),
       },
     ];
 
@@ -529,10 +817,7 @@ export function ProductsPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar
-          columnItems={columnItems}
-          trailing={<SavedGridViews gridId="products" />}
-        >
+        <DataListToolbar columnItems={columnItems} gridId="products">
           <SavedFilterViews
             className="mb-0"
             storageKey="products-filters"
@@ -547,11 +832,15 @@ export function ProductsPage() {
       </div>
 
       <VirtualizedTable
+        gridId="products"
         columns={columns}
         rows={displayed}
         getRowId={(row) => row.id}
         selectedRowId={peekProductId}
-        onRowClick={(row) => setPeekProductId(row.id)}
+        onRowClick={(row) => {
+          setPeekTab('details');
+          setPeekProductId(row.id);
+        }}
         onEndReached={loadMore}
         empty={
           <div className="p-6">
@@ -588,69 +877,100 @@ export function ProductsPage() {
         description={peekProduct?.name}
       >
         {peekProduct ? (
-          <dl className="space-y-3 text-sm">
-            {canManage && (
-              <div data-testid="product-media-picker" className="space-y-3">
-                <dt className="mb-2 text-text-muted">Product photo</dt>
-                <dd className="space-y-3">
-                  <MediaPicker
-                    kind="PRODUCT"
-                    label="Upload product photo"
-                    capture
-                    previewUrl={peekProduct.primaryMediaUrl}
-                    onUploaded={async (result) => {
-                      await apiClient.post(`/api/v1/products/variants/${peekProduct.id}/media`, {
-                        url: result.contentUrl,
-                        isPrimary: true,
-                      });
-                      void queryClient.invalidateQueries({ queryKey: ['products'] });
-                    }}
-                  />
-                  <ProductMediaDropZone
-                    variantId={peekProduct.id}
-                    onUploaded={async () => {
-                      void queryClient.invalidateQueries({ queryKey: ['products'] });
-                    }}
-                  />
-                </dd>
-              </div>
-            )}
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Barcode</dt>
-              <dd className="font-mono">{peekProduct.barcode ?? '—'}</dd>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Product peek tabs">
+              <Button
+                type="button"
+                size="sm"
+                role="tab"
+                aria-selected={peekTab === 'details'}
+                variant={peekTab === 'details' ? 'primary' : 'secondary'}
+                data-testid="product-peek-tab-details"
+                onClick={() => setPeekTab('details')}
+              >
+                Details
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                role="tab"
+                aria-selected={peekTab === 'ledger'}
+                variant={peekTab === 'ledger' ? 'primary' : 'secondary'}
+                data-testid="product-peek-tab-ledger"
+                onClick={() => setPeekTab('ledger')}
+              >
+                Ledger History
+              </Button>
             </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">On hand</dt>
-              <dd className="font-mono tabular-nums">{qty(peekProduct.onHand)}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">Allocated</dt>
-              <dd className="font-mono tabular-nums">{qty(peekProduct.allocated)}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-muted">ATP</dt>
-              <dd className="font-mono tabular-nums font-semibold">{qty(peekProduct.atp)}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-text-muted">Reorder point</dt>
-              <dd className="w-28">
-                {canManage ? (
-                  <InlineEditableCell
-                    value={peekProduct.reorderPoint ?? 0}
-                    inputType="number"
-                    onSave={async (val) => {
-                      await reorderMutation.mutateAsync({
-                        id: peekProduct.id,
-                        reorderPoint: Number(val),
-                      });
-                    }}
-                  />
-                ) : (
-                  <span className="font-mono tabular-nums">{qty(peekProduct.reorderPoint)}</span>
+
+            {peekTab === 'details' ? (
+              <dl className="space-y-3 text-sm">
+                {canManage && (
+                  <div data-testid="product-media-picker" className="space-y-3">
+                    <dt className="mb-2 text-text-muted">Product photo</dt>
+                    <dd className="space-y-3">
+                      <MediaPicker
+                        kind="PRODUCT"
+                        label="Upload product photo"
+                        capture
+                        previewUrl={peekProduct.primaryMediaUrl}
+                        onUploaded={async (result) => {
+                          await apiClient.post(`/api/v1/products/variants/${peekProduct.id}/media`, {
+                            url: result.contentUrl,
+                            isPrimary: true,
+                          });
+                          void queryClient.invalidateQueries({ queryKey: ['products'] });
+                        }}
+                      />
+                      <ProductMediaDropZone
+                        variantId={peekProduct.id}
+                        onUploaded={async () => {
+                          void queryClient.invalidateQueries({ queryKey: ['products'] });
+                        }}
+                      />
+                    </dd>
+                  </div>
                 )}
-              </dd>
-            </div>
-          </dl>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-muted">Barcode</dt>
+                  <dd className="font-mono">{peekProduct.barcode ?? '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-muted">On hand</dt>
+                  <dd className="font-mono tabular-nums">{qty(peekProduct.onHand)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-muted">Allocated</dt>
+                  <dd className="font-mono tabular-nums">{qty(peekProduct.allocated)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-muted">ATP</dt>
+                  <dd className="font-mono tabular-nums font-semibold">{qty(peekProduct.atp)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-text-muted">Reorder point</dt>
+                  <dd className="w-28">
+                    {canManage ? (
+                      <InlineEditableCell
+                        value={peekProduct.reorderPoint ?? 0}
+                        inputType="number"
+                        onSave={async (val) => {
+                          await reorderMutation.mutateAsync({
+                            id: peekProduct.id,
+                            reorderPoint: Number(val),
+                          });
+                        }}
+                      />
+                    ) : (
+                      <span className="font-mono tabular-nums">{qty(peekProduct.reorderPoint)}</span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              <LedgerHistoryTable variantId={peekProduct.id} limit={50} embedded />
+            )}
+          </div>
         ) : (
           <p className="text-sm text-text-muted">Loading…</p>
         )}

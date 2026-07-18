@@ -6,11 +6,11 @@ const FIXTURE_PNG = path.join(process.cwd(), 'e2e', 'fixtures', 'pixel.png');
 
 test.describe('Media upload surfaces', () => {
   test('owner can set profile avatar from Settings', async ({ ownerPage }) => {
-    await ownerPage.goto('/settings');
-    await expect(ownerPage.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible({
+    await ownerPage.goto('/settings/profile');
+    await expect(ownerPage.getByTestId('profile-settings-page')).toBeVisible({
       timeout: 30_000,
     });
-    await expect(ownerPage.getByRole('heading', { name: 'Your account' })).toBeVisible();
+    await expect(ownerPage.getByRole('heading', { name: 'Personal settings' })).toBeVisible();
 
     const picker = ownerPage.getByTestId('profile-avatar-picker');
     await expect(picker).toBeVisible();
@@ -26,7 +26,7 @@ test.describe('Media upload surfaces', () => {
   });
 
   test('Take photo opens device camera capture UI', async ({ ownerPage }) => {
-    await ownerPage.goto('/settings');
+    await ownerPage.goto('/settings/profile');
     await expect(ownerPage.getByTestId('profile-avatar-picker')).toBeVisible({ timeout: 30_000 });
 
     // Headless Chromium has no camera — stub a canvas MediaStream in-page after load.

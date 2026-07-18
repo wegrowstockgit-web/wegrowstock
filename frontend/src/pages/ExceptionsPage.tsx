@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { FulfillmentException } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { useClientSort } from '@/hooks/useClientSort';
 import { cn } from '@/lib/utils';
 import { useState, type Dispatch, type SetStateAction } from 'react';
@@ -23,6 +25,8 @@ const STATUS_STYLES: Record<string, string> = {
   RESOLVED: 'bg-success/10 text-success',
   DISCARDED: 'bg-surface-overlay text-text-muted',
 };
+
+type ActionTab = 'holds' | 'sync';
 
 function ExceptionsTable({
   items,
@@ -144,12 +148,20 @@ function ExceptionsTable({
 
 export function ExceptionsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab: ActionTab = tabParam === 'sync' ? 'sync' : 'holds';
   const [lotById, setLotById] = useState<Record<string, string>>({});
+
+  const setTab = (next: ActionTab) => {
+    setSearchParams(next === 'holds' ? {} : { tab: next }, { replace: true });
+  };
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['office', 'exceptions'],
     queryFn: async () =>
       (await apiClient.get<FulfillmentException[]>('/api/v1/office/exceptions/list')).data,
+    enabled: activeTab === 'holds',
   });
 
   const resolveMutation = useMutation({
@@ -163,41 +175,76 @@ export function ExceptionsPage() {
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
+    <div className="flex h-full min-h-0 flex-col" data-testid="action-required-hub">
+      <div className="flex shrink-0 flex-col gap-4 border-b border-border/60 px-4 py-4 sm:px-6">
         <div>
-          <h1 className="text-2xl font-bold text-text">Fulfillment exceptions</h1>
+          <h1 className="text-2xl font-bold text-text">Action required</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Damaged barcode shunts from the floor — clear, discard, or apply a manual lot
+            Fulfillment holds and offline sync conflicts that need a manager decision
           </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Action required tabs">
+          <Button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'holds'}
+            variant={activeTab === 'holds' ? 'primary' : 'secondary'}
+            size="sm"
+            data-testid="exceptions-tab-holds"
+            onClick={() => setTab('holds')}
+          >
+            <AlertTriangle className="h-4 w-4" />
+            Fulfillment Holds
+          </Button>
+          <Button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'sync'}
+            variant={activeTab === 'sync' ? 'primary' : 'secondary'}
+            size="sm"
+            data-testid="exceptions-tab-sync"
+            onClick={() => setTab('sync')}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Sync Conflicts
+          </Button>
         </div>
       </div>
 
-      <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar />
-      </div>
+      {activeTab === 'holds' && (
+        <>
+          <div className="shrink-0 px-4 pt-4 sm:px-6">
+            <DataListToolbar />
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
+            <ListPageState
+              isLoading={isLoading}
+              isError={isError}
+              error={error}
+              data={data}
+              refetch={refetch}
+              emptyIcon={AlertTriangle}
+              emptyTitle="No exceptions"
+              emptyDescription="Floor Skip & Flag reports will appear here for manager resolution."
+            >
+              {(items) => (
+                <ExceptionsTable
+                  items={items}
+                  lotById={lotById}
+                  setLotById={setLotById}
+                  resolveMutation={resolveMutation}
+                />
+              )}
+            </ListPageState>
+          </div>
+        </>
+      )}
 
-      <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
-        <ListPageState
-          isLoading={isLoading}
-          isError={isError}
-          error={error}
-          data={data}
-          refetch={refetch}
-          emptyIcon={AlertTriangle}
-          emptyTitle="No exceptions"
-          emptyDescription="Floor Skip & Flag reports will appear here for manager resolution."
-        >
-          {(items) => (
-            <ExceptionsTable
-              items={items}
-              lotById={lotById}
-              setLotById={setLotById}
-              resolveMutation={resolveMutation}
-            />
-          )}
-        </ListPageState>
-      </div>
+      {activeTab === 'sync' && (
+        <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6" data-testid="exceptions-sync-tab">
+          <SyncConflictsPanel />
+        </div>
+      )}
     </div>
   );
 }

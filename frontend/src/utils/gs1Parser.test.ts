@@ -24,6 +24,22 @@ describe('parseGs1', () => {
     expect(parsed.quantity).toBe(4);
   });
 
+  it('captures DSCSA package serial AI 21 (parenthetical)', () => {
+    const parsed = parseGs1('(01)00312345678906(21)SN987654321(10)LOT55(17)261127');
+    expect(parsed.isGs1).toBe(true);
+    expect(parsed.sku).toBe('00312345678906');
+    expect(parsed.serialNumber).toBe('SN987654321');
+    expect(parsed.lotNumber).toBe('LOT55');
+    expect(parsed.expiryDate).toBe('2026-11-27');
+  });
+
+  it('captures DSCSA package serial AI 21 (concatenated walk)', () => {
+    const parsed = parseGs1('010031234567890621SN987654321\u001d10LOT55\u001d17261127');
+    expect(parsed.isGs1).toBe(true);
+    expect(parsed.serialNumber).toBe('SN987654321');
+    expect(parsed.lotNumber).toBe('LOT55');
+  });
+
   it('keeps lot from bleeding into AI 30 when FNC1 is present', () => {
     const parsed = parseGs1('010123456789012810LOT99\u001d3012');
     expect(parsed.isGs1).toBe(true);

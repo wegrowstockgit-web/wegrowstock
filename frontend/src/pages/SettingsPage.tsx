@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
@@ -24,8 +24,8 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { MediaPicker } from '@/components/ui/MediaPicker';
 import { Modal } from '@/components/ui/Modal';
+import { ScrollFadePort } from '@/components/ui/ScrollFadePort';
 import {
   Table,
   TableBody,
@@ -75,6 +75,7 @@ const SYNC_STATUS_STYLES: Record<string, string> = {
   SKIPPED: 'bg-surface-overlay text-text-muted',
   ACTIVE: 'bg-success/20 text-success',
   DISCONNECTED: 'bg-surface-overlay text-text-muted',
+  INVITED: 'bg-warning/20 text-warning',
 };
 
 function statusChip(status?: string) {
@@ -121,9 +122,8 @@ function SavedNote({ show }: { show: boolean }) {
 
 /* ------------------------------------ Profile ----------------------------------- */
 
+/** Admin Settings → Profile: company prefs only. Personal data lives at /settings/profile. */
 function ProfileTab() {
-  const user = useSessionStore((s) => s.user);
-  const setAvatarUrl = useSessionStore((s) => s.setAvatarUrl);
   const settings = useTenantSettings();
   const [currency, setCurrency] = useState('');
 
@@ -136,24 +136,23 @@ function ProfileTab() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Your account" description="Signed-in user details" />
-        <div className="space-y-4">
-          <div data-testid="profile-avatar-picker">
-            <p className="mb-2 text-sm font-medium text-text">Profile photo</p>
-            <MediaPicker
-              kind="AVATAR"
-              label="Upload photo"
-              capture
-              previewUrl={user?.avatarUrl}
-              onUploaded={async (result) => {
-                if (result.contentUrl) setAvatarUrl(result.contentUrl);
-              }}
-            />
-          </div>
-          <Input label="Display name" value={user?.displayName ?? ''} disabled />
-          <Input label="Email" value={user?.email ?? ''} disabled />
-          <Input label="Roles" value={(user?.roles ?? []).join(', ')} disabled />
-        </div>
+        <CardHeader
+          title="Personal settings moved"
+          description="Avatar, address, password, and UI density are self-service for every user"
+        />
+        <p className="mb-3 text-sm text-text-muted">
+          Organizational fields (role, warehouses, department, timezone, locale, shift) are edited
+          under Users → Edit access — not on personal profile forms.
+        </p>
+        <Link
+          to="/settings/profile"
+          data-testid="open-personal-profile"
+          className="inline-flex"
+        >
+          <Button type="button" size="sm" variant="secondary">
+            Open personal settings
+          </Button>
+        </Link>
       </Card>
 
       <Card>
@@ -163,7 +162,7 @@ function ProfileTab() {
             e.preventDefault();
             settings.patch.mutate({ currency });
           }}
-          className="space-y-4"
+          className="grid grid-cols-1 gap-4 md:grid-cols-2"
         >
           <Select label="Base currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {['USD', 'EUR', 'GBP', 'CAD', 'AUD'].map((c) => (
@@ -172,7 +171,7 @@ function ProfileTab() {
               </option>
             ))}
           </Select>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 md:col-span-2">
             <Button type="submit" loading={settings.patch.isPending}>
               Save changes
             </Button>
@@ -186,8 +185,30 @@ function ProfileTab() {
 
 /* ------------------------------------- Users ------------------------------------ */
 
+type PendingInvitation = {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+};
+
+function inviteErrorMessage(err: unknown): string {
+  const detail = (err as { response?: { data?: { detail?: string; title?: string } } })?.response
+    ?.data;
+  if (detail?.detail) return detail.detail;
+  if (detail?.title === 'INVITE_PENDING') {
+    return 'An open invitation already exists for this email.';
+  }
+  if (detail?.title === 'USER_EXISTS') {
+    return 'A user with this email already exists.';
+  }
+  return 'Could not send the invitation. Check the email and try again.';
+}
+
 function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>('VIEWER');
   const [customerId, setCustomerId] = useState('');
@@ -201,20 +222,27 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const mutation = useMutation({
     mutationFn: async () => {
-      await apiClient.post('/api/v1/users/invitations', {
-        email,
-        role,
-        customerId: role === 'B2B_CUSTOMER' ? customerId : undefined,
-      });
+      const { data } = await apiClient.post<{ email: string; role: string; token?: string }>(
+        '/api/v1/users/invitations',
+        {
+          email: email.trim(),
+          role,
+          customerId: role === 'B2B_CUSTOMER' ? customerId : undefined,
+        },
+      );
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
+      void queryClient.invalidateQueries({ queryKey: ['pending-invitations'] });
+      toast(`Invitation sent to ${data.email}`, { tone: 'success' });
       setEmail('');
       setRole('VIEWER');
       setCustomerId('');
+      setError('');
       onClose();
     },
-    onError: () => setError('Could not send the invitation. The user may already exist.'),
+    onError: (err) => setError(inviteErrorMessage(err)),
   });
 
   return (
@@ -225,46 +253,72 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
           setError('');
           mutation.mutate();
         }}
-        className="space-y-4"
+        className="space-y-6"
+        data-testid="invite-user-modal"
       >
-        <Input
-          label="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoFocus
-        />
-        <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
-          {ASSIGNABLE_ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r.replaceAll('_', ' ')}
-            </option>
-          ))}
-        </Select>
-        {role === 'B2B_CUSTOMER' && (
-          <Select
-            label="Portal customer"
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-text">Personal information</h3>
+          <p className="text-xs text-text-muted">
+            Invitees set their own password, address, and avatar after accepting.
+          </p>
+          <Input
+            id="invite-email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
-          >
-            <option value="" disabled>
-              Select the customer account…
-            </option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+            autoFocus
+            autoComplete="off"
+          />
+        </section>
+        {canManageOrg && (
+          <section className="space-y-3" data-testid="invite-org-scope">
+            <h3 className="text-sm font-semibold text-text">Organizational scope</h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Select
+                id="invite-role"
+                label="Role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              >
+                {ASSIGNABLE_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r.replaceAll('_', ' ')}
+                  </option>
+                ))}
+              </Select>
+              {role === 'B2B_CUSTOMER' && (
+                <Select
+                  id="invite-portal-customer"
+                  label="Portal customer"
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select the customer account…
+                  </option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </div>
+          </section>
         )}
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && (
+          <p className="text-sm text-danger" data-testid="invite-error">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" loading={mutation.isPending}>
+          <Button type="submit" loading={mutation.isPending} data-testid="invite-submit">
             Send invitation
           </Button>
         </div>
@@ -273,10 +327,195 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
+function UserDetailDrawer({
+  user,
+  open,
+  onClose,
+}: {
+  user: TenantUser | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
+  const [role, setRole] = useState('VIEWER');
+  const [department, setDepartment] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [locale, setLocale] = useState('en-US');
+  const [shift, setShift] = useState('');
+  const [assignedWarehouseId, setAssignedWarehouseId] = useState('');
+  const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
+  const [error, setError] = useState('');
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['locations', 'warehouses-admin'],
+    queryFn: async () => {
+      const rows = (await apiClient.get<TenantLocation[]>('/api/v1/locations')).data;
+      return rows.filter((l) => l.type === 'WAREHOUSE');
+    },
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (!user) return;
+    setRole(user.roles[0] ?? 'VIEWER');
+    setDepartment(user.corporateDepartment ?? user.department ?? '');
+    setTimezone(user.timezonePreference ?? '');
+    setLocale(user.localeLanguage ?? 'en-US');
+    setShift(user.shiftScheduleType ?? user.shiftSchedule ?? '');
+    setAssignedWarehouseId(user.assignedWarehouseId ?? '');
+    setWarehouseIds(user.warehouseIds ?? []);
+    setError('');
+  }, [user]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) return;
+      await apiClient.patch(`/api/v1/users/${user.id}/org-scope`, {
+        role,
+        corporateDepartment: department || null,
+        timezonePreference: timezone || null,
+        localeLanguage: locale || null,
+        shiftScheduleType: shift || null,
+        assignedWarehouseId: assignedWarehouseId || null,
+        clearAssignedWarehouse: !assignedWarehouseId,
+        warehouseIds,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      onClose();
+    },
+    onError: () => setError('Could not update organizational scope.'),
+  });
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={user ? `Edit access — ${user.displayName}` : 'Edit access'}
+      description="Organizational scope is admin-only and audited"
+    >
+      {user && (
+        <form
+          data-testid="user-detail-drawer"
+          className="space-y-6"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!canManageOrg) return;
+            saveMutation.mutate();
+          }}
+        >
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-text">Personal information</h3>
+            <p className="text-xs text-text-muted">Editable by the user on their personal profile.</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Input label="Display name" value={user.displayName} disabled />
+              <Input label="Email" value={user.email} disabled />
+            </div>
+          </section>
+
+          {canManageOrg ? (
+            <section className="space-y-3" data-testid="org-scope-section">
+              <h3 className="text-sm font-semibold text-text">Organizational scope</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
+                  {ASSIGNABLE_ROLES.filter((r) => r !== 'B2B_CUSTOMER').map((r) => (
+                    <option key={r} value={r}>
+                      {r.replaceAll('_', ' ')}
+                    </option>
+                  ))}
+                </Select>
+                <Input
+                  label="Department"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  placeholder="e.g. Outbound"
+                />
+                <Input
+                  label="Timezone"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  placeholder="America/Chicago"
+                />
+                <Select label="Locale" value={locale} onChange={(e) => setLocale(e.target.value)}>
+                  {['en-US', 'en-GB', 'es-MX', 'fr-CA'].map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </Select>
+                <Select label="Shift schedule" value={shift} onChange={(e) => setShift(e.target.value)}>
+                  <option value="">Unset</option>
+                  <option value="DAY">Day</option>
+                  <option value="NIGHT">Night</option>
+                  <option value="WEEKEND">Weekend</option>
+                </Select>
+                <Select
+                  label="Default assigned warehouse"
+                  value={assignedWarehouseId}
+                  onChange={(e) => setAssignedWarehouseId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.code} — {w.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <fieldset data-testid="warehouse-multiselect">
+                <legend className="mb-2 text-sm font-medium text-text">Warehouse access (LBAC)</legend>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {warehouses.map((w) => {
+                    const checked = warehouseIds.includes(w.id);
+                    return (
+                      <label key={w.id} className="flex items-center gap-2 text-sm text-text">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setWarehouseIds((prev) =>
+                              e.target.checked
+                                ? [...prev, w.id]
+                                : prev.filter((id) => id !== w.id),
+                            );
+                          }}
+                        />
+                        {w.code} — {w.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            </section>
+          ) : (
+            <p className="text-sm text-text-muted">You do not have permission to edit organizational scope.</p>
+          )}
+
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            {canManageOrg && (
+              <Button type="submit" loading={saveMutation.isPending} data-testid="save-org-scope">
+                Save access
+              </Button>
+            )}
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function UsersTab() {
   const queryClient = useQueryClient();
   const currentUser = useSessionStore((s) => s.user);
+  const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [editUser, setEditUser] = useState<TenantUser | null>(null);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -284,11 +523,12 @@ function UsersTab() {
     retry: false,
   });
 
-  const roleMutation = useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: string }) => {
-      await apiClient.patch(`/api/v1/users/${id}/role`, { role });
-    },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
+  const { data: pendingInvites = [] } = useQuery({
+    queryKey: ['pending-invitations'],
+    queryFn: async () =>
+      (await apiClient.get<PendingInvitation[]>('/api/v1/users/invitations')).data,
+    enabled: canManageOrg,
+    retry: false,
   });
 
   const deactivateMutation = useMutation({
@@ -302,140 +542,122 @@ function UsersTab() {
     <Card>
       <CardHeader
         title="Users & invitations"
-        description="Invite team members and manage roles"
+        description="Invite team members and manage organizational access"
         action={
-          <Button size="sm" onClick={() => setInviteOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-            Invite user
-          </Button>
+          canManageOrg ? (
+            <Button size="sm" onClick={() => setInviteOpen(true)} data-testid="invite-user-button">
+              <UserPlus className="h-4 w-4" />
+              Invite user
+            </Button>
+          ) : undefined
         }
       />
       {isLoading ? (
         <TableSkeleton rows={5} cols={4} />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead align="right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((u) => {
-              const isSelf = u.id === currentUser?.id;
-              const isOwner = u.roles.includes('OWNER');
-              return (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <p className="font-medium text-text">{u.displayName}</p>
-                    <p className="text-xs text-text-muted">{u.email}</p>
-                  </TableCell>
-                  <TableCell>
-                    {isOwner || isSelf ? (
+        <div className="space-y-6">
+          {canManageOrg && pendingInvites.length > 0 && (
+            <div data-testid="pending-invitations">
+              <h3 className="mb-2 text-sm font-semibold text-text">Pending invitations</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Expires</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingInvites.map((inv) => (
+                    <TableRow key={inv.id} data-testid={`pending-invite-${inv.email}`}>
+                      <TableCell>
+                        <p className="font-medium text-text">{inv.email}</p>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{inv.role}</span>
+                      </TableCell>
+                      <TableCell>{statusChip('PENDING')}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-text-muted">
+                          {inv.expiresAt ? new Date(inv.expiresAt).toLocaleDateString() : '—'}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead align="right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => {
+                const isSelf = u.id === currentUser?.id;
+                const isOwner = u.roles.includes('OWNER');
+                return (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      <p className="font-medium text-text">{u.displayName}</p>
+                      <p className="text-xs text-text-muted">{u.email}</p>
+                    </TableCell>
+                    <TableCell>
                       <span className="text-sm">{u.roles.join(', ') || '—'}</span>
-                    ) : (
-                      <Select
-                        aria-label={`Role for ${u.email}`}
-                        value={u.roles[0] ?? 'VIEWER'}
-                        disabled={roleMutation.isPending}
-                        onChange={(e) => roleMutation.mutate({ id: u.id, role: e.target.value })}
-                        className="h-8 w-44 text-xs"
-                      >
-                        {ASSIGNABLE_ROLES.filter((r) => r !== 'B2B_CUSTOMER').map((r) => (
-                          <option key={r} value={r}>
-                            {r.replaceAll('_', ' ')}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </TableCell>
-                  <TableCell>{statusChip(u.status)}</TableCell>
-                  <TableCell align="right">
-                    {!isSelf && !isOwner && u.status === 'ACTIVE' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        loading={deactivateMutation.isPending}
-                        onClick={() => deactivateMutation.mutate(u.id)}
-                      >
-                        Deactivate
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{u.corporateDepartment ?? u.department ?? '—'}</span>
+                    </TableCell>
+                    <TableCell>{statusChip(u.status)}</TableCell>
+                    <TableCell align="right">
+                      <div className="flex justify-end gap-2">
+                        {canManageOrg && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            data-testid={`edit-access-${u.id}`}
+                            onClick={() => setEditUser(u)}
+                          >
+                            Edit access
+                          </Button>
+                        )}
+                        {canManageOrg && !isSelf && !isOwner && u.status === 'ACTIVE' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={deactivateMutation.isPending}
+                            onClick={() => deactivateMutation.mutate(u.id)}
+                          >
+                            Deactivate
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       )}
       <InviteUserModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <UserDetailDrawer user={editUser} open={!!editUser} onClose={() => setEditUser(null)} />
     </Card>
   );
 }
 
 /* ---------------------------------- Warehouses ---------------------------------- */
 
-function AddWarehouseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/api/v1/locations', {
-        type: 'WAREHOUSE',
-        code,
-        name,
-        path: code,
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['locations'] });
-      void queryClient.invalidateQueries({ queryKey: ['warehouses'] });
-      setName('');
-      setCode('');
-      onClose();
-    },
-    onError: () => setError('Could not create the warehouse. Check the fields and try again.'),
-  });
-
-  return (
-    <Modal open={open} onClose={onClose} title="Add warehouse" description="Top-level location; add zones and bins beneath it">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          mutation.mutate();
-        }}
-        className="space-y-4"
-      >
-        <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-        <Input
-          label="Code"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="e.g. WH2"
-          required
-        />
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={mutation.isPending}>
-            Add warehouse
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 function WarehousesTab() {
-  const [modalOpen, setModalOpen] = useState(false);
+  const navigate = useNavigate();
   const [ssid, setSsid] = useState('Warehouse-Floor-A');
   const [ruleLocationId, setRuleLocationId] = useState('');
   const queryClient = useQueryClient();
@@ -509,10 +731,35 @@ function WarehousesTab() {
         ) : (
           <WarehouseVisualizer
             locations={locations}
-            onAddWarehouse={() => setModalOpen(true)}
+            onAddWarehouse={() => navigate('/warehouses/add')}
           />
         )}
-        <AddWarehouseModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      </Card>
+
+      <Card data-testid="floor-hardware-compat">
+        <CardHeader
+          title="Floor hardware compatibility"
+          description="Mobile web (PWA) targets the scanners operators actually carry"
+        />
+        <ul className="list-disc space-y-2 pl-5 text-sm text-text-muted">
+          <li>
+            <span className="font-medium text-text">Zebra TC / MC series</span> — DataWedge keyboard
+            wedge or intent broadcast (built into <code className="text-text">useBarcodeScanner</code>
+            ).
+          </li>
+          <li>
+            <span className="font-medium text-text">Honeywell CT / CK / Granit</span> — ScanPal /
+            HID wedge and intent receivers for rugged Android.
+          </li>
+          <li>
+            <span className="font-medium text-text">USB / Bluetooth HID wedges</span> — corded
+            presentation scanners at pack stations (DS36xx / Voyager class).
+          </li>
+          <li>
+            Touch targets and scan feedback stay on the warehouse theme; office Settings uses
+            widescreen layouts without floor-scanner inflation on 1080p desktops.
+          </li>
+        </ul>
       </Card>
 
       <Card>
@@ -521,18 +768,22 @@ function WarehousesTab() {
           description="Auto-assign warehouse from Wi-Fi SSID or GPS geofence — hides the switcher when matched"
         />
         <div className="mb-4 grid gap-3 sm:grid-cols-3">
-          <label className="text-sm">
+          <label className="text-sm" htmlFor="terminal-context-ssid">
             <span className="mb-1 block text-text-muted">Wi-Fi SSID</span>
             <input
+              id="terminal-context-ssid"
+              name="terminalContextSsid"
               className="h-9 w-full rounded-md border border-border bg-surface-raised px-2 text-sm"
               value={ssid}
               onChange={(e) => setSsid(e.target.value)}
               aria-label="Wi-Fi SSID"
             />
           </label>
-          <label className="text-sm">
+          <label className="text-sm" htmlFor="terminal-context-warehouse">
             <span className="mb-1 block text-text-muted">Warehouse</span>
             <select
+              id="terminal-context-warehouse"
+              name="terminalContextWarehouse"
               className="h-9 w-full rounded-md border border-border bg-surface-raised px-2 text-sm"
               value={ruleLocationId || warehouses[0]?.id || ''}
               onChange={(e) => setRuleLocationId(e.target.value)}
@@ -721,8 +972,10 @@ function InventoryRulesTab() {
           }}
           className="space-y-4"
         >
-          <label className="flex items-center gap-3">
+          <label className="flex items-center gap-3" htmlFor="inventory-allow-negative">
             <input
+              id="inventory-allow-negative"
+              name="allowNegativeInventory"
               type="checkbox"
               checked={allowNegative}
               onChange={(e) => setAllowNegative(e.target.checked)}
@@ -730,8 +983,10 @@ function InventoryRulesTab() {
             />
             <span className="text-sm text-text">Allow negative inventory</span>
           </label>
-          <label className="flex items-center gap-3">
+          <label className="flex items-center gap-3" htmlFor="inventory-allow-blind-receiving">
             <input
+              id="inventory-allow-blind-receiving"
+              name="allowBlindReceiving"
               type="checkbox"
               checked={allowBlindReceiving}
               onChange={(e) => setAllowBlindReceiving(e.target.checked)}
@@ -802,8 +1057,10 @@ function InventoryRulesTab() {
               placeholder="CA GST+PST"
               required
             />
-            <label className="flex items-end gap-3 pb-2">
+            <label className="flex items-end gap-3 pb-2" htmlFor="tax-scheme-inclusive">
               <input
+                id="tax-scheme-inclusive"
+                name="taxInclusivePricing"
                 type="checkbox"
                 checked={schemeInclusive}
                 onChange={(e) => setSchemeInclusive(e.target.checked)}
@@ -1165,8 +1422,10 @@ function SecuritySsoTab() {
           placeholder={data?.configured ? 'Leave blank to keep existing secret' : 'Required on first save'}
           required={!data?.configured}
         />
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3" htmlFor="sso-enabled">
           <input
+            id="sso-enabled"
+            name="ssoEnabled"
             type="checkbox"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
@@ -1174,8 +1433,10 @@ function SecuritySsoTab() {
           />
           <span className="text-sm text-text">Enable SSO for this workspace</span>
         </label>
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3" htmlFor="sso-force">
           <input
+            id="sso-force"
+            name="forceCorporateSso"
             type="checkbox"
             checked={forceSso}
             disabled={!enabled}
@@ -1766,58 +2027,79 @@ export function SettingsPage() {
   }, [tabParam]);
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-text">Settings</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Manage your company, users, and preferences
-        </p>
-      </div>
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden"
+      data-testid="settings-page"
+    >
+      <div className="settings-shell flex min-h-0 flex-1 flex-col px-4 pt-6 sm:px-6 lg:px-8">
+        <div className="mb-4 shrink-0 sm:mb-6">
+          <h1 className="text-2xl font-bold text-text text-wrap-balance">Settings</h1>
+          <p className="mt-1 max-w-2xl text-sm text-text-muted">
+            Manage your company, users, warehouses, and preferences
+          </p>
+        </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <nav className="flex gap-2 overflow-x-auto lg:w-48 lg:flex-col" aria-label="Settings sections">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              aria-current={activeTab === tab.id ? 'page' : undefined}
-              className={cn(
-                'whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
-                activeTab === tab.id
-                  ? 'bg-accent-muted text-accent'
-                  : 'text-text-muted hover:bg-surface-overlay hover:text-text'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-          <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
-          {FINANCE_LINKS.filter((link) => link.to !== '/settings/fintech' || isOwner).map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className="whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-overlay hover:text-text"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-12 lg:gap-6">
+          {/* Left nav: rail-style — scrollbar hidden; fade/chevrons when more items exist. */}
+          <ScrollFadePort
+            as="nav"
+            aria-label="Settings sections"
+            data-testid="settings-nav"
+            measureKey={activeTab}
+            shellClassName="settings-shell__nav shrink-0 lg:col-span-3 lg:h-full xl:col-span-2"
+            className="flex h-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:pb-6"
+          >
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
+                className={cn(
+                  'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors lg:w-full lg:whitespace-normal',
+                  activeTab === tab.id
+                    ? 'bg-accent-muted text-accent'
+                    : 'text-text-muted hover:bg-surface-overlay hover:text-text',
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
+            {FINANCE_LINKS.filter((link) => link.to !== '/settings/fintech' || isOwner).map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-overlay hover:text-text lg:w-full lg:whitespace-normal"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </ScrollFadePort>
 
-        <div className="flex-1">
-          {activeTab === 'profile' && <ProfileTab />}
-          {activeTab === 'users' && <UsersTab />}
-          {activeTab === 'warehouses' && <WarehousesTab />}
-          {activeTab === 'inventory' && <InventoryRulesTab />}
-          {activeTab === 'documents' && <DocumentsTab />}
-          {activeTab === 'security' && <SecuritySsoTab />}
-          {activeTab === 'reconciliation' && <ReconciliationTab />}
-          {activeTab === 'accounting' && <AccountingSync />}
-          {activeTab === 'integrations' && <Integrations />}
-          {activeTab === 'mesh' && <PartnerCatalogMappingPanel />}
-          {activeTab === 'operations' && <OperationsConsoleTab />}
-          {activeTab === 'syncConflicts' && <SyncConflictsPanel />}
-          {activeTab === 'costCenters' && <CostCentersRequisitionsTab />}
+          {/* Right panel: sole content scrollport; sticky heads stay inside this port. */}
+          <ScrollFadePort
+            data-testid="settings-content"
+            data-settings-scrollport="true"
+            data-list-scrollport="true"
+            measureKey={activeTab}
+            shellClassName="min-h-0 min-w-0 lg:col-span-9 xl:col-span-10"
+            className="h-full overflow-y-auto overflow-x-hidden pb-6"
+          >
+            {activeTab === 'profile' && <ProfileTab />}
+            {activeTab === 'users' && <UsersTab />}
+            {activeTab === 'warehouses' && <WarehousesTab />}
+            {activeTab === 'inventory' && <InventoryRulesTab />}
+            {activeTab === 'documents' && <DocumentsTab />}
+            {activeTab === 'security' && <SecuritySsoTab />}
+            {activeTab === 'reconciliation' && <ReconciliationTab />}
+            {activeTab === 'accounting' && <AccountingSync />}
+            {activeTab === 'integrations' && <Integrations />}
+            {activeTab === 'mesh' && <PartnerCatalogMappingPanel />}
+            {activeTab === 'operations' && <OperationsConsoleTab />}
+            {activeTab === 'syncConflicts' && <SyncConflictsPanel />}
+            {activeTab === 'costCenters' && <CostCentersRequisitionsTab />}
+          </ScrollFadePort>
         </div>
       </div>
     </div>

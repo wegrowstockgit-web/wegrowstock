@@ -57,6 +57,23 @@ class CartonizationEngineTest {
                 .hasMessageContaining("No shipping carton");
     }
 
+    @Test
+    void rejectsMissingDimensionsInsteadOfSilentDefaults() {
+        List<ShippingCarton> cartons = List.of(carton("Medium Corrugated", "14", "10", "8", "30"));
+        CartonizationEngine.LineItem missing = new CartonizationEngine.LineItem(
+                UUID.randomUUID(),
+                BigDecimal.ONE,
+                null,
+                new BigDecimal("4"),
+                new BigDecimal("3"),
+                "in",
+                new BigDecimal("1"),
+                "lb");
+        assertThatThrownBy(() -> engine.selectCarton(List.of(missing), cartons))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("requires positive length");
+    }
+
     private static CartonizationEngine.LineItem item(
             String l, String w, String h, String weight, String qty) {
         return new CartonizationEngine.LineItem(

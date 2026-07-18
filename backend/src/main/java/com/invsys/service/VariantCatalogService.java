@@ -119,11 +119,24 @@ public class VariantCatalogService {
                 variant.isExternalSyncEnabled(),
                 variant.getWeight(),
                 variant.getWeightUnit(),
+                variant.getLength(),
+                variant.getWidth(),
+                variant.getHeight(),
+                variant.getDimUnit(),
                 variant.getDefaultSupplierId(),
                 variant.getSupplierLeadTimeDays(),
                 variant.getReorderPoint(),
                 variant.getReorderQty(),
                 primaryMediaByVariant.get(variant.getId()),
-                variant.isLotTracked());
+                variant.isLotTracked(),
+                variant.getHsTariffCode(),
+                variant.getCountryOfOrigin(),
+                variant.isHazmat(),
+                variant.getPalletTie(),
+                variant.getPalletHigh(),
+                variant.getStorageTempZone(),
+                variant.isFragile(),
+                variant.getAbcClassification(),
+                variant.getLifecycleStatus());
     }
 }

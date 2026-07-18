@@ -5,11 +5,24 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 public interface InventoryLedgerRepository extends JpaRepository<InventoryLedger, UUID> {
+
+    @Query("""
+            SELECT COALESCE(SUM(l.quantityDelta), 0)
+            FROM InventoryLedger l
+            WHERE l.tenantId = :tenantId
+              AND l.variantId = :variantId
+              AND l.locationId = :locationId
+            """)
+    BigDecimal sumQuantityAtLocation(
+            @Param("tenantId") UUID tenantId,
+            @Param("variantId") UUID variantId,
+            @Param("locationId") UUID locationId);
     List<InventoryLedger> findByTenantIdAndVariantIdOrderByCreatedAtDesc(UUID tenantId, UUID variantId);
 
     List<InventoryLedger> findByTenantIdAndVariantIdOrderByCreatedAtAsc(UUID tenantId, UUID variantId);

@@ -3,9 +3,11 @@ package com.invsys.service;
 import com.invsys.domain.Allocation;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.Location;
+import com.invsys.domain.ProductVariant;
 import com.invsys.domain.WalkableEdge;
 import com.invsys.repository.InventoryLevelRepository;
 import com.invsys.repository.LocationRepository;
+import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.WalkableEdgeRepository;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Hierarchical location-path pick sequencing (Warehouse → Zone → Aisle → Bay → Shelf)
@@ -33,13 +36,16 @@ public class PickingService {
     private final InventoryLevelRepository levelRepository;
     private final LocationRepository locationRepository;
     private final WalkableEdgeRepository walkableEdgeRepository;
+    private final ProductVariantRepository variantRepository;
 
     public PickingService(InventoryLevelRepository levelRepository,
                           LocationRepository locationRepository,
-                          WalkableEdgeRepository walkableEdgeRepository) {
+                          WalkableEdgeRepository walkableEdgeRepository,
+                          ProductVariantRepository variantRepository) {
         this.levelRepository = levelRepository;
         this.locationRepository = locationRepository;
         this.walkableEdgeRepository = walkableEdgeRepository;
+        this.variantRepository = variantRepository;
     }
 
     public List<Allocation> optimizePickSequence(List<Allocation> allocations, Map<UUID, String> locationPaths) {
@@ -65,13 +71,33 @@ public class PickingService {
             // Unit tests may construct without repos / tenant context.
         }
 
+        Map<UUID, Boolean> fragileByVariant = fragileFlags(allocations);
+
         List<Allocation> route = new ArrayList<>(allocations);
+        // Path first, then non-fragile before fragile so crushables land on top of the tote.
         route.sort(Comparator
-                .comparing((Allocation a) -> LocationPathKey.parse(
+                .comparing((Allocation a) -> Boolean.TRUE.equals(
+                        fragileByVariant.get(a.getVariantId())))
+                .thenComparing(a -> LocationPathKey.parse(
                         locationPaths.getOrDefault(a.getLocationId(), "")))
                 .thenComparingInt(a -> sequenceIndexes.getOrDefault(a.getLocationId(), Integer.MAX_VALUE))
                 .thenComparing(a -> locationPaths.getOrDefault(a.getLocationId(), "")));
         return List.copyOf(route);
+    }
+
+    private Map<UUID, Boolean> fragileFlags(List<Allocation> allocations) {
+        Map<UUID, Boolean> flags = new HashMap<>();
+        Set<UUID> variantIds = allocations.stream()
+                .map(Allocation::getVariantId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (variantIds.isEmpty() || variantRepository == null) {
+            return flags;
+        }
+        for (ProductVariant variant : variantRepository.findAllById(variantIds)) {
+            flags.put(variant.getId(), variant.isFragile());
+        }
+        return flags;
     }
 
     /**

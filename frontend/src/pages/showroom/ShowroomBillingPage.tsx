@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { CreditCard, FileText, RotateCcw } from 'lucide-react';
+import { AlertCircle, CreditCard, FileText, RefreshCw, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
 import type {
@@ -11,6 +11,7 @@ import type {
 } from '@/api/types';
 import { mapPortalCatalog, type PortalCatalogItemRaw } from '@/api/portal';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import {
@@ -99,7 +100,12 @@ function PortalInvoicesTable({
 export function ShowroomBillingPage() {
   const navigate = useNavigate();
   const { addLines } = useShowroomCart();
-  const { data: credit, isLoading: creditLoading } = useQuery({
+  const {
+    data: credit,
+    isLoading: creditLoading,
+    isError: creditError,
+    refetch: refetchCredit,
+  } = useQuery({
     queryKey: ['portal', 'credit'],
     queryFn: async () => {
       const res = await apiClient.get<PortalCreditSummary>('/api/v1/portal/credit');
@@ -108,7 +114,12 @@ export function ShowroomBillingPage() {
     retry: false,
   });
 
-  const { data: invoices = [], isLoading: invoicesLoading } = useQuery({
+  const {
+    data: invoices = [],
+    isLoading: invoicesLoading,
+    isError: invoicesError,
+    refetch: refetchInvoices,
+  } = useQuery({
     queryKey: ['portal', 'invoices'],
     queryFn: async () => {
       const res = await apiClient.get<PortalInvoice[]>('/api/v1/portal/invoices');
@@ -125,7 +136,35 @@ export function ShowroomBillingPage() {
   });
 
   if (creditLoading) {
-    return <TableSkeleton rows={4} cols={3} />;
+    return (
+      <div data-testid="list-page-loading">
+        <TableSkeleton rows={4} cols={3} />
+      </div>
+    );
+  }
+
+  if (creditError) {
+    return (
+      <div className="p-6" data-testid="list-page-error">
+        <EmptyState
+          icon={AlertCircle}
+          title="Unable to load billing"
+          description="Check your connection and try again."
+          action={
+            <Button
+              onClick={() => {
+                void refetchCredit();
+                void refetchInvoices();
+              }}
+              data-testid="list-page-retry"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Retry
+            </Button>
+          }
+        />
+      </div>
+    );
   }
 
   const limit = Number(credit?.creditLimit ?? 0);
@@ -266,9 +305,27 @@ export function ShowroomBillingPage() {
           }
         />
         {invoicesLoading ? (
-          <TableSkeleton rows={4} cols={4} />
+          <div data-testid="list-page-loading">
+            <TableSkeleton rows={4} cols={4} />
+          </div>
+        ) : invoicesError ? (
+          <div data-testid="list-page-error">
+            <EmptyState
+              icon={AlertCircle}
+              title="Unable to load invoices"
+              description="Check your connection and try again."
+              action={
+                <Button onClick={() => void refetchInvoices()} data-testid="list-page-retry">
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              }
+            />
+          </div>
         ) : invoices.length === 0 ? (
-          <p className="text-sm text-text-muted">No invoices yet.</p>
+          <p className="text-sm text-text-muted" data-testid="list-page-empty">
+            No invoices yet.
+          </p>
         ) : (
           <PortalInvoicesTable
             invoices={invoices}

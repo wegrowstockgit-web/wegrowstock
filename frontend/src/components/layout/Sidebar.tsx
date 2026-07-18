@@ -445,6 +445,26 @@ export function Sidebar() {
             </nav>
           </div>
 
+          <NavLink
+            to="/settings/profile"
+            title={coarsePointer ? undefined : 'Personal settings'}
+            aria-label="Personal settings"
+            className={linkClass}
+            data-testid="nav-personal-profile"
+          >
+            <Users className="h-4 w-4 shrink-0" />
+            <span
+              className={cn(
+                'truncate text-sm font-medium',
+                'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
+                expanded || showOverlay
+                  ? 'max-w-[10rem] translate-x-0 opacity-100 delay-75'
+                  : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0'
+              )}
+            >
+              Profile
+            </span>
+          </NavLink>
           {hasRole('ADMIN', 'OWNER') && (
             <NavLink to="/settings" title={coarsePointer ? undefined : 'Settings'} aria-label="Settings" className={linkClass}>
               <Settings className="h-4 w-4 shrink-0" />

@@ -122,6 +122,10 @@ invsys:
       enabled: true
       batch-size: 200
       poll-interval-ms: 100
+  replenishment:
+    predictive:
+      enabled: true
+      poll-interval-ms: 300000
   integration:
     master-key: ${INTEGRATION_MASTER_KEY:}
     outbox:

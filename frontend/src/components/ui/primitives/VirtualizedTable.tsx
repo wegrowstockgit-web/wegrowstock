@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,17 +11,24 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDensity } from '@/hooks/useDensity';
 import { useClientSort, type SortAccessors } from '@/hooks/useClientSort';
-import { useGridColumnStore } from '@/stores/gridColumnStore';
+import { selectGridLayout, useGridColumnStore } from '@/stores/gridColumnStore';
 import { cn } from '@/lib/utils';
 
 export interface VirtualizedColumnDef<T> {
   id: string;
   header: ReactNode;
-  /** Fixed width used for sticky left-offset calculation (px). */
+  /** Base width used for sticky left-offset calculation (px). */
   width: number;
+  /**
+   * When true, this column absorbs leftover viewport width so the grid
+   * fills the screen instead of leaving a blank strip on the right.
+   */
+  flexGrow?: boolean;
   align?: 'left' | 'right' | 'center';
   /** When false, omitted from the column-visibility menu. Default true. */
   hideable?: boolean;
+  /** When true, column starts hidden until toggled via Columns. */
+  defaultHidden?: boolean;
   /** Enables header click sort when sortValue is provided. */
   sortable?: boolean;
   sortValue?: (row: T) => string | number | boolean | null | undefined | Date;
@@ -42,6 +50,8 @@ export interface VirtualizedTableProps<T> {
   empty?: ReactNode;
   /** Extra toolbar actions rendered beside density / columns (optional). */
   toolbarSlot?: ReactNode;
+  /** Isolates column layout in localStorage (default: products). */
+  gridId?: string;
 }
 
 const PIN_EDGE =
@@ -79,15 +89,19 @@ export function VirtualizedTable<T>({
   className,
   empty,
   selectedRowId,
+  gridId = 'products',
 }: VirtualizedTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endReachedLock = useRef(false);
   const { rowPx, styles: densityStyles } = useDensity();
-  const columnVisibility = useGridColumnStore((s) => s.columnVisibility);
-  const pinnedColumns = useGridColumnStore((s) => s.pinnedColumns);
-  const columnOrder = useGridColumnStore((s) => s.columnOrder);
+  const layout = useGridColumnStore((s) => selectGridLayout(s, gridId));
+  const columnVisibility = layout.columnVisibility;
+  const pinnedColumns = layout.pinnedColumns;
+  const columnOrder = layout.columnOrder;
   const ensureColumns = useGridColumnStore((s) => s.ensureColumns);
   const [internalSelected, setInternalSelected] = useState<string | null>(null);
+  /** Viewport width of the table scrollport — used to stretch columns to fill. */
+  const [viewportWidth, setViewportWidth] = useState(0);
 
   const controlled = selectedRowId !== undefined;
   const activeSelected = controlled ? selectedRowId : internalSelected;
@@ -106,12 +120,23 @@ export function VirtualizedTable<T>({
 
   const { sort, toggle, sorted: sortedRows } = useClientSort(rows, sortAccessors);
 
+  const defaultColumnVisibility = useMemo(() => {
+    const visibility: Record<string, boolean> = {};
+    for (const col of columns) {
+      if (col.defaultHidden) {
+        visibility[col.id] = false;
+      }
+    }
+    return visibility;
+  }, [columns]);
+
   useEffect(() => {
-    ensureColumns(columnIds, {
+    ensureColumns(gridId, columnIds, {
       pinnedColumns: ['sku', 'name'].filter((id) => columnIds.includes(id)),
       columnOrder: columnIds,
+      columnVisibility: defaultColumnVisibility,
     });
-  }, [columnIds, ensureColumns]);
+  }, [columnIds, defaultColumnVisibility, ensureColumns, gridId]);
 
   const orderedVisible = useMemo(() => {
     const byId = new Map(columns.map((c) => [c.id, c]));
@@ -123,38 +148,107 @@ export function VirtualizedTable<T>({
           ]
         : columnIds;
 
+    const isVisible = (id: string) =>
+      byId.has(id) && columnVisibility[id] !== false;
+
+    // Non-hideable leading columns (e.g. product thumb) stay before pinned
+    // identifiers — never squeezed between Name and Barcode.
+    const leadingFixed = order.filter((id) => {
+      const col = byId.get(id);
+      return Boolean(col && col.hideable === false && isVisible(id));
+    });
     const pinned = pinnedColumns.filter(
-      (id) => byId.has(id) && columnVisibility[id] !== false,
+      (id) => isVisible(id) && !leadingFixed.includes(id),
     );
     const rest = order.filter(
       (id) =>
-        !pinned.includes(id) && byId.has(id) && columnVisibility[id] !== false,
+        isVisible(id) && !leadingFixed.includes(id) && !pinned.includes(id),
     );
-    return [...pinned, ...rest]
+    return [...leadingFixed, ...pinned, ...rest]
       .map((id) => byId.get(id)!)
       .filter(Boolean);
   }, [columns, columnIds, columnOrder, columnVisibility, pinnedColumns]);
 
-  const pinOffsets = useMemo(() => {
-    const offsets = new Map<string, number>();
-    let left = 0;
+  /** Sticky freeze group: leading fixed columns + user-pinned identifiers. */
+  const stickyColumnIds = useMemo(() => {
+    const ids: string[] = [];
     for (const col of orderedVisible) {
-      if (!pinnedColumns.includes(col.id)) continue;
-      offsets.set(col.id, left);
-      left += col.width;
+      if (col.hideable === false || pinnedColumns.includes(col.id)) {
+        ids.push(col.id);
+      } else {
+        break;
+      }
     }
-    return offsets;
-  }, [orderedVisible, pinnedColumns]);
-
-  const lastPinnedId = useMemo(() => {
-    const pinned = orderedVisible.filter((c) => pinnedColumns.includes(c.id));
-    return pinned[pinned.length - 1]?.id;
+    return ids;
   }, [orderedVisible, pinnedColumns]);
 
   const minTableWidth = useMemo(
     () => orderedVisible.reduce((sum, c) => sum + c.width, 0),
     [orderedVisible],
   );
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setViewportWidth(el.clientWidth);
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+
+  /** Resolved px widths — grow flex columns (default: name) so the grid fills the viewport. */
+  const columnWidths = useMemo(() => {
+    const widths = new Map<string, number>();
+    for (const col of orderedVisible) {
+      widths.set(col.id, col.width);
+    }
+    const target = Math.max(viewportWidth, minTableWidth);
+    const extra = target - minTableWidth;
+    if (extra <= 0 || orderedVisible.length === 0) return widths;
+
+    const growCandidates = orderedVisible.filter(
+      (c) => c.flexGrow || c.id === 'name',
+    );
+    const growers =
+      growCandidates.length > 0
+        ? growCandidates
+        : orderedVisible.filter((c) => !stickyColumnIds.includes(c.id));
+    if (growers.length === 0) {
+      const last = orderedVisible[orderedVisible.length - 1]!;
+      widths.set(last.id, last.width + extra);
+      return widths;
+    }
+    const share = Math.floor(extra / growers.length);
+    let remainder = extra - share * growers.length;
+    for (const col of growers) {
+      const bump = share + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder -= 1;
+      widths.set(col.id, (widths.get(col.id) ?? col.width) + bump);
+    }
+    return widths;
+  }, [orderedVisible, stickyColumnIds, viewportWidth, minTableWidth]);
+
+  const tableWidth = useMemo(() => {
+    let sum = 0;
+    for (const col of orderedVisible) {
+      sum += columnWidths.get(col.id) ?? col.width;
+    }
+    return Math.max(sum, viewportWidth, minTableWidth);
+  }, [orderedVisible, columnWidths, viewportWidth, minTableWidth]);
+
+  const pinOffsets = useMemo(() => {
+    const offsets = new Map<string, number>();
+    let left = 0;
+    for (const id of stickyColumnIds) {
+      const w = columnWidths.get(id) ?? orderedVisible.find((c) => c.id === id)?.width ?? 0;
+      offsets.set(id, left);
+      left += w;
+    }
+    return offsets;
+  }, [orderedVisible, stickyColumnIds, columnWidths]);
+
+  const lastPinnedId = stickyColumnIds[stickyColumnIds.length - 1];
 
   const virtualizer = useVirtualizer({
     count: sortedRows.length,
@@ -166,7 +260,7 @@ export function VirtualizedTable<T>({
 
   useEffect(() => {
     virtualizer.measure();
-  }, [rowPx, virtualizer, orderedVisible.length]);
+  }, [rowPx, virtualizer, orderedVisible.length, tableWidth]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const paddingTop = virtualItems[0]?.start ?? 0;
@@ -230,15 +324,21 @@ export function VirtualizedTable<T>({
       )}
       data-testid="virtualized-table"
     >
-      {/* Sole vertical scrollport — page/window stays static */}
+      {/* Sole scrollport — page/window stays static; table stretches to viewport width */}
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-auto overscroll-contain"
-        style={{ scrollbarGutter: 'stable' }}
+        data-testid="virtualized-table-scrollport"
       >
         <table
-          className={cn('w-full border-separate border-spacing-0', densityStyles.typography)}
-          style={{ minWidth: minTableWidth }}
+          className={cn(
+            'w-full border-separate border-spacing-0 table-fixed',
+            densityStyles.typography,
+          )}
+          style={{ width: tableWidth, minWidth: '100%' }}
+          data-testid="virtualized-table-grid"
+          data-visible-columns={orderedVisible.map((c) => c.id).join(',')}
+          data-table-width={String(tableWidth)}
         >
           <thead className="table-head-accent">
             <tr
@@ -252,6 +352,7 @@ export function VirtualizedTable<T>({
                 const isPinEdge = col.id === lastPinnedId;
                 const canSort = Boolean(col.sortValue) && col.sortable !== false;
                 const active = canSort && sort?.key === col.id;
+                const colW = columnWidths.get(col.id) ?? col.width;
                 return (
                   <th
                     key={col.id}
@@ -262,16 +363,16 @@ export function VirtualizedTable<T>({
                       active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : canSort ? 'none' : undefined
                     }
                     className={cn(
-                      'table-head-cell sticky top-0 z-40 whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
+                      'table-head-cell sticky top-0 z-40 overflow-hidden whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
                       densityStyles.cell,
                       alignClass(col.align),
                       isPinEdge && PIN_EDGE,
                       col.className,
                     )}
                     style={{
-                      width: col.width,
-                      minWidth: col.width,
-                      maxWidth: col.width,
+                      width: colW,
+                      minWidth: colW,
+                      maxWidth: colW,
                       ...(pinned ? stickyStyle(pinOffsets.get(col.id)!, true) : undefined),
                     }}
                   >
@@ -359,11 +460,12 @@ export function VirtualizedTable<T>({
                   {orderedVisible.map((col) => {
                     const pinned = pinOffsets.has(col.id);
                     const isPinEdge = col.id === lastPinnedId;
+                    const colW = columnWidths.get(col.id) ?? col.width;
                     return (
                       <td
                         key={col.id}
                         className={cn(
-                          'align-middle',
+                          'align-middle overflow-hidden',
                           densityStyles.cell,
                           alignClass(col.align),
                           pinned && rowBg,
@@ -371,15 +473,17 @@ export function VirtualizedTable<T>({
                           col.className,
                         )}
                         style={{
-                          width: col.width,
-                          minWidth: col.width,
-                          maxWidth: col.width,
+                          width: colW,
+                          minWidth: colW,
+                          maxWidth: colW,
                           ...(pinned
                             ? stickyStyle(pinOffsets.get(col.id)!, false)
                             : undefined),
                         }}
                       >
-                        {col.cell(row, virtualRow.index)}
+                        <div className="min-w-0 max-w-full overflow-hidden">
+                          {col.cell(row, virtualRow.index)}
+                        </div>
                       </td>
                     );
                   })}

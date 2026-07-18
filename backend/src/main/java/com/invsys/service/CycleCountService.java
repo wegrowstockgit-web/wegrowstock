@@ -349,22 +349,52 @@ public class CycleCountService {
             }
         }
 
-        boolean highVelocity = movementCount >= VELOCITY_THRESHOLD
-                || movementVolume.compareTo(BigDecimal.valueOf(100)) >= 0;
+        boolean hasAbcClassA = locationContainsAbcClassA(tenantId, locationId);
+        // Class-A SKUs get a lower movement bar so blind counts run more often.
+        int velocityBar = hasAbcClassA ? Math.max(5, VELOCITY_THRESHOLD / 5) : VELOCITY_THRESHOLD;
+        boolean highVelocity = movementCount >= velocityBar
+                || movementVolume.compareTo(BigDecimal.valueOf(hasAbcClassA ? 20 : 100)) >= 0;
         boolean frequentNegativeAdjusts = negativeAdjusts >= NEGATIVE_ADJUST_THRESHOLD;
 
-        if (!highVelocity && !frequentNegativeAdjusts) {
+        if (!highVelocity && !frequentNegativeAdjusts && !hasAbcClassA) {
             return;
+        }
+        // Pure ABC-A favoritism: schedule even without velocity if class-A stock sits in the bin.
+        if (!highVelocity && !frequentNegativeAdjusts && hasAbcClassA) {
+            // Still require at least some recent activity so we don't flood empty quiet bins.
+            if (movementCount < 1) {
+                return;
+            }
         }
 
         CycleCount count = new CycleCount();
         count.setTenantId(tenantId);
         count.setLocationId(locationId);
         count.setStatus("IN_PROGRESS");
-        count.setNotes(highVelocity
-                ? "Priority audit: high movement velocity detected"
-                : "Priority audit: frequent negative adjustments detected");
+        if (hasAbcClassA && !highVelocity && !frequentNegativeAdjusts) {
+            count.setNotes("Priority audit: ABC class A SKU — elevated blind-count cadence");
+        } else if (hasAbcClassA && highVelocity) {
+            count.setNotes("Priority audit: ABC class A + high movement velocity");
+        } else if (highVelocity) {
+            count.setNotes("Priority audit: high movement velocity detected");
+        } else {
+            count.setNotes("Priority audit: frequent negative adjustments detected");
+        }
         cycleCountRepository.save(count);
+    }
+
+    private boolean locationContainsAbcClassA(UUID tenantId, UUID locationId) {
+        List<InventoryLevel> levels = inventoryLevelRepository.findByTenantIdAndLocationId(tenantId, locationId);
+        for (InventoryLevel level : levels) {
+            if (level.getOnHand() == null || level.getOnHand().signum() <= 0) {
+                continue;
+            }
+            ProductVariant variant = productVariantRepository.findById(level.getVariantId()).orElse(null);
+            if (variant != null && "A".equalsIgnoreCase(variant.getAbcClassification())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void snapshotLines(CycleCount count) {

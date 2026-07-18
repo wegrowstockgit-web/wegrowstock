@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import {
   hideableColumnMeta,
   VirtualizedTable,
@@ -48,16 +48,100 @@ describe('VirtualizedTable', () => {
   beforeEach(() => {
     localStorage.clear();
     useGridColumnStore.setState({
-      columnVisibility: { sku: true, name: true, barcode: true },
-      pinnedColumns: ['sku', 'name'],
-      columnOrder: ['sku', 'name', 'barcode'],
+      layouts: {
+        products: {
+          columnVisibility: { sku: true, name: true, barcode: true },
+          pinnedColumns: ['sku', 'name'],
+          columnOrder: ['sku', 'name', 'barcode'],
+        },
+      },
     });
     usePreferencesStore.setState({ densityMode: 'cozy' });
+  });
+
+  it('keeps non-hideable thumb before pinned sku/name (not between name and barcode)', () => {
+    const withThumb: VirtualizedColumnDef<Row>[] = [
+      {
+        id: 'thumb',
+        header: '',
+        width: 48,
+        hideable: false,
+        cell: () => '🖼',
+      },
+      ...columns,
+    ];
+    useGridColumnStore.setState({
+      layouts: {
+        products: {
+          columnVisibility: { thumb: true, sku: true, name: true, barcode: true },
+          pinnedColumns: ['sku', 'name'],
+          columnOrder: ['thumb', 'sku', 'name', 'barcode'],
+        },
+      },
+    });
+    render(
+      <VirtualizedTable
+        gridId="products"
+        columns={withThumb}
+        rows={rows}
+        getRowId={(r) => r.id}
+      />,
+    );
+    expect(screen.getByTestId('virtualized-table-grid')).toHaveAttribute(
+      'data-visible-columns',
+      'thumb,sku,name,barcode',
+    );
+  });
+
+  it('exposes data-table-width at least the sum of base column widths', () => {
+    render(
+      <VirtualizedTable
+        gridId="products"
+        columns={columns}
+        rows={rows}
+        getRowId={(r) => r.id}
+      />,
+    );
+    const grid = screen.getByTestId('virtualized-table-grid');
+    const widthAttr = Number(grid.getAttribute('data-table-width'));
+    expect(widthAttr).toBeGreaterThanOrEqual(120 + 160 + 100);
+  });
+
+  it('drops hidden columns from width and data-visible-columns', async () => {
+    const { rerender } = render(
+      <VirtualizedTable
+        gridId="products"
+        columns={columns}
+        rows={rows}
+        getRowId={(r) => r.id}
+      />,
+    );
+    expect(screen.getByTestId('virtualized-table-grid')).toHaveAttribute(
+      'data-visible-columns',
+      'sku,name,barcode',
+    );
+    act(() => {
+      useGridColumnStore.getState().toggleColumnVisibility('products', 'barcode');
+    });
+    rerender(
+      <VirtualizedTable
+        gridId="products"
+        columns={columns}
+        rows={rows}
+        getRowId={(r) => r.id}
+      />,
+    );
+    expect(screen.getByTestId('virtualized-table-grid')).toHaveAttribute(
+      'data-visible-columns',
+      'sku,name',
+    );
+    expect(screen.queryByText('Barcode')).not.toBeInTheDocument();
   });
 
   it('renders sticky pinned cells with pin-edge styling', () => {
     render(
       <VirtualizedTable
+        gridId="products"
         columns={columns}
         rows={rows}
         getRowId={(r) => r.id}
@@ -78,13 +162,17 @@ describe('VirtualizedTable', () => {
 
   it('hides columns when visibility is toggled off', () => {
     useGridColumnStore.setState({
-      columnVisibility: { sku: true, name: true, barcode: false },
-      pinnedColumns: ['sku', 'name'],
-      columnOrder: ['sku', 'name', 'barcode'],
+      layouts: {
+        products: {
+          columnVisibility: { sku: true, name: true, barcode: false },
+          pinnedColumns: ['sku', 'name'],
+          columnOrder: ['sku', 'name', 'barcode'],
+        },
+      },
     });
 
     render(
-      <VirtualizedTable columns={columns} rows={rows} getRowId={(r) => r.id} />,
+      <VirtualizedTable gridId="products" columns={columns} rows={rows} getRowId={(r) => r.id} />,
     );
 
     expect(screen.queryByText('Barcode')).not.toBeInTheDocument();
@@ -166,12 +254,16 @@ describe('VirtualizedTable', () => {
 
   it('falls back to declaration order when columnOrder is empty', () => {
     useGridColumnStore.setState({
-      columnVisibility: { sku: true, name: true, barcode: true },
-      pinnedColumns: [],
-      columnOrder: [],
+      layouts: {
+        products: {
+          columnVisibility: { sku: true, name: true, barcode: true },
+          pinnedColumns: [],
+          columnOrder: [],
+        },
+      },
     });
     render(
-      <VirtualizedTable columns={columns} rows={rows} getRowId={(r) => r.id} />,
+      <VirtualizedTable gridId="products" columns={columns} rows={rows} getRowId={(r) => r.id} />,
     );
     expect(screen.getByText('SKU')).toBeInTheDocument();
     expect(screen.getByText('Barcode')).toBeInTheDocument();

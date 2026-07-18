@@ -20,6 +20,7 @@ export function parseGs1Barcode(barcode: string | null | undefined): Gs1Elements
   const all: Record<string, string> = {};
   if (parsed.sku && parsed.sku !== parsed.raw) all['01'] = parsed.sku;
   if (parsed.lotNumber) all['10'] = parsed.lotNumber;
+  if (parsed.serialNumber) all['21'] = parsed.serialNumber;
   if (parsed.expiryDate) {
     // Rebuild YYMMDD for element map parity with backend
     const [y, m, d] = parsed.expiryDate.split('-');
@@ -31,7 +32,7 @@ export function parseGs1Barcode(barcode: string | null | undefined): Gs1Elements
     gtin: parsed.sku || null,
     lot: parsed.lotNumber ?? null,
     expiry: parsed.expiryDate ?? null,
-    serial: null,
+    serial: parsed.serialNumber ?? null,
     variableQuantity: parsed.quantity ?? null,
     all,
   };

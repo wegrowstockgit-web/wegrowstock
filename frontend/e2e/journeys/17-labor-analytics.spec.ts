@@ -119,6 +119,10 @@ test.describe.serial('Journey 17: Floor Labor Velocity (LMS)', () => {
       await expect(manager.page.getByTestId('labor-velocity-leaderboard')).toBeVisible({
         timeout: 20_000,
       });
+      await expect(manager.page.getByTestId('labor-velocity-view-full')).toBeVisible();
+      await manager.page.getByTestId('labor-velocity-view-full').click();
+      await expect(manager.page).toHaveURL(/\/reports\?tab=labor/);
+      await expect(manager.page.getByTestId('reports-labor-panel')).toBeVisible({ timeout: 20_000 });
       await expect(manager.page.getByText(/Labor Velocity|Active PPH|Utilization/i).first()).toBeVisible({
         timeout: 15_000,
       });

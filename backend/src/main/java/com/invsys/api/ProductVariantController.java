@@ -15,6 +15,7 @@ import com.invsys.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,6 +93,10 @@ public class ProductVariantController {
         variant.setCurrency(request.currency() != null ? request.currency() : "USD");
         applyDims(variant, request.weight(), request.weightUnit(), request.length(),
                 request.width(), request.height(), request.dimUnit());
+        applyEnterpriseFields(variant,
+                request.hsTariffCode(), request.countryOfOrigin(), request.isHazmat(),
+                request.palletTie(), request.palletHigh(), request.storageTempZone(), request.isFragile(),
+                request.abcClassification(), request.lifecycleStatus());
         variant = variantRepository.save(variant);
         uomConversionService.saveForVariant(variant.getId(), List.of(
                 new UomConversionService.UomConversionRequest("STANDARD", "EA", BigDecimal.ONE)));
@@ -135,6 +140,10 @@ public class ProductVariantController {
         }
         applyDims(variant, request.weight(), request.weightUnit(), request.length(),
                 request.width(), request.height(), request.dimUnit());
+        applyEnterpriseFields(variant,
+                request.hsTariffCode(), request.countryOfOrigin(), request.isHazmat(),
+                request.palletTie(), request.palletHigh(), request.storageTempZone(), request.isFragile(),
+                request.abcClassification(), request.lifecycleStatus());
         return variantRepository.save(variant);
     }
 
@@ -227,6 +236,45 @@ public class ProductVariantController {
         }
     }
 
+    private static void applyEnterpriseFields(ProductVariant variant,
+                                              String hsTariffCode,
+                                              String countryOfOrigin,
+                                              Boolean isHazmat,
+                                              Integer palletTie,
+                                              Integer palletHigh,
+                                              String storageTempZone,
+                                              Boolean isFragile,
+                                              String abcClassification,
+                                              String lifecycleStatus) {
+        if (hsTariffCode != null) {
+            variant.setHsTariffCode(hsTariffCode.isBlank() ? null : hsTariffCode.trim());
+        }
+        if (countryOfOrigin != null) {
+            variant.setCountryOfOrigin(countryOfOrigin.isBlank() ? null : countryOfOrigin.trim().toUpperCase());
+        }
+        if (isHazmat != null) {
+            variant.setHazmat(isHazmat);
+        }
+        if (palletTie != null) {
+            variant.setPalletTie(palletTie);
+        }
+        if (palletHigh != null) {
+            variant.setPalletHigh(palletHigh);
+        }
+        if (storageTempZone != null && !storageTempZone.isBlank()) {
+            variant.setStorageTempZone(storageTempZone.trim().toUpperCase());
+        }
+        if (isFragile != null) {
+            variant.setFragile(isFragile);
+        }
+        if (abcClassification != null && !abcClassification.isBlank()) {
+            variant.setAbcClassification(abcClassification.trim().toUpperCase());
+        }
+        if (lifecycleStatus != null && !lifecycleStatus.isBlank()) {
+            variant.setLifecycleStatus(lifecycleStatus.trim().toUpperCase());
+        }
+    }
+
     public record CreateVariantRequest(
             @NotNull UUID productId,
             String sku,
@@ -235,12 +283,21 @@ public class ProductVariantController {
             Map<String, Object> attributes,
             BigDecimal price,
             String currency,
-            BigDecimal weight,
-            String weightUnit,
-            BigDecimal length,
-            BigDecimal width,
-            BigDecimal height,
-            String dimUnit
+            @NotNull @Positive BigDecimal weight,
+            @NotBlank String weightUnit,
+            @NotNull @Positive BigDecimal length,
+            @NotNull @Positive BigDecimal width,
+            @NotNull @Positive BigDecimal height,
+            @NotBlank String dimUnit,
+            String hsTariffCode,
+            String countryOfOrigin,
+            Boolean isHazmat,
+            Integer palletTie,
+            Integer palletHigh,
+            String storageTempZone,
+            Boolean isFragile,
+            String abcClassification,
+            String lifecycleStatus
     ) {
     }
 
@@ -252,12 +309,21 @@ public class ProductVariantController {
             Map<String, Object> dims,
             BigDecimal reorderPoint,
             BigDecimal reorderQty,
-            BigDecimal weight,
+            @Positive BigDecimal weight,
             String weightUnit,
-            BigDecimal length,
-            BigDecimal width,
-            BigDecimal height,
-            String dimUnit
+            @Positive BigDecimal length,
+            @Positive BigDecimal width,
+            @Positive BigDecimal height,
+            String dimUnit,
+            String hsTariffCode,
+            String countryOfOrigin,
+            Boolean isHazmat,
+            Integer palletTie,
+            Integer palletHigh,
+            String storageTempZone,
+            Boolean isFragile,
+            String abcClassification,
+            String lifecycleStatus
     ) {
     }
 

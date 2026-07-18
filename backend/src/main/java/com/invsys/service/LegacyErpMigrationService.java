@@ -20,17 +20,33 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * One-shot legacy ERP items CSV migration. Entire batch runs in a single DB transaction
  * so a mid-file failure rolls back products, variants, and INITIAL_MIGRATION ledger rows.
+ * Supports enterprise product attributes (HS code, lot/expiry, pallet Ti-Hi, temp zone).
  */
 @Service
 public class LegacyErpMigrationService {
+
+    private static final Map<String, String> DEFAULT_MAPPING = Map.ofEntries(
+            Map.entry("sku", "sku"),
+            Map.entry("name", "name"),
+            Map.entry("barcode", "barcode"),
+            Map.entry("qty", "qty"),
+            Map.entry("unitCost", "unitCost"),
+            Map.entry("hsCode", "hsCode"),
+            Map.entry("lotNumber", "lotNumber"),
+            Map.entry("expiry", "expiry"),
+            Map.entry("palletTie", "palletTie"),
+            Map.entry("palletHigh", "palletHigh"),
+            Map.entry("tempZone", "tempZone"));
 
     private final ObjectMapper objectMapper;
     private final ProductRepository productRepository;
@@ -72,7 +88,7 @@ public class LegacyErpMigrationService {
             String[] headers = splitCsv(headerLine);
             Map<String, Integer> headerIndex = new LinkedHashMap<>();
             for (int i = 0; i < headers.length; i++) {
-                headerIndex.put(headers[i].trim().toLowerCase(), i);
+                headerIndex.put(headers[i].trim().toLowerCase(Locale.ROOT), i);
             }
 
             String line;
@@ -89,6 +105,12 @@ public class LegacyErpMigrationService {
                     String barcode = cell(cols, headerIndex, mapping.get("barcode"));
                     String qtyRaw = cell(cols, headerIndex, mapping.get("qty"));
                     String costRaw = cell(cols, headerIndex, mapping.get("unitCost"));
+                    String hsCode = cell(cols, headerIndex, mapping.get("hsCode"));
+                    String lotNumber = cell(cols, headerIndex, mapping.get("lotNumber"));
+                    String expiry = cell(cols, headerIndex, mapping.get("expiry"));
+                    String palletTieRaw = cell(cols, headerIndex, mapping.get("palletTie"));
+                    String palletHighRaw = cell(cols, headerIndex, mapping.get("palletHigh"));
+                    String tempZone = cell(cols, headerIndex, mapping.get("tempZone"));
 
                     if ((sku == null || sku.isBlank()) && (name == null || name.isBlank())) {
                         continue;
@@ -99,10 +121,16 @@ public class LegacyErpMigrationService {
                     }
                     BigDecimal unitCost = parseDecimal(costRaw, BigDecimal.ZERO);
 
-                    ProductVariant variant = resolveOrCreateVariant(sku, name, barcode);
+                    ProductVariant variant = resolveOrCreateVariant(
+                            sku, name, barcode, hsCode, lotNumber, palletTieRaw, palletHighRaw, tempZone);
                     if (qty.signum() > 0) {
+                        Map<String, Object> meta = new HashMap<>();
+                        if (expiry != null && !expiry.isBlank()) {
+                            meta.put("lot_expires_at", expiry.trim());
+                        }
                         inventoryService.receiveInitialMigration(
-                                variant.getId(), resolvedLocation, qty, unitCost);
+                                variant.getId(), resolvedLocation, qty, unitCost, lotNumber,
+                                meta.isEmpty() ? null : meta);
                     }
                     imported++;
                 } catch (Exception rowEx) {
@@ -132,12 +160,16 @@ public class LegacyErpMigrationService {
                         "No warehouse location available for migration receive"));
     }
 
-    private ProductVariant resolveOrCreateVariant(String sku, String name, String barcode) {
+    private ProductVariant resolveOrCreateVariant(String sku, String name, String barcode,
+                                                  String hsCode, String lotNumber,
+                                                  String palletTieRaw, String palletHighRaw,
+                                                  String tempZone) {
         UUID tenantId = TenantContext.requireTenantId();
         if (sku != null && !sku.isBlank()) {
             var existing = variantRepository.findByTenantIdAndSku(tenantId, sku.trim());
             if (existing.isPresent()) {
-                return existing.get();
+                return applyEnterpriseFields(existing.get(), barcode, hsCode, lotNumber,
+                        palletTieRaw, palletHighRaw, tempZone);
             }
         }
         Product product = new Product();
@@ -153,21 +185,64 @@ public class LegacyErpMigrationService {
                 ? sku.trim()
                 : skuMaskService.mintSku(null, null);
         variant.setSku(mintedSku);
+        return applyEnterpriseFields(variant, barcode, hsCode, lotNumber, palletTieRaw, palletHighRaw, tempZone);
+    }
+
+    private ProductVariant applyEnterpriseFields(ProductVariant variant, String barcode, String hsCode,
+                                                 String lotNumber, String palletTieRaw, String palletHighRaw,
+                                                 String tempZone) {
         if (barcode != null && !barcode.isBlank()) {
             variant.setBarcode(barcode.trim());
         }
+        if (hsCode != null && !hsCode.isBlank()) {
+            variant.setHsTariffCode(hsCode.trim());
+        }
+        if (lotNumber != null && !lotNumber.isBlank()) {
+            variant.setLotTracked(true);
+        }
+        Integer tie = parsePositiveInt(palletTieRaw);
+        if (tie != null) {
+            variant.setPalletTie(tie);
+        }
+        Integer high = parsePositiveInt(palletHighRaw);
+        if (high != null) {
+            variant.setPalletHigh(high);
+        }
+        if (tempZone != null && !tempZone.isBlank()) {
+            variant.setStorageTempZone(normalizeTempZone(tempZone));
+        }
         return variantRepository.save(variant);
+    }
+
+    private static String normalizeTempZone(String raw) {
+        String zone = raw.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
+        return switch (zone) {
+            case "AMBIENT", "REFRIGERATED", "FROZEN", "COLD", "CHILLED" -> {
+                if ("COLD".equals(zone) || "CHILLED".equals(zone)) {
+                    yield "REFRIGERATED";
+                }
+                yield zone;
+            }
+            default -> throw new IllegalArgumentException(
+                    "tempZone must be AMBIENT, REFRIGERATED, or FROZEN");
+        };
+    }
+
+    private static Integer parsePositiveInt(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        int value = Integer.parseInt(raw.trim().replace(",", ""));
+        if (value <= 0) {
+            throw new IllegalArgumentException("pallet Ti/Hi must be positive");
+        }
+        return value;
     }
 
     private Map<String, String> parseMapping(String json) {
         try {
             if (json == null || json.isBlank()) {
-                return Map.of(
-                        "sku", "sku",
-                        "name", "name",
-                        "barcode", "barcode",
-                        "qty", "qty",
-                        "unitCost", "unitCost");
+                return new LinkedHashMap<>(DEFAULT_MAPPING);
             }
             return objectMapper.readValue(json, new TypeReference<>() {
             });
@@ -181,7 +256,7 @@ public class LegacyErpMigrationService {
         if (header == null || header.isBlank()) {
             return null;
         }
-        Integer idx = headerIndex.get(header.trim().toLowerCase());
+        Integer idx = headerIndex.get(header.trim().toLowerCase(Locale.ROOT));
         if (idx == null || idx < 0 || idx >= cols.length) {
             return null;
         }

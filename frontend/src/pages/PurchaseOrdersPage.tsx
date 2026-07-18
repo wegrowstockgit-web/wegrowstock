@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ClipboardList, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ClipboardList, FileUp, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
   PaginatedResponse,
@@ -506,6 +506,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
     '{\n  "lines": [\n    { "sku": "WIDGET-S", "qty": 100, "unitCost": 5.00 }\n  ]\n}'
   );
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const { data: ingestions = [] } = useQuery({
     queryKey: ['ap', 'ingestions'],
@@ -559,16 +560,59 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
         description="Upload supplier invoices for AI staging, or paste OCR JSON to reconcile against PO lines"
       />
       <div className="space-y-4 p-4">
-        <div className="space-y-3 rounded-lg border border-border/70 p-3">
+        <div className="space-y-3" data-testid="document-ai-upload">
           <p className="text-sm font-medium text-text">Document AI upload</p>
-          <Input
-            type="file"
-            accept=".pdf,.txt,.csv,image/*"
-            className="min-h-11 touch-target"
-            onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-          />
+          <div
+            className={cn(
+              'flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center transition-colors',
+              dragOver ? 'border-accent bg-accent/5' : 'border-border bg-surface-overlay/40',
+              uploadMutation.isPending && 'pointer-events-none opacity-60',
+            )}
+            data-testid="document-ai-dropzone"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const file = e.dataTransfer.files?.[0] ?? null;
+              if (file) setUploadFile(file);
+            }}
+            onClick={() => document.getElementById('ap-invoice-file-input')?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                document.getElementById('ap-invoice-file-input')?.click();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Drop invoice document or browse"
+          >
+            <FileUp className="h-8 w-8 text-text-muted" aria-hidden />
+            <div className="text-sm text-text">
+              {uploadFile ? (
+                <span className="font-medium">{uploadFile.name}</span>
+              ) : (
+                <>
+                  Drop a PDF or image here, or <span className="text-accent">browse</span>
+                </>
+              )}
+            </div>
+            <p className="text-xs text-text-muted">PDF, CSV, TXT, or image — AI stages lines for PO match</p>
+            <input
+              id="ap-invoice-file-input"
+              type="file"
+              accept=".pdf,.txt,.csv,image/*"
+              className="hidden"
+              onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
           <Button
             className="min-h-11 touch-target"
+            data-testid="document-ai-upload-btn"
             onClick={() => uploadFile && uploadMutation.mutate(uploadFile)}
             loading={uploadMutation.isPending}
             disabled={!uploadFile}

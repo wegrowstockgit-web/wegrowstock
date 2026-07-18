@@ -1,11 +1,14 @@
 package com.invsys.domain;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -33,12 +36,32 @@ public class Customer extends TenantScopedEntity {
     @Column(name = "price_tier_id")
     private UUID priceTierId;
 
+    @JsonAlias({"taxIdentificationNumber", "ein", "tax_identification_number"})
     @Column(name = "tax_id")
     private String taxId;
 
     @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "default_currency", length = 3)
     private String defaultCurrency;
+
+    /** NET30 | NET60 | DUE_ON_RECEIPT */
+    @JsonAlias({"paymentTermsPolicy", "payment_terms_policy"})
+    @Column(name = "payment_terms", length = 32)
+    private String paymentTerms;
+
+    @JsonAlias({"creditLimitThreshold", "credit_limit_threshold"})
+    @Column(name = "credit_limit", precision = 19, scale = 4)
+    private BigDecimal creditLimit;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "currency_preference", length = 3)
+    private String currencyPreference;
+
+    /** ACTIVE | HOLD | PROSPECT (HOLD ≡ CreditHold) */
+    @JsonAlias({"accountStatusFlag", "account_status_flag"})
+    @JsonProperty("customerStatus")
+    @Column(name = "customer_status", nullable = false, length = 32)
+    private String customerStatus = "ACTIVE";
 
     public String getName() {
         return name;
@@ -102,5 +125,40 @@ public class Customer extends TenantScopedEntity {
 
     public void setDefaultCurrency(String defaultCurrency) {
         this.defaultCurrency = defaultCurrency;
+    }
+
+    public String getPaymentTerms() {
+        return paymentTerms;
+    }
+
+    public void setPaymentTerms(String paymentTerms) {
+        this.paymentTerms = paymentTerms;
+    }
+
+    public BigDecimal getCreditLimit() {
+        return creditLimit;
+    }
+
+    public void setCreditLimit(BigDecimal creditLimit) {
+        this.creditLimit = creditLimit;
+    }
+
+    public String getCurrencyPreference() {
+        return currencyPreference;
+    }
+
+    public void setCurrencyPreference(String currencyPreference) {
+        this.currencyPreference = currencyPreference;
+        if (currencyPreference != null && (defaultCurrency == null || defaultCurrency.isBlank())) {
+            this.defaultCurrency = currencyPreference;
+        }
+    }
+
+    public String getCustomerStatus() {
+        return customerStatus;
+    }
+
+    public void setCustomerStatus(String customerStatus) {
+        this.customerStatus = customerStatus != null ? customerStatus : "ACTIVE";
     }
 }

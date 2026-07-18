@@ -37,9 +37,9 @@ import type {
 } from '@/api/types';
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
 import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
-import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
+import { RecentLedgerActivity } from '@/features/inventory/RecentLedgerActivity';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
-import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
+import { SyncConflictAlertBanner } from '@/features/offline/SyncConflictAlertBanner';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -411,82 +411,91 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-accent">{primaryRole}</p>
-          <h1 className="mt-1 text-2xl font-bold text-text text-balance">
-            {greeting()}, {user?.displayName ?? 'there'}
-          </h1>
-          <p className="mt-1 text-sm text-text-muted">
-            {new Date().toLocaleDateString(undefined, {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            })}
-            {isError && ' — live stats unavailable, showing defaults'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canScan && (
-            <Button variant="secondary" onClick={() => navigate('/fulfillment')}>
-              <ScanLine className="h-4 w-4" />
-              Start scanning
-            </Button>
-          )}
-          {canManageOrders && (
-            <>
-              <Button variant="secondary" onClick={() => navigate('/purchase-orders')}>
-                <ClipboardList className="h-4 w-4" />
-                New purchase order
-              </Button>
-              <Button onClick={() => navigate('/sales-orders')}>
-                <PackagePlus className="h-4 w-4" />
-                New sales order
-              </Button>
-            </>
-          )}
-        </div>
-      </header>
-
-      <OnboardingChecklist
-        productCount={productCount}
-        orderCount={orderCount}
-        canManage={canManageOrders}
-      />
-
-      {canManageOrders && <WorkQueue queue={workQueue} />}
-
-      {canManageOrders && (
-        <section
-          className="rounded-lg border border-warning/40 bg-warning/5 p-4"
-          data-testid="unresolved-exceptions-panel"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-warning" aria-hidden />
-              <div>
-                <h2 className="text-sm font-semibold text-text">Unresolved Exceptions</h2>
-                <p className="text-xs text-text-muted">
-                  Floor Skip &amp; Flag reports awaiting office resolution
-                </p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => navigate('/exceptions')}
-              data-testid="open-exceptions-queue"
-            >
-              Open queue
-              {openExceptions.length > 0 ? ` (${openExceptions.length})` : ''}
-            </Button>
+    <div className="mx-auto max-w-7xl overflow-x-hidden p-4 sm:p-6">
+      <div className="grid grid-cols-12 gap-4 sm:gap-6">
+        <header className="col-span-12 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-accent">{primaryRole}</p>
+            <h1 className="mt-1 text-2xl font-bold text-text text-balance">
+              {greeting()}, {user?.displayName ?? 'there'}
+            </h1>
+            <p className="mt-1 text-sm text-text-muted">
+              {new Date().toLocaleDateString(undefined, {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+              {isError && ' — live stats unavailable, showing defaults'}
+            </p>
           </div>
-          {openExceptions.length === 0 ? (
-            <p className="mt-3 text-sm text-text-muted">No open fulfillment exceptions.</p>
-          ) : (
+          <div className="flex flex-wrap gap-2">
+            {canScan && (
+              <Button variant="secondary" onClick={() => navigate('/fulfillment')}>
+                <ScanLine className="h-4 w-4" />
+                Start scanning
+              </Button>
+            )}
+            {canManageOrders && (
+              <>
+                <Button variant="secondary" onClick={() => navigate('/purchase-orders')}>
+                  <ClipboardList className="h-4 w-4" />
+                  New purchase order
+                </Button>
+                <Button onClick={() => navigate('/sales-orders')}>
+                  <PackagePlus className="h-4 w-4" />
+                  New sales order
+                </Button>
+              </>
+            )}
+          </div>
+        </header>
+
+        <div className="col-span-12">
+          <OnboardingChecklist
+            productCount={productCount}
+            orderCount={orderCount}
+            canManage={canManageOrders}
+          />
+        </div>
+
+        {canManageOrders && (
+          <div className="col-span-12">
+            <SyncConflictAlertBanner />
+          </div>
+        )}
+
+        {canManageOrders && (
+          <div className="col-span-12">
+            <WorkQueue queue={workQueue} />
+          </div>
+        )}
+
+        {canManageOrders && openExceptions.length > 0 && (
+          <section
+            className="col-span-12 rounded-lg border border-warning/40 bg-warning/5 p-4"
+            data-testid="unresolved-exceptions-panel"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-warning" aria-hidden />
+                <div>
+                  <h2 className="text-sm font-semibold text-text">Unresolved Exceptions</h2>
+                  <p className="text-xs text-text-muted">
+                    Floor Skip &amp; Flag reports awaiting office resolution
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigate('/exceptions?tab=holds')}
+                data-testid="open-exceptions-queue"
+              >
+                Open queue ({openExceptions.length})
+              </Button>
+            </div>
             <ul className="mt-3 space-y-2" data-testid="unresolved-exceptions-list">
-              {openExceptions.slice(0, 5).map((ex) => (
+              {openExceptions.slice(0, 3).map((ex) => (
                 <li
                   key={ex.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-surface px-3 py-2 text-sm"
@@ -494,178 +503,201 @@ export function DashboardPage() {
                   <span className="font-mono text-xs text-text-muted">
                     {ex.allocationId.slice(0, 8)}…
                   </span>
-                  <span className="text-warning font-medium">
+                  <span className="font-medium text-warning">
                     {String(ex.metadata?.reason ?? 'OPEN')}
                   </span>
-                  <Button size="sm" variant="ghost" onClick={() => navigate('/exceptions')}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => navigate('/exceptions?tab=holds')}
+                  >
                     Resolve
                   </Button>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
-      )}
+          </section>
+        )}
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <CardSkeleton key={i} />
-          ))}
-        </div>
-      ) : (
-        <div
-          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-          data-testid="floating-kpi-row"
-        >
-          {kpis.map((kpi) => {
-            const Icon = kpi.icon;
-            return (
-              <Link
-                key={kpi.title}
-                to={kpi.to}
-                data-testid={`kpi-${kpi.title.toLowerCase().replace(/\s+/g, '-')}`}
-                className={cn(
-                  'group rounded-2xl bg-surface-raised p-5 shadow-card',
-                  'transition-[box-shadow,transform] duration-200 ease-out',
-                  'hover:shadow-elevated motion-safe:hover:-translate-y-0.5',
-                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
-                )}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-text-muted">{kpi.title}</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <p className="truncate text-3xl font-bold tabular-nums text-text">{kpi.value}</p>
-                      <TrendIndicator trend={kpi.trend} />
-                    </div>
-                    <p className="mt-1.5 text-xs text-text-muted">{kpi.hint}</p>
-                  </div>
-                  <div className={cn('shrink-0 rounded-xl p-2.5', kpi.iconTone)}>
-                    <Icon className="h-5 w-5" aria-hidden />
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {canManageOrders && <LaborVelocityLeaderboard />}
-      {canManageOrders && <LedgerHistoryTable />}
-      {canManageOrders && <SyncConflictsPanel />}
-
-      <div className="grid gap-6 xl:grid-cols-5">
-        <div className="space-y-6 xl:col-span-3">
-          <ActivityFeed orders={recentOrders} loading={ordersLoading} canManage={canManageOrders} />
-
-          <section className="rounded-2xl bg-surface-raised p-5 shadow-card">
-            <h2 className="text-sm font-semibold text-text">Low stock velocity</h2>
-            <p className="text-sm text-text-muted">
-              Projected depletion trend for items below reorder point
-            </p>
-            {velocityChart.length === 0 ? (
-              <p className="mt-4 text-sm text-text-muted">No low-stock depletion data yet.</p>
-            ) : (
-              <div className="mt-4 h-48 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={velocityChart}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis
-                      dataKey="date"
-                      tickFormatter={(d) =>
-                        new Date(d).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      }
-                      className="text-xs"
-                    />
-                    <YAxis className="text-xs" />
-                    <Tooltip
-                      formatter={(value) => [formatNumber(Number(value ?? 0)), 'Available units']}
-                      labelFormatter={(label) => new Date(label).toLocaleDateString()}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="availableUnits"
-                      stroke="var(--color-accent)"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+        {isLoading ? (
+          <div className="col-span-12 grid grid-cols-12 gap-4" data-testid="floating-kpi-row">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="col-span-12 sm:col-span-6 xl:col-span-3">
+                <CardSkeleton />
               </div>
+            ))}
+          </div>
+        ) : (
+          <div className="col-span-12 grid grid-cols-12 gap-4" data-testid="floating-kpi-row">
+            {kpis.map((kpi) => {
+              const Icon = kpi.icon;
+              return (
+                <Link
+                  key={kpi.title}
+                  to={kpi.to}
+                  data-testid={`kpi-${kpi.title.toLowerCase().replace(/\s+/g, '-')}`}
+                  className={cn(
+                    'col-span-12 sm:col-span-6 xl:col-span-3',
+                    'group rounded-2xl bg-surface-raised p-5 shadow-card',
+                    'transition-[box-shadow,transform] duration-200 ease-out',
+                    'hover:shadow-elevated motion-safe:hover:-translate-y-0.5',
+                    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                  )}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-muted">{kpi.title}</p>
+                      <div className="mt-2 flex min-w-0 items-baseline gap-2">
+                        <p className="min-w-0 text-[clamp(1.25rem,3.2vw,1.875rem)] font-bold leading-tight tabular-nums text-text">
+                          {kpi.value}
+                        </p>
+                        <TrendIndicator trend={kpi.trend} />
+                      </div>
+                      <p className="mt-1.5 text-xs text-text-muted">{kpi.hint}</p>
+                    </div>
+                    <div className={cn('shrink-0 rounded-xl p-2.5', kpi.iconTone)}>
+                      <Icon className="h-5 w-5" aria-hidden />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {canManageOrders && (
+          <div className="col-span-12 grid grid-cols-12 gap-4 sm:gap-6">
+            <div className="col-span-12 lg:col-span-6">
+              <LaborVelocityLeaderboard mode="summary" />
+            </div>
+            <div className="col-span-12 lg:col-span-6">
+              <RecentLedgerActivity />
+            </div>
+          </div>
+        )}
+
+        <div className="col-span-12 grid grid-cols-12 gap-4 sm:gap-6">
+          <div className="col-span-12 space-y-6 xl:col-span-7">
+            <ActivityFeed
+              orders={recentOrders}
+              loading={ordersLoading}
+              canManage={canManageOrders}
+            />
+
+            <section className="rounded-2xl bg-surface-raised p-5 shadow-card">
+              <h2 className="text-sm font-semibold text-text">Low stock velocity</h2>
+              <p className="text-sm text-text-muted">
+                Projected depletion trend for items below reorder point
+              </p>
+              {velocityChart.length === 0 ? (
+                <p className="mt-4 text-sm text-text-muted">No low-stock depletion data yet.</p>
+              ) : (
+                <div className="mt-4 h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={velocityChart}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(d) =>
+                          new Date(d).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        }
+                        className="text-xs"
+                      />
+                      <YAxis className="text-xs" />
+                      <Tooltip
+                        formatter={(value) => [
+                          formatNumber(Number(value ?? 0)),
+                          'Available units',
+                        ]}
+                        labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="availableUnits"
+                        stroke="var(--color-accent)"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </section>
+          </div>
+
+          <section className="col-span-12 rounded-2xl bg-surface-raised p-5 shadow-card xl:col-span-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-text">Low stock</h2>
+                <p className="text-sm text-text-muted">Available below reorder point</p>
+              </div>
+              {canManageOrders && lowStock && lowStock.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={draftPoMutation.isPending}
+                  onClick={() =>
+                    draftPoMutation.mutate(lowStock.slice(0, 5).map((item) => item.variantId))
+                  }
+                >
+                  Generate draft PO
+                </Button>
+              )}
+            </div>
+
+            {lowStockLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : !lowStock || lowStock.length === 0 ? (
+              <EmptyState
+                icon={AlertTriangle}
+                title="Nothing to restock"
+                description="Every item is above its reorder point."
+              />
+            ) : (
+              <ul className="divide-y divide-border">
+                {lowStock.map((item) => (
+                  <li
+                    key={item.variantId}
+                    className="flex items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-text">{item.productName}</p>
+                      <p className="mt-0.5 font-mono text-xs text-text-muted">{item.sku}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {canManageOrders && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={draftPoMutation.isPending}
+                          onClick={() => draftPoMutation.mutate([item.variantId])}
+                        >
+                          Quick PO
+                        </Button>
+                      )}
+                      <div className="text-right">
+                        <p className="text-sm font-semibold tabular-nums text-warning">
+                          {formatNumber(item.available)}
+                        </p>
+                        <p className="text-xs tabular-nums text-text-muted">
+                          rec. PO {formatNumber(item.recommendedPoQty)} · vel{' '}
+                          {formatNumber(item.velocity30d)}/d
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </div>
-
-        <section className="rounded-2xl bg-surface-raised p-5 shadow-card xl:col-span-2">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold text-text">Low stock</h2>
-              <p className="text-sm text-text-muted">Available below reorder point</p>
-            </div>
-            {canManageOrders && lowStock && lowStock.length > 0 && (
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={draftPoMutation.isPending}
-                onClick={() =>
-                  draftPoMutation.mutate(lowStock.slice(0, 5).map((item) => item.variantId))
-                }
-              >
-                Generate draft PO
-              </Button>
-            )}
-          </div>
-
-          {lowStockLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : !lowStock || lowStock.length === 0 ? (
-            <EmptyState
-              icon={AlertTriangle}
-              title="Nothing to restock"
-              description="Every item is above its reorder point."
-            />
-          ) : (
-            <ul className="divide-y divide-border">
-              {lowStock.map((item) => (
-                <li key={item.variantId} className="flex items-center justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-text">{item.productName}</p>
-                    <p className="mt-0.5 font-mono text-xs text-text-muted">{item.sku}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    {canManageOrders && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        loading={draftPoMutation.isPending}
-                        onClick={() => draftPoMutation.mutate([item.variantId])}
-                      >
-                        Quick PO
-                      </Button>
-                    )}
-                    <div className="text-right">
-                      <p className="text-sm font-semibold tabular-nums text-warning">
-                        {formatNumber(item.available)}
-                      </p>
-                      <p className="text-xs tabular-nums text-text-muted">
-                        rec. PO {formatNumber(item.recommendedPoQty)} · vel{' '}
-                        {formatNumber(item.velocity30d)}/d
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
     </div>
   );

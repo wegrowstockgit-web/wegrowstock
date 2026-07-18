@@ -205,13 +205,23 @@ public class CartonizationEngine {
             if (count <= 0) {
                 continue;
             }
-            BigDecimal l = toInches(nullSafe(line.length()), line.dimUnit());
-            BigDecimal w = toInches(nullSafe(line.width()), line.dimUnit());
-            BigDecimal h = toInches(nullSafe(line.height()), line.dimUnit());
-            if (l.signum() <= 0 || w.signum() <= 0 || h.signum() <= 0) {
-                l = w = h = new BigDecimal("6");
+            if (line.length() == null || line.width() == null || line.height() == null
+                    || line.weight() == null
+                    || line.length().signum() <= 0 || line.width().signum() <= 0
+                    || line.height().signum() <= 0 || line.weight().signum() <= 0) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "MISSING_DIMENSIONS",
+                        "Variant " + line.variantId()
+                                + " requires positive length, width, height, and weight for cartonization");
             }
-            BigDecimal weightLb = toPounds(nullSafe(line.weight()), line.weightUnit());
+            if (line.dimUnit() == null || line.dimUnit().isBlank()
+                    || line.weightUnit() == null || line.weightUnit().isBlank()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "MISSING_DIMENSIONS",
+                        "Variant " + line.variantId() + " requires dimUnit and weightUnit for cartonization");
+            }
+            BigDecimal l = toInches(line.length(), line.dimUnit());
+            BigDecimal w = toInches(line.width(), line.dimUnit());
+            BigDecimal h = toInches(line.height(), line.dimUnit());
+            BigDecimal weightLb = toPounds(line.weight(), line.weightUnit());
             for (int i = 0; i < count; i++) {
                 units.add(new Unit(line.variantId(), l, w, h, weightLb));
             }

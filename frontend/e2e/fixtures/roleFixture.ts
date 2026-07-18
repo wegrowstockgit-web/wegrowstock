@@ -95,6 +95,12 @@ async function pageForRole(
     },
   );
   await page.goto('/dashboard');
+  // Wait until the office shell settles (avoids racing API restart / cookie hydration).
+  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45_000 }).catch(() => {});
+  if (page.url().includes('/login')) {
+    await page.goto('/dashboard');
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45_000 });
+  }
 
   // Keep a copy for debugging / optional reuse; do not rely on it as the sole session source.
   try {

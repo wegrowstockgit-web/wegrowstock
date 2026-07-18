@@ -1,7 +1,7 @@
 /**
- * Client-side GS1-128 composite barcode parser for offline floor ops.
- * Extracts AI 01 (GTIN), 10 (lot), 17 (expiry YYMMDD), 30 (variable qty).
- * FNC1 (ASCII 29) terminates variable-length fields so Lot does not bleed into later AIs.
+ * Client-side GS1-128 / DataMatrix parser for offline floor ops + DSCSA.
+ * Extracts AI 01 (GTIN), 10 (lot), 17 (expiry YYMMDD), 21 (serial), 30 (qty).
+ * FNC1 (ASCII 29) terminates variable-length fields so Lot/Serial do not bleed.
  */
 
 const FNC1 = '\u001d';
@@ -11,6 +11,8 @@ export interface ParsedBarcode {
   /** Catalog lookup key — GTIN (AI 01) when present, else the raw trimmed string. */
   sku: string;
   lotNumber?: string;
+  /** Package-level serial (AI 21) — required for DSCSA 2026 saleable-unit identity. */
+  serialNumber?: string;
   /** ISO date YYYY-MM-DD when AI 17 is present. */
   expiryDate?: string;
   quantity?: number;
@@ -21,6 +23,7 @@ export interface ParsedBarcode {
 
 const RE_PAREN_GTIN = /\(01\)(\d{14})/;
 const RE_PAREN_LOT = /\(10\)([^\u001d()]+?)(?=\(|$|\u001d)/;
+const RE_PAREN_SERIAL = /\(21\)([^\u001d()]+?)(?=\(|$|\u001d)/;
 const RE_PAREN_EXPIRY = /\(17\)(\d{6})/;
 const RE_PAREN_QTY = /\(30\)(\d{1,8})/;
 
@@ -28,10 +31,16 @@ const RE_AI_GTIN = /(?:^|\u001d)01(\d{14})/;
 const RE_AI_EXPIRY = /(?:^|\u001d)17(\d{6})/;
 /** Variable AI 10 — stop at FNC1 or a known following fixed/variable AI. */
 const RE_AI_LOT = /(?:^|\u001d)10([^\u001d]+?)(?=\u001d(?:01|10|17|21|30)|$)/;
+const RE_AI_SERIAL = /(?:^|\u001d)21([^\u001d]+?)(?=\u001d(?:01|10|17|21|30)|$)/;
 const RE_AI_QTY = /(?:^|\u001d)30(\d{1,8})(?=\u001d|$)/;
 
 function looksLikeGs1(value: string): boolean {
-  if (/\(01\)\d{14}/.test(value) || /\(17\)\d{6}/.test(value) || /\(10\)/.test(value)) {
+  if (
+    /\(01\)\d{14}/.test(value) ||
+    /\(17\)\d{6}/.test(value) ||
+    /\(10\)/.test(value) ||
+    /\(21\)/.test(value)
+  ) {
     return true;
   }
   if (value.includes(FNC1)) return true;
@@ -76,28 +85,32 @@ export function parseGs1(raw: string | null | undefined): ParsedBarcode {
     return { sku: trimmed, isGs1: false };
   }
 
-  const parenForm = normalized.includes('(01)') || normalized.includes('(10)') || normalized.includes('(17)');
+  const parenForm =
+    normalized.includes('(01)') ||
+    normalized.includes('(10)') ||
+    normalized.includes('(17)') ||
+    normalized.includes('(21)');
 
   let gtin: string | undefined;
   let lot: string | undefined;
+  let serial: string | undefined;
   let expiryRaw: string | undefined;
   let qtyRaw: string | undefined;
 
   if (parenForm) {
     gtin = normalized.match(RE_PAREN_GTIN)?.[1];
     lot = normalized.match(RE_PAREN_LOT)?.[1]?.trim();
+    serial = normalized.match(RE_PAREN_SERIAL)?.[1]?.trim();
     expiryRaw = normalized.match(RE_PAREN_EXPIRY)?.[1];
     qtyRaw = normalized.match(RE_PAREN_QTY)?.[1];
   } else {
-    // Insert synthetic FNC1 before known AIs when scanners omit separators after variable fields,
-    // then run AI-prefixed regexes. First peel fixed AIs with a walk so Lot (10) stays bounded.
     const walked = walkExtract(normalized);
     gtin = walked.gtin;
     lot = walked.lot;
+    serial = walked.serial;
     expiryRaw = walked.expiry;
     qtyRaw = walked.qty;
 
-    // Regex fallback / confirmation for FNC1-delimited payloads
     gtin ??= normalized.match(RE_AI_GTIN)?.[1];
     expiryRaw ??= normalized.match(RE_AI_EXPIRY)?.[1];
     qtyRaw ??= normalized.match(RE_AI_QTY)?.[1];
@@ -105,9 +118,13 @@ export function parseGs1(raw: string | null | undefined): ParsedBarcode {
       const m = normalized.match(RE_AI_LOT);
       if (m?.[1]) lot = m[1].trim();
     }
+    if (!serial) {
+      const m = normalized.match(RE_AI_SERIAL);
+      if (m?.[1]) serial = m[1].trim();
+    }
   }
 
-  if (!gtin && !lot && !expiryRaw && !qtyRaw) {
+  if (!gtin && !lot && !serial && !expiryRaw && !qtyRaw) {
     return { sku: trimmed, isGs1: false };
   }
 
@@ -117,6 +134,7 @@ export function parseGs1(raw: string | null | undefined): ParsedBarcode {
   return {
     sku: gtin ?? trimmed,
     lotNumber: lot || undefined,
+    serialNumber: serial || undefined,
     expiryDate,
     quantity: quantity != null && Number.isFinite(quantity) ? quantity : undefined,
     isGs1: true,
@@ -128,10 +146,11 @@ export function parseGs1(raw: string | null | undefined): ParsedBarcode {
 function walkExtract(normalized: string): {
   gtin?: string;
   lot?: string;
+  serial?: string;
   expiry?: string;
   qty?: string;
 } {
-  const out: { gtin?: string; lot?: string; expiry?: string; qty?: string } = {};
+  const out: { gtin?: string; lot?: string; serial?: string; expiry?: string; qty?: string } = {};
   let i = 0;
   while (i < normalized.length) {
     if (normalized[i] === FNC1) {
@@ -163,6 +182,7 @@ function walkExtract(normalized: string): {
       const value = normalized.slice(i, end);
       if (!value || value.length > 20) break;
       if (ai === '10') out.lot = value;
+      if (ai === '21') out.serial = value;
       i = end;
       if (normalized[i] === FNC1) i += 1;
     } else {
@@ -177,7 +197,6 @@ const KNOWN_AI = /^(?:01|10|11|13|15|17|21|30)/;
 function findNextAi(s: string, from: number): number {
   for (let j = from + 1; j + 2 <= s.length; j++) {
     if (KNOWN_AI.test(s.slice(j, j + 2))) {
-      // Prefer boundaries that look like a new AI after at least 1 char of data
       return j;
     }
   }
@@ -192,13 +211,16 @@ export function gs1LookupSku(raw: string): string {
 export interface LotGraceResult {
   /** True when lot AI is present but the cached variant is not lot-tracked. */
   lotLoggedNotTracked: boolean;
-  /** Offline / API metadata sink for discarded vendor lots. */
+  /**
+   * FSMA-safe sink: lot string is never discarded — stored as vendor_lot_captured
+   * so genealogy can still recall by batch when lot_id is null.
+   */
   metadata?: Record<string, string>;
 }
 
 /**
  * Graceful degradation: lot AI present + tracking disabled → do not block the scan;
- * capture the lot string into metadata for ledger sinking.
+ * capture the lot string into metadata for ledger / FSMA recall (never drop the batch id).
  */
 export function evaluateLotGrace(
   parsed: ParsedBarcode,
@@ -253,7 +275,6 @@ export function validatePickScan(
   const identities = [expectedSku, expectedBarcode].filter(Boolean);
 
   if (identities.length > 0 && !identities.includes(scanned)) {
-    // Also allow plain scan of the human SKU when GS1 GTIN was expected (or vice versa).
     const rawNorm = normalizeIdentity(rawCode);
     if (!rawNorm || !identities.includes(rawNorm)) {
       return {

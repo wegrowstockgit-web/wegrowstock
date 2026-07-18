@@ -102,4 +102,21 @@ class ObservabilityExceptionHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.detail").value(not(containsString("at com.invsys"))))
                 .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"));
     }
+
+    @Test
+    void unknownApiPathReturnsProblemDetailsWithoutStackLeak() throws Exception {
+        String slug = "obs404-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Obs 404 Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+
+        mockMvc.perform(get("/api/v1/this-route-does-not-exist-obs")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .header("X-Request-Id", "obs-404-1")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(header().string("X-Request-Id", "obs-404-1"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").exists())
+                .andExpect(jsonPath("$.detail").value(not(containsString("at com.invsys"))));
+    }
 }

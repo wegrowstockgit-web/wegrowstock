@@ -6,6 +6,7 @@ import type { ManufacturingOperation, ProductionOrder, ProductionTimesheet } fro
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import { Card } from '@/components/ui/Card';
@@ -23,7 +24,13 @@ export function ProductionTerminalPage() {
   const [selectedOperationId, setSelectedOperationId] = useState('');
   const [activeTimesheetId, setActiveTimesheetId] = useState<string | null>(null);
 
-  const { data: orders = [], isLoading } = useQuery({
+  const {
+    data: orders = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['manufacturing', 'terminal', 'orders'],
     queryFn: async () => {
       const res = await apiClient.get<ProductionOrder[]>('/api/v1/manufacturing/orders');
@@ -132,16 +139,20 @@ export function ProductionTerminalPage() {
         <p className="text-sm text-text-muted">Track labor, scan components, complete builds</p>
       </div>
 
-      {isLoading ? (
-        <p className="text-center text-sm text-text-muted">Loading orders...</p>
-      ) : orders.length === 0 ? (
-        <Card className="text-center" padding="lg">
-          <p className="text-text-muted">No active production orders assigned.</p>
-        </Card>
-      ) : (
+      <ListPageState
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        data={orders}
+        refetch={() => void refetch()}
+        emptyIcon={Factory}
+        emptyTitle="No active production orders"
+        emptyDescription="Orders in COMPONENTS_ALLOCATED or WIP will appear here for the floor terminal."
+      >
+        {(activeOrders) => (
         <>
           <div className="mb-4 space-y-2">
-            {orders.map((order) => (
+            {activeOrders.map((order) => (
               <button
                 key={order.id}
                 type="button"
@@ -254,7 +265,8 @@ export function ProductionTerminalPage() {
             Complete build
           </BigButton>
         </>
-      )}
+        )}
+      </ListPageState>
     </div>
   );
 }

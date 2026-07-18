@@ -50,10 +50,25 @@ public class InventoryGenealogyService {
 
     /**
      * Multi-directional compliance payload: origin RECEIVE + PO, live bin exposure, SHIP + SO.
+     * FSMA §204: when lot tracking was disabled, batch strings remain in ledger metadata
+     * ({@code vendor_lot_captured}) and are still recall-searchable.
      */
     @Transactional(readOnly = true)
     public ComplianceLotTraceResponse complianceTrace(UUID lotId, String lotNumber) {
-        Lot lot = lotId != null ? requireLot(lotId) : requireLotByNumber(lotNumber);
+        if (lotId != null) {
+            return complianceTraceForLot(requireLot(lotId));
+        }
+        if (lotNumber == null || lotNumber.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "lotId or lotNumber is required");
+        }
+        String trimmed = lotNumber.trim();
+        UUID tenantId = TenantContext.requireTenantId();
+        return lotRepository.findFirstByTenantIdAndLotNumber(tenantId, trimmed)
+                .map(this::complianceTraceForLot)
+                .orElseGet(() -> complianceTraceFromMetadata(trimmed));
+    }
+
+    private ComplianceLotTraceResponse complianceTraceForLot(Lot lot) {
         ProductVariant variant = variantRepository.findById(lot.getVariantId())
                 .filter(v -> v.getTenantId().equals(TenantContext.requireTenantId()))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found"));
@@ -65,6 +80,121 @@ public class InventoryGenealogyService {
                 loadOrigin(lot.getId()),
                 loadExposure(lot.getId()),
                 loadDownstreamShipments(lot.getId()));
+    }
+
+    /**
+     * FSMA fallback: lot string present on ledger metadata when variant lot-tracking was off.
+     * Preserves recall visibility — never drops the batch identifier from the search surface.
+     */
+    private ComplianceLotTraceResponse complianceTraceFromMetadata(String lotNumber) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Record hit = dsl.fetchOne("""
+                SELECT il.variant_id, pv.sku
+                FROM inventory_ledger il
+                JOIN product_variants pv ON pv.id = il.variant_id AND pv.tenant_id = il.tenant_id
+                WHERE il.tenant_id = ?
+                  AND il.lot_id IS NULL
+                  AND il.metadata ->> 'vendor_lot_captured' = ?
+                ORDER BY il.created_at ASC
+                LIMIT 1
+                """, tenantId, lotNumber);
+        if (hit == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Lot not found");
+        }
+        UUID variantId = hit.get("variant_id", UUID.class);
+        String sku = hit.get("sku", String.class);
+        return new ComplianceLotTraceResponse(
+                null,
+                lotNumber,
+                variantId,
+                sku,
+                loadOriginFromMetadata(lotNumber),
+                List.of(),
+                loadDownstreamShipmentsFromMetadata(lotNumber));
+    }
+
+    private ComplianceLotTraceResponse.LotOrigin loadOriginFromMetadata(String lotNumber) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Record row = dsl.fetchOne("""
+                SELECT il.id, il.quantity_delta, il.created_at, il.location_id,
+                       loc.code AS location_code, loc.path AS location_path,
+                       pol.id AS po_line_id, po.id AS po_id, po.number AS po_number,
+                       s.id AS supplier_id, s.name AS supplier_name
+                FROM inventory_ledger il
+                LEFT JOIN locations loc ON loc.id = il.location_id
+                LEFT JOIN purchase_order_lines pol
+                       ON il.reference_type = 'PURCHASE_ORDER_LINE' AND pol.id = il.reference_id
+                LEFT JOIN purchase_orders po ON po.id = pol.purchase_order_id
+                LEFT JOIN suppliers s ON s.id = po.supplier_id
+                WHERE il.tenant_id = ?
+                  AND il.lot_id IS NULL
+                  AND il.metadata ->> 'vendor_lot_captured' = ?
+                  AND il.movement_type = 'RECEIVE'
+                ORDER BY il.created_at ASC
+                LIMIT 1
+                """, tenantId, lotNumber);
+        if (row == null) {
+            return null;
+        }
+        return new ComplianceLotTraceResponse.LotOrigin(
+                row.get("id", UUID.class),
+                toInstant(row.get("created_at")),
+                row.get("quantity_delta", BigDecimal.class),
+                row.get("location_id", UUID.class),
+                row.get("location_code", String.class),
+                row.get("location_path", String.class),
+                row.get("po_id", UUID.class),
+                row.get("po_number", String.class),
+                row.get("po_line_id", UUID.class),
+                row.get("supplier_id", UUID.class),
+                row.get("supplier_name", String.class));
+    }
+
+    private List<ComplianceLotTraceResponse.LotDownstreamShipment> loadDownstreamShipmentsFromMetadata(
+            String lotNumber) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Result<Record> rows = dsl.fetch("""
+                SELECT il.id, il.quantity_delta, il.created_at,
+                       sol.id AS so_line_id, so.id AS so_id, so.number AS so_number,
+                       c.id AS customer_id, c.name AS customer_name,
+                       sh.id AS shipment_id, sh.tracking_number
+                FROM inventory_ledger il
+                LEFT JOIN sales_order_lines sol
+                       ON il.reference_type = 'SALES_ORDER_LINE' AND sol.id = il.reference_id
+                LEFT JOIN sales_orders so ON so.id = sol.sales_order_id
+                LEFT JOIN customers c ON c.id = so.customer_id
+                LEFT JOIN LATERAL (
+                    SELECT s.id, s.tracking_number
+                    FROM shipments s
+                    WHERE s.tenant_id = il.tenant_id AND s.sales_order_id = so.id
+                    ORDER BY s.created_at DESC
+                    LIMIT 1
+                ) sh ON TRUE
+                WHERE il.tenant_id = ?
+                  AND il.lot_id IS NULL
+                  AND il.metadata ->> 'vendor_lot_captured' = ?
+                  AND il.movement_type = 'SHIP'
+                ORDER BY il.created_at
+                """, tenantId, lotNumber);
+        List<ComplianceLotTraceResponse.LotDownstreamShipment> out = new ArrayList<>();
+        for (Record row : rows) {
+            BigDecimal qty = row.get("quantity_delta", BigDecimal.class);
+            if (qty != null) {
+                qty = qty.abs();
+            }
+            out.add(new ComplianceLotTraceResponse.LotDownstreamShipment(
+                    row.get("id", UUID.class),
+                    toInstant(row.get("created_at")),
+                    qty,
+                    row.get("so_id", UUID.class),
+                    row.get("so_number", String.class),
+                    row.get("so_line_id", UUID.class),
+                    row.get("customer_id", UUID.class),
+                    row.get("customer_name", String.class),
+                    row.get("shipment_id", UUID.class),
+                    row.get("tracking_number", String.class)));
+        }
+        return out;
     }
 
     private Lot requireLot(UUID lotId) {

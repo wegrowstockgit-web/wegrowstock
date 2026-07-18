@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -57,6 +58,32 @@ public class ProfileController {
         return WorkstationResponse.from(updated);
     }
 
+    /**
+     * Self-service personal profile — contact, password prefs, MFA flag, UI density.
+     * Organizational fields are rejected here (admin org-scope API only).
+     */
+    @PatchMapping("/profile")
+    public ProfileResponse updateProfile(@Valid @RequestBody ProfilePatchRequest request) {
+        User user = authService.updateMyProfile(
+                request.displayName(),
+                request.phone(),
+                request.addressLine1(),
+                request.addressLine2(),
+                request.addressCity(),
+                request.addressRegion(),
+                request.addressPostalCode(),
+                request.addressCountry(),
+                request.mfaEnabled(),
+                request.uiDensityPreference());
+        return ProfileResponse.from(user);
+    }
+
+    @PostMapping("/password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changeMyPassword(request.currentPassword(), request.newPassword());
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/avatar")
     public AvatarResponse updateAvatar(@Valid @RequestBody AvatarRequest request) {
         User user = authService.updateMyAvatar(request.avatarUrl());
@@ -71,6 +98,65 @@ public class ProfileController {
         mediaAttachmentService.attach(media.getId(), "USER", userId, "AVATAR", 0);
         User user = authService.updateMyAvatar(mediaUploadService.contentPath(media.getId()));
         return new AvatarResponse(user.getId(), user.getAvatarUrl());
+    }
+
+    public record ProfilePatchRequest(
+            String displayName,
+            String phone,
+            String addressLine1,
+            String addressLine2,
+            String addressCity,
+            String addressRegion,
+            String addressPostalCode,
+            String addressCountry,
+            Boolean mfaEnabled,
+            String uiDensityPreference
+    ) {
+    }
+
+    public record ChangePasswordRequest(
+            @NotBlank String currentPassword,
+            @NotBlank @Size(min = 8, max = 128) String newPassword
+    ) {
+    }
+
+    public record ProfileResponse(
+            UUID userId,
+            String displayName,
+            String phone,
+            String addressLine1,
+            String addressLine2,
+            String addressCity,
+            String addressRegion,
+            String addressPostalCode,
+            String addressCountry,
+            boolean mfaEnabled,
+            String uiDensityPreference,
+            UUID assignedWarehouseId,
+            String corporateDepartment,
+            String timezonePreference,
+            String localeLanguage,
+            String shiftScheduleType
+    ) {
+        static ProfileResponse from(User user) {
+            return new ProfileResponse(
+                    user.getId(),
+                    user.getDisplayName(),
+                    user.getPhone(),
+                    user.getAddressLine1(),
+                    user.getAddressLine2(),
+                    user.getAddressCity(),
+                    user.getAddressRegion(),
+                    user.getAddressPostalCode(),
+                    user.getAddressCountry(),
+                    user.isMfaEnabled(),
+                    user.getUiDensityPreference(),
+                    user.getAssignedWarehouseId(),
+                    user.getCorporateDepartment(),
+                    user.getTimezonePreference(),
+                    user.getLocaleLanguage(),
+                    user.getShiftScheduleType());
+        }
     }
 
     public record AvatarRequest(

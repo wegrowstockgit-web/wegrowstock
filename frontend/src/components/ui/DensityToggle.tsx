@@ -93,13 +93,16 @@ export function DataListToolbar({
   children,
   className,
   columnItems,
+  gridId = 'products',
   trailing,
 }: {
   children?: ReactNode;
   className?: string;
   /** When provided, shows the Column Visibility Toggle menu in the action deck. */
   columnItems?: ColumnVisibilityItem[];
-  /** Extra controls (e.g. SavedGridViews) rendered before Columns. */
+  /** Local layout key for Zustand persist (one layout per grid). */
+  gridId?: string;
+  /** Extra toolbar controls rendered before Columns. */
   trailing?: ReactNode;
 }) {
   return (
@@ -114,7 +117,7 @@ export function DataListToolbar({
       <div className="flex shrink-0 items-center gap-2">
         {trailing}
         {columnItems && columnItems.length > 0 && (
-          <ColumnVisibilityMenu columns={columnItems} />
+          <ColumnVisibilityMenu columns={columnItems} gridId={gridId} />
         )}
         <DensityToggle />
       </div>

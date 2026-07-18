@@ -1,6 +1,6 @@
 package com.invsys.api;
 
-import com.invsys.service.TaskInterleavingService;
+import com.invsys.service.TaskOrchestratorService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,16 +13,20 @@ import java.util.UUID;
 @RequestMapping("/api/v1/tasks")
 public class TaskController {
 
-    private final TaskInterleavingService taskInterleavingService;
+    private final TaskOrchestratorService taskOrchestratorService;
 
-    public TaskController(TaskInterleavingService taskInterleavingService) {
-        this.taskInterleavingService = taskInterleavingService;
+    public TaskController(TaskOrchestratorService taskOrchestratorService) {
+        this.taskOrchestratorService = taskOrchestratorService;
     }
 
+    /**
+     * Closest interleaved floor task for the authenticated tenant (picks, putaway,
+     * counts, predictive replenishment). Tenant isolation via {@code TenantContext}.
+     */
     @GetMapping("/next-best-action")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
-    public TaskInterleavingService.NextBestAction nextBestAction(
+    public TaskOrchestratorService.NextBestAction nextBestAction(
             @RequestParam UUID currentLocationId) {
-        return taskInterleavingService.nextBestAction(currentLocationId);
+        return taskOrchestratorService.nextBestAction(currentLocationId);
     }
 }

@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PathOptimizationHeuristicTest {
 
-    private final PickingService pickingService = new PickingService(null, null, null);
+    private final PickingService pickingService = new PickingService(null, null, null, null);
 
     @Test
     void groupsNearbyBinsBeforeDistantAisles() {

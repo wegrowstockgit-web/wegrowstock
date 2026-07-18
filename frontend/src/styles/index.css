@@ -151,24 +151,24 @@
   }
 }
 
-/* Surface A + B tablet / coarse-pointer: 44px minimum touch targets */
+/*
+ * Warehouse floor + phone/tablet: 44px minimum touch targets.
+ * Office desktop (incl. hybrid fine-pointer 1080p) must NOT inherit scanner
+ * target inflation — that was squashing Settings / admin grids.
+ */
 @media (pointer: coarse), (max-width: 1024px) {
   .touch-target,
-  [data-theme='office'] button,
-  [data-theme='office'] a[role='button'],
-  [data-theme='office'] [role='row'][data-state],
   [data-theme='warehouse'] button,
   [data-theme='warehouse'] .touch-target {
     min-height: 2.75rem;
     min-width: 2.75rem;
   }
 
-  [data-theme='office'] .density-row,
   [data-theme='warehouse'] .density-row {
     min-height: 2.75rem;
   }
 
-  [data-density='compact'] {
+  [data-theme='warehouse'] [data-density='compact'] {
     --density-cell-py: 0.5rem;
     --density-row-h: 2.75rem;
   }
@@ -178,6 +178,40 @@
   [data-testid='slide-out-drawer'] {
     width: min(100vw, 28rem) !important;
     max-width: 100vw !important;
+  }
+}
+
+/* Office admin: touch targets only on true phone widths */
+@media (max-width: 767px) {
+  [data-theme='office'] button,
+  [data-theme='office'] a[role='button'],
+  [data-theme='office'] .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  [data-theme='office'] .density-row {
+    min-height: 2.75rem;
+  }
+}
+
+/* Settings shell — widescreen office split-pane (static nav + content scrollport) */
+[data-theme='office'] .settings-shell {
+  width: 100%;
+  max-width: 80rem; /* max-w-7xl */
+  margin-inline: auto;
+  height: 100%;
+}
+
+[data-theme='office'] .settings-shell__nav {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  [data-theme='office'] .settings-shell__nav {
+    /* Rail-style: column fills the pane and scrolls its own links (like the app Sidebar). */
+    align-self: stretch;
+    scrollbar-width: thin;
   }
 }
 

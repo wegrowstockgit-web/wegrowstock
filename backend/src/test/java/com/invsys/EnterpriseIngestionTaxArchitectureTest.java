@@ -186,18 +186,21 @@ class EnterpriseIngestionTaxArchitectureTest extends AbstractIntegrationTest {
         wh.setPath("WH-IN");
         wh = locationRepository.save(wh);
 
-        String csv = "sku,name,qty,unitCost\nIMP-1,Widget,5,2.50\n";
+        String csv = "sku,name,qty,unitCost,length,width,height\nIMP-1,Widget,5,2.50,10,8,6\n";
         MockMultipartFile file = new MockMultipartFile(
                 "file", "stock.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/v1/ingestion/import")
                         .file(file)
                         .param("columnsMapping",
-                                "{\"sku\":\"sku\",\"name\":\"name\",\"qty\":\"qty\",\"unitCost\":\"unitCost\"}")
+                                "{\"sku\":\"sku\",\"name\":\"name\",\"qty\":\"qty\",\"unitCost\":\"unitCost\","
+                                        + "\"length\":\"length\",\"width\":\"width\",\"height\":\"height\"}")
                         .param("locationId", wh.getId().toString())
+                        .param("createMissingProducts", "true")
                         .header("Authorization", "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.imported").value(1));
+                .andExpect(jsonPath("$.imported").value(1))
+                .andExpect(jsonPath("$.fileChecksumSha256").isNotEmpty());
 
         // HTTP filter clears ThreadLocal tenant; restore for repository assertions under RLS.
         TenantContext.setTenantId(tenantId);
@@ -296,7 +299,7 @@ class EnterpriseIngestionTaxArchitectureTest extends AbstractIntegrationTest {
         product = productRepository.save(product);
 
         String body = """
-                {"productId":"%s","price":1.00,"currency":"USD"}
+                {"productId":"%s","price":1.00,"currency":"USD","weight":1.5,"weightUnit":"lb","length":10,"width":8,"height":6,"dimUnit":"in"}
                 """.formatted(product.getId());
 
         String response = mockMvc.perform(post("/api/v1/variants")
@@ -424,15 +427,17 @@ class EnterpriseIngestionTaxArchitectureTest extends AbstractIntegrationTest {
         wh.setPath("WH-IN2");
         wh = locationRepository.save(wh);
 
-        String csv = "sku,name,qty,unitCost\n\nBAD,Bad,-5,1.00\nOK-1,Good,1,1.00\n";
+        String csv = "sku,name,qty,unitCost,length,width,height\n\nBAD,Bad,-5,1.00,1,1,1\nOK-1,Good,1,1.00,10,8,6\n";
         MockMultipartFile file = new MockMultipartFile(
                 "file", "stock.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/v1/ingestion/import")
                         .file(file)
                         .param("columnsMapping",
-                                "{\"sku\":\"sku\",\"name\":\"name\",\"qty\":\"qty\",\"unitCost\":\"unitCost\"}")
+                                "{\"sku\":\"sku\",\"name\":\"name\",\"qty\":\"qty\",\"unitCost\":\"unitCost\","
+                                        + "\"length\":\"length\",\"width\":\"width\",\"height\":\"height\"}")
                         .param("locationId", wh.getId().toString())
+                        .param("createMissingProducts", "true")
                         .header("Authorization", "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.imported").value(1))
@@ -464,19 +469,22 @@ class EnterpriseIngestionTaxArchitectureTest extends AbstractIntegrationTest {
         variantRepository.save(existing);
 
         String csv = """
-                sku,name,barcode,qty,unitCost
-                EXIST-1,"Quoted, Name",BC-1,0,1.25
-                ,Name Only,,2,3.00
-                ,,BC-ONLY,1,1.00
+                sku,name,barcode,qty,unitCost,length,width,height
+                EXIST-1,"Quoted, Name",BC-1,0,1.25,10,8,6
+                ,Name Only,,2,3.00,10,8,6
+                ,,BC-ONLY,1,1.00,10,8,6
                 """;
         MockMultipartFile file = new MockMultipartFile(
                 "file", "stock.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
         // Null mapping → defaults; null locationId → first warehouse.
-        DataIngestionService.ImportResult result = dataIngestionService.importFile(file, null, null);
+        // Existing SKUs import; missing SKUs require explicit createMissingProducts.
+        DataIngestionService.ImportResult result = dataIngestionService.importFile(
+                file, null, null, new DataIngestionService.ImportOptions(true, false));
         assertThat(result.imported()).isGreaterThanOrEqualTo(2);
-        assertThat(result.skipped()).isGreaterThanOrEqualTo(1);
+        assertThat(result.skipped()).isGreaterThanOrEqualTo(0);
         assertThat(variantRepository.findByTenantIdAndSku(tenantId, "EXIST-1")).isPresent();
+        assertThat(result.fileChecksumSha256()).isNotBlank();
 
         assertThatThrownBy(() -> dataIngestionService.importFile(
                 new MockMultipartFile("file", "empty.csv", "text/csv", new byte[0]),

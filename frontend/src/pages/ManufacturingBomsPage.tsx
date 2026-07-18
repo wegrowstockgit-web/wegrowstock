@@ -5,7 +5,6 @@ import { apiClient } from '@/api/client';
 import type { Bom, BomLine, PaginatedResponse, ProductVariant } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
@@ -19,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { cn } from '@/lib/utils';
 
@@ -336,29 +336,8 @@ export function ManufacturingBomsPage() {
     retry: false,
   });
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <TableSkeleton rows={8} cols={4} />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={Factory}
-          title="Unable to load BOMs"
-          description="Check your connection and try again."
-          action={<Button onClick={() => refetch()}>Retry</Button>}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6">
+    <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Bill of Materials</h1>
@@ -379,27 +358,29 @@ export function ManufacturingBomsPage() {
           <div className="border-b border-border p-4">
             <CardHeader title="Active BOMs" description={`${boms.length} configured`} />
           </div>
-          {boms.length === 0 ? (
-            <div className="p-6">
-              <EmptyState
-                icon={Factory}
-                title="No BOMs yet"
-                description="Create a bill of materials to start production orders."
-                action={
-                  <Button onClick={() => setModalOpen(true)}>
-                    <Plus className="h-4 w-4" />
-                    Create BOM
-                  </Button>
-                }
+          <ListPageState
+            isLoading={isLoading}
+            isError={isError}
+            data={boms}
+            refetch={() => void refetch()}
+            emptyIcon={Factory}
+            emptyTitle="No BOMs yet"
+            emptyDescription="Create a bill of materials to start production orders."
+            emptyAction={
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Create BOM
+              </Button>
+            }
+          >
+            {(items) => (
+              <ActiveBomsTable
+                boms={items}
+                selectedBomId={selectedBomId}
+                onSelect={setSelectedBomId}
               />
-            </div>
-          ) : (
-            <ActiveBomsTable
-              boms={boms}
-              selectedBomId={selectedBomId}
-              onSelect={setSelectedBomId}
-            />
-          )}
+            )}
+          </ListPageState>
         </Card>
 
         <Card>

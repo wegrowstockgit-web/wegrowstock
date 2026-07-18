@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -112,8 +113,13 @@ public class InventoryController {
     @PostMapping("/receive")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
     public InventoryLedger receive(@Valid @RequestBody ReceiveRequest request) {
-        return inventoryService.receive(request.variantId(), request.locationId(), request.lotId(),
-                request.quantity(), request.referenceType(), request.referenceId());
+        Map<String, Object> metadata = null;
+        if (request.managerOverridePin() != null && !request.managerOverridePin().isBlank()) {
+            metadata = Map.of("managerOverridePin", request.managerOverridePin().trim());
+        }
+        return inventoryService.receive(request.variantId(), request.locationId(), request.lotId(), null,
+                request.quantity(), null, request.referenceType(), request.referenceId(),
+                null, null, metadata);
     }
 
     @PostMapping("/adjust")
@@ -127,13 +133,15 @@ public class InventoryController {
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
     public UUID transfer(@Valid @RequestBody TransferRequest request) {
         return inventoryService.transfer(request.variantId(), request.fromLocationId(), request.toLocationId(),
-                request.lotId(), request.quantity());
+                request.lotId(), request.quantity(), request.managerOverridePin());
     }
 
     @GetMapping("/ledger")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
-    public List<InventoryLedger> ledger(@RequestParam(defaultValue = "50") int limit) {
-        return inventoryService.listRecentLedger(limit);
+    public List<InventoryLedger> ledger(
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(required = false) UUID variantId) {
+        return inventoryService.listRecentLedger(limit, variantId);
     }
 
     @PostMapping("/ledger/{ledgerId}/reverse")
@@ -177,7 +185,8 @@ public class InventoryController {
             UUID lotId,
             @NotNull BigDecimal quantity,
             String referenceType,
-            UUID referenceId
+            UUID referenceId,
+            String managerOverridePin
     ) {
     }
 
@@ -195,7 +204,8 @@ public class InventoryController {
             @NotNull UUID fromLocationId,
             @NotNull UUID toLocationId,
             UUID lotId,
-            @NotNull BigDecimal quantity
+            @NotNull BigDecimal quantity,
+            String managerOverridePin
     ) {
     }
 }

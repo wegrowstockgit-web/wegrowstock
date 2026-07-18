@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Link2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Link2, RefreshCw } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { StripeBillingStatus, TenantEmailDomain } from '@/api/types';
+import { SettingsSubpageShell } from '@/components/layout/SettingsSubpageShell';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { CarrierCredentials } from '@/features/settings/CarrierCredentials';
 import { LiveConnectionBadge } from '@/features/settings/LiveConnectionBadge';
@@ -40,14 +43,24 @@ export function BillingSettingsPage() {
   const [error, setError] = useState('');
   const [domainName, setDomainName] = useState('');
 
-  const { data: stripeStatus, refetch: refetchStripe } = useQuery({
+  const {
+    data: stripeStatus,
+    isLoading: stripeLoading,
+    isError: stripeError,
+    refetch: refetchStripe,
+  } = useQuery({
     queryKey: ['billing', 'stripe-status'],
     queryFn: async () =>
       (await apiClient.get<StripeBillingStatus>('/api/v1/billing/stripe/status')).data,
     retry: false,
   });
 
-  const { data: emailDomains = [] } = useQuery({
+  const {
+    data: emailDomains = [],
+    isLoading: domainsLoading,
+    isError: domainsError,
+    refetch: refetchDomains,
+  } = useQuery({
     queryKey: ['email-domains'],
     queryFn: async () =>
       (await apiClient.get<TenantEmailDomain[]>('/api/v1/settings/email-domains')).data,
@@ -97,7 +110,8 @@ export function BillingSettingsPage() {
     stripeStatus?.onboardingStatus === 'ACTIVE' || stripeStatus?.onboardingStatus === 'complete';
 
   return (
-    <div className="space-y-6 p-6" data-testid="billing-settings-page">
+    <SettingsSubpageShell testId="billing-settings-page">
+    <div className="space-y-6 p-6">
       <div>
         <Link
           to="/settings"
@@ -114,6 +128,26 @@ export function BillingSettingsPage() {
 
       <Card>
         <CardHeader title="Billing & payments" description="Stripe Connect and platform fees" />
+        {stripeLoading && (
+          <div data-testid="list-page-loading" className="mb-4">
+            <TableSkeleton rows={2} cols={2} />
+          </div>
+        )}
+        {stripeError && !stripeLoading && (
+          <div className="mb-4" data-testid="list-page-error">
+            <EmptyState
+              icon={AlertCircle}
+              title="Unable to load Stripe status"
+              description="Check your connection and try again."
+              action={
+                <Button onClick={() => void refetchStripe()} data-testid="list-page-retry">
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              }
+            />
+          </div>
+        )}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {statusChip(stripeStatus?.onboardingStatus ?? 'NOT_CONNECTED')}
           {stripeLive && <LiveConnectionBadge />}
@@ -172,9 +206,31 @@ export function BillingSettingsPage() {
             </Button>
           </div>
         </form>
-        {emailDomains.length === 0 ? (
-          <p className="text-sm text-text-muted">No custom domains registered.</p>
-        ) : (
+        {domainsLoading && (
+          <div data-testid="list-page-loading" className="mb-4">
+            <TableSkeleton rows={2} cols={3} />
+          </div>
+        )}
+        {domainsError && !domainsLoading && (
+          <div className="mb-4" data-testid="list-page-error">
+            <EmptyState
+              icon={AlertCircle}
+              title="Unable to load email domains"
+              description="Check your connection and try again."
+              action={
+                <Button onClick={() => void refetchDomains()} data-testid="list-page-retry">
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              }
+            />
+          </div>
+        )}
+        {!domainsLoading && !domainsError && emailDomains.length === 0 ? (
+          <p className="text-sm text-text-muted" data-testid="list-page-empty">
+            No custom domains registered.
+          </p>
+        ) : !domainsLoading && !domainsError ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -204,8 +260,9 @@ export function BillingSettingsPage() {
               ))}
             </TableBody>
           </Table>
-        )}
+        ) : null}
       </Card>
     </div>
+    </SettingsSubpageShell>
   );
 }

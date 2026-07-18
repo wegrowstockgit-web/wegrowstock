@@ -5,7 +5,6 @@ import { apiClient } from '@/api/client';
 import type { PendingVariance, PriorityAudit } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { TableSkeleton } from '@/components/ui/Skeleton';
 import {
   Table,
   TableBody,
@@ -14,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { CycleCountScanner } from '@/features/fulfillment/CycleCountScanner';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
@@ -174,7 +174,13 @@ export function CycleCountsPage() {
   const [activeCountId, setActiveCountId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const { data: audits = [], isLoading } = useQuery({
+  const {
+    data: audits = [],
+    isLoading,
+    isError: auditsError,
+    error: auditsErr,
+    refetch: refetchAudits,
+  } = useQuery({
     queryKey: ['cycle-counts', 'priority-audits'],
     queryFn: async () => {
       const res = await apiClient.get<PriorityAudit[]>('/api/v1/cycle-counts/priority-audits');
@@ -183,7 +189,13 @@ export function CycleCountsPage() {
     retry: false,
   });
 
-  const { data: pending = [], isLoading: pendingLoading } = useQuery({
+  const {
+    data: pending = [],
+    isLoading: pendingLoading,
+    isError: pendingError,
+    error: pendingErr,
+    refetch: refetchPending,
+  } = useQuery({
     queryKey: ['cycle-counts', 'pending-variances'],
     queryFn: async () => {
       const res = await apiClient.get<PendingVariance[]>('/api/v1/cycle-counts/pending-variances');
@@ -249,20 +261,25 @@ export function CycleCountsPage() {
             title="Pending Variances"
             description="Financial impact above the auto-adjust threshold — manager review required"
           />
-          {pendingLoading ? (
-            <TableSkeleton rows={3} cols={6} />
-          ) : pending.length === 0 ? (
-            <p className="py-8 text-center text-sm text-text-muted" data-testid="pending-variances-empty">
-              No variances awaiting review.
-            </p>
-          ) : (
-            <PendingVariancesTable
-              rows={pending}
-              busyId={busyId}
-              onApprove={(id) => approve.mutate(id)}
-              onRecount={(id) => recount.mutate(id)}
-            />
-          )}
+          <ListPageState
+            isLoading={pendingLoading}
+            isError={pendingError}
+            error={pendingErr}
+            data={pending}
+            refetch={() => void refetchPending()}
+            emptyTitle="No variances awaiting review"
+            emptyDescription="Financial variances above the auto-adjust threshold will show here."
+            emptyTestId="pending-variances-empty"
+          >
+            {(rows) => (
+              <PendingVariancesTable
+                rows={rows}
+                busyId={busyId}
+                onApprove={(id) => approve.mutate(id)}
+                onRecount={(id) => recount.mutate(id)}
+              />
+            )}
+          </ListPageState>
         </Card>
       )}
 
@@ -271,13 +288,18 @@ export function CycleCountsPage() {
           title="Priority audits"
           description="Bins flagged by velocity or adjustment patterns — count these first"
         />
-        {isLoading ? (
-          <TableSkeleton rows={4} cols={4} />
-        ) : audits.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">No priority audits right now.</p>
-        ) : (
-          <PriorityAuditsTable audits={audits} onOpen={setActiveCountId} />
-        )}
+        <ListPageState
+          isLoading={isLoading}
+          isError={auditsError}
+          error={auditsErr}
+          data={audits}
+          refetch={() => void refetchAudits()}
+          emptyIcon={ClipboardList}
+          emptyTitle="No priority audits right now"
+          emptyDescription="Bins flagged by velocity or adjustment patterns will appear here."
+        >
+          {(rows) => <PriorityAuditsTable audits={rows} onOpen={setActiveCountId} />}
+        </ListPageState>
       </Card>
     </div>
   );

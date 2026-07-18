@@ -1,4 +1,4 @@
-import { forwardRef, type SelectHTMLAttributes } from 'react';
+import { forwardRef, useId, type SelectHTMLAttributes } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -7,9 +7,15 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   error?: string;
 }
 
+function slugify(label: string): string {
+  return label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+}
+
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, error, id, children, ...props }, ref) => {
-    const selectId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
+  ({ className, label, error, id, name, children, ...props }, ref) => {
+    const reactId = useId();
+    const selectId = id ?? (label ? `${reactId}-${slugify(label)}` : reactId);
+    const selectName = name ?? (id ? id : label ? slugify(label) : undefined);
 
     return (
       <div className="flex flex-col gap-1.5">
@@ -21,14 +27,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         <div className="relative">
           <select
             ref={ref}
+            {...props}
             id={selectId}
+            name={selectName}
             className={cn(
               'h-10 w-full appearance-none rounded-md border border-border bg-surface-raised px-3 pr-9 text-sm text-text',
               'focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
               error && 'border-danger focus:border-danger focus:ring-danger/20',
-              className
+              className,
             )}
-            {...props}
           >
             {children}
           </select>
@@ -37,7 +44,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         {error && <p className="text-xs text-danger">{error}</p>}
       </div>
     );
-  }
+  },
 );
 
 Select.displayName = 'Select';

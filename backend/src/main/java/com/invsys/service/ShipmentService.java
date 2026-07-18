@@ -196,8 +196,10 @@ public class ShipmentService {
         SalesOrder order = salesOrderRepository.findById(salesOrderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
 
+        List<CartonizationEngine.LineItem> lineItems = buildLineItems(salesOrderId);
+        boolean requiresDgDocs = orderContainsHazmat(salesOrderId);
         CartonizationEngine.CartonizationResult pack =
-                cartonizationEngine.selectCarton(buildLineItems(salesOrderId), loadCartons());
+                cartonizationEngine.selectCarton(lineItems, loadCartons());
 
         BigDecimal billable = pack.billableWeightLb();
         if (scaleWeightLb != null && scaleWeightLb.signum() > 0) {
@@ -230,6 +232,7 @@ public class ShipmentService {
                 ? label.labelFileType()
                 : labelOptions.normalizedFormat());
         shipment.setStatus("LABEL_CREATED");
+        shipment.setRequiresDgDocumentation(requiresDgDocs);
         shipment.setTotalWeight(billable);
         shipment.setPostageAmount(label.postageAmount());
         shipment.setCartonId(pack.carton().getId());
@@ -239,6 +242,20 @@ public class ShipmentService {
         shipment.setHeight(pack.heightIn());
         shipment.setVolumetricWeight(pack.volumetricWeightLb());
         return shipmentRepository.save(shipment);
+    }
+
+    private boolean orderContainsHazmat(UUID salesOrderId) {
+        for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(salesOrderId)) {
+            BigDecimal remaining = line.getQtyOrdered().subtract(line.getQtyShipped());
+            if (remaining.signum() <= 0) {
+                continue;
+            }
+            ProductVariant variant = productVariantRepository.findById(line.getVariantId()).orElse(null);
+            if (variant != null && variant.isHazmat()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<CartonizationEngine.LineItem> buildLineItems(UUID salesOrderId) {

@@ -23,7 +23,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -104,6 +106,18 @@ public class LocationController {
         location.setCoordX(request.coordX());
         location.setCoordY(request.coordY());
         location.setCoordZ(request.coordZ());
+        if (request.logisticsAddress() != null) {
+            location.setLogisticsAddress(new LinkedHashMap<>(request.logisticsAddress()));
+        }
+        location.setGrossSquareFootage(request.grossSquareFootage());
+        location.setOfficeAreaSquareFootage(request.officeAreaSquareFootage());
+        location.setClearHeightFeet(request.clearHeightFeet());
+        location.setTotalDockDoors(request.totalDockDoors());
+        BigDecimal floorLoad = request.floorLoadCapacityLbs() != null
+                ? request.floorLoadCapacityLbs()
+                : request.weightCapacityLimit();
+        location.setFloorLoadCapacityLbs(floorLoad);
+        location.setWeightCapacityLimit(floorLoad);
         return locationRepository.save(location);
     }
 
@@ -152,7 +166,14 @@ public class LocationController {
             String zoneBehavior,
             BigDecimal coordX,
             BigDecimal coordY,
-            BigDecimal coordZ
+            BigDecimal coordZ,
+            Map<String, Object> logisticsAddress,
+            BigDecimal grossSquareFootage,
+            BigDecimal officeAreaSquareFootage,
+            BigDecimal clearHeightFeet,
+            Integer totalDockDoors,
+            BigDecimal weightCapacityLimit,
+            BigDecimal floorLoadCapacityLbs
     ) {
     }
 

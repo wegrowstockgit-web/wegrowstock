@@ -16,11 +16,24 @@ public record VariantListItemResponse(
         boolean externalSyncEnabled,
         BigDecimal weight,
         String weightUnit,
+        BigDecimal length,
+        BigDecimal width,
+        BigDecimal height,
+        String dimUnit,
         UUID defaultSupplierId,
         int supplierLeadTimeDays,
         BigDecimal reorderPoint,
         BigDecimal reorderQty,
         String primaryMediaUrl,
-        boolean isLotTracked
+        boolean isLotTracked,
+        String hsTariffCode,
+        String countryOfOrigin,
+        boolean isHazmat,
+        Integer palletTie,
+        Integer palletHigh,
+        String storageTempZone,
+        boolean isFragile,
+        String abcClassification,
+        String lifecycleStatus
 ) {
 }

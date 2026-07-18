@@ -34,19 +34,25 @@ test.describe.serial('Journey 01: Onboarding & RBAC boundary', () => {
       await expect(admin.page.getByRole('button', { name: 'Invite user' })).toBeVisible();
       await admin.page.getByRole('button', { name: 'Invite user' }).click();
       await admin.page.getByLabel('Email').fill(pickerEmail);
-      await admin.page.locator('#role').selectOption('PICKER');
-      await admin.page.getByRole('button', { name: 'Send invitation' }).click();
+      await admin.page.locator('#invite-role').selectOption('PICKER');
+      await admin.page.getByTestId('invite-submit').click();
 
       const inviteRes = await inviteWait;
       const inviteBody = (await inviteRes.json()) as {
         id: string;
         email: string;
+        role: string;
         token: string;
         tokenHash: string;
       };
       expect(inviteBody.token).toBeTruthy();
       expect(inviteBody.tokenHash).toBeTruthy();
       expect(inviteBody.email).toBe(pickerEmail);
+      expect(inviteBody.role).toBe('PICKER');
+      await expect(admin.page.getByTestId(`pending-invite-${pickerEmail}`)).toBeVisible({
+        timeout: 15_000,
+      });
+
 
       writeJourneyState({
         pickerEmail,

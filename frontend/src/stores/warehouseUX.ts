@@ -24,9 +24,11 @@ interface WarehouseUXState {
   commitMisScan: () => Promise<void>;
   clearMisScan: () => void;
 
-  /** Closest interleaved floor task after a successful pick / putaway. */
+  /** Closest interleaved floor task after a successful pick / putaway / receive. */
   nextBestAction: NextBestAction | null;
   nextBestActionLoading: boolean;
+  /** True when a directed next action was just refreshed (UI pulse / auto-surface). */
+  nextBestActionFresh: boolean;
   fetchNextBestAction: (currentLocationId: string) => Promise<NextBestAction | null>;
   clearNextBestAction: () => void;
 }
@@ -44,6 +46,7 @@ export const useWarehouseUXStore = create<WarehouseUXState>((set, get) => ({
   pendingMisScan: null,
   nextBestAction: null,
   nextBestActionLoading: false,
+  nextBestActionFresh: false,
 
   bufferMisScan: ({ barcode, message, mutation, durationMs = 5000 }) => {
     clearCommitTimer();
@@ -81,26 +84,27 @@ export const useWarehouseUXStore = create<WarehouseUXState>((set, get) => ({
 
   fetchNextBestAction: async (currentLocationId: string) => {
     if (!currentLocationId || !navigator.onLine) {
-      set({ nextBestAction: null, nextBestActionLoading: false });
+      set({ nextBestAction: null, nextBestActionLoading: false, nextBestActionFresh: false });
       return null;
     }
-    set({ nextBestActionLoading: true });
+    set({ nextBestActionLoading: true, nextBestActionFresh: false });
     try {
       const res = await apiClient.get<NextBestAction>('/api/v1/tasks/next-best-action', {
         params: { currentLocationId },
       });
       const action = res.data;
       if (!action?.taskType) {
-        set({ nextBestAction: null, nextBestActionLoading: false });
+        set({ nextBestAction: null, nextBestActionLoading: false, nextBestActionFresh: false });
         return null;
       }
-      set({ nextBestAction: action, nextBestActionLoading: false });
+      // Surface immediately after scan completion to kill deadhead travel.
+      set({ nextBestAction: action, nextBestActionLoading: false, nextBestActionFresh: true });
       return action;
     } catch {
-      set({ nextBestAction: null, nextBestActionLoading: false });
+      set({ nextBestAction: null, nextBestActionLoading: false, nextBestActionFresh: false });
       return null;
     }
   },
 
-  clearNextBestAction: () => set({ nextBestAction: null }),
+  clearNextBestAction: () => set({ nextBestAction: null, nextBestActionFresh: false }),
 }));

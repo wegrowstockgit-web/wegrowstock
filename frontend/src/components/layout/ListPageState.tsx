@@ -16,6 +16,8 @@ interface ListPageStateProps<T> {
   emptyTitle: string;
   emptyDescription: string;
   emptyAction?: ReactNode;
+  /** Optional test id on the empty-state wrapper (defaults to list-page-empty). */
+  emptyTestId?: string;
   children: (items: T[]) => ReactNode;
 }
 
@@ -29,11 +31,12 @@ export function ListPageState<T>({
   emptyTitle,
   emptyDescription,
   emptyAction,
+  emptyTestId = 'list-page-empty',
   children,
 }: ListPageStateProps<T>) {
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-6" data-testid="list-page-loading">
         <TableSkeleton rows={8} cols={5} />
       </div>
     );
@@ -41,13 +44,13 @@ export function ListPageState<T>({
 
   if (isError) {
     return (
-      <div className="p-6">
+      <div className="p-6" data-testid="list-page-error">
         <EmptyState
           icon={AlertCircle}
           title="Something went wrong"
           description={error?.message ?? 'Failed to load data. Please try again.'}
           action={
-            <Button onClick={() => refetch()}>
+            <Button onClick={() => refetch()} data-testid="list-page-retry">
               <RefreshCw className="h-4 w-4" />
               Retry
             </Button>
@@ -59,7 +62,7 @@ export function ListPageState<T>({
 
   if (!data || data.length === 0) {
     return (
-      <div className="p-6">
+      <div className="p-6" data-testid={emptyTestId}>
         <EmptyState
           icon={emptyIcon}
           title={emptyTitle}

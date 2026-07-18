@@ -60,8 +60,46 @@ public class PurchaseOrderController {
         supplier.setTenantId(TenantContext.requireTenantId());
         supplier.setName(request.name());
         supplier.setContact(request.contact() != null ? request.contact() : Map.of());
-        supplier.setPaymentTerms(request.paymentTerms());
+        if (request.paymentTerms() != null && !request.paymentTerms().isBlank()) {
+            supplier.setPaymentTerms(normalizePaymentTerms(request.paymentTerms()));
+        }
+        supplier.setTaxId(request.taxId() != null ? request.taxId() : request.businessRegistration());
+        supplier.setBusinessRegistration(request.businessRegistration());
+        if (request.bankAccountIban() != null && !request.bankAccountIban().isBlank()) {
+            supplier.setBankAccountIban(maskSecret(request.bankAccountIban().trim()));
+        }
+        if (request.routingNumber() != null && !request.routingNumber().isBlank()) {
+            supplier.setBankRoutingNumber(maskSecret(request.routingNumber().trim()));
+        }
+        supplier.setDefaultLeadTimeDays(request.defaultLeadTimeDays());
+        supplier.setMinimumOrderQuantityValue(request.minimumOrderQuantityValue());
+        supplier.setSupplierRating(request.supplierRating());
+        if (request.defaultCurrency() != null && !request.defaultCurrency().isBlank()) {
+            supplier.setDefaultCurrency(request.defaultCurrency().trim().toUpperCase());
+        }
         return supplierRepository.save(supplier);
+    }
+
+    private static String normalizePaymentTerms(String raw) {
+        String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_');
+        return switch (key) {
+            case "NET30", "NET_30", "N30" -> "NET30";
+            case "NET60", "NET_60", "N60" -> "NET60";
+            case "DUE_ON_RECEIPT", "DUEONRECEIPT", "COD", "DUE" -> "DUE_ON_RECEIPT";
+            default -> throw new com.invsys.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "VALIDATION",
+                    "paymentTerms must be NET30, NET60, or DUE_ON_RECEIPT");
+        };
+    }
+
+    /** Persist only a masked form — never store full bank credentials in clear text. */
+    private static String maskSecret(String value) {
+        String compact = value.replaceAll("\\s+", "");
+        if (compact.length() <= 4) {
+            return "****";
+        }
+        return "****" + compact.substring(compact.length() - 4);
     }
 
     @GetMapping("/purchase-orders")
@@ -156,7 +194,19 @@ public class PurchaseOrderController {
                 lineId, request.locationId(), request.lotId(), request.quantity(), request.landedCostSurcharge());
     }
 
-    public record CreateSupplierRequest(@NotBlank String name, Map<String, Object> contact, String paymentTerms) {
+    public record CreateSupplierRequest(
+            @NotBlank String name,
+            Map<String, Object> contact,
+            String paymentTerms,
+            String taxId,
+            String businessRegistration,
+            String bankAccountIban,
+            String routingNumber,
+            Integer defaultLeadTimeDays,
+            BigDecimal minimumOrderQuantityValue,
+            BigDecimal supplierRating,
+            String defaultCurrency
+    ) {
     }
 
     public record CreatePurchaseOrderRequest(

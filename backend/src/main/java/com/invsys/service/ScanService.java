@@ -1,6 +1,7 @@
 package com.invsys.service;
 
 import com.invsys.api.dto.ScanLookupResponse;
+import com.invsys.api.dto.SerialScanResponse;
 import com.invsys.common.ApiException;
 import com.invsys.domain.InventoryLevel;
 import com.invsys.domain.Location;
@@ -24,6 +25,7 @@ import java.util.UUID;
 /**
  * Barcode scan hot-path. Variant resolution uses a single jOOQ fetch with a
  * LEFT JOIN to primary {@code product_media} for floor thumbnail rendering.
+ * DSCSA: when GTIN miss but AI 21 serial is present, fall back to serial_numbers.
  */
 @Service
 public class ScanService {
@@ -32,15 +34,18 @@ public class ScanService {
     private final ProductVariantRepository variantRepository;
     private final InventoryLevelRepository levelRepository;
     private final LocationRepository locationRepository;
+    private final SerialScanQueryService serialScanQueryService;
 
     public ScanService(DSLContext dsl,
                        ProductVariantRepository variantRepository,
                        InventoryLevelRepository levelRepository,
-                       LocationRepository locationRepository) {
+                       LocationRepository locationRepository,
+                       SerialScanQueryService serialScanQueryService) {
         this.dsl = dsl;
         this.variantRepository = variantRepository;
         this.levelRepository = levelRepository;
         this.locationRepository = locationRepository;
+        this.serialScanQueryService = serialScanQueryService;
     }
 
     @Transactional(readOnly = true)
@@ -49,11 +54,21 @@ public class ScanService {
         Optional<Gs1BarcodeParser.Gs1Elements> gs1 = Gs1BarcodeParser.parse(barcode);
         String lookupKey = gs1.map(e -> e.gtin() != null ? e.gtin() : barcode.trim()).orElse(barcode.trim());
 
-        ScanHit hit = resolveVariantWithMedia(tenantId, lookupKey)
-                .or(() -> resolveVariantWithMedia(tenantId, barcode.trim()))
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Barcode not found"));
+        Optional<ScanHit> hit = resolveVariantWithMedia(tenantId, lookupKey)
+                .or(() -> resolveVariantWithMedia(tenantId, barcode.trim()));
 
-        ProductVariant variant = variantRepository.findById(hit.variantId())
+        // DSCSA package-level identity: resolve by AI 21 when GTIN catalog miss
+        if (hit.isEmpty() && gs1.isPresent() && gs1.get().serial() != null && !gs1.get().serial().isBlank()) {
+            SerialScanResponse serialHit = serialScanQueryService.lookup(gs1.get().serial());
+            if (serialHit != null && serialHit.variantId() != null) {
+                hit = Optional.of(new ScanHit(serialHit.variantId(), primaryMediaUrl(serialHit.variantId())));
+            }
+        }
+
+        ScanHit resolved = hit.orElseThrow(
+                () -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Barcode not found"));
+
+        ProductVariant variant = variantRepository.findById(resolved.variantId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Barcode not found"));
 
         List<InventoryLevel> levels = levelRepository.findByTenantIdAndVariantId(tenantId, variant.getId());
@@ -71,11 +86,11 @@ public class ScanService {
                     elements.serial(),
                     elements.variableQuantity(),
                     elements.all(),
-                    hit.primaryMediaUrl());
+                    resolved.primaryMediaUrl());
         }
         return ScanLookupResponse.of(
                 variant, levels, variant.getDefaultLocationId(), path,
-                null, null, null, null, null, Map.of(), hit.primaryMediaUrl());
+                null, null, null, null, null, Map.of(), resolved.primaryMediaUrl());
     }
 
     /**

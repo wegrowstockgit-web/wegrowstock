@@ -6,6 +6,17 @@ export interface User {
   warehouseIds?: string[];
   avatarUrl?: string | null;
   tenantId?: string;
+  department?: string | null;
+  corporateDepartment?: string | null;
+  timezonePreference?: string | null;
+  localeLanguage?: string | null;
+  assignedWarehouseId?: string | null;
+  mfaEnabled?: boolean;
+  shiftSchedule?: string | null;
+  shiftScheduleType?: string | null;
+  phone?: string | null;
+  addressLine1?: string | null;
+  uiDensityPreference?: string | null;
 }
 
 export interface LoginRequest {
@@ -48,6 +59,14 @@ export interface Warehouse {
   code: string;
 }
 
+export interface LogisticsAddress {
+  street?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
 export interface TenantLocation {
   id: string;
   parentLocationId?: string;
@@ -61,6 +80,14 @@ export interface TenantLocation {
   coordX?: number | null;
   coordY?: number | null;
   coordZ?: number | null;
+  logisticsAddress?: LogisticsAddress;
+  grossSquareFootage?: number | null;
+  officeAreaSquareFootage?: number | null;
+  clearHeightFeet?: number | null;
+  totalDockDoors?: number | null;
+  weightCapacityLimit?: number | null;
+  /** Industry-standard alias for structural floor load (synced with weightCapacityLimit). */
+  floorLoadCapacityLbs?: number | null;
 }
 
 export interface TenantUser {
@@ -69,6 +96,15 @@ export interface TenantUser {
   displayName: string;
   status: string;
   roles: string[];
+  department?: string | null;
+  corporateDepartment?: string | null;
+  timezonePreference?: string | null;
+  localeLanguage?: string | null;
+  assignedWarehouseId?: string | null;
+  mfaEnabled?: boolean;
+  shiftSchedule?: string | null;
+  shiftScheduleType?: string | null;
+  warehouseIds?: string[];
 }
 
 export type TenantSettingsMap = Record<string, unknown>;
@@ -100,6 +136,15 @@ export interface ProductVariant {
   reorderPoint?: number;
   reorderQty?: number;
   primaryMediaUrl?: string | null;
+  hsTariffCode?: string | null;
+  countryOfOrigin?: string | null;
+  isHazmat?: boolean;
+  palletTie?: number | null;
+  palletHigh?: number | null;
+  storageTempZone?: string;
+  isFragile?: boolean;
+  abcClassification?: string;
+  lifecycleStatus?: string;
 }
 
 export interface VariantUomConversion {
@@ -672,6 +717,8 @@ export interface NextBestAction {
   instruction: string | null;
   toteIdentifier?: string | null;
   summary: string;
+  /** Spatial / hierarchical travel score from TaskOrchestratorService. */
+  travelScore?: number | null;
 }
 
 export interface MoveLpnResult {
@@ -799,6 +846,14 @@ export interface Customer {
   id: string;
   name: string;
   email?: string;
+  taxId?: string | null;
+  paymentTerms?: 'NET30' | 'NET60' | 'DUE_ON_RECEIPT' | string | null;
+  creditLimit?: number | null;
+  currencyPreference?: string | null;
+  defaultCurrency?: string | null;
+  customerStatus?: 'ACTIVE' | 'HOLD' | 'PROSPECT' | string;
+  billingAddress?: LogisticsAddress;
+  shippingAddress?: LogisticsAddress;
 }
 
 export interface CustomerBillingSla {
@@ -834,6 +889,15 @@ export interface Supplier {
   id: string;
   name: string;
   contactEmail?: string;
+  paymentTerms?: 'NET30' | 'NET60' | 'DUE_ON_RECEIPT' | string | null;
+  taxId?: string | null;
+  businessRegistration?: string | null;
+  bankAccountIban?: string | null;
+  bankRoutingNumber?: string | null;
+  defaultLeadTimeDays?: number | null;
+  minimumOrderQuantityValue?: number | null;
+  supplierRating?: number | null;
+  defaultCurrency?: string | null;
 }
 
 export interface ApiError {

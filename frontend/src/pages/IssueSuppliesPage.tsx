@@ -7,6 +7,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import { Card } from '@/components/ui/Card';
@@ -20,12 +21,19 @@ export function IssueSuppliesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmedSkus, setConfirmedSkus] = useState<Set<string>>(new Set());
 
-  const { data: requisitions = [], isLoading } = useQuery({
+  const {
+    data: requisitions = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['internal-requisitions', 'APPROVED'],
     queryFn: async () =>
       (await apiClient.get<InternalRequisition[]>('/api/v1/internal-requisitions', {
         params: { status: 'APPROVED' },
       })).data,
+    retry: false,
   });
 
   const selected = useMemo(
@@ -96,26 +104,37 @@ export function IssueSuppliesPage() {
       {!selected ? (
         <div className="space-y-3">
           <p className="text-sm font-medium text-text-muted">Approved requisitions</p>
-          {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-          {!isLoading && requisitions.length === 0 && (
-            <p className="text-sm text-text-muted">No approved requisitions</p>
-          )}
-          {requisitions.map((req) => (
-            <button
-              key={req.id}
-              type="button"
-              onClick={() => {
-                setSelectedId(req.id);
-                setConfirmedSkus(new Set());
-              }}
-              className="w-full rounded-xl border border-border bg-surface-raised p-4 text-left transition-colors hover:border-accent"
-            >
-              <p className="font-mono text-lg font-bold text-text">{req.requisitionNumber}</p>
-              <p className="text-sm text-text-muted">
-                {req.costCenterCode ?? 'Cost center'} · {req.lines?.length ?? 0} lines
-              </p>
-            </button>
-          ))}
+          <ListPageState
+            isLoading={isLoading}
+            isError={isError}
+            error={error}
+            data={requisitions}
+            refetch={() => void refetch()}
+            emptyIcon={PackageCheck}
+            emptyTitle="No approved requisitions"
+            emptyDescription="Approved internal requisitions will appear here for floor issue."
+          >
+            {(items) => (
+              <div className="space-y-3">
+                {items.map((req) => (
+                  <button
+                    key={req.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedId(req.id);
+                      setConfirmedSkus(new Set());
+                    }}
+                    className="min-h-14 w-full rounded-xl border border-border bg-surface-raised p-4 text-left transition-colors hover:border-accent"
+                  >
+                    <p className="font-mono text-lg font-bold text-text">{req.requisitionNumber}</p>
+                    <p className="text-sm text-text-muted">
+                      {req.costCenterCode ?? 'Cost center'} · {req.lines?.length ?? 0} lines
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ListPageState>
         </div>
       ) : (
         <>
