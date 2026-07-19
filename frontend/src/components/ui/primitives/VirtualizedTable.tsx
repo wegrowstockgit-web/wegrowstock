@@ -22,6 +22,8 @@ export interface VirtualizedColumnDef<T> {
   /**
    * When true, this column absorbs leftover viewport width so the grid
    * fills the screen instead of leaving a blank strip on the right.
+   * Columns never shrink below {@link width} — extra fields expand the
+   * table and the scrollport gains a horizontal track instead.
    */
   flexGrow?: boolean;
   align?: 'left' | 'right' | 'center';
@@ -315,29 +317,31 @@ export function VirtualizedTable<T>({
     onRowClick?.(row);
   };
 
+  const visibleColumnIds = orderedVisible.map((c) => c.id).join(',');
+
   return (
     <div
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden max-w-full containment-layout',
+        'flex min-h-0 max-w-full flex-1 flex-col overflow-hidden containment-layout',
         'bg-background',
         className,
       )}
       data-testid="virtualized-table"
     >
-      {/* Sole scrollport — page/window stays static; table stretches to viewport width */}
+      {/* Sole scrollport — horizontal track when columns exceed the viewport */}
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-auto overscroll-contain"
+        className="w-full min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain scrollbar-thin"
         data-testid="virtualized-table-scrollport"
       >
         <table
           className={cn(
-            'w-full border-separate border-spacing-0 table-fixed',
+            'min-w-full border-separate border-spacing-0 table-auto',
             densityStyles.typography,
           )}
-          style={{ width: tableWidth, minWidth: '100%' }}
+          style={{ width: tableWidth, minWidth: Math.max(tableWidth, minTableWidth) }}
           data-testid="virtualized-table-grid"
-          data-visible-columns={orderedVisible.map((c) => c.id).join(',')}
+          data-visible-columns={visibleColumnIds}
           data-table-width={String(tableWidth)}
         >
           <thead className="table-head-accent">
@@ -363,7 +367,7 @@ export function VirtualizedTable<T>({
                       active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : canSort ? 'none' : undefined
                     }
                     className={cn(
-                      'table-head-cell sticky top-0 z-40 overflow-hidden whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
+                      'table-head-cell sticky top-0 z-40 whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
                       densityStyles.cell,
                       alignClass(col.align),
                       isPinEdge && PIN_EDGE,
@@ -371,8 +375,7 @@ export function VirtualizedTable<T>({
                     )}
                     style={{
                       width: colW,
-                      minWidth: colW,
-                      maxWidth: colW,
+                      minWidth: col.width,
                       ...(pinned ? stickyStyle(pinOffsets.get(col.id)!, true) : undefined),
                     }}
                   >
@@ -464,8 +467,10 @@ export function VirtualizedTable<T>({
                     return (
                       <td
                         key={col.id}
+                        data-column-id={col.id}
+                        data-pinned={pinned ? 'true' : undefined}
                         className={cn(
-                          'align-middle overflow-hidden',
+                          'align-middle whitespace-nowrap',
                           densityStyles.cell,
                           alignClass(col.align),
                           pinned && rowBg,
@@ -474,14 +479,13 @@ export function VirtualizedTable<T>({
                         )}
                         style={{
                           width: colW,
-                          minWidth: colW,
-                          maxWidth: colW,
+                          minWidth: col.width,
                           ...(pinned
                             ? stickyStyle(pinOffsets.get(col.id)!, false)
                             : undefined),
                         }}
                       >
-                        <div className="min-w-0 max-w-full overflow-hidden">
+                        <div className="min-w-0 max-w-full">
                           {col.cell(row, virtualRow.index)}
                         </div>
                       </td>

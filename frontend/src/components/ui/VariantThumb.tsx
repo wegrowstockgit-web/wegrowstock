@@ -44,7 +44,7 @@ export function VariantThumb({
   const thumb = (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-overlay text-text-muted',
+        'inline-flex aspect-square shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-overlay text-text-muted',
         'ring-1 ring-border/60',
         sizeClass[size],
         canPreview && 'transition-opacity hover:opacity-90',
@@ -56,7 +56,7 @@ export function VariantThumb({
         <AuthenticatedImage
           src={url}
           alt=""
-          className="h-full w-full object-cover"
+          className="aspect-square h-full w-full rounded-md object-contain"
           onError={() => setFailed(true)}
         />
       ) : (
@@ -72,7 +72,7 @@ export function VariantThumb({
           type="button"
           data-testid="variant-thumb-preview"
           className={cn(
-            'inline-flex items-center justify-center rounded-md p-1.5',
+            'inline-flex h-full w-full flex-shrink-0 items-center justify-center rounded-md p-0',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
           )}
           aria-label={`View larger image: ${previewCaption ?? alt}`}

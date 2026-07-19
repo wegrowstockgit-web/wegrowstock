@@ -19,10 +19,19 @@ import java.io.IOException;
  * filter guarantees {@link TenantContext#clear()} runs after every request — including
  * unhandled runtime exceptions, short-circuit responses, and transaction rollbacks —
  * so no historical tenant identity can contaminate the next request on the same carrier.
+ * <p>
+ * Async/SSE kickoff is special: the filter chain returns while the response stays open.
+ * Clearing here on that path wiped auth/tenant for the later timeout dispatch. Cleanup
+ * is deferred until the async dispatch completes (or the request never went async).
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class TenantIsolationFilter extends OncePerRequestFilter {
+
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -31,7 +40,13 @@ public class TenantIsolationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } finally {
             TenantContext.clear();
-            SecurityContextHolder.clearContext();
+            // On SSE/async kickoff, SecurityContextHolderFilter has already persisted the
+            // context for the concurrent request. Clearing the holder is fine (empty TL),
+            // but skip wiping after async start only if a later dispatch still needs the
+            // in-thread holder — Spring Security restores from the request attribute.
+            if (!(isAsyncStarted(request) && !isAsyncDispatch(request))) {
+                SecurityContextHolder.clearContext();
+            }
         }
     }
 }

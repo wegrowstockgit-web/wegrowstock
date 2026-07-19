@@ -23,11 +23,13 @@ test.describe.serial('Journey 04: Ownership audit trail', () => {
     try {
       await owner.page.goto('/reports/audit-log');
       await expect(owner.page.getByTestId('operations-console')).toBeVisible({ timeout: 20_000 });
-      await expect(owner.page.getByText('Recent audit trail')).toBeVisible();
+      await expect(owner.page.getByTestId('audit-log-table')).toBeVisible();
+      await expect(owner.page.getByText('Compliance audit log')).toBeVisible();
 
-      const auditRes = await owner.page.request.get('/api/v1/operations/audit');
+      const auditRes = await owner.page.request.get('/api/v1/audit/tenant?limit=50');
       expect(auditRes.ok()).toBeTruthy();
-      const rows = (await auditRes.json()) as AuditRow[];
+      const page = (await auditRes.json()) as { items: AuditRow[] };
+      const rows = page.items ?? [];
       expect(rows.length).toBeGreaterThan(0);
 
       // Diff payloads are JSON objects (state changes)
@@ -58,11 +60,12 @@ test.describe.serial('Journey 04: Ownership audit trail', () => {
         ).toBeTruthy();
       }
 
-      // UI table shows Action / Entity / Actor / Diff columns
+      // UI grid shows compliance columns
+      await expect(owner.page.getByRole('columnheader', { name: 'Timestamp' })).toBeVisible();
       await expect(owner.page.getByRole('columnheader', { name: 'Action' })).toBeVisible();
-      await expect(owner.page.getByRole('columnheader', { name: 'Entity' })).toBeVisible();
+      await expect(owner.page.getByRole('columnheader', { name: 'Entity Type' })).toBeVisible();
       await expect(owner.page.getByRole('columnheader', { name: 'Actor' })).toBeVisible();
-      await expect(owner.page.getByRole('columnheader', { name: 'Diff' })).toBeVisible();
+      await expect(owner.page.getByRole('columnheader', { name: 'Changes (Diff)' })).toBeVisible();
     } finally {
       await owner.close();
     }

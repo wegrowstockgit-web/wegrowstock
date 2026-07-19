@@ -3,11 +3,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PlacesAddressInput, type GeocodedAddress } from './PlacesAddressInput';
 
 export interface WarehouseFacilityFormProps {
-  /** Called after a successful create. */
   onSuccess?: () => void;
-  /** Optional cancel handler (modal). Omit on full-page route. */
   onCancel?: () => void;
   submitLabel?: string;
   autoFocus?: boolean;
@@ -30,6 +29,8 @@ export function WarehouseFacilityForm({
   const [state, setState] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('US');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
   const [grossSqFt, setGrossSqFt] = useState('');
   const [officeSqFt, setOfficeSqFt] = useState('');
   const [clearHeight, setClearHeight] = useState('');
@@ -37,8 +38,21 @@ export function WarehouseFacilityForm({
   const [weightLimit, setWeightLimit] = useState('');
   const [error, setError] = useState('');
 
+  const applyGeocode = (addr: GeocodedAddress) => {
+    setStreet(addr.street || street);
+    setCity(addr.city || city);
+    setState(addr.state || state);
+    setPostalCode(addr.postalCode || postalCode);
+    setCountry(addr.country || country);
+    setLatitude(String(addr.latitude));
+    setLongitude(String(addr.longitude));
+  };
+
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!latitude || !longitude) {
+        throw new Error('GEO_REQUIRED');
+      }
       await apiClient.post('/api/v1/locations', {
         type: 'WAREHOUSE',
         code,
@@ -51,6 +65,8 @@ export function WarehouseFacilityForm({
           postalCode: postalCode || undefined,
           country: country || undefined,
         },
+        latitude: Number(latitude),
+        longitude: Number(longitude),
         grossSquareFootage: grossSqFt ? Number(grossSqFt) : undefined,
         officeAreaSquareFootage: officeSqFt ? Number(officeSqFt) : undefined,
         clearHeightFeet: clearHeight ? Number(clearHeight) : undefined,
@@ -69,6 +85,8 @@ export function WarehouseFacilityForm({
       setState('');
       setPostalCode('');
       setCountry('US');
+      setLatitude('');
+      setLongitude('');
       setGrossSqFt('');
       setOfficeSqFt('');
       setClearHeight('');
@@ -76,7 +94,13 @@ export function WarehouseFacilityForm({
       setWeightLimit('');
       onSuccess?.();
     },
-    onError: () => setError('Could not create the warehouse. Check the fields and try again.'),
+    onError: (err: Error) => {
+      setError(
+        err.message === 'GEO_REQUIRED'
+          ? 'Geocode the address to capture latitude and longitude before saving.'
+          : 'Could not create the warehouse. Check the fields and try again.',
+      );
+    },
   });
 
   return (
@@ -107,6 +131,14 @@ export function WarehouseFacilityForm({
       </div>
       <fieldset className="space-y-3 rounded-md border border-border p-3">
         <legend className="px-1 text-sm font-medium text-text">Logistics address</legend>
+        <PlacesAddressInput
+          onResolved={applyGeocode}
+          street={street}
+          city={city}
+          state={state}
+          postalCode={postalCode}
+          country={country}
+        />
         <Input
           id="warehouse-logistics-street"
           name="logisticsStreet"
@@ -142,6 +174,28 @@ export function WarehouseFacilityForm({
             label="Country"
             value={country}
             onChange={(e) => setCountry(e.target.value)}
+          />
+          <Input
+            id="warehouse-latitude"
+            name="latitude"
+            label="Latitude"
+            type="number"
+            step="any"
+            value={latitude}
+            onChange={(e) => setLatitude(e.target.value)}
+            required
+            data-testid="warehouse-latitude"
+          />
+          <Input
+            id="warehouse-longitude"
+            name="longitude"
+            label="Longitude"
+            type="number"
+            step="any"
+            value={longitude}
+            onChange={(e) => setLongitude(e.target.value)}
+            required
+            data-testid="warehouse-longitude"
           />
         </div>
       </fieldset>

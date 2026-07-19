@@ -1,28 +1,25 @@
 package com.invsys.integration.outbox;
 
-import com.invsys.domain.Customer;
 import com.invsys.common.MdcSupport;
-import com.invsys.domain.IntegrationSyncLog;
-import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
-import com.invsys.domain.SalesOrderLine;
 import com.invsys.domain.WebhookEvent;
-import com.invsys.repository.CustomerRepository;
-import com.invsys.repository.IntegrationSyncLogRepository;
-import com.invsys.repository.ProductVariantRepository;
-import com.invsys.repository.SalesOrderLineRepository;
-import com.invsys.repository.SalesOrderRepository;
+import com.invsys.integration.channel.SyncDirection;
+import com.invsys.integration.channel.SyncEntityType;
+import com.invsys.integration.channel.SyncLogStatus;
+import com.invsys.integration.inbound.CanonicalInboundOrder;
+import com.invsys.integration.inbound.ShopifyOrderAdapter;
 import com.invsys.repository.WebhookEventRepository;
-import com.invsys.service.DocumentSequenceService;
-import com.invsys.service.SoftKitExplosionService;
+import com.invsys.service.IntegrationChannelService;
+import com.invsys.service.IntegrationSyncHistoryService;
+import com.invsys.service.SalesOrderService;
+import com.invsys.integration.channel.IntegrationChannelType;
 import com.invsys.tenancy.TenantContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,30 +27,24 @@ import java.util.UUID;
 public class ChannelOrderWebhookHandler {
 
     private final WebhookEventRepository webhookEventRepository;
-    private final SalesOrderRepository salesOrderRepository;
-    private final SalesOrderLineRepository salesOrderLineRepository;
-    private final ProductVariantRepository variantRepository;
-    private final SoftKitExplosionService softKitExplosionService;
-    private final CustomerRepository customerRepository;
-    private final IntegrationSyncLogRepository syncLogRepository;
-    private final DocumentSequenceService sequenceService;
+    private final ShopifyOrderAdapter shopifyOrderAdapter;
+    private final SalesOrderService salesOrderService;
+    private final ObjectMapper objectMapper;
+    private final IntegrationChannelService channelService;
+    private final IntegrationSyncHistoryService syncHistoryService;
 
     public ChannelOrderWebhookHandler(WebhookEventRepository webhookEventRepository,
-                                      SalesOrderRepository salesOrderRepository,
-                                      SalesOrderLineRepository salesOrderLineRepository,
-                                      ProductVariantRepository variantRepository,
-                                      SoftKitExplosionService softKitExplosionService,
-                                      CustomerRepository customerRepository,
-                                      IntegrationSyncLogRepository syncLogRepository,
-                                      DocumentSequenceService sequenceService) {
+                                      ShopifyOrderAdapter shopifyOrderAdapter,
+                                      SalesOrderService salesOrderService,
+                                      ObjectMapper objectMapper,
+                                      IntegrationChannelService channelService,
+                                      IntegrationSyncHistoryService syncHistoryService) {
         this.webhookEventRepository = webhookEventRepository;
-        this.salesOrderRepository = salesOrderRepository;
-        this.salesOrderLineRepository = salesOrderLineRepository;
-        this.variantRepository = variantRepository;
-        this.softKitExplosionService = softKitExplosionService;
-        this.customerRepository = customerRepository;
-        this.syncLogRepository = syncLogRepository;
-        this.sequenceService = sequenceService;
+        this.shopifyOrderAdapter = shopifyOrderAdapter;
+        this.salesOrderService = salesOrderService;
+        this.objectMapper = objectMapper;
+        this.channelService = channelService;
+        this.syncHistoryService = syncHistoryService;
     }
 
     @Async("virtualThreadExecutor")
@@ -80,6 +71,19 @@ public class ChannelOrderWebhookHandler {
                     } catch (Exception e) {
                         event.setError(e.getMessage());
                         webhookEventRepository.save(event);
+                        try {
+                            syncHistoryService.recordIsolated(
+                                    channelService.findActive(IntegrationChannelType.SHOPIFY).orElse(null),
+                                    "SHOPIFY",
+                                    SyncDirection.INBOUND,
+                                    SyncEntityType.ORDER,
+                                    null,
+                                    SyncLogStatus.FAILED,
+                                    Map.of("webhookEventId", event.getId().toString()),
+                                    e.getMessage());
+                        } catch (Exception ignored) {
+                            // best-effort failure log
+                        }
                     } finally {
                         TenantContext.clear();
                     }
@@ -88,84 +92,42 @@ public class ChannelOrderWebhookHandler {
     }
 
     private void processShopifyOrder(WebhookEvent event) {
-            Map<String, Object> payload = event.getPayload();
-            String topic = (String) payload.getOrDefault("topic", "");
-            if (!topic.contains("orders/")) {
-                event.setProcessedAt(Instant.now());
-                webhookEventRepository.save(event);
-                return;
-            }
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> orderData = payload.get("order") instanceof Map<?, ?> m
-                    ? (Map<String, Object>) m : payload;
-
-            SalesOrder order = new SalesOrder();
-            order.setTenantId(event.getTenantId());
-            order.setCustomerId(resolveCustomerId(event.getTenantId()));
-            order.setNumber(sequenceService.nextNumber("SO", "SO-{YYYY}-{seq:5}"));
-            order.setStatus("CONFIRMED");
-            order.setChannel("SHOPIFY");
-            order = salesOrderRepository.save(order);
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> lineItems = orderData.get("line_items") instanceof List<?> list
-                    ? (List<Map<String, Object>>) list : List.of();
-
-            boolean needsReview = false;
-            for (Map<String, Object> item : lineItems) {
-                String sku = item.getOrDefault("sku", "").toString();
-                BigDecimal qty = new BigDecimal(item.getOrDefault("quantity", "1").toString());
-                BigDecimal unitPrice = new BigDecimal(item.getOrDefault("price", "0").toString());
-                var variantOpt = variantRepository.findByTenantIdAndSku(event.getTenantId(), sku);
-                if (variantOpt.isEmpty()) {
-                    needsReview = true;
-                    continue;
-                }
-                ProductVariant variant = variantOpt.get();
-                List<SoftKitExplosionService.ExplodedLine> exploded = softKitExplosionService.explode(
-                        event.getTenantId(),
-                        variant.getId(),
-                        qty,
-                        unitPrice,
-                        false,
-                        false);
-                if (variant.isSoftKit() && exploded.isEmpty()) {
-                    needsReview = true;
-                    continue;
-                }
-                for (SoftKitExplosionService.ExplodedLine component : exploded) {
-                    SalesOrderLine line = new SalesOrderLine();
-                    line.setTenantId(event.getTenantId());
-                    line.setSalesOrderId(order.getId());
-                    line.setVariantId(component.variantId());
-                    line.setQtyOrdered(component.quantity());
-                    line.setUnitPrice(component.unitPrice());
-                    salesOrderLineRepository.save(line);
-                }
-            }
-
-            if (needsReview) {
-                order.setStatus("NEEDS_REVIEW");
-                salesOrderRepository.save(order);
-            }
-
-            IntegrationSyncLog log = new IntegrationSyncLog();
-            log.setTenantId(event.getTenantId());
-            log.setSystem("SHOPIFY");
-            log.setEntityType("SALES_ORDER");
-            log.setEntityId(order.getId());
-            log.setStatus("SYNCED");
-            syncLogRepository.save(log);
-
+        Map<String, Object> payload = event.getPayload();
+        String topic = (String) payload.getOrDefault("topic", "");
+        if (!topic.contains("orders/")) {
             event.setProcessedAt(Instant.now());
             webhookEventRepository.save(event);
-    }
+            return;
+        }
 
-    private UUID resolveCustomerId(UUID tenantId) {
-        return customerRepository.findByTenantIdOrderByNameAsc(tenantId).stream()
-                .findFirst()
-                .map(Customer::getId)
-                .orElseThrow(() -> new IllegalStateException("No customer configured for tenant"));
+        String rawPayload;
+        try {
+            rawPayload = objectMapper.writeValueAsString(payload);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to serialize Shopify webhook payload", ex);
+        }
+
+        CanonicalInboundOrder canonical = shopifyOrderAdapter.translate(
+                rawPayload,
+                Map.of(ShopifyOrderAdapter.HEADER_INTERNAL_TRUSTED, "true"));
+        SalesOrder order = salesOrderService.createFromCanonical(canonical);
+        SyncLogStatus status = "NEEDS_REVIEW".equals(order.getStatus())
+                ? SyncLogStatus.WARNING
+                : SyncLogStatus.SUCCESS;
+        syncHistoryService.record(
+                channelService.findActive(IntegrationChannelType.SHOPIFY).orElse(null),
+                "SHOPIFY",
+                SyncDirection.INBOUND,
+                SyncEntityType.ORDER,
+                canonical.externalOrderRef(),
+                order.getId(),
+                status,
+                Map.of(
+                        "orderId", order.getId().toString(),
+                        "orderNumber", order.getNumber(),
+                        "webhookEventId", event.getId().toString()),
+                null);
+        event.setProcessedAt(Instant.now());
+        webhookEventRepository.save(event);
     }
 }

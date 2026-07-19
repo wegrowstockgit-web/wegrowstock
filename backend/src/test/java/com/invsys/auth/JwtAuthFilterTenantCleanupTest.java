@@ -68,4 +68,26 @@ class JwtAuthFilterTenantCleanupTest {
 
         assertThat(TenantContext.getTenantId()).isEmpty();
     }
+
+    @Test
+    void stillClearsTenantContextWhenAsyncStarted() throws Exception {
+        AuthCookieService cookies = mock(AuthCookieService.class);
+        JwtAuthFilter filter = new JwtAuthFilter(
+                mock(JwtService.class),
+                cookies,
+                mock(CustomerUserMappingRepository.class),
+                mock(SupplierUserMappingRepository.class));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(request.getRequestURI()).thenReturn("/api/v1/dashboard/stream");
+        when(request.isAsyncStarted()).thenReturn(true);
+        when(cookies.readAccessToken(request)).thenReturn(null);
+
+        FilterChain chain = (req, res) -> TenantContext.setTenantId(UUID.randomUUID());
+        filter.doFilter(request, response, chain);
+
+        // Kickoff thread must not keep tenant ThreadLocals; async dispatch re-binds JWT.
+        assertThat(TenantContext.getTenantId()).isEmpty();
+    }
 }

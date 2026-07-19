@@ -43,10 +43,27 @@ class TenantConnectionHelperTest {
         TenantConnectionHelper.clearTenant(connection);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(connection).prepareStatement(sql.capture());
-        assertThat(sql.getValue()).isEqualTo("SELECT set_config('app.current_tenant', ?, false)");
-        verify(ps).setString(1, "");
-        verify(ps).execute();
+        verify(connection, org.mockito.Mockito.times(2)).prepareStatement(sql.capture());
+        assertThat(sql.getAllValues()).containsExactly(
+                "SELECT set_config('app.current_tenant', ?, false)",
+                "SELECT set_config('app.current_user_id', ?, false)");
+        verify(ps, org.mockito.Mockito.times(2)).setString(1, "");
+        verify(ps, org.mockito.Mockito.times(2)).execute();
         verify(st).execute("DEALLOCATE ALL");
+    }
+
+    @Test
+    void bindUserUsesTransactionLocalSetConfig() throws Exception {
+        Connection connection = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString())).thenReturn(ps);
+
+        UUID userId = UUID.randomUUID();
+        TenantConnectionHelper.bindUser(connection, userId);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(connection).prepareStatement(sql.capture());
+        assertThat(sql.getValue()).isEqualTo("SELECT set_config('app.current_user_id', ?, true)");
+        verify(ps).setString(1, userId.toString());
     }
 }

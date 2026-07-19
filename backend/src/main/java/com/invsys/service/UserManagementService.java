@@ -9,6 +9,7 @@ import com.invsys.domain.SupplierUserMapping;
 import com.invsys.domain.User;
 import com.invsys.domain.UserRole;
 import com.invsys.domain.UserWarehouse;
+import com.invsys.observability.Auditable;
 import com.invsys.repository.CustomerUserMappingRepository;
 import com.invsys.repository.InvitationRepository;
 import com.invsys.repository.LocationRepository;
@@ -52,6 +53,7 @@ public class UserManagementService {
     private final PasswordEncoder passwordEncoder;
     private final BootstrapJdbc bootstrapJdbc;
     private final AuditService auditService;
+    private final InvitationEmailService invitationEmailService;
 
     public UserManagementService(UserRepository userRepository,
                                  UserRoleRepository userRoleRepository,
@@ -64,7 +66,8 @@ public class UserManagementService {
                                  LocationRepository locationRepository,
                                  PasswordEncoder passwordEncoder,
                                  BootstrapJdbc bootstrapJdbc,
-                                 AuditService auditService) {
+                                 AuditService auditService,
+                                 InvitationEmailService invitationEmailService) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.roleRepository = roleRepository;
@@ -77,6 +80,7 @@ public class UserManagementService {
         this.passwordEncoder = passwordEncoder;
         this.bootstrapJdbc = bootstrapJdbc;
         this.auditService = auditService;
+        this.invitationEmailService = invitationEmailService;
     }
 
     public List<User> listUsers() {
@@ -118,6 +122,7 @@ public class UserManagementService {
     }
 
     @Transactional
+    @Auditable(action = "INVITE_USER", entityType = "INVITATION")
     public InviteResult invite(String email, String roleCode, UUID customerId, UUID supplierId) {
         UUID tenantId = TenantContext.requireTenantId();
         String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
@@ -165,8 +170,62 @@ public class UserManagementService {
         diff.put("summary", "Invitation created for " + normalizedEmail + " as " + role.getCode());
         auditService.record("USER_INVITE", "INVITATION", invitation.getId(), diff);
 
+        String inviteUrl = invitationEmailService.inviteUrl(token);
+        invitationEmailService.sendInvitation(normalizedEmail, inviteUrl);
         System.out.println("[DEV] Invitation link token for " + normalizedEmail + ": " + token);
         return new InviteResult(invitation, token);
+    }
+
+    /**
+     * Remints invitation token, extends {@code expires_at} by 7 days, and dispatches HTML reminder email.
+     */
+    @Transactional
+    @Auditable(action = "RESEND_INVITATION", entityType = "INVITATION")
+    public ResendInvitationResult resendInvitation(UUID invitationId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Invitation invitation = invitationRepository
+                .findByTenantIdAndIdAndAcceptedAtIsNull(tenantId, invitationId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invitation not found"));
+        if (invitation.getAcceptedAt() != null) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVITE_ACCEPTED", "Invitation already accepted");
+        }
+
+        Instant previousExpires = invitation.getExpiresAt();
+        Instant extendedExpires = Instant.now().plusSeconds(7 * 86400);
+        String rawToken = UUID.randomUUID().toString();
+        invitation.setTokenHash(hash(rawToken));
+        invitation.setExpiresAt(extendedExpires);
+        invitationRepository.save(invitation);
+
+        String roleCode = roleRepository.findById(invitation.getRoleId())
+                .map(Role::getCode)
+                .orElse("UNKNOWN");
+        UUID actorId = TenantContext.getUserId().orElse(null);
+        List<UUID> warehouseScope = actorId != null
+                ? warehouseIdsForUser(actorId)
+                : List.of();
+
+        String inviteUrl = invitationEmailService.inviteUrl(rawToken);
+        boolean dispatched = invitationEmailService.sendInvitation(invitation.getEmail(), inviteUrl);
+
+        Map<String, Object> diff = new LinkedHashMap<>();
+        diff.put("extendedExpiresAt", extendedExpires.toString());
+        diff.put("previousExpiresAt", previousExpires != null ? previousExpires.toString() : null);
+        diff.put("targetEmail", invitation.getEmail());
+        diff.put("role", roleCode);
+        diff.put("warehouseIds", warehouseScope.stream().map(UUID::toString).toList());
+        diff.put("emailDispatched", dispatched);
+        diff.put("summary", "Invitation reminder resent to " + invitation.getEmail());
+        auditService.record("RESEND_INVITATION", "INVITATION", invitation.getId(), diff);
+
+        return new ResendInvitationResult(
+                invitation.getId(),
+                invitation.getEmail(),
+                roleCode,
+                extendedExpires,
+                inviteUrl,
+                dispatched,
+                warehouseScope);
     }
 
     public record PendingInvitation(
@@ -186,6 +245,17 @@ public class UserManagementService {
     }
 
     public record InviteResult(Invitation invitation, String rawToken) {
+    }
+
+    public record ResendInvitationResult(
+            UUID invitationId,
+            String email,
+            String role,
+            Instant expiresAt,
+            String inviteUrl,
+            boolean emailDispatched,
+            List<UUID> warehouseIds
+    ) {
     }
 
     @Transactional
@@ -232,6 +302,7 @@ public class UserManagementService {
     }
 
     @Transactional
+    @Auditable(action = "UPDATE_USER", entityType = "USER")
     public void changeRole(UUID userId, String roleCode) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
@@ -247,6 +318,7 @@ public class UserManagementService {
     }
 
     @Transactional
+    @Auditable(action = "UPDATE_USER", entityType = "USER")
     public OrgScopeResult updateOrgScope(UUID userId, OrgScopeUpdate update) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
@@ -373,6 +445,7 @@ public class UserManagementService {
     }
 
     @Transactional
+    @Auditable(action = "DEACTIVATE_USER", entityType = "USER")
     public void deactivate(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));

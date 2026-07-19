@@ -1,10 +1,17 @@
 package com.invsys.service;
 
 import com.invsys.common.ApiException;
+import com.invsys.domain.Customer;
+import com.invsys.domain.ProductVariant;
 import com.invsys.domain.SalesOrder;
 import com.invsys.domain.SalesOrderLine;
 import com.invsys.integration.OutboxService;
+import com.invsys.integration.inbound.CanonicalAddress;
+import com.invsys.integration.inbound.CanonicalInboundOrder;
+import com.invsys.integration.inbound.CanonicalOrderLine;
+import com.invsys.repository.CustomerRepository;
 import com.invsys.repository.LocationRepository;
+import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
 import com.invsys.tenancy.TenantContext;
@@ -13,8 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -26,19 +35,116 @@ public class SalesOrderService {
     private final LocationRepository locationRepository;
     private final OutboxService outboxService;
     private final AuditService auditService;
+    private final CustomerRepository customerRepository;
+    private final ProductVariantRepository variantRepository;
+    private final SoftKitExplosionService softKitExplosionService;
+    private final DocumentSequenceService sequenceService;
 
     public SalesOrderService(SalesOrderRepository salesOrderRepository,
                              SalesOrderLineRepository lineRepository,
                              AllocationService allocationService,
                              LocationRepository locationRepository,
                              OutboxService outboxService,
-                             AuditService auditService) {
+                             AuditService auditService,
+                             CustomerRepository customerRepository,
+                             ProductVariantRepository variantRepository,
+                             SoftKitExplosionService softKitExplosionService,
+                             DocumentSequenceService sequenceService) {
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
         this.allocationService = allocationService;
         this.locationRepository = locationRepository;
         this.outboxService = outboxService;
         this.auditService = auditService;
+        this.customerRepository = customerRepository;
+        this.variantRepository = variantRepository;
+        this.softKitExplosionService = softKitExplosionService;
+        this.sequenceService = sequenceService;
+    }
+
+    /**
+     * Persists a channel-agnostic inbound order inside a single transaction boundary.
+     */
+    @Transactional
+    public SalesOrder createFromCanonical(CanonicalInboundOrder inbound) {
+        if (inbound == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Canonical order is required");
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        UUID customerId = resolveCustomerId(tenantId, inbound.customerIdentifier());
+
+        SalesOrder order = new SalesOrder();
+        order.setTenantId(tenantId);
+        order.setCustomerId(customerId);
+        order.setNumber(sequenceService.nextNumber("SO", "SO-{YYYY}-{seq:5}"));
+        order.setStatus("CONFIRMED");
+        order.setChannel(inbound.channelSource().name());
+        if (inbound.externalOrderRef() != null && !inbound.externalOrderRef().isBlank()) {
+            order.setCustomerPoNumber(inbound.externalOrderRef().trim());
+        }
+        order = salesOrderRepository.save(order);
+
+        boolean needsReview = false;
+        List<CanonicalOrderLine> lines = inbound.lines();
+        if (lines.isEmpty()) {
+            needsReview = true;
+        }
+        for (CanonicalOrderLine item : lines) {
+            String sku = item.sku() != null ? item.sku().trim() : "";
+            if (sku.isBlank()) {
+                needsReview = true;
+                continue;
+            }
+            BigDecimal qty = item.quantity() != null ? item.quantity() : BigDecimal.ONE;
+            BigDecimal unitPrice = item.unitPrice() != null ? item.unitPrice() : BigDecimal.ZERO;
+            Optional<ProductVariant> variantOpt = variantRepository.findByTenantIdAndSku(tenantId, sku);
+            if (variantOpt.isEmpty()) {
+                needsReview = true;
+                continue;
+            }
+            ProductVariant variant = variantOpt.get();
+            List<SoftKitExplosionService.ExplodedLine> exploded = softKitExplosionService.explode(
+                    tenantId,
+                    variant.getId(),
+                    qty,
+                    unitPrice,
+                    false,
+                    false);
+            if (variant.isSoftKit() && exploded.isEmpty()) {
+                needsReview = true;
+                continue;
+            }
+            for (SoftKitExplosionService.ExplodedLine component : exploded) {
+                SalesOrderLine line = new SalesOrderLine();
+                line.setTenantId(tenantId);
+                line.setSalesOrderId(order.getId());
+                line.setVariantId(component.variantId());
+                line.setQtyOrdered(component.quantity());
+                line.setUnitPrice(component.unitPrice());
+                lineRepository.save(line);
+            }
+        }
+
+        if (needsReview) {
+            order.setStatus("NEEDS_REVIEW");
+            order = salesOrderRepository.save(order);
+        }
+
+        auditService.record("SALES_ORDER_INBOUND", "SALES_ORDER", order.getId(), Map.of(
+                "channel", inbound.channelSource().name(),
+                "externalOrderRef", inbound.externalOrderRef() != null ? inbound.externalOrderRef() : "",
+                "customerIdentifier", inbound.customerIdentifier() != null ? inbound.customerIdentifier() : "",
+                "status", order.getStatus(),
+                "billingAddress", addressSnapshot(inbound.billingAddress()),
+                "shippingAddress", addressSnapshot(inbound.shippingAddress()),
+                "lineCount", lines.size()));
+
+        outboxService.append("SALES_ORDER", order.getId(), "SALES_ORDER_INBOUND", Map.of(
+                "orderId", order.getId(),
+                "channel", inbound.channelSource().name(),
+                "externalOrderRef", inbound.externalOrderRef() != null ? inbound.externalOrderRef() : ""));
+
+        return order;
     }
 
     @Transactional
@@ -103,6 +209,62 @@ public class SalesOrderService {
         auditService.record("SALES_ORDER_CANCEL", "SALES_ORDER", order.getId(), Map.of(
                 "status", Map.of("before", before, "after", order.getStatus())));
         return order;
+    }
+
+    private UUID resolveCustomerId(UUID tenantId, String customerIdentifier) {
+        if (customerIdentifier != null && !customerIdentifier.isBlank()) {
+            String key = customerIdentifier.trim();
+            try {
+                UUID id = UUID.fromString(key);
+                Optional<Customer> byId = customerRepository.findById(id)
+                        .filter(c -> tenantId.equals(c.getTenantId()));
+                if (byId.isPresent()) {
+                    return byId.get().getId();
+                }
+            } catch (IllegalArgumentException ignored) {
+                // not a UUID — match email/name below
+            }
+            List<Customer> customers = customerRepository.findByTenantIdOrderByNameAsc(tenantId);
+            String lower = key.toLowerCase();
+            Optional<Customer> byEmail = customers.stream()
+                    .filter(c -> c.getEmail() != null && lower.equals(c.getEmail().toLowerCase()))
+                    .findFirst();
+            if (byEmail.isPresent()) {
+                return byEmail.get().getId();
+            }
+            Optional<Customer> byName = customers.stream()
+                    .filter(c -> c.getName() != null && lower.equals(c.getName().toLowerCase()))
+                    .findFirst();
+            if (byName.isPresent()) {
+                return byName.get().getId();
+            }
+        }
+        return customerRepository.findByTenantIdOrderByNameAsc(tenantId).stream()
+                .findFirst()
+                .map(Customer::getId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_CUSTOMER",
+                        "No customer configured for tenant"));
+    }
+
+    private static Map<String, Object> addressSnapshot(CanonicalAddress address) {
+        if (address == null) {
+            return Map.of();
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfPresent(map, "name", address.name());
+        putIfPresent(map, "line1", address.line1());
+        putIfPresent(map, "line2", address.line2());
+        putIfPresent(map, "city", address.city());
+        putIfPresent(map, "region", address.region());
+        putIfPresent(map, "postalCode", address.postalCode());
+        putIfPresent(map, "country", address.country());
+        return map;
+    }
+
+    private static void putIfPresent(Map<String, Object> map, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            map.put(key, value);
+        }
     }
 
     private SalesOrder getOrder(UUID orderId) {

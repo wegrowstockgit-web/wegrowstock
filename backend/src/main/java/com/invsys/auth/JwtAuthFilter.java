@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
  *   TenantContext.setUserId(...);
  *   filterChain.doFilter(request, response);
  * } finally {
+ *   // cleared only when the request is fully done (not when SSE/async starts)
  *   TenantContext.clear();
  * }
  * </pre>
@@ -53,6 +54,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         this.supplierUserMappingRepository = supplierUserMappingRepository;
     }
 
+    /**
+     * Re-bind JWT tenant/auth on async dispatches (SSE timeout/error). The default
+     * OncePerRequestFilter skip left those dispatches unauthenticated after the
+     * initial kickoff cleared ThreadLocals too early.
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
@@ -61,10 +72,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             bindTenantFromTokenIfPresent(request);
             filterChain.doFilter(request, response);
         } finally {
-            // Absolute guard against thread pollution in the worker / virtual-thread pool.
+            // Always drop tenant/MDC ThreadLocals on this thread. For SSE kickoff the
+            // filter chain returns while the response stays open — do NOT clear
+            // SecurityContextHolder here. Clearing it before SecurityContextHolderFilter
+            // saved the context left async timeout dispatches unauthenticated
+            // (AuthorizationDeniedException + AsyncRequestTimeoutException ERROR spam).
+            // Async dispatches re-enter this filter (shouldNotFilterAsyncDispatch=false)
+            // and re-bind tenant from the JWT/cookie.
             TenantContext.clear();
             MDC.clear();
-            SecurityContextHolder.clearContext();
         }
     }
 

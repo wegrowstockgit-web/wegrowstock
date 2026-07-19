@@ -51,6 +51,14 @@ public class Location extends TenantScopedEntity {
     @Column(name = "logistics_address", columnDefinition = "jsonb", nullable = false)
     private Map<String, Object> logisticsAddress = new LinkedHashMap<>();
 
+    /** WGS84 latitude for carrier zones / yard geofence. */
+    @Column(precision = 10, scale = 7)
+    private BigDecimal latitude;
+
+    /** WGS84 longitude for carrier zones / yard geofence. */
+    @Column(precision = 10, scale = 7)
+    private BigDecimal longitude;
+
     @Column(name = "gross_square_footage", precision = 19, scale = 4)
     private BigDecimal grossSquareFootage;
 
@@ -167,6 +175,22 @@ public class Location extends TenantScopedEntity {
 
     public void setLogisticsAddress(Map<String, Object> logisticsAddress) {
         this.logisticsAddress = logisticsAddress != null ? logisticsAddress : new LinkedHashMap<>();
+    }
+
+    public BigDecimal getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(BigDecimal latitude) {
+        this.latitude = latitude;
+    }
+
+    public BigDecimal getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(BigDecimal longitude) {
+        this.longitude = longitude;
     }
 
     public BigDecimal getGrossSquareFootage() {

@@ -207,11 +207,18 @@ export interface PlatformAlertItem {
 export interface AuditLogItem {
   id: string;
   actorUserId?: string;
+  actorEmail?: string | null;
+  actorDisplayName?: string | null;
   action: string;
   entityType: string;
   entityId: string;
   diff: Record<string, unknown>;
   createdAt?: string;
+}
+
+export interface AuditTenantPage {
+  items: AuditLogItem[];
+  nextCursor?: string | null;
 }
 
 export interface ChannelIntegration {
@@ -947,6 +954,7 @@ export interface SsoConfig {
   protocol?: 'OIDC' | 'SAML' | string;
   samlMetadataUrl?: string | null;
   samlEntityId?: string | null;
+  provider?: string;
 }
 
 export interface InventoryValuationRow {

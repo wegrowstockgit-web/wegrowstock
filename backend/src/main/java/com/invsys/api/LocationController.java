@@ -109,6 +109,15 @@ public class LocationController {
         if (request.logisticsAddress() != null) {
             location.setLogisticsAddress(new LinkedHashMap<>(request.logisticsAddress()));
         }
+        if ("WAREHOUSE".equalsIgnoreCase(request.type())
+                && (request.latitude() == null || request.longitude() == null)) {
+            throw new com.invsys.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "GEO_REQUIRED",
+                    "Warehouse facilities require latitude and longitude");
+        }
+        location.setLatitude(request.latitude());
+        location.setLongitude(request.longitude());
         location.setGrossSquareFootage(request.grossSquareFootage());
         location.setOfficeAreaSquareFootage(request.officeAreaSquareFootage());
         location.setClearHeightFeet(request.clearHeightFeet());
@@ -168,6 +177,8 @@ public class LocationController {
             BigDecimal coordY,
             BigDecimal coordZ,
             Map<String, Object> logisticsAddress,
+            BigDecimal latitude,
+            BigDecimal longitude,
             BigDecimal grossSquareFootage,
             BigDecimal officeAreaSquareFootage,
             BigDecimal clearHeightFeet,

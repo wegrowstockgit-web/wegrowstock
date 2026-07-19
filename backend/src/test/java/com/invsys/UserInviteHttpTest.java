@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -120,5 +121,63 @@ class UserInviteHttpTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/users/invitations")
                         .header("Authorization", "Bearer " + picker.accessToken()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void resendExtendsExpiry_dispatchesAndAudits() throws Exception {
+        String slug = "rsnd-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Resend Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = owner.tenantId();
+        String email = "remind@" + slug + ".test";
+
+        MvcResult created = mockMvc.perform(post("/api/v1/users/invitations")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","role":"VIEWER"}
+                                """.formatted(email)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode invite = objectMapper.readTree(created.getResponse().getContentAsString());
+        String inviteId = invite.get("id").asString();
+        Instant originalExpiry = Instant.parse(invite.get("expiresAt").asString());
+
+        Thread.sleep(20);
+
+        MvcResult resent = mockMvc.perform(post("/api/v1/office/invitations/" + inviteId + "/resend")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.emailDispatched").value(true))
+                .andExpect(jsonPath("$.inviteUrl").isNotEmpty())
+                .andReturn();
+        Instant newExpiry = Instant.parse(
+                objectMapper.readTree(resent.getResponse().getContentAsString()).get("expiresAt").asString());
+        assertThat(newExpiry).isAfter(originalExpiry.minusSeconds(1));
+        assertThat(newExpiry).isAfter(Instant.now().plusSeconds(6 * 86400));
+
+        mockMvc.perform(get("/api/v1/users/invitations")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(inviteId));
+
+        TenantContext.setTenantId(tenantId);
+        assertThat(auditLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId))
+                .extracting(AuditLog::getAction)
+                .contains("RESEND_INVITATION", "USER_INVITE");
+        AuditLog resendAudit = auditLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(a -> "RESEND_INVITATION".equals(a.getAction()))
+                .filter(a -> a.getDiff() != null && a.getDiff().containsKey("extendedExpiresAt"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(resendAudit.getEntityType()).isEqualTo("INVITATION");
+        assertThat(resendAudit.getEntityId().toString()).isEqualTo(inviteId);
+        assertThat(resendAudit.getActorUserId()).isEqualTo(owner.userId());
+        assertThat(resendAudit.getDiff()).containsKeys("extendedExpiresAt", "targetEmail");
+
+        assertThat(auditLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId))
+                .anyMatch(a -> "RESEND_INVITATION".equals(a.getAction())
+                        && "spring_aop".equals(String.valueOf(a.getDiff().get("source"))));
     }
 }

@@ -47,8 +47,14 @@ public class IntegrationSettingsService {
         IntegrationSyncLog log = syncLogRepository.findById(syncLogId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sync log not found"));
 
+        if (log.getEntityId() == null) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "RETRY_UNSUPPORTED",
+                    "Sync log has no internal entity id to retry");
+        }
+
         log.setStatus("PENDING");
         log.setLastError(null);
+        log.setErrorMessage(null);
         syncLogRepository.save(log);
 
         Map<String, Object> payload = new LinkedHashMap<>();

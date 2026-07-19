@@ -4,6 +4,7 @@ import com.invsys.service.SettingsService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,5 +30,11 @@ public class SettingsController {
     @PatchMapping
     public Map<String, Object> patchSettings(@RequestBody Map<String, Object> patch) {
         return settingsService.patchSettings(patch);
+    }
+
+    /** Force-invalidate Redis/local tenant settings cache after ops policy changes. */
+    @PostMapping("/cache/flush")
+    public Map<String, Object> flushCache() {
+        return settingsService.flushCache();
     }
 }

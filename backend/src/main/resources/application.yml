@@ -4,6 +4,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    async:
+      # Dashboard SSE emitters live up to 30m; Tomcat's default ~30s async timeout
+      # otherwise fires AsyncRequestTimeoutException and ERROR log spam.
+      request-timeout: 35m
   servlet:
     multipart:
       max-file-size: 15MB
@@ -147,6 +152,11 @@ invsys:
     max-bytes: 15728640
     avatar-max-bytes: 2097152
     evidence-max-bytes: 10485760
+  audit:
+    archive:
+      enabled: ${AUDIT_ARCHIVE_ENABLED:true}
+      retention-days: ${AUDIT_ARCHIVE_RETENTION_DAYS:90}
+      batch-size: ${AUDIT_ARCHIVE_BATCH_SIZE:5000}
 
 springdoc:
   api-docs:

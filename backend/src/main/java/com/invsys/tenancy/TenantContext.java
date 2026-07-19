@@ -29,7 +29,11 @@ public final class TenantContext {
     }
 
     public static void setUserId(UUID userId) {
-        USER.set(userId);
+        if (userId == null) {
+            USER.remove();
+        } else {
+            USER.set(userId);
+        }
     }
 
     public static Optional<UUID> getUserId() {

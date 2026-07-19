@@ -1,8 +1,10 @@
 package com.invsys.service;
 
+import com.invsys.common.MdcSupport;
 import com.invsys.domain.AuditLog;
 import com.invsys.repository.AuditLogRepository;
 import com.invsys.tenancy.TenantContext;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +30,15 @@ public class AuditService {
         entry.setAction(action);
         entry.setEntityType(entityType);
         entry.setEntityId(entityId);
-        entry.setDiff(diff != null ? new LinkedHashMap<>(diff) : new LinkedHashMap<>());
+        Map<String, Object> payload = diff != null ? new LinkedHashMap<>(diff) : new LinkedHashMap<>();
+        String requestId = MDC.get(MdcSupport.REQUEST_ID);
+        if (requestId == null || requestId.isBlank()) {
+            requestId = MDC.get("requestId");
+        }
+        if (requestId != null && !requestId.isBlank() && !payload.containsKey("requestId")) {
+            payload.put("requestId", requestId);
+        }
+        entry.setDiff(payload);
         return auditLogRepository.save(entry);
     }
 

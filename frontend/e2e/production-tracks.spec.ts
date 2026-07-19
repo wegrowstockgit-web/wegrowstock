@@ -72,7 +72,11 @@ test.describe('Production tracks (conflicts, time-travel, migration wizard)', ()
       await owner.page.goto('/settings?tab=accounting');
       await expect(owner.page.getByTestId('settings-content')).toBeVisible({ timeout: 20_000 });
       await expect(owner.page.getByTestId('accounting-sync')).toBeVisible({ timeout: 15_000 });
-      await owner.page.getByRole('button', { name: 'Integrations', exact: true }).click();
+      await expect(owner.page.getByTestId('settings-nav-integrations-hub')).toBeVisible();
+      await owner.page.getByTestId('settings-nav-integrations-hub').click();
+      await expect(owner.page.getByTestId('integrations-hub-page')).toBeVisible({ timeout: 15_000 });
+      await expect(owner.page.getByTestId('integration-card-SHOPIFY')).toBeVisible();
+      await owner.page.goto('/settings?tab=integrations');
       await expect(owner.page.getByTestId('integrations-settings')).toBeVisible({ timeout: 15_000 });
       await expect(owner.page.getByTestId('system-alerts-card')).toBeVisible();
       await expect(owner.page.getByTestId('shopify-integration')).toBeVisible();

@@ -16,16 +16,27 @@ public class SettingsService {
 
     private final TenantSettingsRepository repository;
     private final OutboxService outboxService;
+    private final TenantSettingsCacheService cacheService;
 
-    public SettingsService(TenantSettingsRepository repository, OutboxService outboxService) {
+    public SettingsService(TenantSettingsRepository repository,
+                           OutboxService outboxService,
+                           TenantSettingsCacheService cacheService) {
         this.repository = repository;
         this.outboxService = outboxService;
+        this.cacheService = cacheService;
     }
 
     public Map<String, Object> getSettings() {
-        return repository.findByTenantId(TenantContext.requireTenantId())
-                .map(this::toResponseMap)
-                .orElse(Map.of());
+        UUID tenantId = TenantContext.requireTenantId();
+        return cacheService.get(tenantId).orElseGet(() -> {
+            Map<String, Object> loaded = repository.findByTenantId(tenantId)
+                    .map(this::toResponseMap)
+                    .orElse(Map.of());
+            if (!loaded.isEmpty()) {
+                cacheService.put(tenantId, loaded);
+            }
+            return loaded;
+        });
     }
 
     @Transactional
@@ -39,6 +50,8 @@ public class SettingsService {
             applyTypedColumns(settings, patch);
         }
         repository.save(settings);
+        // Invalidate now; @PostUpdate also evicts after commit so we never re-warm in-tx.
+        cacheService.invalidate(tenantId);
 
         if (patch != null && patch.containsKey("costing_method")) {
             String nextCosting = stringOrNull(settings.getSettings().get("costing_method"));
@@ -49,6 +62,13 @@ public class SettingsService {
             }
         }
         return toResponseMap(settings);
+    }
+
+    @Transactional
+    public Map<String, Object> flushCache() {
+        UUID tenantId = TenantContext.requireTenantId();
+        cacheService.invalidate(tenantId);
+        return getSettings();
     }
 
     private Map<String, Object> toResponseMap(TenantSettings settings) {

@@ -51,6 +51,8 @@ class EnterpriseMasterDataHttpTest extends AbstractIntegrationTest {
                                   "code": "WH-ENT",
                                   "name": "Enterprise DC",
                                   "path": "WH-ENT",
+                                  "latitude": 32.7767,
+                                  "longitude": -96.7970,
                                   "logisticsAddress": {
                                     "street": "100 Dock Way",
                                     "city": "Dallas",

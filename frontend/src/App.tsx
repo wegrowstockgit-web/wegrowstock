@@ -19,6 +19,8 @@ import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { AddWarehousePage } from '@/pages/AddWarehousePage';
 import { BillingSettingsPage } from '@/pages/BillingSettingsPage';
 import { FintechSettingsPage } from '@/pages/FintechSettingsPage';
+import { IntegrationsHubPage } from '@/pages/IntegrationsHubPage';
+import { RtlsWorkspacePage } from '@/pages/RtlsWorkspacePage';
 import { PurchaseOrdersPage } from '@/pages/PurchaseOrdersPage';
 import { SalesOrdersPage } from '@/pages/SalesOrdersPage';
 import { InvoicesPage } from '@/pages/InvoicesPage';
@@ -31,6 +33,7 @@ import { ReturnsPage } from '@/pages/ReturnsPage';
 import { ReturnsReceivePage } from '@/pages/ReturnsReceivePage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { IssueSuppliesPage } from '@/pages/IssueSuppliesPage';
+import { ReplenishmentsPage } from '@/pages/ReplenishmentsPage';
 import { LotTracePage } from '@/pages/LotTracePage';
 import { TechnicianTruckPage } from '@/pages/TechnicianTruckPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -118,7 +121,7 @@ export function App() {
             <Route
               path="fulfillment"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
+                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
                   <FulfillmentPage />
                 </ProtectedRoute>
               }
@@ -142,7 +145,7 @@ export function App() {
             <Route
               path="settings/import"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
                   <ImportPage legacy />
                 </ProtectedRoute>
               }
@@ -150,7 +153,7 @@ export function App() {
             <Route
               path="cycle-counts"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
+                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
                   <CycleCountsPage />
                 </ProtectedRoute>
               }
@@ -179,8 +182,16 @@ export function App() {
             <Route
               path="warehouses/add"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
                   <AddWarehousePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="rtls"
+              element={
+                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
+                  <RtlsWorkspacePage />
                 </ProtectedRoute>
               }
             />
@@ -227,8 +238,16 @@ export function App() {
             <Route
               path="issue-supplies"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
+                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
                   <IssueSuppliesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="replenishments"
+              element={
+                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
+                  <ReplenishmentsPage />
                 </ProtectedRoute>
               }
             />
@@ -246,7 +265,7 @@ export function App() {
             <Route
               path="field/truck"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']} officeOnly>
+                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
                   <TechnicianTruckPage />
                 </ProtectedRoute>
               }
@@ -256,7 +275,6 @@ export function App() {
               element={
                 <ProtectedRoute
                   roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER']}
-                  officeOnly
                 >
                   <ProfileSettingsPage />
                 </ProtectedRoute>
@@ -283,6 +301,14 @@ export function App() {
               element={
                 <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
                   <BillingSettingsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="settings/integrations"
+              element={
+                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
+                  <IntegrationsHubPage />
                 </ProtectedRoute>
               }
             />

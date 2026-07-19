@@ -40,6 +40,7 @@ public class AuthController {
     private final MagicLoginService magicLoginService;
     private final TerminalBiometricService terminalBiometricService;
     private final TenantSsoResolver tenantSsoResolver;
+    private final SsoProviderCatalog ssoProviderCatalog;
     private final AuthCookieService authCookieService;
     private final boolean publicSignupEnabled;
 
@@ -47,12 +48,14 @@ public class AuthController {
                           MagicLoginService magicLoginService,
                           TerminalBiometricService terminalBiometricService,
                           TenantSsoResolver tenantSsoResolver,
+                          SsoProviderCatalog ssoProviderCatalog,
                           AuthCookieService authCookieService,
                           @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.authService = authService;
         this.magicLoginService = magicLoginService;
         this.terminalBiometricService = terminalBiometricService;
         this.tenantSsoResolver = tenantSsoResolver;
+        this.ssoProviderCatalog = ssoProviderCatalog;
         this.authCookieService = authCookieService;
         this.publicSignupEnabled = publicSignupEnabled;
     }
@@ -88,9 +91,17 @@ public class AuthController {
                     body.put("protocol", route.protocol());
                     body.put("authorizationUrl", route.authorizationUrl());
                     body.put("forceSso", route.forceSso());
+                    body.put("provider", ssoProviderCatalog.inferProvider(route.issuerUrl()));
+                    body.put("issuerUrl", route.issuerUrl());
                     return body;
                 })
                 .orElseGet(() -> Map.of("ssoRequired", false));
+    }
+
+    /** Public IdP presets for login buttons (Google / Entra / Okta). */
+    @GetMapping("/sso-providers")
+    public Map<String, Object> ssoProviders() {
+        return Map.of("providers", ssoProviderCatalog.presets());
     }
 
     @GetMapping("/me")

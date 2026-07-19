@@ -357,12 +357,68 @@ describe('VirtualizedTable', () => {
         endReachedThreshold={5}
       />,
     );
-    const root = screen.getByTestId('virtualized-table');
-    const scroll = root.querySelector('.overflow-auto') as HTMLElement;
+    const scroll = screen.getByTestId('virtualized-table-scrollport');
     Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 800 });
     Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 200 });
     Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: 580 });
     fireEvent.scroll(scroll);
     expect(onEndReached).toHaveBeenCalled();
+  });
+
+  it('keeps header and body column ids in the same order from the grid store', () => {
+    useGridColumnStore.setState({
+      layouts: {
+        products: {
+          columnVisibility: { sku: true, name: true, barcode: true },
+          pinnedColumns: ['sku'],
+          columnOrder: ['sku', 'name', 'barcode'],
+        },
+      },
+    });
+    render(
+      <VirtualizedTable gridId="products" columns={columns} rows={rows} getRowId={(r) => r.id} />,
+    );
+    const headerIds = screen
+      .getAllByRole('columnheader')
+      .map((th) => th.getAttribute('data-column-id'));
+    const firstDataRow = screen.getByText('Alpha').closest('tr');
+    const bodyIds = Array.from(firstDataRow?.querySelectorAll('td[data-column-id]') ?? []).map(
+      (td) => td.getAttribute('data-column-id'),
+    );
+    expect(headerIds).toEqual(['sku', 'name', 'barcode']);
+    expect(bodyIds).toEqual(headerIds);
+    expect(screen.getByTestId('virtualized-table-scrollport').className).toMatch(/scrollbar-thin/);
+  });
+
+  it('grows table min width when additional columns become visible', () => {
+    useGridColumnStore.setState({
+      layouts: {
+        products: {
+          columnVisibility: { sku: true, name: true, barcode: false },
+          pinnedColumns: ['sku', 'name'],
+          columnOrder: ['sku', 'name', 'barcode'],
+        },
+      },
+    });
+    const { rerender } = render(
+      <VirtualizedTable gridId="products" columns={columns} rows={rows} getRowId={(r) => r.id} />,
+    );
+    const before = Number(
+      screen.getByTestId('virtualized-table-grid').getAttribute('data-table-width'),
+    );
+    act(() => {
+      useGridColumnStore.getState().toggleColumnVisibility('products', 'barcode');
+    });
+    rerender(
+      <VirtualizedTable gridId="products" columns={columns} rows={rows} getRowId={(r) => r.id} />,
+    );
+    const after = Number(
+      screen.getByTestId('virtualized-table-grid').getAttribute('data-table-width'),
+    );
+    expect(after).toBeGreaterThanOrEqual(before + 100);
+    expect(screen.getByTestId('virtualized-table-grid')).toHaveAttribute(
+      'data-visible-columns',
+      'sku,name,barcode',
+    );
   });
 });

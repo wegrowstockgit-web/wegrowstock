@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Trash2, UserPlus } from 'lucide-react';
+import { Mail, Plus, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type {
   CostCenter,
@@ -9,7 +9,6 @@ import type {
   InternalRequisition,
   OutboxEventItem,
   PlatformAlertItem,
-  AuditLogItem,
   SsoConfig,
   SyncLog,
   TaxRate,
@@ -25,6 +24,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { ScrollFadePort } from '@/components/ui/ScrollFadePort';
 import {
   Table,
@@ -40,6 +40,9 @@ import { PartnerCatalogMappingPanel } from '@/features/settings/PartnerCatalogMa
 import { AccountingSync } from '@/features/settings/AccountingSync';
 import { Integrations } from '@/features/settings/Integrations';
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
+import { ActivityTimeline } from '@/features/audit/ActivityTimeline';
+import { AuditLogTable } from '@/features/audit/AuditLogTable';
+import { HistoricalArchivesPanel } from '@/features/audit/HistoricalArchivesPanel';
 import { useToast } from '@/components/ui/Toast';
 
 const TABS = [
@@ -58,10 +61,11 @@ const TABS = [
   { id: 'costCenters', label: 'Cost Centers & Requisitions' },
 ] as const;
 
-/** Financial surfaces live on dedicated routes (not general Settings tabs). */
-const FINANCE_LINKS = [
+/** Dedicated settings subroutes (hubs live outside tab panels). */
+const SETTINGS_SUBROUTES = [
+  { to: '/settings/integrations', label: 'Integrations Hub' },
   { to: '/settings/billing', label: 'Billing' },
-  { to: '/settings/fintech', label: 'Cash Flow & Financing' },
+  { to: '/settings/fintech', label: 'Cash Flow & Financing', ownerOnly: true },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -390,11 +394,12 @@ function UserDetailDrawer({
   });
 
   return (
-    <Modal
+    <RightPeekDrawer
       open={open}
       onClose={onClose}
       title={user ? `Edit access — ${user.displayName}` : 'Edit access'}
       description="Organizational scope is admin-only and audited"
+      width="lg"
     >
       {user && (
         <form
@@ -504,9 +509,15 @@ function UserDetailDrawer({
               </Button>
             )}
           </div>
+
+          {canManageOrg && (
+            <div className="border-t border-border pt-6">
+              <ActivityTimeline entityType="USER" entityId={user.id} enabled={open} />
+            </div>
+          )}
         </form>
       )}
-    </Modal>
+    </RightPeekDrawer>
   );
 }
 
@@ -531,11 +542,27 @@ function UsersTab() {
     retry: false,
   });
 
+  const { toast } = useToast();
+
   const deactivateMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiClient.post(`/api/v1/users/${id}/deactivate`);
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const resendInvitationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.post(`/api/v1/office/invitations/${id}/resend`);
+    },
+    onSuccess: () => {
+      toast('Reminder email dispatched successfully', { tone: 'success' });
+      void queryClient.invalidateQueries({ queryKey: ['invitations'] });
+      void queryClient.invalidateQueries({ queryKey: ['pending-invitations'] });
+    },
+    onError: () => {
+      toast('Could not send invitation reminder', { tone: 'danger' });
+    },
   });
 
   return (
@@ -566,6 +593,7 @@ function UsersTab() {
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Expires</TableHead>
+                    <TableHead align="right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -579,9 +607,25 @@ function UsersTab() {
                       </TableCell>
                       <TableCell>{statusChip('PENDING')}</TableCell>
                       <TableCell>
-                        <span className="text-sm text-text-muted">
+                        <span className="text-sm text-text-muted" data-testid={`pending-invite-expires-${inv.id}`}>
                           {inv.expiresAt ? new Date(inv.expiresAt).toLocaleDateString() : '—'}
                         </span>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          data-testid={`resend-invite-${inv.id}`}
+                          loading={
+                            resendInvitationMutation.isPending &&
+                            resendInvitationMutation.variables === inv.id
+                          }
+                          onClick={() => resendInvitationMutation.mutate(inv.id)}
+                        >
+                          <Mail className="h-4 w-4" />
+                          Send Reminder
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1327,6 +1371,23 @@ function SecuritySsoTab() {
     retry: false,
   });
 
+  const { data: connectionStates } = useQuery({
+    queryKey: ['settings', 'sso', 'connection-states'],
+    queryFn: async () =>
+      (
+        await apiClient.get<{
+          providers: Array<{
+            id: string;
+            displayName: string;
+            status: string;
+            connected: boolean;
+            issuerTemplate: string;
+          }>;
+        }>('/api/v1/settings/sso/connection-states')
+      ).data,
+    retry: false,
+  });
+
   useEffect(() => {
     if (!data) return;
     setIssuerUrl(data.issuerUrl);
@@ -1362,10 +1423,51 @@ function SecuritySsoTab() {
   if (isLoading) return <TableSkeleton rows={4} cols={2} />;
 
   return (
+    <div className="space-y-6" data-testid="security-sso-tab">
+      <Card>
+        <CardHeader
+          title="Identity providers"
+          description="OAuth2 / OIDC connection state for Google Workspace, Entra ID, and Okta"
+        />
+        <div className="grid gap-3 sm:grid-cols-3" data-testid="sso-connection-cards">
+          {(connectionStates?.providers ?? [
+            { id: 'GOOGLE', displayName: 'Google Workspace', status: 'DISCONNECTED', connected: false, issuerTemplate: '' },
+            { id: 'ENTRA', displayName: 'Microsoft Entra ID', status: 'DISCONNECTED', connected: false, issuerTemplate: '' },
+            { id: 'OKTA', displayName: 'Okta', status: 'DISCONNECTED', connected: false, issuerTemplate: '' },
+          ]).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              data-testid={`sso-card-${p.id}`}
+              className="rounded-lg border border-border bg-surface-raised p-4 text-left transition hover:border-accent"
+              onClick={() => {
+                if (p.issuerTemplate && !p.issuerTemplate.includes('{')) {
+                  setIssuerUrl(p.issuerTemplate);
+                } else if (p.id === 'GOOGLE') {
+                  setIssuerUrl('https://accounts.google.com');
+                } else if (p.id === 'ENTRA') {
+                  setIssuerUrl('https://login.microsoftonline.com/common/v2.0');
+                } else if (p.id === 'OKTA') {
+                  setIssuerUrl('https://your-org.okta.com/oauth2/default');
+                }
+                setProtocol('OIDC');
+              }}
+            >
+              <div className="text-sm font-semibold text-text">{p.displayName}</div>
+              <div
+                className={`mt-2 text-xs font-medium ${p.connected ? 'text-success' : 'text-text-muted'}`}
+                data-testid={`sso-status-${p.id}`}
+              >
+                {p.status}
+              </div>
+            </button>
+          ))}
+        </div>
+      </Card>
     <Card>
       <CardHeader
         title="Security & SSO"
-        description="OIDC or SAML routing for Okta, Azure AD / Entra ID"
+        description="OIDC or SAML routing for Google Workspace, Okta, and Microsoft Entra ID"
       />
       <form
         onSubmit={(e) => {
@@ -1456,6 +1558,7 @@ function SecuritySsoTab() {
         </div>
       </form>
     </Card>
+    </div>
   );
 }
 
@@ -1569,6 +1672,90 @@ interface ReconciliationReport {
 
 /* ----------------------------- Operations console ----------------------------- */
 
+function OperationsSettingsPanel() {
+  const settings = useTenantSettings();
+  const [waveMaxLines, setWaveMaxLines] = useState('40');
+  const [waveMaxOrders, setWaveMaxOrders] = useState('12');
+  const [overReceivePct, setOverReceivePct] = useState('0');
+  const [allowOverReceiving, setAllowOverReceiving] = useState(false);
+
+  useEffect(() => {
+    if (!settings.data) return;
+    const d = settings.data as Record<string, unknown>;
+    setWaveMaxLines(String(d.picking_wave_max_lines ?? 40));
+    setWaveMaxOrders(String(d.picking_wave_max_orders ?? 12));
+    setOverReceivePct(String(d.over_receipt_tolerance_percent ?? 0));
+    setAllowOverReceiving(Boolean(d.allow_over_receiving));
+  }, [settings.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.patch('/api/v1/settings', {
+        picking_wave_max_lines: Number(waveMaxLines) || 0,
+        picking_wave_max_orders: Number(waveMaxOrders) || 0,
+        over_receipt_tolerance_percent: Number(overReceivePct) || 0,
+        allow_over_receiving: allowOverReceiving,
+      });
+      await apiClient.post('/api/v1/settings/cache/flush');
+    },
+    onSuccess: () => void settings.refetch(),
+  });
+
+  return (
+    <Card data-testid="operations-settings-panel">
+      <CardHeader
+        title="Operations policies"
+        description="Persisted in tenant_settings JSONB — Redis cache flush on save"
+      />
+      <form
+        className="grid gap-3 sm:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveMutation.mutate();
+        }}
+      >
+        <Input
+          label="Picking wave max lines"
+          type="number"
+          min={1}
+          value={waveMaxLines}
+          onChange={(e) => setWaveMaxLines(e.target.value)}
+          data-testid="ops-wave-max-lines"
+        />
+        <Input
+          label="Picking wave max orders"
+          type="number"
+          min={1}
+          value={waveMaxOrders}
+          onChange={(e) => setWaveMaxOrders(e.target.value)}
+        />
+        <Input
+          label="Over-receive tolerance %"
+          type="number"
+          min={0}
+          value={overReceivePct}
+          onChange={(e) => setOverReceivePct(e.target.value)}
+          data-testid="ops-over-receive-pct"
+        />
+        <label className="flex items-center gap-3 self-end pb-2">
+          <input
+            type="checkbox"
+            checked={allowOverReceiving}
+            onChange={(e) => setAllowOverReceiving(e.target.checked)}
+            className="h-4 w-4 rounded border-border accent-accent"
+          />
+          <span className="text-sm text-text">Allow over-receiving</span>
+        </label>
+        <div className="sm:col-span-2">
+          <Button type="submit" loading={saveMutation.isPending} data-testid="ops-settings-save">
+            Save operations settings
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 function OperationsConsoleTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1591,12 +1778,6 @@ function OperationsConsoleTab() {
   const { data: alerts = [], refetch: refetchAlerts } = useQuery({
     queryKey: ['operations', 'alerts'],
     queryFn: async () => (await apiClient.get<PlatformAlertItem[]>('/api/v1/operations/alerts')).data,
-    retry: false,
-  });
-
-  const { data: audit = [] } = useQuery({
-    queryKey: ['operations', 'audit'],
-    queryFn: async () => (await apiClient.get<AuditLogItem[]>('/api/v1/operations/audit')).data,
     retry: false,
   });
 
@@ -1648,6 +1829,7 @@ function OperationsConsoleTab() {
 
   return (
     <div className="space-y-6" data-testid="operations-console">
+      <OperationsSettingsPanel />
       <Card>
         <CardHeader
           title="Correlation"
@@ -1768,40 +1950,8 @@ function OperationsConsoleTab() {
         )}
       </Card>
 
-      <Card>
-        <CardHeader title="Recent audit trail" description="Non-ledger mutations with actor and JSON diff" />
-        {audit.length === 0 ? (
-          <p className="text-sm text-text-muted">No audit entries yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Action</TableHead>
-                <TableHead>Entity</TableHead>
-                <TableHead>Actor</TableHead>
-                <TableHead>Diff</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {audit.slice(0, 20).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-mono text-sm">{row.action}</TableCell>
-                  <TableCell className="text-sm">
-                    {row.entityType}{' '}
-                    <span className="font-mono text-text-muted">{row.entityId.slice(0, 8)}</span>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-text-muted">
-                    {row.actorUserId?.slice(0, 8) ?? '—'}
-                  </TableCell>
-                  <TableCell className="max-w-md truncate font-mono text-xs text-text-muted">
-                    {JSON.stringify(row.diff)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+      <AuditLogTable />
+      <HistoricalArchivesPanel />
 
       <Modal
         open={editing !== null}
@@ -2066,15 +2216,25 @@ export function SettingsPage() {
               </button>
             ))}
             <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
-            {FINANCE_LINKS.filter((link) => link.to !== '/settings/fintech' || isOwner).map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className="shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-overlay hover:text-text lg:w-full lg:whitespace-normal"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {SETTINGS_SUBROUTES.filter((link) => !('ownerOnly' in link && link.ownerOnly) || isOwner).map(
+              (link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  data-testid={
+                    link.to === '/settings/integrations' ? 'settings-nav-integrations-hub' : undefined
+                  }
+                  className={cn(
+                    'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors lg:w-full lg:whitespace-normal',
+                    link.to === '/settings/integrations'
+                      ? 'bg-accent-muted/60 font-semibold text-accent hover:bg-accent-muted'
+                      : 'text-text-muted hover:bg-surface-overlay hover:text-text',
+                  )}
+                >
+                  {link.label}
+                </Link>
+              ),
+            )}
           </ScrollFadePort>
 
           {/* Right panel: sole content scrollport; sticky heads stay inside this port. */}

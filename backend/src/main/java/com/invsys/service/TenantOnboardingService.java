@@ -34,6 +34,7 @@ public class TenantOnboardingService {
         UUID tenantId = UUID.randomUUID();
         TenantContext.setBootstrap(true);
         TenantContext.setTenantId(tenantId);
+        TenantContext.setUserId(null);
         try {
             return provisioningService.provision(request, tenantId, slug);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {

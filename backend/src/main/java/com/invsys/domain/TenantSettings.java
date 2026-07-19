@@ -2,6 +2,7 @@ package com.invsys.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -13,6 +14,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "tenant_settings")
+@EntityListeners(TenantSettingsCacheEvictListener.class)
 public class TenantSettings extends TenantScopedEntity {
 
     @JdbcTypeCode(SqlTypes.JSON)
@@ -95,6 +97,9 @@ public class TenantSettings extends TenantScopedEntity {
         defaults.put("allow_negative_inventory", false);
         defaults.put("allow_blind_receiving", false);
         defaults.put("over_receipt_tolerance_percent", 0);
+        defaults.put("picking_wave_max_lines", 40);
+        defaults.put("picking_wave_max_orders", 12);
+        defaults.put("allow_over_receiving", false);
         defaults.put("barcode_prefix", "");
         defaults.put("barcode_suffix", "");
         defaults.put("default_reorder_point", 10);

@@ -244,6 +244,8 @@ class EnterpriseModulesTest extends AbstractIntegrationTest {
         EdiTranslationEngine.InboundOrder order = ediTranslationEngine.parseInbound850(partner.getId(), payload);
         assertThat(order.poNumber()).isEqualTo("PO-EDI-123");
         assertThat(order.lines()).isNotEmpty();
+        assertThat(order.lines().getFirst().sku()).isEqualTo("WIDGET-S");
+        assertThat(order.lines().getFirst().quantity()).isEqualByComparingTo("5");
         assertThat(ediDocumentLogRepository.findAll()).hasSize(1);
     }
 

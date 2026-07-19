@@ -29,6 +29,19 @@ public class BootstrapJdbc {
                 slug);
     }
 
+    /**
+     * Active tenants for background workers (bypasses RLS via app_owner).
+     */
+    public List<UUID> listActiveTenantIds() {
+        return jdbc.query(
+                """
+                SELECT id FROM tenants
+                WHERE status = 'ACTIVE'
+                ORDER BY id
+                """,
+                (rs, rowNum) -> UUID.fromString(rs.getString(1)));
+    }
+
     public Optional<UserAuthRow> findUserForAuth(UUID tenantId, String email) {
         return jdbc.query(
                 "SELECT id, password_hash, status FROM users WHERE tenant_id = ? AND lower(email) = lower(?)",

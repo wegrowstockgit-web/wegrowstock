@@ -12,6 +12,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TenantIsolationFilterTest {
 
@@ -45,5 +46,17 @@ class TenantIsolationFilterTest {
 
         assertThat(TenantContext.getTenantId()).isEmpty();
         assertThat(TenantContext.getUserId()).isEmpty();
+    }
+
+    @Test
+    void clearsTenantContextWhenAsyncStartedButLeavesSecurityHolderAlone() throws Exception {
+        TenantIsolationFilter filter = new TenantIsolationFilter();
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.isAsyncStarted()).thenReturn(true);
+
+        FilterChain chain = (req, res) -> TenantContext.setTenantId(UUID.randomUUID());
+        filter.doFilter(request, mock(HttpServletResponse.class), chain);
+
+        assertThat(TenantContext.getTenantId()).isEmpty();
     }
 }

@@ -23,6 +23,7 @@ function isWarehouseRoute(pathname: string): boolean {
     pathname.startsWith('/manufacturing/terminal') ||
     pathname.startsWith('/returns/receive') ||
     pathname.startsWith('/issue-supplies') ||
+    pathname.startsWith('/replenishments') ||
     pathname.startsWith('/field/truck')
   );
 }
@@ -33,6 +34,7 @@ function isSettingsOwnedScrollRoute(pathname: string): boolean {
   return (
     pathname.startsWith('/settings/profile') ||
     pathname.startsWith('/settings/billing') ||
+    pathname.startsWith('/settings/integrations') ||
     pathname.startsWith('/settings/fintech') ||
     pathname.startsWith('/settings/users')
   );

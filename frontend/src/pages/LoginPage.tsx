@@ -28,6 +28,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [magicSent, setMagicSent] = useState(false);
+  const [ssoUrl, setSsoUrl] = useState<string | null>(null);
+  const [ssoProvider, setSsoProvider] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('sso') === '1') {
@@ -105,6 +107,33 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const discoverSso = async (forEmail: string) => {
+    try {
+      const res = await apiClient.get<{
+        ssoRequired?: boolean;
+        authorizationUrl?: string;
+        provider?: string;
+      }>('/api/v1/auth/sso-discover', { params: { email: forEmail } });
+      if (res.data.ssoRequired && res.data.authorizationUrl) {
+        setSsoUrl(res.data.authorizationUrl);
+        setSsoProvider(res.data.provider ?? null);
+      } else {
+        setSsoUrl(null);
+        setSsoProvider(null);
+      }
+    } catch {
+      setSsoUrl(null);
+      setSsoProvider(null);
+    }
+  };
+
+  const startSso = (authorizationUrl?: string | null) => {
+    const url = authorizationUrl ?? ssoUrl;
+    if (!url) return;
+    const base = import.meta.env.VITE_API_URL ?? '';
+    window.location.href = `${base}${url}`;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -170,6 +199,7 @@ export function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => void discoverSso(email)}
                 placeholder="you@company.com"
                 required
                 autoComplete="email"
@@ -222,6 +252,53 @@ export function LoginPage() {
               >
                 Email magic link
               </Button>
+              <div className="relative py-2 text-center text-xs uppercase tracking-wide text-white/40">
+                or continue with
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full border-white/15 bg-white text-[#1a2332] hover:bg-white/90"
+                data-testid="login-google-sso"
+                onClick={async () => {
+                  setError('');
+                  await discoverSso(email);
+                  if (ssoUrl && (ssoProvider === 'GOOGLE' || !ssoProvider)) {
+                    startSso(ssoUrl);
+                    return;
+                  }
+                  // Discover again after await — read fresh response
+                  try {
+                    const res = await apiClient.get<{
+                      ssoRequired?: boolean;
+                      authorizationUrl?: string;
+                      provider?: string;
+                    }>('/api/v1/auth/sso-discover', { params: { email } });
+                    if (res.data.authorizationUrl) {
+                      startSso(res.data.authorizationUrl);
+                      return;
+                    }
+                  } catch {
+                    /* fall through */
+                  }
+                  setError(
+                    'Google Workspace SSO is not configured for this email domain. Ask an admin to connect Google under Settings → Security.',
+                  );
+                }}
+              >
+                Login with Google
+              </Button>
+              {ssoUrl && ssoProvider && ssoProvider !== 'GOOGLE' && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full border-white/15 bg-transparent text-white hover:bg-white/5"
+                  data-testid="login-corporate-sso"
+                  onClick={() => startSso()}
+                >
+                  Continue with {ssoProvider === 'ENTRA' ? 'Microsoft' : ssoProvider}
+                </Button>
+              )}
             </form>
 
             <p className="mt-6 text-center text-sm">

@@ -489,12 +489,12 @@ export function ProductsPage() {
       {
         id: 'thumb',
         header: '',
-        width: 48,
+        width: 56,
         hideable: false,
         align: 'center',
         cell: (product) => (
           <div
-            className="flex justify-center"
+            className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
@@ -502,7 +502,7 @@ export function ProductsPage() {
               url={product.primaryMediaUrl}
               alt={product.name}
               previewCaption={product.sku}
-              size="sm"
+              size="md"
             />
           </div>
         ),
@@ -831,35 +831,37 @@ export function ProductsPage() {
         </DataListToolbar>
       </div>
 
-      <VirtualizedTable
-        gridId="products"
-        columns={columns}
-        rows={displayed}
-        getRowId={(row) => row.id}
-        selectedRowId={peekProductId}
-        onRowClick={(row) => {
-          setPeekTab('details');
-          setPeekProductId(row.id);
-        }}
-        onEndReached={loadMore}
-        empty={
-          <div className="p-6">
-            <EmptyState
-              icon={Package}
-              title="No products yet"
-              description="Add your first product to start receiving and selling stock."
-              action={
-                canManage ? (
-                  <Button onClick={() => setModalOpen(true)}>
-                    <Plus className="h-4 w-4" />
-                    Add your first product
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        }
-      />
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        <VirtualizedTable
+          gridId="products"
+          columns={columns}
+          rows={displayed}
+          getRowId={(row) => row.id}
+          selectedRowId={peekProductId}
+          onRowClick={(row) => {
+            setPeekTab('details');
+            setPeekProductId(row.id);
+          }}
+          onEndReached={loadMore}
+          empty={
+            <div className="p-6">
+              <EmptyState
+                icon={Package}
+                title="No products yet"
+                description="Add your first product to start receiving and selling stock."
+                action={
+                  canManage ? (
+                    <Button onClick={() => setModalOpen(true)}>
+                      <Plus className="h-4 w-4" />
+                      Add your first product
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          }
+        />
+      </div>
 
       {isFetchingNextPage && (
         <div className="border-t border-border p-3 text-center text-sm text-text-muted">

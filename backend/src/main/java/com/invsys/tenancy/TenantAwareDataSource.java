@@ -69,6 +69,7 @@ public class TenantAwareDataSource extends DelegatingDataSource {
             connection.setAutoCommit(false);
         }
         TenantConnectionHelper.bindTenant(connection, tenantId);
+        TenantConnectionHelper.bindUser(connection, TenantContext.getUserId().orElse(null));
     }
 
     private void finalizeLocalTransaction(Connection connection, AtomicBoolean openedLocalTx) {

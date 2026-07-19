@@ -4,19 +4,24 @@ import com.invsys.common.exception.BusinessValidationException;
 import com.invsys.common.exception.SystemFailureException;
 import com.invsys.service.OfflineSyncConflictService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -133,8 +138,20 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ProblemDetail handleIllegal(IllegalStateException ex) {
-        log.warn("Illegal state: {}", ex.getMessage());
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : "Illegal state";
+        // Controllers that call TenantContext.require* without a bound JWT land here.
+        // That is an auth/context failure, not a business conflict.
+        if (message.contains("context not set")) {
+            log.warn("Missing request context: {}", message);
+            ProblemDetail pd = ProblemDetail.forStatusAndDetail(
+                    HttpStatus.UNAUTHORIZED, "Authentication required");
+            pd.setTitle("UNAUTHORIZED");
+            pd.setType(URI.create("about:blank"));
+            pd.setProperty("code", "UNAUTHORIZED");
+            return pd;
+        }
+        log.warn("Illegal state: {}", message);
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, message);
         pd.setTitle("CONFLICT");
         return pd;
     }
@@ -151,13 +168,68 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    /**
+     * SSE idle timeout / client navigation away — expected, not a server fault.
+     */
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public ResponseEntity<Void> handleAsyncTimeout(AsyncRequestTimeoutException ex) {
+        log.debug("Async request timed out: {}", ex.toString());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+    }
+
+    @ExceptionHandler({
+            ClientAbortException.class,
+            AsyncRequestNotUsableException.class
+    })
+    public ResponseEntity<Void> handleClientGone(Exception ex) {
+        log.debug("Client disconnected: {}", ex.toString());
+        return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).build();
+    }
+
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public ResponseEntity<Void> handleNotWritable(HttpMessageNotWritableException ex) {
+        if (isBrokenPipe(ex)) {
+            log.debug("Response write aborted (client gone): {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).build();
+        }
+        log.error("Unhandled exception", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneric(Exception ex) {
+        if (isBrokenPipe(ex)) {
+            log.debug("Client disconnected during response: {}", ex.toString());
+            ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.REQUEST_TIMEOUT, "Client disconnected");
+            pd.setTitle("CLIENT_DISCONNECTED");
+            return pd;
+        }
         log.error("Unhandled exception", ex);
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, GENERIC_SYSTEM_DETAIL);
         pd.setTitle("INTERNAL_ERROR");
         pd.setType(URI.create("about:blank"));
         return pd;
+    }
+
+    private static boolean isBrokenPipe(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur instanceof ClientAbortException || cur instanceof AsyncRequestNotUsableException) {
+                return true;
+            }
+            String message = cur.getMessage();
+            if (message != null
+                    && (message.contains("Broken pipe")
+                    || message.contains("Connection reset")
+                    || message.contains("AsyncRequestNotUsableException"))) {
+                return true;
+            }
+            if (cur instanceof IOException && message != null && message.toLowerCase().contains("broken pipe")) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
     }
 
     private ResponseEntity<Map<String, Object>> parkOfflineConflict(

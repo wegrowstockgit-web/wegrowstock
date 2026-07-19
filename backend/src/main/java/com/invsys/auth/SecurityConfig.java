@@ -64,7 +64,8 @@ public class SecurityConfig {
                     auth.requestMatchers("/api/v1/auth/login", "/api/v1/auth/warehouse/login",
                                     "/api/v1/auth/refresh",
                                     "/api/v1/auth/magic-login", "/api/v1/auth/magic-login/consume",
-                                    "/api/v1/auth/sso-discover").permitAll()
+                                    "/api/v1/auth/sso-discover",
+                                    "/api/v1/auth/sso-providers").permitAll()
                             .requestMatchers("/api/v1/invitations/accept").permitAll()
                             .requestMatchers("/api/v1/webhooks/**").permitAll()
                             .requestMatchers("/api/v1/public/**").permitAll()

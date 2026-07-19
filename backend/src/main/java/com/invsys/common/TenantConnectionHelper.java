@@ -25,9 +25,20 @@ public final class TenantConnectionHelper {
     }
 
     /**
+     * Binds {@code app.current_user_id} as a transaction-local GUC for DB audit triggers.
+     */
+    public static void bindUser(Connection connection, UUID userId) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT set_config('app.current_user_id', ?, true)")) {
+            ps.setString(1, userId != null ? userId.toString() : "");
+            ps.execute();
+        }
+    }
+
+    /**
      * Fail-closed wipe before a connection returns to the pool:
      * <ul>
-     *   <li>clear {@code app.current_tenant} (session-level)</li>
+     *   <li>clear {@code app.current_tenant} / {@code app.current_user_id} (session-level)</li>
      *   <li>{@code DEALLOCATE ALL} so prepared plans cannot ride the pooled backend</li>
      * </ul>
      * Complements PgBouncer {@code server_reset_query = DISCARD ALL}.
@@ -35,6 +46,11 @@ public final class TenantConnectionHelper {
     public static void clearTenant(Connection connection) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT set_config('app.current_tenant', ?, false)")) {
+            ps.setString(1, "");
+            ps.execute();
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT set_config('app.current_user_id', ?, false)")) {
             ps.setString(1, "");
             ps.execute();
         }

@@ -16,7 +16,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -99,6 +102,28 @@ class GlobalExceptionHandlerTest {
         assertThat(pd.getStatus()).isEqualTo(500);
         assertThat(pd.getDetail()).isEqualTo("An unexpected system error occurred");
         assertThat(pd.getDetail()).doesNotContain("password");
+    }
+
+    @Test
+    void missingTenantContextIsUnauthorized() {
+        ProblemDetail pd = handler.handleIllegal(new IllegalStateException("Tenant context not set"));
+        assertThat(pd.getStatus()).isEqualTo(401);
+        assertThat(pd.getTitle()).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
+    void asyncTimeoutIsNotInternalError() {
+        ResponseEntity<Void> response = handler.handleAsyncTimeout(new AsyncRequestTimeoutException());
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void brokenPipeWriteIsNotInternalError() {
+        ResponseEntity<Void> response = handler.handleNotWritable(
+                new HttpMessageNotWritableException(
+                        "Could not write JSON",
+                        new IOException("Broken pipe")));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.REQUEST_TIMEOUT);
     }
 
     @Test

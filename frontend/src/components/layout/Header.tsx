@@ -61,7 +61,10 @@ export function Header({
     <>
       <header
         className={cn(
-          'flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-border/60 bg-surface-raised/80 px-4 backdrop-blur-md',
+          // relative z-50: backdrop-blur creates a stacking context; without an
+          // explicit z-index, later main content (e.g. dashboard CTAs) paints over
+          // the account menu and blocks Sign out / Profile Settings.
+          'relative z-50 flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-border/60 bg-surface-raised/80 px-4 backdrop-blur-md',
         )}
       >
         <div className="flex items-center gap-3">
@@ -149,12 +152,17 @@ export function Header({
             </button>
           )}
           {isWarehouseView && <TerminalPinPad warehouseSized />}
-          <div className="relative" ref={menuRef} data-testid="header-user">
+          <div
+            className={cn('relative', menuOpen && 'z-[60]')}
+            ref={menuRef}
+            data-testid="header-user"
+          >
             <button
               type="button"
               className="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-surface-overlay"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
+              data-testid="header-user-trigger"
               onClick={() => setMenuOpen((o) => !o)}
             >
               <Avatar
@@ -173,7 +181,8 @@ export function Header({
             {menuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 z-40 mt-2 w-52 rounded-md border border-border bg-surface-raised py-1 shadow-elevated"
+                data-testid="header-user-menu"
+                className="absolute right-0 z-[60] mt-2 w-52 rounded-md border border-border bg-surface-raised py-1 shadow-elevated"
               >
                 <button
                   type="button"

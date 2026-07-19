@@ -39,8 +39,8 @@ function CustomersTable({
     { key: 'name', dir: 'asc' },
   );
   return (
-    <div className="min-w-0 overflow-x-auto">
-      <Table>
+    <div className="min-w-0 w-full overflow-x-auto scrollbar-thin">
+      <Table className="min-w-full table-auto">
         <TableHeader>
           <TableRow>
             <TableHead sortable sortKey="name" sort={sort} onSort={toggle}>
@@ -311,8 +311,11 @@ export function CustomersPage() {
     useListQuery<Customer>(['customers'], '/api/v1/customers');
 
   return (
-    <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div
+      className="mx-auto flex h-full min-h-[calc(100dvh-var(--header-height))] w-full max-w-7xl flex-col p-4 sm:p-6"
+      data-testid="customers-page"
+    >
+      <div className="mb-6 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-text">Customers</h1>
           <p className="mt-1 text-sm text-text-muted">Buyer accounts, credit, and 3PL billing</p>
@@ -325,32 +328,36 @@ export function CustomersPage() {
         )}
       </div>
 
-      <DataListToolbar />
+      <div className="shrink-0">
+        <DataListToolbar />
+      </div>
 
-      <ListPageState
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        data={data}
-        refetch={refetch}
-        emptyIcon={Users}
-        emptyTitle="No customers yet"
-        emptyDescription={
-          canCreate
-            ? 'Add customers to create sales orders and invoices.'
-            : 'Customers will appear here once added by an admin.'
-        }
-        emptyAction={
-          canCreate ? (
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add customer
-            </Button>
-          ) : undefined
-        }
-      >
-        {(items) => <CustomersTable items={items} onPeek={setPeekCustomer} />}
-      </ListPageState>
+      <div className="min-h-0 min-w-0 flex-1">
+        <ListPageState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          data={data}
+          refetch={refetch}
+          emptyIcon={Users}
+          emptyTitle="No customers yet"
+          emptyDescription={
+            canCreate
+              ? 'Add customers to create sales orders and invoices.'
+              : 'Customers will appear here once added by an admin.'
+          }
+          emptyAction={
+            canCreate ? (
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add customer
+              </Button>
+            ) : undefined
+          }
+        >
+          {(items) => <CustomersTable items={items} onPeek={setPeekCustomer} />}
+        </ListPageState>
+      </div>
 
       <AddCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />
 

@@ -95,12 +95,31 @@ public class EdiTranslationEngine {
                 .filter(m -> "PO1".equals(m.group(1)))
                 .map(m -> {
                     String[] fields = m.group(2).split("\\*", -1);
-                    String sku = fields.length > 6 ? fields[6]
-                            : (fields.length > 0 ? fields[0] : "UNKNOWN");
-                    String qty = fields.length > 1 && fields[0].matches("\\d+(\\.\\d+)?") ? fields[0] : "1";
+                    String sku = extractPo1Sku(fields);
+                    String qty = fields.length > 0 && fields[0].matches("\\d+(\\.\\d+)?") ? fields[0] : "1";
                     return new InboundLine(sku, new java.math.BigDecimal(qty));
                 })
                 .toList();
+    }
+
+    /**
+     * X12 PO1 product id follows a qualifier (VP/VN/SK/BP/UP/UI). Demo payloads often omit
+     * Assigned Identification so the qualifier sits at index 4 with the SKU at index 5.
+     */
+    private static String extractPo1Sku(String[] fields) {
+        for (int i = 0; i < fields.length - 1; i++) {
+            String qual = fields[i] != null ? fields[i].trim().toUpperCase() : "";
+            if (qual.matches("VP|VN|SK|BP|UP|UI")) {
+                String id = fields[i + 1] != null ? fields[i + 1].trim() : "";
+                if (!id.isBlank()) {
+                    return id;
+                }
+            }
+        }
+        if (fields.length > 6 && fields[6] != null && !fields[6].isBlank()) {
+            return fields[6].trim();
+        }
+        return fields.length > 0 && fields[0] != null && !fields[0].isBlank() ? fields[0].trim() : "UNKNOWN";
     }
 
     private String extractSegmentValue(String payload, String segmentId) {

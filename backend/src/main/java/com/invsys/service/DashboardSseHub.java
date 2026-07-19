@@ -38,8 +38,18 @@ public class DashboardSseHub {
             }
         };
         emitter.onCompletion(remove);
-        emitter.onTimeout(remove);
-        emitter.onError(ex -> remove.run());
+        emitter.onTimeout(() -> {
+            remove.run();
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {
+                // already completed / client gone
+            }
+        });
+        emitter.onError(ex -> {
+            remove.run();
+            log.debug("SSE emitter error tenant={}: {}", tenantId, ex.toString());
+        });
 
         try {
             emitter.send(SseEmitter.event()
