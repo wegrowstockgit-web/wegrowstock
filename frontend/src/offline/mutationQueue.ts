@@ -1,8 +1,10 @@
-import { get, set } from 'idb-keyval';
 import axios from 'axios';
 import { apiClient, ensureFreshSession } from '@/api/client';
+import { encryptedGetJson, encryptedSetJson } from '@/offline/encryptedIdb';
 import { useOfflineStore, type QuarantinedMutation } from '@/stores/offlineStore';
+import { useNetworkSyncStore } from '@/stores/networkSyncStore';
 import { useSyncConflictStore } from '@/stores/syncConflicts';
+import type { ScanEventPayload } from '@/offline/scanEvent';
 
 const QUEUE_KEY = 'invsys-mutation-queue';
 
@@ -13,38 +15,76 @@ export interface QueuedMutation {
   url: string;
   body?: unknown;
   createdAt: number;
+  /** Chronological drain key — prefers ScanEventPayload.scannedAt. */
+  scannedAt: number;
+  /** Full client scan envelope when the mutation originated from a hardware scan. */
+  scanEvent?: ScanEventPayload;
   attempts: number;
   lastError?: string;
 }
 
+export type EnqueueMutationInput = Omit<QueuedMutation, 'id' | 'createdAt' | 'attempts' | 'scannedAt'> & {
+  scannedAt?: number;
+};
+
 let replaying = false;
 let onlineListenerAttached = false;
 
+function chronoKey(m: QueuedMutation): number {
+  return m.scannedAt ?? m.scanEvent?.scannedAt ?? m.createdAt;
+}
+
+function sortChronological(queue: QueuedMutation[]): QueuedMutation[] {
+  return [...queue].sort((a, b) => chronoKey(a) - chronoKey(b));
+}
+
 async function readQueue(): Promise<QueuedMutation[]> {
-  return (await get<QueuedMutation[]>(QUEUE_KEY)) ?? [];
+  return (await encryptedGetJson<QueuedMutation[]>(QUEUE_KEY)) ?? [];
 }
 
 async function writeQueue(queue: QueuedMutation[]): Promise<void> {
-  await set(QUEUE_KEY, queue);
+  await encryptedSetJson(QUEUE_KEY, queue);
+  useNetworkSyncStore.getState().setPendingCount(queue.length);
 }
 
-export async function enqueueMutation(
-  mutation: Omit<QueuedMutation, 'id' | 'createdAt' | 'attempts'>,
-): Promise<QueuedMutation> {
+async function syncPendingCount(): Promise<void> {
   const queue = await readQueue();
+  useNetworkSyncStore.getState().setPendingCount(queue.length);
+}
+
+export async function enqueueMutation(mutation: EnqueueMutationInput): Promise<QueuedMutation> {
+  const queue = await readQueue();
+  const scannedAt = mutation.scannedAt ?? mutation.scanEvent?.scannedAt ?? Date.now();
   const entry: QueuedMutation = {
     ...mutation,
     id: crypto.randomUUID(),
     createdAt: Date.now(),
+    scannedAt,
     attempts: 0,
   };
   queue.push(entry);
   await writeQueue(queue);
+  useNetworkSyncStore.getState().setOnline(navigator.onLine);
   return entry;
 }
 
+/** Serialize a ScanEventPayload-backed mutation into the IndexedDB queue. */
+export async function enqueueScanMutation(
+  event: ScanEventPayload,
+  mutation: Pick<QueuedMutation, 'method' | 'url' | 'body'>,
+): Promise<QueuedMutation> {
+  return enqueueMutation({
+    idempotencyKey: event.idempotencyKey,
+    scannedAt: event.scannedAt,
+    scanEvent: event,
+    method: mutation.method,
+    url: mutation.url,
+    body: mutation.body,
+  });
+}
+
 export async function getMutationQueue(): Promise<QueuedMutation[]> {
-  return readQueue();
+  return sortChronological(await readQueue());
 }
 
 export async function removeFromQueue(id: string): Promise<void> {
@@ -149,48 +189,93 @@ export function quarantineFailedMutation(
   });
 }
 
+async function dispatchMutation(mutation: QueuedMutation): Promise<void> {
+  await apiClient.request({
+    method: mutation.method,
+    url: mutation.url,
+    data: mutation.body,
+    headers: {
+      'Idempotency-Key': mutation.idempotencyKey,
+      'X-Offline-Replay': 'true',
+    },
+  });
+}
+
 /**
- * Flush IndexedDB offline mutations. Refreshes JWT before replay so tokens that
- * expired while offline are rotated; HTTP 409 / business 4xx go to quarantine.
+ * Flush IndexedDB offline mutations chronologically by `scannedAt`.
+ * On 401: silent token refresh, retry once, then hold remaining queue (no drops).
  */
 export async function replayMutationQueue(): Promise<{
   succeeded: number;
   failed: number;
   deadLettered: number;
+  heldForAuth: number;
 }> {
   if (replaying) {
-    return { succeeded: 0, failed: 0, deadLettered: 0 };
+    return { succeeded: 0, failed: 0, deadLettered: 0, heldForAuth: 0 };
   }
   replaying = true;
+  useNetworkSyncStore.getState().setSyncing(true);
+  useNetworkSyncStore.getState().setOnline(true);
 
   let succeeded = 0;
   let failed = 0;
   let deadLettered = 0;
+  let heldForAuth = 0;
 
   try {
     const refreshed = await ensureFreshSession();
     if (!refreshed) {
-      return { succeeded: 0, failed: 0, deadLettered: 0 };
+      const pending = await readQueue();
+      return { succeeded: 0, failed: 0, deadLettered: 0, heldForAuth: pending.length };
     }
 
-    const queue = await readQueue();
+    const queue = sortChronological(await readQueue());
+    useNetworkSyncStore.getState().setPendingCount(queue.length);
+
     for (const mutation of queue) {
       try {
-        // X-Offline-Replay: business-rule failures return 202 + server-side conflict sink.
-        await apiClient.request({
-          method: mutation.method,
-          url: mutation.url,
-          data: mutation.body,
-          headers: {
-            'Idempotency-Key': mutation.idempotencyKey,
-            'X-Offline-Replay': 'true',
-          },
-        });
+        await dispatchMutation(mutation);
         await removeFromQueue(mutation.id);
         succeeded++;
       } catch (err) {
         const status = statusOf(err);
         const { title, detail } = problemDetailsOf(err);
+
+        if (status === 401) {
+          // Hold remaining queue, silent refresh, retry this mutation, then resume.
+          const ok = await ensureFreshSession();
+          if (ok) {
+            try {
+              await dispatchMutation(mutation);
+              await removeFromQueue(mutation.id);
+              succeeded++;
+              continue;
+            } catch (retryErr) {
+              const retryStatus = statusOf(retryErr);
+              if (retryStatus === 401) {
+                const remaining = await readQueue();
+                heldForAuth = remaining.length;
+                failed++;
+                break;
+              }
+              const retryDetails = problemDetailsOf(retryErr);
+              if (isBusinessClientError(retryStatus)) {
+                await removeFromQueue(mutation.id);
+                quarantineFailedMutation(mutation, retryStatus!, retryDetails.title, retryDetails.detail);
+                deadLettered++;
+                continue;
+              }
+              await updateMutationError(mutation.id, retryDetails.detail);
+              failed++;
+              break;
+            }
+          }
+          const remaining = await readQueue();
+          heldForAuth = remaining.length;
+          failed++;
+          break;
+        }
 
         if (isBusinessClientError(status)) {
           // Fallback for endpoints that do not yet emit 202 — keep local quarantine.
@@ -202,24 +287,38 @@ export async function replayMutationQueue(): Promise<{
 
         await updateMutationError(mutation.id, detail);
         failed++;
+        // Transient network / 5xx — stop so chronological order is preserved.
+        break;
       }
     }
   } finally {
     replaying = false;
+    await syncPendingCount();
+    useNetworkSyncStore.getState().setSyncing(false);
   }
 
-  return { succeeded, failed, deadLettered };
+  return { succeeded, failed, deadLettered, heldForAuth };
 }
 
 export function startMutationQueueReplay(): void {
   const replay = () => {
     if (navigator.onLine) {
+      useNetworkSyncStore.getState().setOnline(true);
+      // Lazy import avoids circular dependency with queryClient → mutationQueue.
+      void import('@/lib/queryClient').then(({ queryClient }) => {
+        void queryClient.resumePausedMutations();
+      });
       void replayMutationQueue();
+    } else {
+      useNetworkSyncStore.getState().setOnline(false);
     }
   };
 
   if (!onlineListenerAttached) {
     window.addEventListener('online', replay);
+    window.addEventListener('offline', () => {
+      useNetworkSyncStore.getState().setOnline(false);
+    });
     onlineListenerAttached = true;
   }
 
@@ -231,7 +330,10 @@ export function startMutationQueueReplay(): void {
     });
   }
 
+  void syncPendingCount();
   if (navigator.onLine) {
     void replayMutationQueue();
+  } else {
+    useNetworkSyncStore.getState().setOnline(false);
   }
 }

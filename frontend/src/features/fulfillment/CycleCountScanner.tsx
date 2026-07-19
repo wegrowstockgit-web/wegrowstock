@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react';
 import { apiClient } from '@/api/client';
 import type { CycleCountDetail, CycleCountLineView } from '@/api/types';
 import { Button } from '@/components/ui/Button';
+import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
+import { enqueueScanMutation } from '@/offline/mutationQueue';
+import { createScanEventPayload } from '@/offline/scanEvent';
 import { cn } from '@/lib/utils';
 
 interface CycleCountScannerProps {
@@ -16,7 +19,9 @@ function nextPendingLine(detail: CycleCountDetail | undefined): CycleCountLineVi
   if (!detail?.lines?.length) return null;
   return (
     detail.lines.find(
-      (l) => l.varianceStatus === 'PENDING' || l.varianceStatus === 'RECOUNT_REQUESTED',
+      (l) =>
+        l.varianceStatus === 'PENDING' ||
+        l.varianceStatus === 'RECOUNT_REQUESTED',
     ) ?? null
   );
 }
@@ -34,11 +39,13 @@ function formatQty(value: number | string | null | undefined): string {
 export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCountScannerProps) {
   const queryClient = useQueryClient();
   const [digits, setDigits] = useState('');
-  const [flash, setFlash] = useState<'ok' | 'err' | null>(null);
+  const [flash, setFlash] = useState<'ok' | 'err' | 'pending' | null>(null);
   const [lastStatus, setLastStatus] = useState<string | null>(null);
+  const [scannedCount, setScannedCount] = useState(0);
 
   const { data: detail, isLoading, error } = useQuery({
     queryKey: ['cycle-counts', cycleCountId],
+    networkMode: 'offlineFirst',
     queryFn: async () => {
       const open = await apiClient.post<CycleCountDetail>(`/api/v1/cycle-counts/${cycleCountId}/open`);
       return open.data;
@@ -50,19 +57,65 @@ export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCou
   const blind = detail?.blindCycleCounts ?? true;
 
   const submit = useMutation({
+    networkMode: 'offlineFirst',
     mutationFn: async (countedQty: number) => {
       if (!line) throw new Error('No pending line');
-      const res = await apiClient.post<CycleCountLineView>(
-        `/api/v1/cycle-counts/${cycleCountId}/lines/${line.id}/submit`,
-        { countedQty },
-      );
+      const body = { countedQty };
+      const url = `/api/v1/cycle-counts/${cycleCountId}/lines/${line.id}/submit`;
+      const scanEvent = createScanEventPayload(line.sku ?? line.id);
+      if (!navigator.onLine) {
+        await enqueueScanMutation(scanEvent, {
+          method: 'POST',
+          url,
+          body,
+        });
+        return {
+          ...line,
+          countedQty,
+          varianceStatus: 'COUNTED_OFFLINE',
+        } as CycleCountLineView;
+      }
+      const res = await apiClient.post<CycleCountLineView>(url, body, {
+        headers: { 'Idempotency-Key': scanEvent.idempotencyKey },
+      });
       return res.data;
+    },
+    onMutate: async (countedQty) => {
+      if (!line) return;
+      setScannedCount((c) => c + 1);
+      if (!navigator.onLine) {
+        setFlash('pending');
+        window.setTimeout(() => setFlash(null), 600);
+      }
+      await queryClient.cancelQueries({ queryKey: ['cycle-counts', cycleCountId] });
+      const previous = queryClient.getQueryData<CycleCountDetail>(['cycle-counts', cycleCountId]);
+      queryClient.setQueryData<CycleCountDetail>(['cycle-counts', cycleCountId], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          lines: old.lines.map((l) =>
+            l.id === line.id
+              ? { ...l, countedQty, varianceStatus: 'COUNTED_OFFLINE' }
+              : l,
+          ),
+        };
+      });
+      return { previous };
     },
     onSuccess: async (result) => {
       setDigits('');
       setLastStatus(result.varianceStatus);
-      setFlash('ok');
-      window.setTimeout(() => setFlash(null), 600);
+      if (navigator.onLine) {
+        setFlash('ok');
+        window.setTimeout(() => setFlash(null), 600);
+      }
+      if (!navigator.onLine) {
+        const current = queryClient.getQueryData<CycleCountDetail>(['cycle-counts', cycleCountId]);
+        if (!nextPendingLine(current)) {
+          onComplete?.();
+        }
+        return;
+      }
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', cycleCountId] });
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', 'priority-audits'] });
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', 'pending-variances'] });
@@ -71,8 +124,12 @@ export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCou
         onComplete?.();
       }
     },
-    onError: () => {
+    onError: (_err, _vars, ctx) => {
       setFlash('err');
+      setScannedCount((c) => Math.max(0, c - 1));
+      if (ctx?.previous) {
+        queryClient.setQueryData(['cycle-counts', cycleCountId], ctx.previous);
+      }
       window.setTimeout(() => setFlash(null), 700);
     },
   });
@@ -139,9 +196,11 @@ export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCou
         'mx-auto flex w-full max-w-md flex-col gap-5 px-3 py-4 transition-transform duration-150',
         flash === 'ok' && 'scale-[1.01]',
         flash === 'err' && 'animate-pulse',
+        flash === 'pending' && 'bg-warning/10',
       )}
       data-testid="cycle-count-scanner"
       data-blind={blind ? 'true' : 'false'}
+      data-flash={flash ?? undefined}
     >
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back" data-testid="cycle-count-back">
@@ -152,7 +211,21 @@ export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCou
           <p className="truncate font-mono text-sm text-text" data-testid="cycle-count-location">
             {detail.locationPath}
           </p>
+          {scannedCount > 0 && (
+            <p className="text-xs font-medium text-accent" data-testid="cycle-count-scanned">
+              Scanned {scannedCount}
+            </p>
+          )}
+          {flash === 'pending' && (
+            <p
+              className="text-xs font-semibold uppercase tracking-wide text-warning"
+              data-testid="cycle-count-pending-sync"
+            >
+              Pending Sync
+            </p>
+          )}
         </div>
+        <NetworkStatusBadge />
       </div>
 
       <div className="text-center">

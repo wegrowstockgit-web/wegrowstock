@@ -1,89 +1,55 @@
-import { get, set, del } from 'idb-keyval';
+import { useEffect, type ReactNode } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import {
   type PersistedClient,
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { MutationCache, QueryClient } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
-import axios from 'axios';
-import {
-  problemDetailsOf,
-  quarantineFailedMutation,
-  type QueuedMutation,
-} from '@/offline/mutationQueue';
+import { queryClient } from '@/lib/queryClient';
+import { useCryptoMemoryKeyStore } from '@/stores/cryptoMemoryKeyStore';
+import { createEncryptedIdbStorage, encryptedDel } from '@/offline/encryptedIdb';
+import { clearPinVerifier } from '@/offline/pinVault';
 
 const IDB_KEY = 'invsys-query-cache';
+const QUEUE_KEY = 'invsys-mutation-queue';
 
-const idbStorage = {
-  getItem: async (key: string) => (await get(key)) ?? null,
-  setItem: async (key: string, value: string) => {
-    await set(key, value);
-  },
-  removeItem: async (key: string) => {
-    await del(key);
-  },
-};
+const encryptedStorage = createEncryptedIdbStorage();
 
+/** IndexedDB persister (AES-GCM wrapped idb-keyval) for query cache + paused mutations. */
 export const queryPersister = createAsyncStoragePersister({
-  storage: idbStorage,
+  storage: encryptedStorage,
   key: IDB_KEY,
   throttleTime: 1000,
 });
 
-function mutationMetaAsQueued(mutation: {
-  options: { meta?: Record<string, unknown> };
-  state: { variables?: unknown };
-}): QueuedMutation | null {
-  const meta = mutation.options.meta;
-  if (!meta || typeof meta.url !== 'string' || typeof meta.idempotencyKey !== 'string') {
-    return null;
-  }
-  return {
-    id: typeof meta.queueId === 'string' ? meta.queueId : crypto.randomUUID(),
-    idempotencyKey: meta.idempotencyKey,
-    method: (typeof meta.method === 'string' ? meta.method : 'POST') as QueuedMutation['method'],
-    url: meta.url,
-    body: mutation.state.variables,
-    createdAt: Date.now(),
-    attempts: 0,
-  };
-}
-
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      networkMode: 'offlineFirst',
-      staleTime: 60_000,
-      gcTime: 24 * 60 * 60 * 1000,
-      retry: 1,
-      refetchOnWindowFocus: true,
-    },
-    mutations: {
-      networkMode: 'offlineFirst',
-      retry: 0,
-    },
-  },
-  mutationCache: new MutationCache({
-    onError: (error, _variables, _context, mutation) => {
-      if (!axios.isAxiosError(error) || error.response?.status !== 409) {
-        return;
-      }
-      const queued = mutationMetaAsQueued(mutation);
-      if (!queued) {
-        return;
-      }
-      const { title, detail } = problemDetailsOf(error);
-      quarantineFailedMutation(queued, 409, title, detail);
-    },
-  }),
-});
+export { queryClient };
 
 interface QueryProviderProps {
   children: ReactNode;
 }
 
+function OnlineResumeEffect() {
+  useEffect(() => {
+    const onOnline = () => {
+      void queryClient.resumePausedMutations();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+  return null;
+}
+
+/**
+ * Hydrates the encrypted persist layer only while a PIN-derived AES key is in memory.
+ * Login / lock screens still get a live QueryClient without touching ciphertext.
+ */
 export function QueryProvider({ children }: QueryProviderProps) {
+  const memoryKey = useCryptoMemoryKeyStore((s) => s.memoryKey);
+
+  if (!memoryKey) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  }
+
   return (
     <PersistQueryClientProvider
       client={queryClient}
@@ -92,16 +58,31 @@ export function QueryProvider({ children }: QueryProviderProps) {
         maxAge: 24 * 60 * 60 * 1000,
         dehydrateOptions: {
           shouldDehydrateQuery: (query) => query.state.status === 'success',
+          shouldDehydrateMutation: () => true,
         },
       }}
+      onSuccess={() => {
+        if (navigator.onLine) {
+          void queryClient.resumePausedMutations();
+        }
+      }}
     >
+      <OnlineResumeEffect />
       {children}
     </PersistQueryClientProvider>
   );
 }
 
 export async function clearQueryCache(): Promise<void> {
-  await del(IDB_KEY);
+  await encryptedDel(IDB_KEY);
+  await encryptedDel(QUEUE_KEY);
+  useCryptoMemoryKeyStore.getState().clearKey();
+}
+
+/** Full cryptographic wipe used on brute-force PIN failure / hard logout. */
+export async function purgeEncryptedOfflineData(): Promise<void> {
+  await clearQueryCache();
+  await clearPinVerifier();
 }
 
 export type { PersistedClient };

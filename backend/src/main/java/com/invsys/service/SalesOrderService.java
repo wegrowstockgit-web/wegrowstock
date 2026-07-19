@@ -14,7 +14,10 @@ import com.invsys.repository.LocationRepository;
 import com.invsys.repository.ProductVariantRepository;
 import com.invsys.repository.SalesOrderLineRepository;
 import com.invsys.repository.SalesOrderRepository;
+import com.invsys.metrics.WmsMetrics;
 import com.invsys.tenancy.TenantContext;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +26,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +43,8 @@ public class SalesOrderService {
     private final ProductVariantRepository variantRepository;
     private final SoftKitExplosionService softKitExplosionService;
     private final DocumentSequenceService sequenceService;
+    private final MeterRegistry meterRegistry;
+    private final WmsMetrics wmsMetrics;
 
     public SalesOrderService(SalesOrderRepository salesOrderRepository,
                              SalesOrderLineRepository lineRepository,
@@ -49,7 +55,9 @@ public class SalesOrderService {
                              CustomerRepository customerRepository,
                              ProductVariantRepository variantRepository,
                              SoftKitExplosionService softKitExplosionService,
-                             DocumentSequenceService sequenceService) {
+                             DocumentSequenceService sequenceService,
+                             MeterRegistry meterRegistry,
+                             WmsMetrics wmsMetrics) {
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
         this.allocationService = allocationService;
@@ -60,6 +68,8 @@ public class SalesOrderService {
         this.variantRepository = variantRepository;
         this.softKitExplosionService = softKitExplosionService;
         this.sequenceService = sequenceService;
+        this.meterRegistry = Objects.requireNonNull(meterRegistry, "meterRegistry");
+        this.wmsMetrics = wmsMetrics;
     }
 
     /**
@@ -164,36 +174,42 @@ public class SalesOrderService {
 
     @Transactional
     public SalesOrder allocate(UUID orderId) {
-        SalesOrder order = getOrder(orderId);
-        if (!List.of("CONFIRMED", "BACKORDERED", "ALLOCATED").contains(order.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be allocated");
-        }
-        String before = order.getStatus();
-        List<UUID> locationIds = locationRepository.findByTenantIdOrderByPathAsc(TenantContext.requireTenantId())
-                .stream().map(l -> l.getId()).toList();
-        BigDecimal totalOrdered = BigDecimal.ZERO;
-        BigDecimal totalAllocated = BigDecimal.ZERO;
-        for (SalesOrderLine line : lineRepository.findBySalesOrderId(orderId)) {
-            allocationService.allocate(line, locationIds);
-            SalesOrderLine refreshed = lineRepository.findById(line.getId()).orElse(line);
-            totalOrdered = totalOrdered.add(refreshed.getQtyOrdered());
-            totalAllocated = totalAllocated.add(
-                    refreshed.getQtyAllocated() != null ? refreshed.getQtyAllocated() : BigDecimal.ZERO);
-        }
-        // Soft backorder: no stock reserved → BACKORDERED; otherwise ALLOCATED (may still be short).
-        String after = totalAllocated.signum() <= 0 ? "BACKORDERED" : "ALLOCATED";
-        order.setStatus(after);
-        order = salesOrderRepository.save(order);
-        if ("ALLOCATED".equals(after)) {
-            outboxService.append("SALES_ORDER", order.getId(), "ORDER_ALLOCATED", Map.of(
-                    "orderId", order.getId(),
+        Timer.Sample allocationSample = wmsMetrics.startAllocation();
+        try {
+            SalesOrder order = getOrder(orderId);
+            if (!List.of("CONFIRMED", "BACKORDERED", "ALLOCATED").contains(order.getStatus())) {
+                throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be allocated");
+            }
+            String before = order.getStatus();
+            List<UUID> locationIds = locationRepository.findByTenantIdOrderByPathAsc(TenantContext.requireTenantId())
+                    .stream().map(l -> l.getId()).toList();
+            BigDecimal totalOrdered = BigDecimal.ZERO;
+            BigDecimal totalAllocated = BigDecimal.ZERO;
+            for (SalesOrderLine line : lineRepository.findBySalesOrderId(orderId)) {
+                allocationService.allocate(line, locationIds);
+                SalesOrderLine refreshed = lineRepository.findById(line.getId()).orElse(line);
+                totalOrdered = totalOrdered.add(refreshed.getQtyOrdered());
+                totalAllocated = totalAllocated.add(
+                        refreshed.getQtyAllocated() != null ? refreshed.getQtyAllocated() : BigDecimal.ZERO);
+            }
+            // Soft backorder: no stock reserved → BACKORDERED; otherwise ALLOCATED (may still be short).
+            String after = totalAllocated.signum() <= 0 ? "BACKORDERED" : "ALLOCATED";
+            order.setStatus(after);
+            order = salesOrderRepository.save(order);
+            if ("ALLOCATED".equals(after)) {
+                outboxService.append("SALES_ORDER", order.getId(), "ORDER_ALLOCATED", Map.of(
+                        "orderId", order.getId(),
+                        "qtyAllocated", totalAllocated));
+                wmsMetrics.incrementOrdersProcessed();
+            }
+            auditService.record("SALES_ORDER_ALLOCATE", "SALES_ORDER", order.getId(), Map.of(
+                    "status", Map.of("before", before, "after", order.getStatus()),
+                    "qtyOrdered", totalOrdered,
                     "qtyAllocated", totalAllocated));
+            return order;
+        } finally {
+            wmsMetrics.stopAllocation(allocationSample);
         }
-        auditService.record("SALES_ORDER_ALLOCATE", "SALES_ORDER", order.getId(), Map.of(
-                "status", Map.of("before", before, "after", order.getStatus()),
-                "qtyOrdered", totalOrdered,
-                "qtyAllocated", totalAllocated));
-        return order;
     }
 
     @Transactional

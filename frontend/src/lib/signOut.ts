@@ -1,7 +1,8 @@
 import { apiClient } from '@/api/client';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useSessionStore } from '@/stores/session';
-import { clearQueryCache, queryClient } from '@/offline/queryPersistence';
+import { useScannerLockStore } from '@/stores/scannerLockStore';
+import { purgeEncryptedOfflineData, queryClient } from '@/offline/queryPersistence';
 import { clearTerminalPasskey } from '@/lib/terminalPasskey';
 
 export async function signOut(): Promise<void> {
@@ -15,6 +16,7 @@ export async function signOut(): Promise<void> {
   clearTerminalPasskey();
   useSessionStore.getState().clearSession();
   useActiveWarehouseStore.getState().clearWarehouse();
+  useScannerLockStore.getState().resetLockState();
   queryClient.clear();
-  await clearQueryCache();
+  await purgeEncryptedOfflineData();
 }

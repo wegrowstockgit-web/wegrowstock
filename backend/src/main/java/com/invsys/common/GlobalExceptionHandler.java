@@ -2,6 +2,7 @@ package com.invsys.common;
 
 import com.invsys.common.exception.BusinessValidationException;
 import com.invsys.common.exception.SystemFailureException;
+import com.invsys.metrics.WmsMetrics;
 import com.invsys.service.OfflineSyncConflictService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.catalina.connector.ClientAbortException;
@@ -38,9 +39,11 @@ public class GlobalExceptionHandler {
     private static final String GENERIC_SYSTEM_DETAIL = "An unexpected system error occurred";
 
     private final OfflineSyncConflictService offlineSyncConflictService;
+    private final WmsMetrics wmsMetrics;
 
-    public GlobalExceptionHandler(OfflineSyncConflictService offlineSyncConflictService) {
+    public GlobalExceptionHandler(OfflineSyncConflictService offlineSyncConflictService, WmsMetrics wmsMetrics) {
         this.offlineSyncConflictService = offlineSyncConflictService;
+        this.wmsMetrics = wmsMetrics;
     }
 
     @ExceptionHandler(BusinessValidationException.class)
@@ -57,8 +60,9 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(SystemFailureException.class)
-    public ProblemDetail handleSystem(SystemFailureException ex) {
+    public ProblemDetail handleSystem(SystemFailureException ex, HttpServletRequest request) {
         log.error("System failure code={} message={}", ex.getCode(), ex.getMessage(), ex);
+        wmsMetrics.incrementApiError(endpointTag(request));
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, GENERIC_SYSTEM_DETAIL);
         pd.setTitle("INTERNAL_ERROR");
         pd.setType(URI.create("about:blank"));
@@ -73,6 +77,7 @@ public class GlobalExceptionHandler {
         }
         if (ex.getStatus().is5xxServerError()) {
             log.error("ApiException system-path code={} detail={}", ex.getCode(), ex.getMessage(), ex);
+            wmsMetrics.incrementApiError(endpointTag(request));
             ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, GENERIC_SYSTEM_DETAIL);
             pd.setTitle("INTERNAL_ERROR");
             pd.setType(URI.create("about:blank"));
@@ -187,17 +192,18 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpMessageNotWritableException.class)
-    public ResponseEntity<Void> handleNotWritable(HttpMessageNotWritableException ex) {
+    public ResponseEntity<Void> handleNotWritable(HttpMessageNotWritableException ex, HttpServletRequest request) {
         if (isBrokenPipe(ex)) {
             log.debug("Response write aborted (client gone): {}", ex.getMessage());
             return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).build();
         }
         log.error("Unhandled exception", ex);
+        wmsMetrics.incrementApiError(endpointTag(request));
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
     }
 
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleGeneric(Exception ex) {
+    public ProblemDetail handleGeneric(Exception ex, HttpServletRequest request) {
         if (isBrokenPipe(ex)) {
             log.debug("Client disconnected during response: {}", ex.toString());
             ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.REQUEST_TIMEOUT, "Client disconnected");
@@ -205,10 +211,20 @@ public class GlobalExceptionHandler {
             return pd;
         }
         log.error("Unhandled exception", ex);
+        wmsMetrics.incrementApiError(endpointTag(request));
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, GENERIC_SYSTEM_DETAIL);
         pd.setTitle("INTERNAL_ERROR");
         pd.setType(URI.create("about:blank"));
         return pd;
+    }
+
+    private static String endpointTag(HttpServletRequest request) {
+        if (request == null) {
+            return "unknown";
+        }
+        String method = request.getMethod() != null ? request.getMethod() : "";
+        String uri = request.getRequestURI() != null ? request.getRequestURI() : "unknown";
+        return (method + " " + uri).trim();
     }
 
     private static boolean isBrokenPipe(Throwable ex) {

@@ -91,6 +91,11 @@ services:
         mc alias set local http://minio:9000 "$$MEDIA_ACCESS_KEY" "$$MEDIA_SECRET_KEY"
         mc mb -p local/invsys-media || true
         mc anonymous set none local/invsys-media || true
+        mc mb -p local/archives-db-backups || true
+        mc anonymous set none local/archives-db-backups || true
+        mc version enable local/archives-db-backups || true
+        # Local MinIO stand-in for AWS Glacier@30d / expire@365d (see ops/terraform/s3-db-backups).
+        mc ilm rule add local/archives-db-backups --prefix "postgres/" --expire-days 365 || true
         cat > /tmp/cors.json <<'EOF'
         {
           "CORSRules": [{
@@ -104,6 +109,34 @@ services:
         EOF
         mc cors set local/invsys-media /tmp/cors.json || true
         exit 0
+
+  # Nightly pg_dump → gzip → MinIO/S3 bucket archives-db-backups (disaster recovery).
+  db-backup:
+    build:
+      context: ./ops/db-backup
+      dockerfile: Dockerfile
+    container_name: invsys-db-backup
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: invsys
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: archives-db-backups
+      AWS_ACCESS_KEY_ID: ${MEDIA_ACCESS_KEY:-invsys}
+      AWS_SECRET_ACCESS_KEY: ${MEDIA_SECRET_KEY:-invsyssecret}
+      AWS_DEFAULT_REGION: us-east-1
+      BACKUP_CRON: ${DB_BACKUP_CRON:-0 2 * * *}
+      BACKUP_RUN_ON_START: ${DB_BACKUP_RUN_ON_START:-false}
+    restart: unless-stopped
 
   # Observability (LGTM) — ingestion stays on the Compose network only.
   # Grafana UI is published on host :3001; Prometheus/Loki/Tempo are not.

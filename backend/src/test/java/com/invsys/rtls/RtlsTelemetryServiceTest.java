@@ -3,6 +3,7 @@ package com.invsys.rtls;
 import com.invsys.common.ApiException;
 import com.invsys.domain.RtlsPositionEvent;
 import com.invsys.domain.RtlsTag;
+import com.invsys.repository.LocationRepository;
 import com.invsys.repository.RtlsPositionEventRepository;
 import com.invsys.repository.RtlsTagRepository;
 import com.invsys.tenancy.TenantContext;
@@ -30,6 +31,7 @@ class RtlsTelemetryServiceTest {
 
     @Mock RtlsTagRepository tagRepository;
     @Mock RtlsPositionEventRepository positionRepository;
+    @Mock LocationRepository locationRepository;
     @Mock RtlsSseHub sseHub;
 
     RtlsTelemetryService service;
@@ -37,7 +39,7 @@ class RtlsTelemetryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new RtlsTelemetryService(tagRepository, positionRepository, sseHub);
+        service = new RtlsTelemetryService(tagRepository, positionRepository, locationRepository, sseHub);
         tenantId = UUID.randomUUID();
         TenantContext.setTenantId(tenantId);
     }

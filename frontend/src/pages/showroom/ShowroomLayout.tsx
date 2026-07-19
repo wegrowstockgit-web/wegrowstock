@@ -27,7 +27,7 @@ export function ShowroomLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-surface" data-testid="showroom-layout">
       <header className="border-b border-border bg-surface-raised">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2">

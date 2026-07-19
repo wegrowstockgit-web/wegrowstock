@@ -25,6 +25,7 @@ import { useVariantCacheStore } from '@/stores/variantCacheStore';
 import { cn, generateIdempotencyKey } from '@/lib/utils';
 import { evaluateLotGrace, validatePickScan, type ParsedBarcode } from '@/utils/gs1Parser';
 import { enqueueMutation } from '@/offline/mutationQueue';
+import { createScanEventPayload } from '@/offline/scanEvent';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
@@ -229,7 +230,8 @@ export function FulfillmentPage() {
   const warehouse = useActiveWarehouseStore((s) => s.warehouse);
   const lastScan = useScanBufferStore((s) => s.lastScan);
   const clearScanCard = useScanBufferStore((s) => s.clearScanCard);
-  const { flash, triggerSuccess, triggerError, triggerExceptionHaptic } = useScanFeedback();
+  const { flash, triggerSuccess, triggerError, triggerPendingSync, triggerExceptionHaptic } =
+    useScanFeedback();
   const [skipFlagPending, setSkipFlagPending] = useState(false);
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
   const [history, setHistory] = useState<ScannerHistoryItem[]>([]);
@@ -645,7 +647,7 @@ export function FulfillmentPage() {
   };
 
   const submitScan = async (barcode: string, serialNumber?: string): Promise<FulfillmentScanResponse> => {
-    const idempotencyKey = generateIdempotencyKey();
+    const scanEvent = createScanEventPayload(barcode);
     const payload = buildScanPayload(barcode, serialNumber);
 
     if (!navigator.onLine) {
@@ -655,11 +657,14 @@ export function FulfillmentPage() {
         requiresSerial: false,
         message: 'Queued for sync',
       };
+      triggerPendingSync();
       bufferMisScan({
         barcode,
         message: `Scan queued — undo within 5s`,
         mutation: {
-          idempotencyKey,
+          idempotencyKey: scanEvent.idempotencyKey,
+          scannedAt: scanEvent.scannedAt,
+          scanEvent,
           method: 'POST',
           url: '/api/v1/fulfillment/scan',
           body: payload,
@@ -669,7 +674,7 @@ export function FulfillmentPage() {
     }
 
     const res = await apiClient.post<FulfillmentScanResponse>('/api/v1/fulfillment/scan', payload, {
-      headers: { 'Idempotency-Key': idempotencyKey },
+      headers: { 'Idempotency-Key': scanEvent.idempotencyKey },
     });
     return res.data;
   };

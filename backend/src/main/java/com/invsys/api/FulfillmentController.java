@@ -1,20 +1,10 @@
 package com.invsys.api;
 
 import com.invsys.common.ApiException;
-import com.invsys.domain.Allocation;
-import com.invsys.domain.Product;
-import com.invsys.domain.ProductVariant;
-import com.invsys.domain.TenantSettings;
-import com.invsys.repository.ProductRepository;
-import com.invsys.repository.ProductVariantRepository;
-import com.invsys.repository.TenantSettingsRepository;
-import com.invsys.service.AllocationService;
 import com.invsys.service.CrossDockService;
 import com.invsys.service.FulfillmentExceptionService;
+import com.invsys.service.FulfillmentService;
 import com.invsys.service.IdempotencyService;
-import com.invsys.service.InventoryService;
-import com.invsys.service.ScanService;
-import com.invsys.tenancy.TenantContext;
 import io.micrometer.core.annotation.Timed;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -22,7 +12,6 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -39,34 +28,19 @@ import java.util.UUID;
 @RequestMapping("/api/v1/fulfillment")
 public class FulfillmentController {
 
-    private final ProductVariantRepository variantRepository;
-    private final ProductRepository productRepository;
-    private final InventoryService inventoryService;
-    private final ScanService scanService;
     private final IdempotencyService idempotencyService;
-    private final TenantSettingsRepository tenantSettingsRepository;
-    private final AllocationService allocationService;
     private final FulfillmentExceptionService fulfillmentExceptionService;
     private final CrossDockService crossDockService;
+    private final FulfillmentService fulfillmentService;
 
-    public FulfillmentController(ProductVariantRepository variantRepository,
-                                 ProductRepository productRepository,
-                                 InventoryService inventoryService,
-                                 ScanService scanService,
-                                 IdempotencyService idempotencyService,
-                                 TenantSettingsRepository tenantSettingsRepository,
-                                 AllocationService allocationService,
+    public FulfillmentController(IdempotencyService idempotencyService,
                                  FulfillmentExceptionService fulfillmentExceptionService,
-                                 CrossDockService crossDockService) {
-        this.variantRepository = variantRepository;
-        this.productRepository = productRepository;
-        this.inventoryService = inventoryService;
-        this.scanService = scanService;
+                                 CrossDockService crossDockService,
+                                 FulfillmentService fulfillmentService) {
         this.idempotencyService = idempotencyService;
-        this.tenantSettingsRepository = tenantSettingsRepository;
-        this.allocationService = allocationService;
         this.fulfillmentExceptionService = fulfillmentExceptionService;
         this.crossDockService = crossDockService;
+        this.fulfillmentService = fulfillmentService;
     }
 
     /**
@@ -154,133 +128,13 @@ public class FulfillmentController {
             return ResponseEntity.status(cached.get().status()).body(replayed);
         }
 
-        ScanResponse response = executeScan(request);
+        ScanResponse response = fulfillmentService.executeScan(request);
         idempotencyService.store(
                 idempotencyKey.trim(),
                 request.barcode() + "|" + request.mode() + "|" + request.warehouseId(),
                 HttpStatus.OK.value(),
                 toMap(response));
         return ResponseEntity.ok(response);
-    }
-
-    private ScanResponse executeScan(ScanRequest request) {
-        UUID tenantId = TenantContext.requireTenantId();
-        // Client-side GS1 parser sends GTIN as barcode (+ optional gtin); no server re-parse required.
-        final String lookupKey = (request.barcode() == null || request.barcode().isBlank())
-                && request.gtin() != null && !request.gtin().isBlank()
-                ? request.gtin()
-                : request.barcode();
-        ProductVariant variant = variantRepository.findByTenantIdAndBarcode(tenantId, lookupKey)
-                .or(() -> variantRepository.findByTenantIdAndSku(tenantId, lookupKey))
-                .or(() -> {
-                    String gtin = request.gtin();
-                    if (gtin == null || gtin.isBlank() || gtin.equals(lookupKey)) {
-                        return java.util.Optional.empty();
-                    }
-                    return variantRepository.findByTenantIdAndBarcode(tenantId, gtin);
-                })
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Barcode not found"));
-
-        String productName = productRepository.findById(variant.getProductId())
-                .map(Product::getName)
-                .orElse(variant.getSku());
-        String putawayTarget = scanService.resolvePutawayPath(variant);
-        String primaryMediaUrl = scanService.primaryMediaUrl(variant.getId());
-        BigDecimal qty = request.quantity() != null && request.quantity().signum() > 0
-                ? request.quantity()
-                : BigDecimal.ONE;
-
-        String message;
-        if ("receive".equalsIgnoreCase(request.mode())) {
-            // Cross-dock intercept preview — open SO demand bypasses storage put-away instructions.
-            CrossDockService.CrossDockTask crossDock = crossDockService.checkVariant(variant.getId());
-            if (crossDock.match()) {
-                String stagingPath = crossDock.stagingPath() != null ? crossDock.stagingPath() : putawayTarget;
-                message = crossDock.instruction() != null
-                        ? crossDock.instruction()
-                        : "Route to Shipping Staging Lane";
-                return new ScanResponse(
-                        variant.getId(),
-                        variant.getSku(),
-                        productName,
-                        false,
-                        null,
-                        message,
-                        stagingPath,
-                        primaryMediaUrl,
-                        variant.isLotTracked(),
-                        false,
-                        true,
-                        stagingPath,
-                        crossDock.stagingHintLocationId(),
-                        crossDock.salesOrderNumber(),
-                        crossDock.instruction());
-            }
-            if (!allowBlindReceiving()) {
-                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "BLIND_RECEIVING_DISABLED",
-                        "Blind receiving is disabled for this tenant");
-            }
-            if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
-                return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
-                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl,
-                        variant.isLotTracked(), false, false, null, null, null, null);
-            }
-            InventoryService.ResolvedLot preview = inventoryService.resolveLot(
-                    variant, null, request.lotNumber(), request.metadata());
-            inventoryService.receive(variant.getId(), request.warehouseId(), null, request.lotNumber(),
-                    qty, "SCAN_RECEIVE", null, null, request.serialNumber(), request.metadata());
-            message = request.serialNumber() != null
-                    ? "Received serial " + request.serialNumber()
-                    : "Received " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
-            return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message,
-                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked(),
-                    false, null, null, null, null);
-        } else {
-            if (variant.isTrackSerials() && (request.serialNumber() == null || request.serialNumber().isBlank())) {
-                return new ScanResponse(variant.getId(), variant.getSku(), productName, true, "SERIAL_REQUIRED",
-                        "Scan serial numbers one at a time", putawayTarget, primaryMediaUrl,
-                        variant.isLotTracked(), false, false, null, null, null, null);
-            }
-            Allocation allocation = allocationService.assertPickableForCurrentUser(
-                    variant.getId(), request.allocationId());
-            // Pick from the allocation bin (not the warehouse root) so on-hand matches.
-            UUID pickLocationId = allocation != null ? allocation.getLocationId() : request.warehouseId();
-            UUID pickLotId = allocation != null ? allocation.getLotId() : null;
-            InventoryService.ResolvedLot preview = inventoryService.resolveLot(
-                    variant, pickLotId, request.lotNumber(), request.metadata());
-            try {
-                if (allocation != null) {
-                    inventoryService.adjustReserved(
-                            variant.getId(), pickLocationId, pickLotId, request.lotNumber(),
-                            qty.negate(), "SCAN_PICK", request.serialNumber(), request.metadata());
-                    allocationService.consumeForPick(allocation, qty);
-                } else {
-                    inventoryService.adjust(variant.getId(), pickLocationId, pickLotId, request.lotNumber(),
-                            qty.negate(), "SCAN_PICK", request.serialNumber(), request.metadata());
-                }
-            } catch (com.invsys.common.exception.InsufficientStockException ex) {
-                throw new com.invsys.common.exception.InsufficientStockException("Insufficient stock");
-            }
-            message = request.serialNumber() != null
-                    ? "Picked serial " + request.serialNumber()
-                    : "Picked " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
-            return new ScanResponse(variant.getId(), variant.getSku(), productName, false, null, message,
-                    putawayTarget, primaryMediaUrl, variant.isLotTracked(), preview.lotLoggedNotTracked(),
-                    false, null, null, null, null);
-        }
-    }
-
-    private boolean allowBlindReceiving() {
-        return tenantSettingsRepository.findByTenantId(TenantContext.requireTenantId())
-                .map(TenantSettings::getSettings)
-                .map(settings -> settings.get("allow_blind_receiving"))
-                .map(value -> {
-                    if (value instanceof Boolean b) {
-                        return b;
-                    }
-                    return Boolean.parseBoolean(String.valueOf(value));
-                })
-                .orElse(false);
     }
 
     private static Map<String, Object> toMap(ScanResponse response) {

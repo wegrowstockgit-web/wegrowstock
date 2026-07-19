@@ -1,13 +1,13 @@
 import { create } from 'zustand';
 import { apiClient } from '@/api/client';
 import type { NextBestAction } from '@/api/types';
-import { enqueueMutation, type QueuedMutation } from '@/offline/mutationQueue';
+import { enqueueMutation, type EnqueueMutationInput } from '@/offline/mutationQueue';
 
 export interface PendingMisScan {
   id: string;
   barcode: string;
   message: string;
-  mutation: Omit<QueuedMutation, 'id' | 'createdAt' | 'attempts' | 'lastError'>;
+  mutation: EnqueueMutationInput;
   expiresAt: number;
 }
 
@@ -17,7 +17,7 @@ interface WarehouseUXState {
   bufferMisScan: (input: {
     barcode: string;
     message?: string;
-    mutation: Omit<QueuedMutation, 'id' | 'createdAt' | 'attempts' | 'lastError'>;
+    mutation: EnqueueMutationInput;
     durationMs?: number;
   }) => void;
   undoMisScan: () => void;

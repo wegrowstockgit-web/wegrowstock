@@ -3,29 +3,25 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { QueryProvider } from './offline/queryPersistence';
 import { SessionHydrationGate } from './components/layout/SessionHydrationGate';
+import { ScannerSecurityGate } from './components/security/ScannerSecurityGate';
 import { ToastProvider } from './components/ui/Toast';
 import { startMutationQueueReplay } from './offline/mutationQueue';
 import { installGlobalErrorTelemetry } from './lib/errorTelemetry';
+import { registerServiceWorker } from './lib/registerServiceWorker';
 import './styles/index.css';
 
 installGlobalErrorTelemetry();
 startMutationQueueReplay();
-
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      // Service worker registration is best-effort
-      console.warn('[invsys:telemetry] service worker registration failed', err);
-    });
-  });
-}
+registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryProvider>
       <SessionHydrationGate>
         <ToastProvider>
-          <App />
+          <ScannerSecurityGate>
+            <App />
+          </ScannerSecurityGate>
         </ToastProvider>
       </SessionHydrationGate>
     </QueryProvider>

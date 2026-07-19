@@ -69,10 +69,9 @@ describe('useBarcodeScanner GS1 intercept', () => {
     );
 
     act(() => {
-      for (const key of 'SKU-PLAIN') {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-      }
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      window.dispatchEvent(
+        new CustomEvent('hardwareScan', { detail: { barcode: 'SKU-PLAIN' } }),
+      );
     });
 
     expect(onGs1Scan).not.toHaveBeenCalled();

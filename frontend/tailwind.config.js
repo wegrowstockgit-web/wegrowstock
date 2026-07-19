@@ -54,6 +54,7 @@ export default {
       animation: {
         'flash-success': 'flash-success 150ms ease-out',
         'flash-error': 'flash-error 200ms ease-out',
+        'flash-pending': 'flash-pending 180ms ease-out',
         'scan-success-enter': 'scan-success-enter 220ms cubic-bezier(0.23, 1, 0.32, 1) both',
         'scan-error-shake': 'scan-error-shake 280ms cubic-bezier(0.22, 1, 0.36, 1) both',
       },
@@ -64,6 +65,10 @@ export default {
         },
         'flash-error': {
           '0%': { backgroundColor: 'rgba(239, 68, 68, 0.4)' },
+          '100%': { backgroundColor: 'transparent' },
+        },
+        'flash-pending': {
+          '0%': { backgroundColor: 'rgba(234, 179, 8, 0.4)' },
           '100%': { backgroundColor: 'transparent' },
         },
         'scan-success-enter': {

@@ -25,6 +25,10 @@ management:
       exposure:
         include: health,info,metrics,prometheus
   endpoint:
+    health:
+      # Scrape CIDRs are IP-gated in Spring Security; expose component details to Prometheus/Grafana.
+      show-details: always
+      show-components: always
     prometheus:
       enabled: true
   # Metrics stay on Prometheus scrape; Tempo is traces-only in this stack.

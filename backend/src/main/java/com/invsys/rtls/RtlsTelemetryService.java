@@ -1,8 +1,10 @@
 package com.invsys.rtls;
 
 import com.invsys.common.ApiException;
+import com.invsys.domain.Location;
 import com.invsys.domain.RtlsPositionEvent;
 import com.invsys.domain.RtlsTag;
+import com.invsys.repository.LocationRepository;
 import com.invsys.repository.RtlsPositionEventRepository;
 import com.invsys.repository.RtlsTagRepository;
 import com.invsys.tenancy.TenantContext;
@@ -17,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -27,13 +30,16 @@ public class RtlsTelemetryService {
 
     private final RtlsTagRepository tagRepository;
     private final RtlsPositionEventRepository positionRepository;
+    private final LocationRepository locationRepository;
     private final RtlsSseHub sseHub;
 
     public RtlsTelemetryService(RtlsTagRepository tagRepository,
                                 RtlsPositionEventRepository positionRepository,
+                                LocationRepository locationRepository,
                                 RtlsSseHub sseHub) {
         this.tagRepository = tagRepository;
         this.positionRepository = positionRepository;
+        this.locationRepository = locationRepository;
         this.sseHub = sseHub;
     }
 
@@ -80,6 +86,52 @@ public class RtlsTelemetryService {
                 .stream()
                 .map(this::toFrame)
                 .toList();
+    }
+
+    /**
+     * Bind a BLE/UWB tag to a pallet / PO receive asset for directed putaway tracking.
+     */
+    @Transactional
+    public RtlsTag bindPalletTag(String tagId, UUID assetRef, String label) {
+        return upsertTag(new UpsertTagRequest(tagId, "BLE_AOA", "PALLET", assetRef, label, true));
+    }
+
+    /**
+     * If any active tag is bound to {@code assetRef}, emit a position at the bin coordinates.
+     */
+    @Transactional
+    public Optional<PositionFrame> announceAssetAtLocation(UUID assetRef, UUID locationId) {
+        if (assetRef == null || locationId == null) {
+            return Optional.empty();
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        List<RtlsTag> tags = tagRepository.findByTenantIdAndAssetRefAndActiveTrue(tenantId, assetRef);
+        if (tags.isEmpty()) {
+            return Optional.empty();
+        }
+        Location location = locationRepository.findById(locationId)
+                .filter(l -> tenantId.equals(l.getTenantId()))
+                .orElse(null);
+        if (location == null) {
+            return Optional.empty();
+        }
+        BigDecimal x = location.getCoordX() != null ? location.getCoordX() : BigDecimal.ZERO;
+        BigDecimal y = location.getCoordY() != null ? location.getCoordY() : BigDecimal.ZERO;
+        RtlsTag tag = tags.getFirst();
+        PositionFrame frame = ingestOne(tenantId, new TelemetryPacket(
+                tag.getTagId(),
+                tag.getTechnology(),
+                x,
+                y,
+                location.getCoordZ(),
+                null,
+                null,
+                null,
+                null,
+                TenantContext.getWarehouseId().orElse(null),
+                Instant.now(),
+                Map.of("source", "PO_RECEIPT_PUTAWAY", "locationId", locationId.toString())));
+        return Optional.of(frame);
     }
 
     private PositionFrame ingestOne(UUID tenantId, TelemetryPacket packet) {

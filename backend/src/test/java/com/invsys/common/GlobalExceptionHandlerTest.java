@@ -38,7 +38,8 @@ class GlobalExceptionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new GlobalExceptionHandler(offlineSyncConflictService);
+        handler = new GlobalExceptionHandler(offlineSyncConflictService, new com.invsys.metrics.WmsMetrics(
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
     }
 
     @Test
@@ -80,8 +81,10 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void systemFailureHidesInternalMessage() {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/integrations/shopify");
         ProblemDetail pd = handler.handleSystem(
-                new IntegrationTimeoutException("Shopify socket timed out after 30s"));
+                new IntegrationTimeoutException("Shopify socket timed out after 30s"), request);
 
         assertThat(pd.getStatus()).isEqualTo(500);
         assertThat(pd.getDetail()).isEqualTo("An unexpected system error occurred");
@@ -91,14 +94,18 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void staleStateAlsoGeneric() {
-        ProblemDetail pd = handler.handleSystem(new StaleStateConcurrencyException("row version 3 vs 7"));
+        when(request.getMethod()).thenReturn("PUT");
+        when(request.getRequestURI()).thenReturn("/api/v1/orders/1");
+        ProblemDetail pd = handler.handleSystem(new StaleStateConcurrencyException("row version 3 vs 7"), request);
         assertThat(pd.getDetail()).isEqualTo("An unexpected system error occurred");
         assertThat(pd.getProperties()).containsEntry("code", "STALE_STATE_CONCURRENCY");
     }
 
     @Test
     void genericExceptionDoesNotLeakStackMessage() {
-        ProblemDetail pd = handler.handleGeneric(new RuntimeException("secret JDBC password xyz"));
+        when(request.getMethod()).thenReturn("GET");
+        when(request.getRequestURI()).thenReturn("/api/v1/demo");
+        ProblemDetail pd = handler.handleGeneric(new RuntimeException("secret JDBC password xyz"), request);
         assertThat(pd.getStatus()).isEqualTo(500);
         assertThat(pd.getDetail()).isEqualTo("An unexpected system error occurred");
         assertThat(pd.getDetail()).doesNotContain("password");
@@ -122,7 +129,8 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<Void> response = handler.handleNotWritable(
                 new HttpMessageNotWritableException(
                         "Could not write JSON",
-                        new IOException("Broken pipe")));
+                        new IOException("Broken pipe")),
+                request);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.REQUEST_TIMEOUT);
     }
 

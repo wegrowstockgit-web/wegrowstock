@@ -74,7 +74,10 @@ call :undeploy
 
 echo.
 echo === Building and deploying db, backend, and frontend ===
-docker compose up --build -d
+REM plain progress: Compose's TTY spinner redraws "Healthy" every tick; on Windows
+REM CMD/PowerShell those frames append instead of overwrite, flooding the log.
+set "COMPOSE_ANSI=never"
+docker compose --progress=plain up --build -d
 if errorlevel 1 (
     echo [ERROR] Deploy failed.
     exit /b 1
@@ -83,9 +86,15 @@ if errorlevel 1 (
 echo.
 echo === Waiting for services to become healthy ===
 set /a RETRIES=30
+set "API_HEALTH=unknown"
 :wait_health
-docker inspect --format="{{.State.Health.Status}}" invsys-api 2>nul | findstr /i "healthy" >nul
-if not errorlevel 1 goto :deploy_done
+set "API_HEALTH=unknown"
+for /f "usebackq delims=" %%s in (`docker inspect --format="{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" invsys-api 2^>nul`) do set "API_HEALTH=%%s"
+if /i "!API_HEALTH!"=="healthy" (
+    echo   invsys-api: healthy
+    goto :deploy_done
+)
+echo   invsys-api: !API_HEALTH!  ^(!RETRIES! checks left^)
 set /a RETRIES-=1
 if !RETRIES! leq 0 (
     echo [WARN] Backend health check timed out. Check logs: docker compose logs backend
@@ -106,6 +115,8 @@ echo   PgBouncer: localhost:6432  (transaction pool)
 echo.
 echo   Load demo data: deploy.bat seed
 echo   Check status  : deploy.bat status
+echo.
+call :status
 exit /b 0
 
 :down
@@ -122,6 +133,8 @@ call :require_docker
 if errorlevel 1 exit /b 1
 echo.
 echo === Container status ===
+REM Avoid Compose TTY table redraw spam in logs / redirected output.
+set "COMPOSE_ANSI=never"
 docker compose ps -a
 exit /b 0
 

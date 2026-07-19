@@ -11,6 +11,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
 
     java.util.Optional<PurchaseOrder> findByTenantIdAndId(UUID tenantId, UUID id);
 
+    java.util.Optional<PurchaseOrder> findByTenantIdAndNumberIgnoreCase(UUID tenantId, String number);
+
     List<PurchaseOrder> findByTenantIdAndSupplierIdAndStatusInOrderByExpectedAtAsc(
             UUID tenantId, UUID supplierId, List<String> statuses);
 }

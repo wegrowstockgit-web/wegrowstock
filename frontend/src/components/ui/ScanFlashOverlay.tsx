@@ -14,6 +14,7 @@ export function ScanFlashOverlay({ flash }: ScanFlashOverlayProps) {
         'pointer-events-none fixed inset-0 z-[9999]',
         flash === 'success' && 'animate-flash-success',
         flash === 'error' && 'animate-flash-error',
+        flash === 'pending' && 'animate-flash-pending',
       )}
       data-testid="scan-flash-overlay"
       data-flash={flash}

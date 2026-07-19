@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { createScanEventPayload, type ScanEventPayload } from '@/offline/scanEvent';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { parseGs1, type ParsedBarcode } from '@/utils/gs1Parser';
 
 const SCANNER_MAX_GAP_MS = 35;
 
+export type { ScanEventPayload };
+
 export interface BarcodeScannerOptions {
+  /**
+   * Legacy barcode callback. Prefer {@link onScanEvent} when the consumer needs
+   * a client `idempotencyKey` + high-res `scannedAt` for offline queueing.
+   */
   onScan: (barcode: string, parsed?: ParsedBarcode) => void;
+  /**
+   * Fired for every committed hardware / wedge scan with a fully formed
+   * {@link ScanEventPayload} (UUIDv4 idempotency key + high-res timestamp).
+   */
+  onScanEvent?: (event: ScanEventPayload) => void;
   /**
    * Fired when a composite GS1 payload is decoded — before / instead of dumping
    * the raw AI string into the scan buffer. Use to auto-fill Lot / Expiry / Qty.
@@ -118,6 +130,7 @@ const DATAWEDGE_ACTIONS = [
  */
 export function useBarcodeScanner({
   onScan,
+  onScanEvent,
   onGs1Scan,
   prefix,
   suffix,
@@ -127,12 +140,17 @@ export function useBarcodeScanner({
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const onScanRef = useRef(onScan);
+  const onScanEventRef = useRef(onScanEvent);
   const onGs1ScanRef = useRef(onGs1Scan);
   const { append, reset, commit } = useScanBufferStore();
 
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
+
+  useEffect(() => {
+    onScanEventRef.current = onScanEvent;
+  }, [onScanEvent]);
 
   useEffect(() => {
     onGs1ScanRef.current = onGs1Scan;
@@ -149,12 +167,16 @@ export function useBarcodeScanner({
         // Intercept: commit GTIN/SKU to the buffer — never the composite AI blob.
         commit(parsed.sku);
         onGs1ScanRef.current?.(parsed);
-        onScanRef.current(parsed.sku, parsed);
+        const event = createScanEventPayload(parsed.sku, parsed);
+        onScanEventRef.current?.(event);
+        onScanRef.current(event.barcode, event.parsed);
         return;
       }
 
       commit(cleaned);
-      onScanRef.current(cleaned, parsed);
+      const event = createScanEventPayload(cleaned, parsed);
+      onScanEventRef.current?.(event);
+      onScanRef.current(event.barcode, event.parsed);
     },
     [commit, reset]
   );

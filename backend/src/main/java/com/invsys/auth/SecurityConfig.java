@@ -2,6 +2,8 @@ package com.invsys.auth;
 
 import com.invsys.auth.oidc.OidcLoginSuccessHandler;
 import com.invsys.auth.oidc.TenantClientRegistrationRepository;
+import com.invsys.config.ActuatorScrapeAuthorizationManager;
+import com.invsys.idempotency.RedisIdempotencyFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,25 +23,31 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final WarehouseAccessFilter warehouseAccessFilter;
+    private final RedisIdempotencyFilter redisIdempotencyFilter;
     private final UnauthorizedEntryPoint unauthorizedEntryPoint;
     private final TenantClientRegistrationRepository tenantClientRegistrationRepository;
     private final OidcLoginSuccessHandler oidcLoginSuccessHandler;
     private final Environment environment;
+    private final ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager;
     private final boolean publicSignupEnabled;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           WarehouseAccessFilter warehouseAccessFilter,
+                          RedisIdempotencyFilter redisIdempotencyFilter,
                           UnauthorizedEntryPoint unauthorizedEntryPoint,
                           TenantClientRegistrationRepository tenantClientRegistrationRepository,
                           OidcLoginSuccessHandler oidcLoginSuccessHandler,
                           Environment environment,
+                          ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager,
                           @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.warehouseAccessFilter = warehouseAccessFilter;
+        this.redisIdempotencyFilter = redisIdempotencyFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
         this.tenantClientRegistrationRepository = tenantClientRegistrationRepository;
         this.oidcLoginSuccessHandler = oidcLoginSuccessHandler;
         this.environment = environment;
+        this.actuatorScrapeAuthorizationManager = actuatorScrapeAuthorizationManager;
         this.publicSignupEnabled = publicSignupEnabled;
     }
 
@@ -70,9 +78,11 @@ public class SecurityConfig {
                             .requestMatchers("/api/v1/webhooks/**").permitAll()
                             .requestMatchers("/api/v1/public/**").permitAll()
                             .requestMatchers("/oauth2/**", "/login/oauth2/**", "/saml2/**").permitAll()
-                            .requestMatchers("/actuator/health").permitAll()
-                            // Scraped only on the Docker network; api-gateway blocks this path publicly.
-                            .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
+                            // Health + Prometheus: VPC / Docker scrape CIDRs only (public edge blocked in nginx).
+                            .requestMatchers("/actuator/health", "/actuator/health/**")
+                            .access(actuatorScrapeAuthorizationManager)
+                            .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                            .access(actuatorScrapeAuthorizationManager)
                             .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll();
                     if (!prod) {
                         auth.requestMatchers("/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll();
@@ -84,7 +94,8 @@ public class SecurityConfig {
                         .clientRegistrationRepository(tenantClientRegistrationRepository)
                         .successHandler(oidcLoginSuccessHandler))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(warehouseAccessFilter, JwtAuthFilter.class);
+                .addFilterAfter(warehouseAccessFilter, JwtAuthFilter.class)
+                .addFilterAfter(redisIdempotencyFilter, WarehouseAccessFilter.class);
         return http.build();
     }
 

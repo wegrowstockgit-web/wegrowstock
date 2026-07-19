@@ -205,6 +205,11 @@ public class PurchaseOrderService {
         return updated;
     }
 
+    /** Visible for mobile inbound receiving after a directed {@code PO_RECEIPT}. */
+    public void refreshStatusPublic(PurchaseOrder po) {
+        refreshPoStatus(po);
+    }
+
     private void refreshPoStatus(PurchaseOrder po) {
         boolean fullyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
                 .allMatch(l -> l.getQtyReceived().compareTo(l.getQtyOrdered()) >= 0);

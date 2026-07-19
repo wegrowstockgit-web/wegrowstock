@@ -20,8 +20,13 @@ management:
         include: health,prometheus
   endpoint:
     health:
-      show-details: never
+      # Public edge blocks /actuator/* except shallow health; details only on private scrape path.
+      show-details: when_authorized
+      show-components: when_authorized
     prometheus:
+      enabled: true
+  health:
+    db:
       enabled: true
 
 springdoc:

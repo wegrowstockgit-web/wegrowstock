@@ -24,6 +24,33 @@ describe('extractIntentBarcode', () => {
   });
 });
 
+describe('useBarcodeScanner scan event matrix', () => {
+  it('emits ScanEventPayload with idempotencyKey and scannedAt on hardware scan', () => {
+    const onScan = vi.fn();
+    const onScanEvent = vi.fn();
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+
+    renderHook(() =>
+      useBarcodeScanner({ enabled: true, captureAll: true, onScan, onScanEvent }),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('hardwareScan', { detail: { barcode: 'SKU-FLOOR-1' } }),
+      );
+    });
+
+    expect(onScanEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        barcode: 'SKU-FLOOR-1',
+        idempotencyKey: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        scannedAt: expect.any(Number),
+      }),
+    );
+    expect(onScan).toHaveBeenCalledWith('SKU-FLOOR-1', expect.anything());
+  });
+});
+
 describe('useBarcodeScanner listener lifecycle', () => {
   it('removes the capture-phase keydown listener on unmount', () => {
     const onScan = vi.fn();

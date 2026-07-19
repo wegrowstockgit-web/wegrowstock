@@ -11,4 +11,6 @@ public interface RtlsTagRepository extends JpaRepository<RtlsTag, UUID> {
     Optional<RtlsTag> findByTenantIdAndTagId(UUID tenantId, String tagId);
 
     List<RtlsTag> findByTenantIdAndActiveTrueOrderByTagIdAsc(UUID tenantId);
+
+    List<RtlsTag> findByTenantIdAndAssetRefAndActiveTrue(UUID tenantId, UUID assetRef);
 }

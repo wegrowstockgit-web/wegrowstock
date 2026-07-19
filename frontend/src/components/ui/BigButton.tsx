@@ -27,7 +27,8 @@ export function BigButton({
   return (
     <button
       className={cn(
-        'flex min-h-tap w-full items-center justify-center gap-3 rounded-xl px-6 py-4',
+        // Touch-first targets for scanner / inbound floor (persona E2E asserts these).
+        'flex min-h-12 w-full items-center justify-center gap-3 rounded-xl p-4',
         'text-lg font-semibold shadow-elevated transition-transform active:scale-[0.98]',
         'disabled:opacity-50 disabled:pointer-events-none',
         variants[variant],

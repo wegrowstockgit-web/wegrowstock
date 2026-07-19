@@ -31,6 +31,7 @@ import { ManufacturingOrdersPage } from '@/pages/ManufacturingOrdersPage';
 import { ProductionTerminalPage } from '@/pages/ProductionTerminalPage';
 import { ReturnsPage } from '@/pages/ReturnsPage';
 import { ReturnsReceivePage } from '@/pages/ReturnsReceivePage';
+import { InboundReceivePage } from '@/pages/InboundReceivePage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { IssueSuppliesPage } from '@/pages/IssueSuppliesPage';
 import { ReplenishmentsPage } from '@/pages/ReplenishmentsPage';
@@ -88,6 +89,18 @@ export function App() {
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/invite/accept" element={<InviteAcceptRedirect />} />
           <Route path="/supplier-portal/po/:token" element={<SupplierPortalPage />} />
+
+          {/* Full-screen mobile inbound — outside AppShell / office chrome */}
+          <Route
+            path="/inbound/receive"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
+                <ErrorBoundary boundaryName="inbound-receive">
+                  <InboundReceivePage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/showroom"
@@ -293,6 +306,14 @@ export function App() {
               element={
                 <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
                   <Navigate to="/settings?tab=users" replace />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="settings/operations"
+              element={
+                <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+                  <Navigate to="/settings?tab=operations" replace />
                 </ProtectedRoute>
               }
             />

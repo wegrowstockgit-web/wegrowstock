@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type ScanFeedbackType = 'success' | 'error' | null;
+export type ScanFeedbackType = 'success' | 'error' | 'pending' | null;
 
 interface ScanFeedbackState {
   flash: ScanFeedbackType;
   triggerSuccess: () => void;
   triggerError: () => void;
+  /** Yellow flash + soft tick when a scan is accepted offline (Pending Sync). */
+  triggerPendingSync: () => void;
   /** Distinctive 200ms double buzz for exception shunt (damaged barcode). */
   triggerExceptionHaptic: () => void;
 }
@@ -85,6 +87,15 @@ export function useScanFeedback(): ScanFeedbackState {
     clearFlash();
   }, [unlockAudio, clearFlash]);
 
+  const triggerPendingSync = useCallback(() => {
+    unlockAudio();
+    // Soft single tick — distinct from green success and red error.
+    vibrate(30);
+    playTone(660, 50);
+    setFlash('pending');
+    clearFlash();
+  }, [unlockAudio, clearFlash]);
+
   const triggerExceptionHaptic = useCallback(() => {
     unlockAudio();
     vibrate([200, 80, 200]);
@@ -99,5 +110,5 @@ export function useScanFeedback(): ScanFeedbackState {
     };
   }, []);
 
-  return { flash, triggerSuccess, triggerError, triggerExceptionHaptic };
+  return { flash, triggerSuccess, triggerError, triggerPendingSync, triggerExceptionHaptic };
 }

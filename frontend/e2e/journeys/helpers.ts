@@ -1,5 +1,5 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { expect, hidScan } from '../fixtures/roleFixture';
+import { completeScannerPin, expect, hidScan } from '../fixtures/roleFixture';
 
 export const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 export const WIDGET_S_BARCODE = '8901000000001';
@@ -110,6 +110,10 @@ export async function contextForRole(
       },
     },
   );
+
+  await page.goto(role === 'picker' ? '/fulfillment' : role === 'b2b' ? '/showroom/catalog' : '/dashboard');
+  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45_000 }).catch(() => {});
+  await completeScannerPin(page);
 
   return {
     context,
@@ -382,4 +386,4 @@ export async function inviteAndAcceptB2b(
   return freshLogin(browser, opts.email, DEMO_PASSWORD);
 }
 
-export { expect, hidScan };
+export { completeScannerPin, expect, hidScan };

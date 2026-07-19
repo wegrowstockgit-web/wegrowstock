@@ -102,7 +102,7 @@ export function ScannerView({
   const { triggerSuccess, triggerError } = useScanFeedback();
   const [capturing, setCapturing] = useState(false);
   const [phase, setPhase] = useState<'compressing' | 'uploading' | null>(null);
-  const [motion, setMotion] = useState<'success' | 'error' | null>(null);
+  const [motion, setMotion] = useState<'success' | 'error' | 'pending' | null>(null);
   const motionKeyRef = useRef(0);
   const latest = history[0];
   const needsCapture =

@@ -341,6 +341,7 @@ function UserDetailDrawer({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
   const [role, setRole] = useState('VIEWER');
   const [department, setDepartment] = useState('');
@@ -388,6 +389,7 @@ function UserDetailDrawer({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast('Access updated successfully', { tone: 'success' });
       onClose();
     },
     onError: () => setError('Could not update organizational scope.'),

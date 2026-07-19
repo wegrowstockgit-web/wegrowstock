@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { test as base, type Page, type Browser, type BrowserContext } from '@playwright/test';
+import { expect, test as base, type Page, type Browser, type BrowserContext } from '@playwright/test';
 
 const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 const AUTH_DIR = path.join(process.cwd(), 'playwright', '.auth');
@@ -102,6 +102,8 @@ async function pageForRole(
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45_000 });
   }
 
+  await completeScannerPin(page);
+
   // Keep a copy for debugging / optional reuse; do not rely on it as the sole session source.
   try {
     await context.storageState({ path: storageStateFor(role) });
@@ -115,6 +117,51 @@ async function pageForRole(
       await context.close();
     },
   };
+}
+
+/**
+ * Enroll or unlock the 4-digit shift PIN after session hydration.
+ * Safe to call on every authenticated navigation.
+ */
+export async function completeScannerPin(page: Page, pin = '1234'): Promise<void> {
+  await page
+    .getByText('Loading session...')
+    .waitFor({ state: 'detached', timeout: 30_000 })
+    .catch(() => undefined);
+
+  const setup = page.getByTestId('scanner-pin-setup-overlay');
+  const lock = page.getByTestId('scanner-lock-overlay');
+
+  // Wait for the security gate to hydrate into setup, lock, or already-unlocked.
+  await expect
+    .poll(
+      async () => {
+        if (await setup.isVisible().catch(() => false)) return 'setup';
+        if (await lock.isVisible().catch(() => false)) return 'lock';
+        return 'ready';
+      },
+      { timeout: 20_000 },
+    )
+    .toMatch(/setup|lock|ready/);
+
+  if (await setup.isVisible().catch(() => false)) {
+    for (const digit of pin) {
+      await page.getByTestId(`scanner-setup-digit-${digit}`).click();
+    }
+    await expect(setup.getByText('Confirm PIN')).toBeVisible({ timeout: 8_000 });
+    for (const digit of pin) {
+      await page.getByTestId(`scanner-setup-digit-${digit}`).click();
+    }
+    await expect(setup).toBeHidden({ timeout: 30_000 });
+    return;
+  }
+
+  if (await lock.isVisible().catch(() => false)) {
+    for (const digit of pin) {
+      await page.getByTestId(`scanner-unlock-digit-${digit}`).click();
+    }
+    await expect(lock).toBeHidden({ timeout: 30_000 });
+  }
 }
 
 type RoleFixtures = {
@@ -162,7 +209,7 @@ export const test = base.extend<RoleFixtures>({
   },
 });
 
-export { expect } from '@playwright/test';
+export { expect };
 
 /** Simulate a HID wedge barcode scan (fast keydown burst + Enter). */
 export async function hidScan(page: Page, barcode: string): Promise<void> {

@@ -56,6 +56,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={item.id}
             role="status"
+            data-testid="app-toast"
             className={cn(
               'pointer-events-auto flex items-center justify-between gap-3 rounded-lg border px-4 py-3 shadow-elevated',
               item.tone === 'success' && 'border-success/30 bg-surface-raised text-text',

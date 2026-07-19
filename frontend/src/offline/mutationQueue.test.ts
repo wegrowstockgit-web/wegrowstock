@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useCryptoMemoryKeyStore } from '@/stores/cryptoMemoryKeyStore';
 
 const { mockRequest, mockEnsureFresh, mockAddConflict, mockQuarantine } = vi.hoisted(() => ({
   mockRequest: vi.fn(),
@@ -8,14 +9,17 @@ const { mockRequest, mockEnsureFresh, mockAddConflict, mockQuarantine } = vi.hoi
 }));
 
 vi.mock('idb-keyval', () => {
-  let store: unknown;
+  const store = new Map<string, unknown>();
   return {
-    get: vi.fn(async () => store),
-    set: vi.fn(async (_key: string, value: unknown) => {
-      store = value;
+    get: vi.fn(async (key: string) => store.get(key)),
+    set: vi.fn(async (key: string, value: unknown) => {
+      store.set(key, value);
+    }),
+    del: vi.fn(async (key: string) => {
+      store.delete(key);
     }),
     __reset: () => {
-      store = undefined;
+      store.clear();
     },
   };
 });
@@ -53,6 +57,8 @@ describe('mutationQueue secure offline engine', () => {
     vi.clearAllMocks();
     // @ts-expect-error test helper
     idb.__reset?.();
+    useCryptoMemoryKeyStore.getState().clearKey();
+    await useCryptoMemoryKeyStore.getState().ensureKey();
     await idb.set('invsys-mutation-queue', []);
     mockEnsureFresh.mockResolvedValue(true);
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
@@ -188,6 +194,101 @@ describe('mutationQueue secure offline engine', () => {
     expect(result.failed).toBe(1);
     expect(result.deadLettered).toBe(0);
     expect(await getMutationQueue()).toHaveLength(1);
+  });
+
+  it('drains the queue chronologically by scannedAt', async () => {
+    const order: string[] = [];
+    mockRequest.mockImplementation(async (config: { headers?: { 'Idempotency-Key'?: string } }) => {
+      order.push(config.headers?.['Idempotency-Key'] ?? '');
+      return { data: {} };
+    });
+
+    await enqueueMutation({
+      idempotencyKey: 'later',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'B' },
+      scannedAt: 2_000,
+    });
+    await enqueueMutation({
+      idempotencyKey: 'earlier',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'A' },
+      scannedAt: 1_000,
+    });
+
+    await replayMutationQueue();
+    expect(order).toEqual(['earlier', 'later']);
+  });
+
+  it('holds remaining queue on 401 after refresh failure', async () => {
+    const axiosError = Object.assign(new Error('Unauthorized'), {
+      isAxiosError: true,
+      response: { status: 401, data: { detail: 'expired' } },
+    });
+    const axios = await import('axios');
+    vi.spyOn(axios.default, 'isAxiosError').mockReturnValue(true);
+
+    mockRequest.mockRejectedValue(axiosError);
+    // First ensureFreshSession (pre-flush) succeeds; mid-queue refresh fails.
+    mockEnsureFresh.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await enqueueMutation({
+      idempotencyKey: 'idem-a',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'A' },
+      scannedAt: 1,
+    });
+    await enqueueMutation({
+      idempotencyKey: 'idem-b',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'B' },
+      scannedAt: 2,
+    });
+
+    const result = await replayMutationQueue();
+    expect(result.heldForAuth).toBe(2);
+    expect(result.succeeded).toBe(0);
+    expect(await getMutationQueue()).toHaveLength(2);
+  });
+
+  it('resumes after silent 401 refresh without dropping the queue', async () => {
+    const axiosError = Object.assign(new Error('Unauthorized'), {
+      isAxiosError: true,
+      response: { status: 401, data: { detail: 'expired' } },
+    });
+    const axios = await import('axios');
+    vi.spyOn(axios.default, 'isAxiosError').mockReturnValue(true);
+
+    mockRequest
+      .mockRejectedValueOnce(axiosError)
+      .mockResolvedValueOnce({ data: {} })
+      .mockResolvedValueOnce({ data: {} });
+    mockEnsureFresh.mockResolvedValue(true);
+
+    await enqueueMutation({
+      idempotencyKey: 'idem-r1',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'R1' },
+      scannedAt: 1,
+    });
+    await enqueueMutation({
+      idempotencyKey: 'idem-r2',
+      method: 'POST',
+      url: '/api/v1/fulfillment/scan',
+      body: { barcode: 'R2' },
+      scannedAt: 2,
+    });
+
+    const result = await replayMutationQueue();
+    expect(result.succeeded).toBe(2);
+    expect(result.heldForAuth).toBe(0);
+    expect(await getMutationQueue()).toHaveLength(0);
+    expect(mockEnsureFresh.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('startMutationQueueReplay flushes when online', async () => {

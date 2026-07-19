@@ -49,6 +49,12 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+      show-components: when_authorized
+    prometheus:
+      enabled: true
+  health:
+    db:
+      enabled: true
   tracing:
     sampling:
       probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
@@ -63,10 +69,12 @@ management:
         http.server.requests: true
         invsys.scan.lookup: true
         invsys.fulfillment.scan: true
+        wms.allocation.time: true
       percentiles:
         http.server.requests: 0.5,0.95,0.99
         invsys.scan.lookup: 0.5,0.95,0.99
         invsys.fulfillment.scan: 0.5,0.95,0.99
+        wms.allocation.time: 0.5,0.95,0.99
 
 invsys:
   jwt:
@@ -113,6 +121,9 @@ invsys:
   redis:
     # Opt-in: enable via REDIS_ENABLED=true (docker/prod). Local/tests use in-memory fallbacks.
     enabled: ${REDIS_ENABLED:false}
+  actuator:
+    # Prometheus / Grafana / Docker / localhost probes may scrape health + prometheus anonymously.
+    scrape-allowed-cidrs: ${ACTUATOR_SCRAPE_ALLOWED_CIDRS:127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
   rate-limit:
     auth-per-minute: ${AUTH_RATE_LIMIT_PER_MINUTE:60}
     terminal-pin-per-minute: ${TERMINAL_PIN_RATE_LIMIT_PER_MINUTE:20}

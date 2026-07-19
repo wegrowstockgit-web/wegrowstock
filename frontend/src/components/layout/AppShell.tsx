@@ -22,6 +22,7 @@ function isWarehouseRoute(pathname: string): boolean {
     pathname.startsWith('/cycle-counts') ||
     pathname.startsWith('/manufacturing/terminal') ||
     pathname.startsWith('/returns/receive') ||
+    pathname.startsWith('/inbound/receive') ||
     pathname.startsWith('/issue-supplies') ||
     pathname.startsWith('/replenishments') ||
     pathname.startsWith('/field/truck')
@@ -178,7 +179,10 @@ export function AppShell() {
         : 'Warehouse locked by terminal assignment';
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-surface">
+    <div
+      className="relative flex h-screen overflow-hidden bg-surface"
+      data-testid="app-shell"
+    >
       {!isWarehouseView && <Sidebar />}
 
       <div

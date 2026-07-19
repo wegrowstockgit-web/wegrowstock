@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { ProfileSettingsDialog } from '@/components/layout/ProfileSettingsDialog';
 import { TerminalPinPad } from '@/components/layout/TerminalPinPad';
 import { useSessionStore } from '@/stores/session';
+import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
 import { useOfflineStore } from '@/stores/offlineStore';
 import { useRailStore } from '@/stores/rail';
 import { cn } from '@/lib/utils';
@@ -133,6 +134,7 @@ export function Header({
         </div>
 
         <div className="flex items-center gap-3">
+          <NetworkStatusBadge className={cn(isWarehouseView ? 'text-sm' : undefined)} />
           {isWarehouseView && quarantineCount > 0 && (
             <button
               type="button"
