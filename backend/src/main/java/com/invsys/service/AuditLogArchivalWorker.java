@@ -1,6 +1,7 @@
 package com.invsys.service;
 
 import com.invsys.domain.AuditLog;
+import com.invsys.metrics.WmsMetrics;
 import com.invsys.repository.AuditLogRepository;
 import com.invsys.tenancy.BootstrapJdbc;
 import com.invsys.tenancy.TenantContext;
@@ -45,6 +46,7 @@ public class AuditLogArchivalWorker {
     private final AuditArchiveStorageService archiveStorageService;
     private final DistributedJobLock jobLock;
     private final ObjectMapper objectMapper;
+    private final WmsMetrics wmsMetrics;
     private final AuditLogArchivalWorker self;
     private final int retentionDays;
     private final int batchSize;
@@ -55,6 +57,7 @@ public class AuditLogArchivalWorker {
                                   AuditArchiveStorageService archiveStorageService,
                                   DistributedJobLock jobLock,
                                   ObjectMapper objectMapper,
+                                  WmsMetrics wmsMetrics,
                                   @Lazy AuditLogArchivalWorker self,
                                   @Value("${invsys.audit.archive.retention-days:90}") int retentionDays,
                                   @Value("${invsys.audit.archive.batch-size:5000}") int batchSize,
@@ -64,13 +67,14 @@ public class AuditLogArchivalWorker {
         this.archiveStorageService = archiveStorageService;
         this.jobLock = jobLock;
         this.objectMapper = objectMapper;
+        this.wmsMetrics = wmsMetrics;
         this.self = self;
         this.retentionDays = retentionDays;
         this.batchSize = batchSize;
         this.enabled = enabled;
     }
 
-    @Scheduled(cron = "0 0 2 * * ?")
+    @Scheduled(cron = "${invsys.audit.archive.cron:0 0 2 * * ?}")
     public void runNightlyArchival() {
         if (!enabled) {
             log.debug("Audit log archival disabled (invsys.audit.archive.enabled=false)");
@@ -91,6 +95,7 @@ public class AuditLogArchivalWorker {
                     totalPurged += archiveTenant(tenantId, cutoff);
                 } catch (Exception ex) {
                     log.error("Audit log archival failed tenant={}", tenantId, ex);
+                    wmsMetrics.incrementAuditArchiveFailure(tenantId);
                 }
             }
             log.info("Audit log archival finished purgedRows={}", totalPurged);

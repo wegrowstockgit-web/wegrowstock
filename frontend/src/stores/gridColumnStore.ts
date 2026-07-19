@@ -74,6 +74,48 @@ export function selectGridLayout(
   return layoutOrEmpty(state.layouts, gridId);
 }
 
+/** Atomic: visibility for one column — shields unrelated header/body cells. */
+export function selectColumnVisible(
+  state: GridColumnStore,
+  gridId: string,
+  columnId: string,
+): boolean {
+  return layoutOrEmpty(state.layouts, gridId).columnVisibility[columnId] !== false;
+}
+
+/** Atomic: pin membership for one column. */
+export function selectColumnPinned(
+  state: GridColumnStore,
+  gridId: string,
+  columnId: string,
+): boolean {
+  return layoutOrEmpty(state.layouts, gridId).pinnedColumns.includes(columnId);
+}
+
+/** Stable reference when this grid's visibility map is unchanged. */
+export function selectColumnVisibilityMap(
+  state: GridColumnStore,
+  gridId: string,
+): Record<string, boolean> {
+  return layoutOrEmpty(state.layouts, gridId).columnVisibility;
+}
+
+/** Stable reference when this grid's pin list is unchanged. */
+export function selectPinnedColumns(
+  state: GridColumnStore,
+  gridId: string,
+): readonly string[] {
+  return layoutOrEmpty(state.layouts, gridId).pinnedColumns;
+}
+
+/** Stable reference when this grid's column order is unchanged. */
+export function selectColumnOrder(
+  state: GridColumnStore,
+  gridId: string,
+): readonly string[] {
+  return layoutOrEmpty(state.layouts, gridId).columnOrder;
+}
+
 export const useGridColumnStore = create<GridColumnStore>()(
   persist(
     (set, get) => ({

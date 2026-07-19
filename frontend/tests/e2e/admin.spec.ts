@@ -1,4 +1,4 @@
-import { expect, test } from '../../e2e/fixtures/roleFixture';
+import { completeScannerPin, expect, test } from '../../e2e/fixtures/roleFixture';
 import { contextForRole } from '../../e2e/journeys/helpers';
 
 const DEMO_VIEWER_USER_ID = 'a0000000-0000-4000-8000-000000000205';
@@ -18,6 +18,8 @@ test.describe('Admin security & settings suite', () => {
     const admin = await contextForRole(browser, 'admin');
     try {
       await admin.page.goto('/settings/operations');
+      // Full navigations wipe the in-memory AES key — re-unlock the shift PIN gate.
+      await completeScannerPin(admin.page);
       await expect(admin.page).toHaveURL(/\/settings(\?tab=operations)?/, { timeout: 20_000 });
       await expect(admin.page.getByTestId('app-shell')).toBeVisible({ timeout: 20_000 });
       await expect(admin.page.getByTestId('operations-console')).toBeVisible({ timeout: 20_000 });
@@ -41,6 +43,7 @@ test.describe('Admin security & settings suite', () => {
 
       // Role mutation on seeded viewer — restore VIEWER in finally.
       await admin.page.goto('/settings?tab=users');
+      await completeScannerPin(admin.page);
       await expect(admin.page.getByTestId('invite-user-button')).toBeVisible({ timeout: 20_000 });
 
       const editAccess = admin.page.getByTestId(`edit-access-${DEMO_VIEWER_USER_ID}`);
@@ -71,6 +74,7 @@ test.describe('Admin security & settings suite', () => {
 
       // SECURITY: fintech is OWNER-only — ADMIN must be bounced off the route.
       await admin.page.goto('/settings/fintech');
+      await completeScannerPin(admin.page);
       await expect(admin.page).not.toHaveURL(/\/settings\/fintech/, { timeout: 15_000 });
       await expect(admin.page.getByTestId('fintech-settings-page')).toHaveCount(0);
       await expect(admin.page).toHaveURL(/\/(dashboard|settings|fulfillment)/, { timeout: 15_000 });

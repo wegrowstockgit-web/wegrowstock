@@ -9,7 +9,14 @@ import { useGridColumnStore } from '@/stores/gridColumnStore';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count }: { count: number }) => {
+  useVirtualizer: ({
+    count,
+    estimateSize,
+  }: {
+    count: number;
+    estimateSize?: () => number;
+  }) => {
+    const size = estimateSize?.() ?? 40;
     // Middle window: paddingTop + paddingBottom; onEndReached uses a high threshold in tests.
     const startIndex = count > 3 ? 1 : 0;
     const visible = count > 3 ? 2 : count;
@@ -17,15 +24,15 @@ vi.mock('@tanstack/react-virtual', () => ({
       const index = startIndex + i;
       return {
         index,
-        start: index * 40,
-        end: (index + 1) * 40,
-        size: 40,
+        start: index * size,
+        end: (index + 1) * size,
+        size,
         key: index,
       };
     });
     return {
       getVirtualItems: () => items,
-      getTotalSize: () => count * 40,
+      getTotalSize: () => count * size,
       measure: vi.fn(),
     };
   },
@@ -195,6 +202,20 @@ describe('VirtualizedTable', () => {
     fireEvent.click(screen.getByText('Alpha'));
     expect(onRowClick).toHaveBeenCalledWith(rows[0]);
     expect(screen.getByText('SKU').closest('tr')?.className).toMatch(/h-8/);
+    expect(screen.getByTestId('virtualized-table')).toHaveAttribute('data-row-px', '32');
+    expect(screen.getByText('Alpha').closest('tr')?.className).toMatch(/virtual-row-layer/);
+  });
+
+  it('scales estimateSize tiers for cozy and spacious density', () => {
+    usePreferencesStore.setState({ densityMode: 'cozy' });
+    const { rerender } = render(
+      <VirtualizedTable columns={columns} rows={rows} getRowId={(r) => r.id} />,
+    );
+    expect(screen.getByTestId('virtualized-table')).toHaveAttribute('data-row-px', '44');
+
+    usePreferencesStore.setState({ densityMode: 'spacious' });
+    rerender(<VirtualizedTable columns={columns} rows={rows} getRowId={(r) => r.id} />);
+    expect(screen.getByTestId('virtualized-table')).toHaveAttribute('data-row-px', '64');
   });
 
   it('renders empty state when no rows', () => {

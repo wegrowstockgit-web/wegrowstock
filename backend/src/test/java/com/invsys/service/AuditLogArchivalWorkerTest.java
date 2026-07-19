@@ -2,6 +2,7 @@ package com.invsys.service;
 
 import com.invsys.common.ApiException;
 import com.invsys.domain.AuditLog;
+import com.invsys.metrics.WmsMetrics;
 import com.invsys.repository.AuditLogRepository;
 import com.invsys.tenancy.BootstrapJdbc;
 import com.invsys.tenancy.TenantContext;
@@ -37,6 +38,7 @@ class AuditLogArchivalWorkerTest {
     @Mock AuditLogRepository auditLogRepository;
     @Mock AuditArchiveStorageService archiveStorageService;
     @Mock DistributedJobLock jobLock;
+    @Mock WmsMetrics wmsMetrics;
 
     private AuditLogArchivalWorker worker;
     private final UUID tenantId = UUID.fromString("c0000000-0000-4000-8000-000000000001");
@@ -50,6 +52,7 @@ class AuditLogArchivalWorkerTest {
                 archiveStorageService,
                 jobLock,
                 objectMapper,
+                wmsMetrics,
                 null,
                 90,
                 5000,
@@ -131,6 +134,22 @@ class AuditLogArchivalWorkerTest {
 
         verify(jobLock).unlock(AuditLogArchivalWorker.JOB_LOCK_NAME);
         verify(auditLogRepository, times(1)).findByCreatedAtBefore(any(Instant.class), any(Pageable.class));
+    }
+
+    @Test
+    void nightlyRunRecordsMetricWhenTenantArchiveFails() {
+        when(jobLock.tryLock(eq(AuditLogArchivalWorker.JOB_LOCK_NAME), any())).thenReturn(true);
+        when(bootstrapJdbc.listActiveTenantIds()).thenReturn(List.of(tenantId));
+        when(auditLogRepository.findByCreatedAtBefore(any(Instant.class), any(Pageable.class)))
+                .thenReturn(List.of(sampleRow()));
+        when(archiveStorageService.uploadArchive(eq(tenantId), any(), any()))
+                .thenThrow(new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "AUDIT_ARCHIVE_UPLOAD_FAILED", "timeout"));
+
+        worker.runNightlyArchival();
+
+        verify(wmsMetrics).incrementAuditArchiveFailure(tenantId);
+        verify(auditLogRepository, never()).deleteByIdIn(anyList());
+        verify(jobLock).unlock(AuditLogArchivalWorker.JOB_LOCK_NAME);
     }
 
     @Test

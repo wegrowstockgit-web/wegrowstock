@@ -3,7 +3,7 @@
 > **Audience:** Senior developers and architects joining the codebase.  
 > **Goal:** Understand structure, class roles, and end-to-end interaction flows quickly.  
 > **Diagrams:** ASCII only (no Mermaid).  
-> **Companion docs:** `DATABASE_GUIDE.md` (schema story), `README.md` (quick start), `PRODUCT.md` / `BUILD_PLAN.md` (product intent).
+> **Companion docs:** `DATABASE_GUIDE.md` (schema story), `USER_GUIDE.md` (operator onboarding), `README.md` (quick start), `PRODUCT.md` / `BUILD_PLAN.md` (product intent).
 
 ---
 
@@ -53,7 +53,9 @@
 **Two golden rules** (also in `DATABASE_GUIDE.md`):
 
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
-2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by triggers / service logic.
+2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
+
+**Scale notes (current head ~V088):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`.
 
 ---
 
@@ -79,22 +81,23 @@ InventorySystem/
 ├── frontend/                React SPA + Playwright e2e
 │   └── src/
 │       ├── api/             Axios client + DTOs
-│       ├── components/      Shell + design system
+│       ├── components/      Shells (AppShell, WarehouseFloorShell) + UI
 │       ├── features/        Domain UI modules
-│       ├── hooks/           Scanner, density, warehouse gate
+│       ├── hooks/           Scanner, density, concurrent search, warehouse gate
 │       ├── offline/         IDB mutation queue + query persist
 │       ├── pages/           Route screens
-│       ├── stores/          Zustand
+│       ├── stores/          Zustand (session, grid columns, density, …)
 │       └── styles/          Design tokens
 ├── ops/
-│   ├── api-gateway/nginx.conf
-│   ├── jwt/                 Dev RS256 PEMs
-│   ├── postgres/init/       app_owner / app_user roles
-│   └── demo_seed.sql        Demo Corp + Acme skeleton data
-├── docker-compose.yml
-├── deploy.bat               Windows deploy / seed / status
-├── DATABASE_GUIDE.md        Schema narrative
-└── DEVELOPER_ARCHITECTURE.md  (this file)
+│   ├── api-gateway/nginx.conf   Edge rate limits + proxy
+│   ├── jwt/                     Dev RS256 PEMs
+│   ├── postgres/init/           app_owner / app_user roles
+│   └── demo_seed.sql            Demo Corp + Acme skeleton data
+├── docker-compose.yml           db, pgbouncer, redis, minio, api, gateway, web, LGTM
+├── deploy.bat                   Windows deploy / seed / status
+├── DATABASE_GUIDE.md            Schema narrative (RLS, partitions, archival)
+├── USER_GUIDE.md                 Operator / migration guide
+└── DEVELOPER_ARCHITECTURE.md    (this file)
 ```
 
 ---
@@ -139,8 +142,10 @@ InventorySystem/
 | `invsys-api-gateway` | Sole public edge to Spring; forwards auth cookies, `X-Warehouse-Id`, `Idempotency-Key` |
 | `invsys-api` | Business API; JDBC as `app_user`; Flyway as `app_owner` |
 | `invsys-db` | Postgres 16 + volumes |
+| `invsys-pgbouncer` | Transaction pooling to Postgres |
 | `invsys-redis` | PIN lockout / distributed rate limits |
-| `invsys-minio` | Media bucket `invsys-media` |
+| `invsys-minio` | Media bucket `invsys-media` (+ archive / backup buckets) |
+| Observability | Prometheus / Loki / Tempo / Grafana (`:3001`) |
 
 ### 3.2 Dev vs Docker API path
 
@@ -466,6 +471,10 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 | `CostingService` | Moving average / cost bumps |
 | `IdempotencyService` | Store/replay keyed responses |
 | `AuditService` | Append audit log |
+| `AuditLogArchivalWorker` | Nightly S3/MinIO JSONL cold archive + purge (90d default); metrics on failure |
+| `AuditArchiveStorageService` | Upload/list/download archive objects |
+| `PartitionMaintenanceWorker` | Ensure forward monthly partitions for ledger + audit |
+| `InventoryLevelFlushWorker` | Drain `inventory_level_deltas` → `inventory_levels` |
 | `OfflineSyncConflictService` | Sink / list / dismiss / retry conflicts |
 | `InvoicingService` / `BillingService` / `FintechUnderwritingService` | AR + Connect + capital |
 | `PortalService` / supplier portal services | External portals |
@@ -494,7 +503,8 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 | Outbox core | `OutboxService`, `OutboxDispatcher`, `OutboxEventHandler`, polling config |
 | Handlers | EasyPost labels, accounting sync, channel orders, EDI, mesh PO/ship, media, costing |
 | Adapters | Shopify / QBO / Xero / EasyPost / Slack / SMTP (live + mock) |
-| Vault | `CredentialVaultService`, rate limiter, settings |
+| Vault | `CredentialVaultService` envelope `ENV1` (`LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`) |
+| Webhooks | Signature validators + `WebhookReplayDriftFilter` (300s skew → 401) |
 
 ### 7.8 `common` / `config` / `gateway`
 
@@ -539,12 +549,17 @@ main.tsx
 
 ```
 Public:     /login  /signup  /invite/:token  /supplier-portal/po/:token
-B2B only:   /showroom/*  → ShowroomLayout
-Office:     /*           → ProtectedRoute(officeOnly) → AppShell
-Floor home: PICKER-only users land on /fulfillment
+B2B only:   /showroom/*              → ShowroomLayout
+Office:     /dashboard, /products, … → ProtectedRoute(officeOnly) → AppShell
+Floor:      /fulfillment, cycle-counts, manufacturing/terminal, returns/receive,
+            replenishments, field/truck, inbound/receive
+            → ProtectedRoute → WarehouseFloorShell (no corporate sidebar)
+Floor home: exclusive PICKER users land on /fulfillment
 ```
 
-Key office routes: `/dashboard`, `/products`, `/fulfillment`, `/purchase-orders`, `/sales-orders`, `/manufacturing/*`, `/returns`, `/settings`, `/settings/fintech` (OWNER).
+Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/import`, `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings`, `/settings/fintech` (OWNER).
+
+**Do not** wrap floor routes in `AppShell` — that regresses glove-friendly hit targets and dual-surface design.
 
 ### 8.3 State split (important)
 
@@ -580,8 +595,8 @@ Key office routes: `/dashboard`, `/products`, `/fulfillment`, `/purchase-orders`
 |------|---------|
 | `LoginPage` / `SignupPage` / `InvitePage` | Auth & onboarding |
 | `DashboardPage` | KPIs, work queue, ledger, conflicts |
-| `ProductsPage` | Virtualized catalog |
-| `FulfillmentPage` | Surface B scanner hub |
+| `ProductsPage` | Virtualized catalog (`useConcurrentSearch` + `VirtualizedTable`) |
+| `FulfillmentPage` | Surface B scanner hub (`WarehouseFloorShell`) |
 | `PurchaseOrdersPage` / `SalesOrdersPage` / `InvoicesPage` | Office order ops |
 | `CustomersPage` / `SuppliersPage` | Master data |
 | `ExceptionsPage` | Resolve Skip & Flag |
@@ -610,7 +625,9 @@ Key office routes: `/dashboard`, `/products`, `/fulfillment`, `/purchase-orders`
 
 ### 8.6 Design system (`components/ui`)
 
-Buttons (`Button`, `BigButton`), forms (`Input`, `Select`), `Card`, `Modal`/`AlertDialog`, enterprise `Table` + `VirtualizedTable`, drawers, density toolbar, `ScanFlashOverlay`, `UndoToast`, media capture components. Theming via `data-theme=office|warehouse` and `data-density`.
+Buttons (`Button`, `BigButton`), forms (`Input`, `Select`), `Card`, `Modal`/`AlertDialog`, enterprise `Table` + **`VirtualizedTable`** (TanStack Virtual, sticky/pinned columns, density `estimateSize` 32/44/64, GPU `virtual-row-layer`), drawers, density toolbar, `ColumnVisibilityMenu` (atomic Zustand selectors), `ScanFlashOverlay`, `UndoToast`, media capture components. Theming via `data-theme=office|warehouse` and `data-density`.
+
+**High-density grids:** bind search inputs with `useConcurrentSearch` (`useDeferredValue` + `useTransition`) so typing stays urgent while query keys / client filters defer. Column layout lives in `useGridColumnStore` keyed by `gridId` (persisted).
 
 ---
 
@@ -820,11 +837,15 @@ Alternate: multipart `MediaUploadService`.
 | JWT cookies | `AuthCookieService` | Access ~15m, refresh ~7d |
 | LBAC | `UserWarehouse` + `WarehouseAccessFilter` + `X-Warehouse-Id` | Terminal may lock warehouse via SSID/geo |
 | Idempotency | `IdempotencyService` | Required on fulfillment scan |
-| Audit | `AuditService` | SO confirm/allocate/cancel; ops console |
+| Audit | `AuditService` + archival worker | Hot `audit_log` (partitioned); cold S3 after retention |
 | Outbox | `OutboxService` + dispatcher | At-least-once integration side effects |
-| Append-only ledger | `InventoryLedger` grants | Reverse via compensating entry, not UPDATE |
-| Virtual threads | Spring config | High concurrency I/O |
+| Append-only ledger | `InventoryLedger` grants + partitions | Reverse via compensating entry, not UPDATE |
+| Edge rate limits | `ops/api-gateway/nginx.conf` | Magic-login ~5 r/m; fulfillment scan ~120 r/m |
+| Credential vault | `CredentialVaultService` | Envelope encryption; provider switchable |
+| Webhook drift | `WebhookReplayDriftFilter` | Stripe/Shopify timestamp window 300s |
+| Virtual threads | Spring config | High concurrency I/O (flush / archival / outbox) |
 | ProblemDetail errors | `GlobalExceptionHandler` | Stable `code` field for clients |
+| Metrics | `WmsMetrics` | Includes `wms.audit.archive.failures` (tenant-tagged) |
 
 ---
 
@@ -865,6 +886,14 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V078` | Enterprise master data (facility specs, customer/supplier/user fields) |
 | `V079` | `floor_load_capacity_lbs` + FSMA `vendor_lot_captured` ledger index |
 | `V080` | ProductVariant enterprise trade/handling/lifecycle + location putaway constraints + shipment DG flag |
+| `V081` | Two-tier user profile fields + UI density preferences |
+| `V082` | Sales order status `NEEDS_REVIEW` |
+| `V083` | `integration_channels` (+ RLS) and richer sync log columns |
+| `V084` | Location lat/long; `rtls_tags` / `rtls_position_events` |
+| `V085` | Append-only audit trigger hardening |
+| `V086` | `archive_purge_audit_logs` SECURITY DEFINER |
+| `V087` | RANGE partition `inventory_ledger` + `audit_log` by `created_at`; `ensure_monthly_partitions` |
+| `V088` | Ensure ~12 months back + 6 months forward partitions (idempotent) |
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 
@@ -905,8 +934,9 @@ Extra tenants: `ops/demo_seed_tenants_extra.sql` (manual; not in `deploy.bat see
  External systems (or Mock* adapters in tests/dev)
 ```
 
-Credentials: `CredentialVaultService` (encrypted at rest).  
-Webhooks: public controllers + signature validators (Stripe, EasyPost, Shopify).
+Credentials: `CredentialVaultService` envelope encryption (`invsys.integration.vault-provider` = `LOCAL` | `AWS_KMS` | `HASHICORP_VAULT`).  
+Webhooks: public controllers + signature validators (Stripe, EasyPost, Shopify) + **`WebhookReplayDriftFilter`** (300s).  
+Audit cold path: `AuditLogArchivalWorker` → gzip JSONL → object storage → `archive_purge_audit_logs` only after 2xx.
 
 ---
 
@@ -947,6 +977,10 @@ Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + 
 | `PathOptimizationHeuristicTest` | Hierarchical path sort |
 | `DashboardKpiCqrsHttpTest` | Snapshot read model for `/dashboard/stats` |
 | `DashboardStreamHttpTest` | SSE `/dashboard/stream` auth + subscribe |
+| `AuditLogArchivalWorkerIT` | LocalStack S3 + Awaitility cron + Toxiproxy chaos (no silent purge) |
+| `PartitionedTelemetryIT` | Ledger/audit partition presence + immutability |
+
+Frontend grid/scroll journeys: `18-grid-customization`, `37-column-visibility-menu`, `39-products-table-dashboard-scroll`, `40-products-customers-layout`, `sticky-table-headers`, `surface-a-enterprise-grid`.
 
 ---
 
@@ -1007,7 +1041,10 @@ Env template: `.env.example`.
 - Putting business rules in controllers or React  
 - Storing JWT/access tokens in `localStorage`  
 - Inserting tenant rows in Flyway without RLS strategy (prefer seed / SECURITY DEFINER)  
-- Calling external APIs inside the request transaction (use outbox)
+- Calling external APIs inside the request transaction (use outbox)  
+- Wrapping Surface B routes in office `AppShell`  
+- Absolute `translateY` row virtualization that breaks sticky table headers (use spacer rows)  
+- Ad-hoc `DELETE FROM audit_log` (use archival worker + security-definer purge)
 
 ---
 

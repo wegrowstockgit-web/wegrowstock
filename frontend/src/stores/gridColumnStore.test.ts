@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { selectGridLayout, useGridColumnStore } from '@/stores/gridColumnStore';
+import {
+  selectColumnOrder,
+  selectColumnPinned,
+  selectColumnVisibilityMap,
+  selectColumnVisible,
+  selectGridLayout,
+  selectPinnedColumns,
+  useGridColumnStore,
+} from '@/stores/gridColumnStore';
 
 const GRID = 'products';
 
@@ -15,6 +23,23 @@ describe('gridColumnStore', () => {
     expect(state.pinnedColumns).toEqual(['sku', 'name']);
     expect(state.columnOrder).toEqual(['sku', 'name', 'barcode', 'onHand']);
     expect(state.columnVisibility.barcode).toBe(true);
+  });
+
+  it('exposes atomic selectors that do not allocate new maps per read', () => {
+    useGridColumnStore.getState().ensureColumns(GRID, ['sku', 'name', 'barcode']);
+    const a = useGridColumnStore.getState();
+    const b = useGridColumnStore.getState();
+    expect(selectColumnVisibilityMap(a, GRID)).toBe(selectColumnVisibilityMap(b, GRID));
+    expect(selectPinnedColumns(a, GRID)).toBe(selectPinnedColumns(b, GRID));
+    expect(selectColumnOrder(a, GRID)).toBe(selectColumnOrder(b, GRID));
+    expect(selectColumnVisible(a, GRID, 'barcode')).toBe(true);
+    expect(selectColumnPinned(a, GRID, 'sku')).toBe(true);
+
+    useGridColumnStore.getState().toggleColumnVisibility(GRID, 'barcode');
+    const c = useGridColumnStore.getState();
+    expect(selectColumnVisible(c, GRID, 'barcode')).toBe(false);
+    // Pin list reference stays stable when only visibility flips
+    expect(selectPinnedColumns(c, GRID)).toBe(selectPinnedColumns(a, GRID));
   });
 
   it('toggles visibility but keeps pinned columns visible', () => {

@@ -143,7 +143,14 @@ invsys:
       enabled: true
       poll-interval-ms: 300000
   integration:
+    # LOCAL (dev/test) | AWS_KMS | HASHICORP_VAULT — wraps per-secret AES-GCM data keys
+    vault-provider: ${INTEGRATION_VAULT_PROVIDER:LOCAL}
     master-key: ${INTEGRATION_MASTER_KEY:}
+    aws-kms-key-id: ${INTEGRATION_AWS_KMS_KEY_ID:}
+    aws-region: ${INTEGRATION_AWS_REGION:us-east-1}
+    vault-address: ${INTEGRATION_VAULT_ADDRESS:}
+    vault-token: ${INTEGRATION_VAULT_TOKEN:}
+    vault-transit-key: ${INTEGRATION_VAULT_TRANSIT_KEY:invsys-credentials}
     outbox:
       batch-size: 20
       max-retries: 5
@@ -168,6 +175,8 @@ invsys:
       enabled: ${AUDIT_ARCHIVE_ENABLED:true}
       retention-days: ${AUDIT_ARCHIVE_RETENTION_DAYS:90}
       batch-size: ${AUDIT_ARCHIVE_BATCH_SIZE:5000}
+      # Nightly 02:00 UTC; override in IT for Awaitility-driven scheduling
+      cron: ${AUDIT_ARCHIVE_CRON:0 0 2 * * ?}
 
 springdoc:
   api-docs:

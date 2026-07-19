@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 
 import { AppShell } from '@/components/layout/AppShell';
+import { WarehouseFloorShell } from '@/components/layout/WarehouseFloorShell';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { LoginPage } from '@/pages/LoginPage';
@@ -102,6 +103,23 @@ export function App() {
             }
           />
 
+          {/* Floor ops — WarehouseFloorShell (no corporate Sidebar) */}
+          <Route
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
+                <WarehouseFloorShell />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/fulfillment" element={<FulfillmentPage />} />
+            <Route path="/cycle-counts" element={<CycleCountsPage />} />
+            <Route path="/manufacturing/terminal" element={<ProductionTerminalPage />} />
+            <Route path="/returns/receive" element={<ReturnsReceivePage />} />
+            <Route path="/issue-supplies" element={<IssueSuppliesPage />} />
+            <Route path="/replenishments" element={<ReplenishmentsPage />} />
+            <Route path="/field/truck" element={<TechnicianTruckPage />} />
+          </Route>
+
           <Route
             path="/showroom"
             element={
@@ -132,14 +150,6 @@ export function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route
-              path="fulfillment"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <FulfillmentPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="exceptions"
               element={
                 <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
@@ -160,14 +170,6 @@ export function App() {
               element={
                 <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
                   <ImportPage legacy />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="cycle-counts"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <CycleCountsPage />
                 </ProtectedRoute>
               }
             />
@@ -225,42 +227,10 @@ export function App() {
               }
             />
             <Route
-              path="manufacturing/terminal"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <ProductionTerminalPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="returns"
               element={
                 <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
                   <ReturnsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="returns/receive"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <ReturnsReceivePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="issue-supplies"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <IssueSuppliesPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="replenishments"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <ReplenishmentsPage />
                 </ProtectedRoute>
               }
             />
@@ -272,14 +242,6 @@ export function App() {
                   officeOnly
                 >
                   <LotTracePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="field/truck"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                  <TechnicianTruckPage />
                 </ProtectedRoute>
               }
             />

@@ -66,7 +66,7 @@ test.describe('Sticky table headers', () => {
     const grid = page.getByTestId('virtualized-table');
     await expect(grid).toBeVisible({ timeout: 20_000 });
     const skuHeader = page.getByRole('columnheader', { name: /sku/i }).first();
-    const scrollport = grid.locator('.overflow-auto').first();
+    const scrollport = page.getByTestId('virtualized-table-scrollport');
 
     await padScrollport(scrollport);
     const headerYBefore = (await skuHeader.boundingBox())!.y;

@@ -15,6 +15,14 @@ import java.time.Duration;
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
+    /**
+     * Spring invokes subclass {@code @DynamicPropertySource} methods before superclass ones,
+     * so parent registration would overwrite LocalStack/Toxiproxy media overrides. Subclasses
+     * that supply their own {@code invsys.media.*} must set this to {@code false} in a static
+     * initializer before the context loads.
+     */
+    protected static boolean useDefaultMinioMedia = true;
+
     @SuppressWarnings("resource")
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("invsys")
@@ -45,6 +53,9 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.flyway.user", () -> "app_owner");
         registry.add("spring.flyway.password", () -> "app_owner_secret");
 
+        if (!useDefaultMinioMedia) {
+            return;
+        }
         registry.add("invsys.media.provider", () -> "MINIO");
         registry.add("invsys.media.endpoint", () -> "http://" + MINIO.getHost() + ":" + MINIO.getMappedPort(9000));
         registry.add("invsys.media.access-key", () -> "minioadmin");

@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures/roleFixture';
+import { completeScannerPin, expect, test } from '../fixtures/roleFixture';
 import { contextForRole } from './helpers';
 
 /**
@@ -19,6 +19,7 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
       await expect(owner.page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible({
         timeout: 45_000,
       });
+      await completeScannerPin(owner.page);
 
       const scrollport = owner.page.getByTestId('virtualized-table-scrollport');
       const grid = owner.page.getByTestId('virtualized-table-grid');
@@ -36,6 +37,7 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
       expect(Math.abs((thumbBox?.width ?? 0) - (thumbBox?.height ?? 0))).toBeLessThan(2);
 
       // Enable several advanced columns — table should grow beyond the viewport.
+      await completeScannerPin(owner.page);
       await owner.page.getByTestId('column-visibility-toggle').click();
       const menu = owner.page.getByTestId('column-visibility-menu');
       await expect(menu).toBeVisible();

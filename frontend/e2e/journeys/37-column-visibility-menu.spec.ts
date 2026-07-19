@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures/roleFixture';
+import { completeScannerPin, expect, test } from '../fixtures/roleFixture';
 import { contextForRole } from './helpers';
 
 const GRID_LS_KEY = 'invsys-grid-columns';
@@ -20,6 +20,7 @@ test.describe('Journey 37: Column visibility menu & grid reflow', () => {
       await expect(owner.page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible({
         timeout: 45_000,
       });
+      await completeScannerPin(owner.page);
       await expect(owner.page.getByTestId('virtualized-table')).toBeVisible({ timeout: 20_000 });
 
       // Baseline order: thumb → sku → name → barcode (no orphan thumb between name/barcode)
@@ -40,6 +41,7 @@ test.describe('Journey 37: Column visibility menu & grid reflow', () => {
         )
         .toBeTruthy();
 
+      await completeScannerPin(owner.page);
       await owner.page.getByTestId('column-visibility-toggle').click();
       const menu = owner.page.getByTestId('column-visibility-menu');
       await expect(menu).toBeVisible();

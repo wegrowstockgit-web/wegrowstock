@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -31,6 +32,7 @@ class LedgerImmutabilityTest extends AbstractIntegrationTest {
     @Autowired LocationRepository locationRepository;
     @Autowired InventoryLedgerRepository ledgerRepository;
     @Autowired InventoryService inventoryService;
+    @Autowired JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void cleanup() {
@@ -67,10 +69,17 @@ class LedgerImmutabilityTest extends AbstractIntegrationTest {
 
         InventoryLedger loaded = ledgerRepository.findById(entry.getId()).orElseThrow();
         loaded.setQuantityDelta(BigDecimal.ONE);
-        assertThatThrownBy(() -> ledgerRepository.saveAndFlush(loaded))
-                .isInstanceOf(Exception.class);
+        // Hibernate @Immutable ignores mutations — DB triggers still enforce append-only.
+        ledgerRepository.saveAndFlush(loaded);
+        assertThat(ledgerRepository.findById(entry.getId()).orElseThrow().getQuantityDelta())
+                .isEqualByComparingTo(BigDecimal.TEN);
 
-        assertThatThrownBy(() -> ledgerRepository.delete(loaded))
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE inventory_ledger SET quantity_delta = 1 WHERE id = ?", entry.getId()))
+                .isInstanceOf(DataAccessException.class);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "DELETE FROM inventory_ledger WHERE id = ?", entry.getId()))
                 .isInstanceOf(DataAccessException.class);
     }
 

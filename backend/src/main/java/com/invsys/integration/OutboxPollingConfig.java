@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.Scheduled;
 
 @Configuration
-@ConditionalOnProperty(name = "spring.task.scheduling.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "invsys.integration.outbox.dispatcher-enabled", havingValue = "true", matchIfMissing = true)
 class OutboxPollingConfig {
 
     private final OutboxDispatcher outboxDispatcher;

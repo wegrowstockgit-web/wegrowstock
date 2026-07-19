@@ -17,6 +17,8 @@ class CredentialVaultTest extends AbstractIntegrationTest {
         byte[] plaintext = "shopify-access-token-demo".getBytes(StandardCharsets.UTF_8);
         byte[] encrypted = credentialVaultService.encrypt(plaintext);
         assertThat(encrypted).isNotEqualTo(plaintext);
+        // Envelope magic ENV1 — local KEK wrap of per-secret DEK
+        assertThat(new String(encrypted, 0, 4, StandardCharsets.US_ASCII)).isEqualTo("ENV1");
 
         byte[] decrypted = credentialVaultService.decrypt(encrypted);
         assertThat(new String(decrypted, StandardCharsets.UTF_8)).isEqualTo("shopify-access-token-demo");

@@ -15,6 +15,18 @@
 
 BEGIN;
 
+-- Historical ledger rows in this seed use created_at up to ~60 days ago.
+SELECT ensure_monthly_partitions(
+    'inventory_ledger'::regclass,
+    (date_trunc('month', NOW()) - INTERVAL '12 months')::date,
+    19
+);
+SELECT ensure_monthly_partitions(
+    'audit_log'::regclass,
+    (date_trunc('month', NOW()) - INTERVAL '12 months')::date,
+    19
+);
+
 -- bcrypt hash of "password123" (BCryptPasswordEncoder strength 10)
 -- $2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu
 

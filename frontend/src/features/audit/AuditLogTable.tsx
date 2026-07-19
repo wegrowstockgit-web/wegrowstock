@@ -3,12 +3,14 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import type { AuditLogItem, AuditTenantPage } from '@/api/types';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import {
   VirtualizedTable,
   type VirtualizedColumnDef,
 } from '@/components/ui/primitives/VirtualizedTable';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
 
 const ENTITY_FILTERS = [
   '',
@@ -77,6 +79,13 @@ function DiffCell({ diff }: { diff: Record<string, unknown> }) {
 export function AuditLogTable() {
   const [entityType, setEntityType] = useState('');
   const [action, setAction] = useState('');
+  const {
+    inputValue: actorInput,
+    deferredValue: actorFilter,
+    isPending: actorPending,
+    setInputValue: setActorInput,
+    startTransition,
+  } = useConcurrentSearch('');
 
   const query = useInfiniteQuery({
     queryKey: ['audit', 'tenant', entityType, action],
@@ -96,10 +105,12 @@ export function AuditLogTable() {
     retry: false,
   });
 
-  const rows = useMemo(
-    () => query.data?.pages.flatMap((p) => p.items) ?? [],
-    [query.data?.pages],
-  );
+  const rows = useMemo(() => {
+    const all = query.data?.pages.flatMap((p) => p.items) ?? [];
+    const q = actorFilter.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((row) => actorLabel(row).toLowerCase().includes(q));
+  }, [query.data?.pages, actorFilter]);
 
   const onEndReached = useCallback(() => {
     if (query.hasNextPage && !query.isFetchingNextPage) {
@@ -168,10 +179,22 @@ export function AuditLogTable() {
         description="Tenant-wide append-only trail — filter by entity type and action"
         action={
           <div className="flex flex-wrap gap-2">
+            <Input
+              aria-label="Filter by actor"
+              value={actorInput}
+              onChange={(e) => setActorInput(e.target.value)}
+              placeholder="Filter by actor..."
+              className="min-w-[10rem] max-w-[14rem]"
+              aria-busy={actorPending || undefined}
+              data-testid="audit-filter-actor"
+            />
             <Select
               aria-label="Filter entity type"
               value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                startTransition(() => setEntityType(next));
+              }}
               data-testid="audit-filter-entity-type"
               className="min-w-[10rem]"
             >
@@ -185,7 +208,10 @@ export function AuditLogTable() {
             <Select
               aria-label="Filter action"
               value={action}
-              onChange={(e) => setAction(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                startTransition(() => setAction(next));
+              }}
               data-testid="audit-filter-action"
               className="min-w-[10rem]"
             >

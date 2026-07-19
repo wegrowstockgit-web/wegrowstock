@@ -1,4 +1,4 @@
-import { expect, test } from '../../e2e/fixtures/roleFixture';
+import { completeScannerPin, expect, test } from '../../e2e/fixtures/roleFixture';
 import {
   contextForRole,
   WIDGET_S_BARCODE,
@@ -87,7 +87,15 @@ test.describe('Mobile Picker suite', () => {
 
     const picker = await contextForRole(browser, 'picker');
     try {
+      // Floor picking vector — WarehouseFloorShell, never corporate AppShell rail.
+      await picker.page.goto('/fulfillment');
+      await completeScannerPin(picker.page);
+      await expect(picker.page.getByTestId('warehouse-floor-shell')).toBeVisible({ timeout: 20_000 });
+      await expect(picker.page.getByTestId('app-shell')).toHaveCount(0);
+      await expect(picker.page.getByTestId('icon-rail')).toHaveCount(0);
+
       await picker.page.goto('/inbound/receive');
+      await completeScannerPin(picker.page);
       await expect(picker.page.getByTestId('inbound-receive-page')).toBeVisible({ timeout: 20_000 });
 
       // Desktop office shell / rail must not mount on this full-screen floor route.

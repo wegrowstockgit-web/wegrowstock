@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures/roleFixture';
+import { completeScannerPin, expect, test } from './fixtures/roleFixture';
 
 test.describe('Surface A enterprise grid & settings', () => {
   test('products density toggle and column visibility menu', async ({ ownerPage: page }) => {
@@ -6,6 +6,7 @@ test.describe('Surface A enterprise grid & settings', () => {
     await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    await completeScannerPin(page);
     await expect(
       page.getByTestId('virtualized-table').or(page.getByRole('heading', { name: 'No products yet' })),
     ).toBeVisible({ timeout: 15_000 });
@@ -30,6 +31,7 @@ test.describe('Surface A enterprise grid & settings', () => {
     await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    await completeScannerPin(page);
     await expect(page.getByRole('columnheader', { name: /name/i }).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -49,6 +51,7 @@ test.describe('Surface A enterprise grid & settings', () => {
 
   test('import wizard page loads with mapping workspace', async ({ ownerPage: page }) => {
     await page.goto('/import');
+    await completeScannerPin(page);
     await expect(page.getByTestId('import-wizard')).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'CSV import' }).click();
     await expect(page.getByRole('heading', { name: 'Data import' })).toBeVisible();
@@ -58,6 +61,7 @@ test.describe('Surface A enterprise grid & settings', () => {
 
   test('warehouse visualizer and stacked tax settings', async ({ ownerPage: page }) => {
     await page.goto('/settings');
+    await completeScannerPin(page);
     await expect(page.getByRole('button', { name: 'Warehouses' })).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: 'Warehouses' }).click();

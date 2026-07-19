@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Columns3 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -7,7 +8,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { selectGridLayout, useGridColumnStore } from '@/stores/gridColumnStore';
+import {
+  selectColumnPinned,
+  selectColumnVisible,
+  useGridColumnStore,
+} from '@/stores/gridColumnStore';
 import { cn } from '@/lib/utils';
 
 export interface ColumnVisibilityItem {
@@ -22,21 +27,73 @@ interface ColumnVisibilityMenuProps {
   className?: string;
 }
 
+interface AtomicColumnToggleProps {
+  gridId: string;
+  columnId: string;
+  label: string;
+}
+
+/** One checkbox — re-renders only when this column's visibility/pin flips. */
+const AtomicVisibilityToggle = memo(function AtomicVisibilityToggle({
+  gridId,
+  columnId,
+  label,
+}: AtomicColumnToggleProps) {
+  const visible = useGridColumnStore((s) => selectColumnVisible(s, gridId, columnId));
+  const pinned = useGridColumnStore((s) => selectColumnPinned(s, gridId, columnId));
+  const toggleColumnVisibility = useGridColumnStore((s) => s.toggleColumnVisibility);
+
+  return (
+    <DropdownMenuCheckboxItem
+      checked={visible}
+      disabled={pinned}
+      onCheckedChange={() => toggleColumnVisibility(gridId, columnId)}
+      onSelect={(e) => e.preventDefault()}
+      data-testid={`column-visibility-${columnId}`}
+    >
+      <span className="flex-1">{label}</span>
+      {pinned && (
+        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+          pinned
+        </span>
+      )}
+    </DropdownMenuCheckboxItem>
+  );
+});
+
+const AtomicPinToggle = memo(function AtomicPinToggle({
+  gridId,
+  columnId,
+  label,
+}: AtomicColumnToggleProps) {
+  const pinned = useGridColumnStore((s) => selectColumnPinned(s, gridId, columnId));
+  const pinColumn = useGridColumnStore((s) => s.pinColumn);
+  const unpinColumn = useGridColumnStore((s) => s.unpinColumn);
+
+  return (
+    <DropdownMenuCheckboxItem
+      checked={pinned}
+      onCheckedChange={(next) => {
+        if (next) pinColumn(gridId, columnId);
+        else unpinColumn(gridId, columnId);
+      }}
+      onSelect={(e) => e.preventDefault()}
+      data-testid={`column-pin-${columnId}`}
+    >
+      Pin {label}
+    </DropdownMenuCheckboxItem>
+  );
+});
+
 /**
  * Top-rail column visibility toggle — shadcn/Radix DropdownMenu with
- * checkbox items bound to gridColumnStore layouts[gridId].
+ * checkbox items bound atomically to gridColumnStore layouts[gridId].
  */
 export function ColumnVisibilityMenu({
   columns,
   gridId = 'products',
   className,
 }: ColumnVisibilityMenuProps) {
-  const layout = useGridColumnStore((s) => selectGridLayout(s, gridId));
-  const toggleColumnVisibility = useGridColumnStore((s) => s.toggleColumnVisibility);
-  const pinColumn = useGridColumnStore((s) => s.pinColumn);
-  const unpinColumn = useGridColumnStore((s) => s.unpinColumn);
-  const { columnVisibility, pinnedColumns } = layout;
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -65,48 +122,26 @@ export function ColumnVisibilityMenu({
           Toggle columns
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {columns.map((col) => {
-          const pinned = pinnedColumns.includes(col.id);
-          const visible = columnVisibility[col.id] !== false;
-          return (
-            <DropdownMenuCheckboxItem
-              key={col.id}
-              checked={visible}
-              disabled={pinned}
-              onCheckedChange={() => toggleColumnVisibility(gridId, col.id)}
-              onSelect={(e) => e.preventDefault()}
-              data-testid={`column-visibility-${col.id}`}
-            >
-              <span className="flex-1">{col.label}</span>
-              {pinned && (
-                <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                  pinned
-                </span>
-              )}
-            </DropdownMenuCheckboxItem>
-          );
-        })}
+        {columns.map((col) => (
+          <AtomicVisibilityToggle
+            key={col.id}
+            gridId={gridId}
+            columnId={col.id}
+            label={col.label}
+          />
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="sticky top-0 z-10 bg-surface-raised">
           Pin identifiers
         </DropdownMenuLabel>
-        {columns.map((col) => {
-          const pinned = pinnedColumns.includes(col.id);
-          return (
-            <DropdownMenuCheckboxItem
-              key={`pin-${col.id}`}
-              checked={pinned}
-              onCheckedChange={(next) => {
-                if (next) pinColumn(gridId, col.id);
-                else unpinColumn(gridId, col.id);
-              }}
-              onSelect={(e) => e.preventDefault()}
-              data-testid={`column-pin-${col.id}`}
-            >
-              Pin {col.label}
-            </DropdownMenuCheckboxItem>
-          );
-        })}
+        {columns.map((col) => (
+          <AtomicPinToggle
+            key={`pin-${col.id}`}
+            gridId={gridId}
+            columnId={col.id}
+            label={col.label}
+          />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

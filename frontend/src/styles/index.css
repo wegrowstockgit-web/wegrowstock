@@ -47,6 +47,16 @@
     contain: layout;
   }
 
+  /**
+   * Virtualized body rows: promote a compositing layer without absolute
+   * translateY (which breaks sticky thead/td freeze inside <table>).
+   */
+  .virtual-row-layer {
+    will-change: transform;
+    contain: layout style;
+    transform: translateZ(0);
+  }
+
   /** Icon-rail nav: hide native scrollbar chrome (Track 1). */
   .scrollbar-none {
     scrollbar-width: none;
@@ -171,25 +181,29 @@
 }
 
 /*
- * Warehouse floor + phone/tablet: 44px minimum touch targets.
- * Office desktop (incl. hybrid fine-pointer 1080p) must NOT inherit scanner
- * target inflation — that was squashing Settings / admin grids.
+ * Warehouse floor: 48px (min-h-12) hit targets for glove-friendly scanning UIs.
+ * Office desktop must NOT inherit scanner target inflation.
  */
+[data-theme='warehouse'] button,
+[data-theme='warehouse'] a[role='button'],
+[data-theme='warehouse'] .touch-target {
+  min-height: 3rem; /* 48px — Tailwind min-h-12 */
+  min-width: 3rem;
+}
+
+[data-theme='warehouse'] .density-row {
+  min-height: 3rem;
+}
+
+[data-theme='warehouse'] [data-density='compact'] {
+  --density-cell-py: 0.5rem;
+  --density-row-h: 3rem;
+}
+
 @media (pointer: coarse), (max-width: 1024px) {
-  .touch-target,
-  [data-theme='warehouse'] button,
-  [data-theme='warehouse'] .touch-target {
-    min-height: 2.75rem;
-    min-width: 2.75rem;
-  }
-
-  [data-theme='warehouse'] .density-row {
-    min-height: 2.75rem;
-  }
-
-  [data-theme='warehouse'] [data-density='compact'] {
-    --density-cell-py: 0.5rem;
-    --density-row-h: 2.75rem;
+  .touch-target {
+    min-height: 3rem;
+    min-width: 3rem;
   }
 
   /* Peek / admin sheets become full-width tap drawers on iPad footprints */

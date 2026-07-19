@@ -20,13 +20,25 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 
 import { VariantThumb } from '@/components/ui/VariantThumb';
 
+import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
+
 import { useShowroomCart } from '@/showroom/useShowroomCart';
 
 
 
 export function ShowroomCatalogPage() {
 
-  const [search, setSearch] = useState('');
+  const {
+
+    inputValue: searchInput,
+
+    deferredValue: search,
+
+    isPending: searchPending,
+
+    setInputValue: setSearchInput,
+
+  } = useConcurrentSearch('');
 
   const [category, setCategory] = useState('ALL');
 
@@ -124,13 +136,17 @@ export function ShowroomCatalogPage() {
 
           <Input
 
-            value={search}
+            value={searchInput}
 
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearchInput(e.target.value)}
 
             placeholder="Search products..."
 
             className="pl-9"
+
+            aria-busy={searchPending || undefined}
+
+            data-testid="showroom-catalog-search"
 
           />
 

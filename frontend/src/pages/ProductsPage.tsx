@@ -20,6 +20,7 @@ import {
   type VirtualizedColumnDef,
 } from '@/components/ui/primitives/VirtualizedTable';
 import { VariantThumb } from '@/components/ui/VariantThumb';
+import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
 import { useSessionStore } from '@/stores/session';
 
 function qty(value: number | null | undefined): string {
@@ -408,7 +409,13 @@ function ExternalSyncToggle({
 export function ProductsPage() {
   const queryClient = useQueryClient();
   const canManage = useSessionStore((s) => s.canManageInventory());
-  const [search, setSearch] = useState('');
+  const {
+    inputValue: searchInput,
+    deferredValue: search,
+    isPending: searchPending,
+    setInputValue: setSearchInput,
+    startTransition,
+  } = useConcurrentSearch('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [uomVariant, setUomVariant] = useState<ProductVariant | null>(null);
@@ -801,10 +808,12 @@ export function ProductsPage() {
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Filter by SKU or name..."
               className="pl-9"
+              aria-busy={searchPending || undefined}
+              data-testid="products-search"
             />
           </div>
           {canManage && (
@@ -822,7 +831,11 @@ export function ProductsPage() {
             className="mb-0"
             storageKey="products-filters"
             activeFilters={{ lowStock: lowStockOnly ? '1' : '' }}
-            onApply={(f) => setLowStockOnly(f.lowStock === '1')}
+            onApply={(f) => {
+              startTransition(() => {
+                setLowStockOnly(f.lowStock === '1');
+              });
+            }}
             defaultPresets={[
               { id: 'all', label: 'All', filters: {} },
               { id: 'low', label: 'Low stock', filters: { lowStock: '1' } },

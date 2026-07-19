@@ -16,6 +16,7 @@ public class WmsMetrics {
     public static final String ORDERS_PROCESSED = "wms.orders.processed";
     public static final String ALLOCATION_TIME = "wms.allocation.time";
     public static final String API_ERRORS = "wms.api.errors";
+    public static final String AUDIT_ARCHIVE_FAILURES = "wms.audit.archive.failures";
 
     private final Counter ordersProcessed;
     private final Timer allocationTime;
@@ -29,6 +30,10 @@ public class WmsMetrics {
         this.allocationTime = Timer.builder(ALLOCATION_TIME)
                 .description("Wall time to allocate a sales order")
                 .publishPercentileHistogram()
+                .register(registry);
+        Counter.builder(AUDIT_ARCHIVE_FAILURES)
+                .description("Cold audit archival upload/purge failures by tenant")
+                .tag("tenant", "none")
                 .register(registry);
     }
 
@@ -55,6 +60,15 @@ public class WmsMetrics {
         Counter.builder(API_ERRORS)
                 .description("API errors by endpoint")
                 .tag("endpoint", tag)
+                .register(registry)
+                .increment();
+    }
+
+    public void incrementAuditArchiveFailure(java.util.UUID tenantId) {
+        String tag = tenantId == null ? "unknown" : tenantId.toString();
+        Counter.builder(AUDIT_ARCHIVE_FAILURES)
+                .description("Cold audit archival upload/purge failures by tenant")
+                .tag("tenant", tag)
                 .register(registry)
                 .increment();
     }

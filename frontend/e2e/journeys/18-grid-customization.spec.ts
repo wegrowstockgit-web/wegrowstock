@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures/roleFixture';
+import { completeScannerPin, expect, test } from '../fixtures/roleFixture';
 import { contextForRole } from './helpers';
 
 const GRID_LS_KEY = 'invsys-grid-columns';
@@ -17,11 +17,13 @@ test.describe('Journey 18: Grid Customization & Channel Sync', () => {
       await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible({
         timeout: 45_000,
       });
+      await completeScannerPin(page);
       await expect(page.getByTestId('data-list-toolbar')).toBeVisible();
       // Server Save View removed — layout is local persist only
       await expect(page.getByTestId('save-view-button')).toHaveCount(0);
 
       // --- Columns menu: hide Barcode, pin Reorder ---
+      await completeScannerPin(page);
       await page.getByTestId('column-visibility-toggle').click();
       await expect(page.getByTestId('column-visibility-menu')).toBeVisible();
       await page.getByTestId('column-visibility-barcode').click();
@@ -80,8 +82,10 @@ test.describe('Journey 18: Grid Customization & Channel Sync', () => {
       );
 
       // --- Channel Sync ---
+      await completeScannerPin(page);
       const syncBox = page.getByRole('checkbox', { name: 'Channel sync' }).first();
       await expect(syncBox).toBeVisible({ timeout: 20_000 });
+      await syncBox.scrollIntoViewIfNeeded();
       const wasChecked = await syncBox.isChecked();
       const patchWait = page.waitForResponse(
         (res) =>
@@ -89,7 +93,7 @@ test.describe('Journey 18: Grid Customization & Channel Sync', () => {
           res.request().method() === 'PATCH',
         { timeout: 30_000 },
       );
-      await syncBox.click();
+      await syncBox.click({ force: true });
       const patchRes = await patchWait;
       expect(patchRes.status()).toBe(200);
       await expect(syncBox).toBeChecked({ checked: !wasChecked });

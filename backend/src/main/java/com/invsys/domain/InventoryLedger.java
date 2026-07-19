@@ -3,6 +3,7 @@ package com.invsys.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Entity
+@Immutable
 @Table(name = "inventory_ledger")
 public class InventoryLedger extends TenantScopedEntity {
 

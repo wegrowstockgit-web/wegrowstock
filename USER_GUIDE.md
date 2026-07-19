@@ -1,0 +1,225 @@
+# User Guide — Getting Started & Migrating to InventorySystem
+
+This guide is for **business owners, warehouse managers, and office staff** who are new to the product or moving from spreadsheets / another ERP. It explains concepts in everyday language and walks through setup, migration, and daily work.
+
+Technical deep-dives live in `DATABASE_GUIDE.md` and `DEVELOPER_ARCHITECTURE.md`.
+
+---
+
+## What you are looking at
+
+InventorySystem is a **multi-tenant warehouse + light ERP** app. Your company is a private **tenant** (workspace). Nobody from another company can see your products, stock, or orders.
+
+You will use three kinds of screens:
+
+| Surface | Who | Typical device |
+|---------|-----|----------------|
+| **Office** | Owners, admins, managers, viewers | Laptop / desktop browser |
+| **Warehouse floor** | Pickers, warehouse managers on the dock | Phone, tablet, or rugged scanner |
+| **B2B showroom** | Your wholesale customers | Browser (catalog + checkout only) |
+
+Pickers are steered to floor screens. Office users get the full desktop navigation. B2B logins only see the showroom.
+
+---
+
+## Words you will see every day
+
+| Term | Meaning |
+|------|---------|
+| **Tenant / workspace** | Your company account |
+| **SKU** | One sellable item identity (e.g. blue medium shirt ≠ red medium shirt) |
+| **Barcode / GTIN** | What the scanner reads on the pack |
+| **Location / bin** | Exact shelf spot, often written as a path like `WH-01/Z-A/A-1/B-01` |
+| **On hand** | Physical quantity at a location |
+| **Allocated** | Reserved for an open customer order (not free to sell again) |
+| **Available (ATP)** | Roughly on hand minus allocated |
+| **Lot / serial** | Batch or unit identity for expiry, recall, or regulated goods |
+| **LPN (license plate)** | Pallet or tote ID used to move many units as one |
+| **Wave** | A batch of pick work released to the floor |
+| **Ledger** | Permanent history of every stock movement (like a bank statement) |
+
+---
+
+## First-time setup (new company)
+
+### 1. Create the workspace
+
+1. Open the app (local demo: `http://localhost:3000`).
+2. Go to **Sign up** (`/signup`).
+3. Enter company name, workspace slug, your email, password, and display name.
+4. Choose **Create workspace**. You land on the **Dashboard** as **OWNER**.
+
+Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emails in the README).
+
+### 2. Sign-in options later
+
+- Email + password (slug is inferred from email for demo).
+- **Magic link** login when enabled (rate-limited at the gateway for safety).
+- Enterprise **SSO** (SAML/OIDC) if your admin configured it under Settings.
+
+### 3. Invite your team
+
+1. Open **Settings → Users & invitations**.
+2. **Invite user** → email + role:
+
+| Role | Typical access |
+|------|----------------|
+| **OWNER** | Everything, including billing / fintech |
+| **ADMIN** | Full ops + users (billing may be limited) |
+| **WAREHOUSE_MANAGER** | Orders, counts, receiving rules, floor oversight |
+| **PICKER** | Floor scan flows (fulfillment, receive, counts) |
+| **VIEWER** | Read-only office views |
+| **B2B_CUSTOMER** | Showroom only |
+
+3. For floor staff, assign **which warehouses** they may use (location-based access). Someone checked only for Warehouse A cannot change Warehouse B stock.
+4. Invitee opens the email link (`/invite/...`), sets a password, and joins.
+
+### 4. Secure the scanners (PIN)
+
+Warehouse sessions use a **4-digit shift PIN**. After idle time the screen locks (“Scanner locked”). Unlock with the PIN. Too many wrong attempts temporarily lock the device (Redis-backed). Office demos may prompt you to set this PIN once per browser profile.
+
+---
+
+## Migrating from another system
+
+You do **not** need to retype thousands of SKUs. Use the **Import** wizard.
+
+### Export from the old system
+
+Prepare clean **CSV** files:
+
+1. **Catalog** — SKU, name/description, barcode, optional cost/price/UoM.
+2. **On-hand stock** — SKU, quantity, location path (e.g. `WH-01/ZoneA/Bin01`).
+3. **Partners** — suppliers and/or customers (name, email, terms if you have them).
+
+Tip: one concern per file. Fix duplicates and blank SKUs in the spreadsheet first.
+
+### Import into InventorySystem
+
+1. Sign in as **OWNER**, **ADMIN**, or **WAREHOUSE_MANAGER**.
+2. Open **Import** from the nav (or Settings → Import).
+3. Choose **CSV import**.
+4. Upload a file → **map columns** (your `ProductCode` → our `SKU`, etc.).
+5. Run **Preflight**. Bad rows are flagged; good rows can still import.
+6. **Confirm import**. Products get profiles; opening stock creates proper **ledger** history (not a silent overwrite).
+7. Repeat for partners and bin counts.
+
+### Migration checklist
+
+- [ ] Warehouse locations exist (or import creates the paths you use)
+- [ ] Catalog imported; spot-check barcodes with a scanner
+- [ ] Opening stock matches a physical cycle count on a sample aisle
+- [ ] Suppliers + key customers present
+- [ ] Team invited with correct roles and warehouse access
+- [ ] (Optional) Shopify / accounting / carriers connected under **Integrations**
+- [ ] (Optional) B2B customers invited to the showroom
+- [ ] First live PO receive and first SO pick completed as a dry run
+
+### After go-live
+
+- Prefer **adjustments** and **cycle counts** over editing history.
+- Keep imports for bulk corrections; day-to-day receiving should go through **Purchase Orders** or **Inbound receive**.
+- Compliance archives of old audit activity may move to cold storage after ~90 days — owners can download archives from Settings → Operations when needed.
+
+---
+
+## Daily office flow
+
+### Buy stock (purchase order)
+
+1. **Purchase Orders → Create PO**.
+2. Choose supplier, warehouse, lines (SKU + qty) → submit.
+3. When the truck is on the way, mark **In transit** if you use that status.
+
+### Sell stock (sales order)
+
+1. Orders appear under **Sales Orders** (manual entry or channel sync such as Shopify).
+2. **Allocate** reserves stock (FEFO/lot rules apply when lots matter). Short stock may show **Backordered** until inbound arrives (including **cross-dock** to staging).
+3. **Generate wave** to release pick work to the floor.
+4. After pack/ship, office updates shipment / tracking; invoices can follow under **Invoices**.
+
+### Other office jobs
+
+| Area | Use it for |
+|------|------------|
+| **Products** | Catalog, images, reorder points, dense virtualized grid (search, columns, density) |
+| **Customers / Suppliers** | Master data |
+| **Exceptions** | Resolve “skip & flag” issues from the floor |
+| **Manufacturing** | BOMs and production orders |
+| **Returns** | Approve RMAs; floor receives dispositions |
+| **Reports** | Profit, COGS, inventory analytics |
+| **Settings** | Warehouses map, inventory rules, users, integrations, documents, SSO |
+
+Products and other large grids support **Compact / Cozy / Spacious** density and a **Columns** menu (show/hide/pin). Search stays responsive while the table updates in the background.
+
+---
+
+## Daily warehouse floor flow
+
+Floor routes use a **warehouse shell** (large tap targets, high contrast) — not the office sidebar.
+
+### Inbound receive & putaway
+
+1. Open **Inbound receive** (or fulfillment receive mode).
+2. Scan PO / paperwork, then product barcodes (lots/expiry when required).
+3. Follow suggested putaway path; scan the **bin** to confirm.
+4. Stock is written to the ledger immediately.
+
+### Picking & staging
+
+1. Open **Fulfillment**, accept the assigned wave.
+2. Follow the guided path (may include a mini map / wayfinding).
+3. Scan each SKU; wrong scans are blocked with a clear error.
+4. Deliver to staging; pack/ship may finish on office or ship station flows.
+5. Optional: **LPN / Build pallet** to move or ship a whole pallet ID.
+
+### Counts, returns, replenishment
+
+- **Cycle counts** — blind count a bin; large variances can escalate.
+- **Returns receive** — scan RMA lines into restock or scrap.
+- **Replenishments** — move reserve stock to pick faces when triggered.
+
+Offline: if the handheld loses Wi‑Fi, scans can queue and sync later. Conflicts that cannot auto-apply appear for office review on the dashboard.
+
+---
+
+## B2B showroom (your customers)
+
+Wholesale buyers invited as **B2B_CUSTOMER**:
+
+1. Sign in → **Catalog** (tier pricing applied).
+2. Add to cart → checkout / orders / billing screens under `/showroom/...`.
+3. They never see your internal PO, ledger, or settings screens.
+
+---
+
+## Safety & trust habits
+
+1. **Do not “fix” stock by editing a number in a spreadsheet and re-importing casually** — use receive, adjust, transfer, or approved cycle counts so history stays honest.
+2. **Double-submit protection** — fulfillment scans send an idempotency key; clicking twice should not ship twice.
+3. **Warehouse context** — always confirm the active warehouse in the header before scanning.
+4. **PIN lock** — never share shift PINs; treat the handheld like a shared register.
+5. **Roles** — give pickers picker access only; keep billing on OWNER.
+
+---
+
+## Quick troubleshooting
+
+| Symptom | What to try |
+|---------|-------------|
+| “Scanner locked” | Enter the 4-digit shift PIN |
+| Cannot see a warehouse | Ask admin to add you on **User warehouses** |
+| Import row failed | Open preflight errors; fix SKU/barcode/location; re-upload |
+| Order stuck backordered | Check inbound / cross-dock staging; allocate again when stock arrives |
+| Channel / accounting sync failed | Settings → Integrations; check sync logs; ask an admin |
+| Offline scan conflict | Dashboard / offline conflicts → dismiss or retry after fixing stock |
+
+---
+
+## Where to get help next
+
+- **README.md** — install, demo users, URLs  
+- **DATABASE_GUIDE.md** — why the ledger and tenancy work this way  
+- **DEVELOPER_ARCHITECTURE.md** — for IT / implementers integrating or extending the product  
+
+Welcome aboard — start with one warehouse, one SKU path (receive → allocate → pick → ship), then scale imports and channels once that loop feels solid.

@@ -54,9 +54,11 @@ class PublicWebhookSecurityTest extends AbstractIntegrationTest {
     @Test
     void shopifyAcceptsValidHmac() throws Exception {
         String shopifyBody = "{\"shop_domain\":\"demo.myshopify.com\"}";
+        long triggeredAt = System.currentTimeMillis() / 1000;
         mockMvc.perform(post("/api/v1/public/webhooks/channels/shopify")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Shopify-Hmac-Sha256", shopifyHmac(shopifyBody))
+                        .header("X-Shopify-Triggered-At", String.valueOf(triggeredAt))
                         .content(shopifyBody))
                 .andExpect(status().isOk());
     }

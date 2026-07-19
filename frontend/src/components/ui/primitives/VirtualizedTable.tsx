@@ -1,17 +1,26 @@
 import {
+  memo,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type ReactElement,
   type ReactNode,
 } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDensity } from '@/hooks/useDensity';
 import { useClientSort, type SortAccessors } from '@/hooks/useClientSort';
-import { selectGridLayout, useGridColumnStore } from '@/stores/gridColumnStore';
+import {
+  selectColumnOrder,
+  selectColumnVisibilityMap,
+  selectPinnedColumns,
+  useGridColumnStore,
+} from '@/stores/gridColumnStore';
+import { DENSITY_STYLES, type DensityMode } from '@/stores/preferencesStore';
 import { cn } from '@/lib/utils';
 
 export interface VirtualizedColumnDef<T> {
@@ -59,6 +68,13 @@ export interface VirtualizedTableProps<T> {
 const PIN_EDGE =
   'shadow-[inset_-8px_0_8px_-8px_rgba(0,0,0,0.2)] border-r border-border/80';
 
+/** Density → estimateSize tiers (compact / cozy / spacious). */
+const DENSITY_ROW_PX: Record<DensityMode, number> = {
+  compact: DENSITY_STYLES.compact.rowPx,
+  cozy: DENSITY_STYLES.cozy.rowPx,
+  spacious: DENSITY_STYLES.spacious.rowPx,
+};
+
 function alignClass(align: 'left' | 'right' | 'center' = 'left') {
   return {
     left: 'text-left',
@@ -76,10 +92,118 @@ function stickyStyle(left: number, isHeader: boolean): CSSProperties {
   };
 }
 
+interface ResolvedColumn<T> {
+  col: VirtualizedColumnDef<T>;
+  width: number;
+  pinned: boolean;
+  pinLeft?: number;
+  isPinEdge: boolean;
+}
+
+interface VirtualizedTableRowProps<T> {
+  row: T;
+  index: number;
+  rowId: string;
+  selected: boolean;
+  rowPx: number;
+  densityRowClass: string;
+  densityCellClass: string;
+  columns: ResolvedColumn<T>[];
+  onRowClick?: (row: T) => void;
+  onActivate: (row: T) => void;
+}
+
+/**
+ * Memoized body row — avoids reallocating per-cell layout closures when the
+ * parent shell re-renders for unrelated chrome (filter pending, toolbar, etc.).
+ */
+const VirtualizedTableRow = memo(function VirtualizedTableRow<T>({
+  row,
+  index,
+  rowId,
+  selected,
+  rowPx,
+  densityRowClass,
+  densityCellClass,
+  columns,
+  onRowClick,
+  onActivate,
+}: VirtualizedTableRowProps<T>) {
+  const zebra = index % 2 === 1;
+  const rowBg = selected
+    ? 'bg-blue-100/60 dark:bg-slate-700/80'
+    : zebra
+      ? 'bg-muted/40'
+      : 'bg-background';
+
+  return (
+    <tr
+      data-index={index}
+      data-row-id={rowId}
+      data-state={selected ? 'selected' : undefined}
+      aria-selected={selected || undefined}
+      className={cn(
+        'table-row-interactive density-row virtual-row-layer',
+        densityRowClass,
+        rowBg,
+        'border-b border-border',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40',
+        onRowClick && 'cursor-pointer',
+      )}
+      style={{
+        height: rowPx,
+        // Vertical offset is owned by padding spacers so sticky <th>/<td>
+        // freeze keeps working; translateZ promotes a GPU layer only.
+        transform: 'translateZ(0)',
+      }}
+      tabIndex={onRowClick ? 0 : undefined}
+      onClick={onRowClick ? () => onActivate(row) : undefined}
+      onKeyDown={
+        onRowClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onActivate(row);
+              }
+            }
+          : undefined
+      }
+    >
+      {columns.map(({ col, width, pinned, pinLeft, isPinEdge }) => (
+        <td
+          key={col.id}
+          data-column-id={col.id}
+          data-pinned={pinned ? 'true' : undefined}
+          className={cn(
+            'align-middle whitespace-nowrap',
+            densityCellClass,
+            alignClass(col.align),
+            pinned && rowBg,
+            isPinEdge && PIN_EDGE,
+            col.className,
+          )}
+          style={{
+            width,
+            minWidth: col.width,
+            ...(pinned && pinLeft !== undefined
+              ? stickyStyle(pinLeft, false)
+              : undefined),
+          }}
+        >
+          <div className="min-w-0 max-w-full">{col.cell(row, index)}</div>
+        </td>
+      ))}
+    </tr>
+  );
+}) as <T>(props: VirtualizedTableRowProps<T>) => ReactElement;
+
 /**
  * Enterprise pinned-column virtualized data grid for Surface A.
  * Outer shell is overflow-hidden / fixed-viewport; only the inner scrollport
  * rolls. Near-end scroll triggers TanStack infinite append via onEndReached.
+ *
+ * Row offsets use spacer `<tr>` padding (not absolute `translateY`) so sticky
+ * headers and frozen identifier columns keep working under scroll.
  */
 export function VirtualizedTable<T>({
   columns,
@@ -95,11 +219,15 @@ export function VirtualizedTable<T>({
 }: VirtualizedTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endReachedLock = useRef(false);
-  const { rowPx, styles: densityStyles } = useDensity();
-  const layout = useGridColumnStore((s) => selectGridLayout(s, gridId));
-  const columnVisibility = layout.columnVisibility;
-  const pinnedColumns = layout.pinnedColumns;
-  const columnOrder = layout.columnOrder;
+  const { densityMode, rowPx, styles: densityStyles } = useDensity();
+  const estimatedRowPx = DENSITY_ROW_PX[densityMode] ?? rowPx;
+
+  // Atomic slices — toggling visibility on another grid does not notify us.
+  const columnVisibility = useGridColumnStore((s) =>
+    selectColumnVisibilityMap(s, gridId),
+  );
+  const pinnedColumns = useGridColumnStore((s) => selectPinnedColumns(s, gridId));
+  const columnOrder = useGridColumnStore((s) => selectColumnOrder(s, gridId));
   const ensureColumns = useGridColumnStore((s) => s.ensureColumns);
   const [internalSelected, setInternalSelected] = useState<string | null>(null);
   /** Viewport width of the table scrollport — used to stretch columns to fill. */
@@ -252,17 +380,39 @@ export function VirtualizedTable<T>({
 
   const lastPinnedId = stickyColumnIds[stickyColumnIds.length - 1];
 
+  const resolvedColumns = useMemo<ResolvedColumn<T>[]>(() => {
+    return orderedVisible.map((col) => {
+      const pinned = pinOffsets.has(col.id);
+      return {
+        col,
+        width: columnWidths.get(col.id) ?? col.width,
+        pinned,
+        pinLeft: pinned ? pinOffsets.get(col.id) : undefined,
+        isPinEdge: col.id === lastPinnedId,
+      };
+    });
+  }, [orderedVisible, columnWidths, pinOffsets, lastPinnedId]);
+
+  const getItemKey = useCallback(
+    (index: number) => {
+      const row = sortedRows[index];
+      return row ? getRowId(row) : index;
+    },
+    [getRowId, sortedRows],
+  );
+
   const virtualizer = useVirtualizer({
     count: sortedRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowPx,
+    estimateSize: () => estimatedRowPx,
     overscan: 12,
     scrollMargin: 0,
+    getItemKey,
   });
 
   useEffect(() => {
     virtualizer.measure();
-  }, [rowPx, virtualizer, orderedVisible.length, tableWidth]);
+  }, [estimatedRowPx, virtualizer, orderedVisible.length, tableWidth]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const paddingTop = virtualItems[0]?.start ?? 0;
@@ -292,7 +442,10 @@ export function VirtualizedTable<T>({
 
     const onScroll = () => {
       const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (remaining <= Math.max(rowPx * endReachedThreshold, 48) && !endReachedLock.current) {
+      if (
+        remaining <= Math.max(estimatedRowPx * endReachedThreshold, 48) &&
+        !endReachedLock.current
+      ) {
         endReachedLock.current = true;
         onEndReached();
         window.setTimeout(() => {
@@ -303,19 +456,22 @@ export function VirtualizedTable<T>({
 
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [endReachedThreshold, onEndReached, rowPx, sortedRows.length]);
+  }, [endReachedThreshold, onEndReached, estimatedRowPx, sortedRows.length]);
+
+  const handleActivate = useCallback(
+    (row: T) => {
+      const id = getRowId(row);
+      if (!controlled) {
+        setInternalSelected(id);
+      }
+      onRowClick?.(row);
+    },
+    [controlled, getRowId, onRowClick],
+  );
 
   if (sortedRows.length === 0 && empty) {
     return <>{empty}</>;
   }
-
-  const handleRowClick = (row: T) => {
-    const id = getRowId(row);
-    if (!controlled) {
-      setInternalSelected(id);
-    }
-    onRowClick?.(row);
-  };
 
   const visibleColumnIds = orderedVisible.map((c) => c.id).join(',');
 
@@ -327,6 +483,8 @@ export function VirtualizedTable<T>({
         className,
       )}
       data-testid="virtualized-table"
+      data-density={densityMode}
+      data-row-px={String(estimatedRowPx)}
     >
       {/* Sole scrollport — horizontal track when columns exceed the viewport */}
       <div
@@ -351,12 +509,9 @@ export function VirtualizedTable<T>({
                 'border-b border-[#155a9c] font-semibold uppercase tracking-wide',
               )}
             >
-              {orderedVisible.map((col) => {
-                const pinned = pinOffsets.has(col.id);
-                const isPinEdge = col.id === lastPinnedId;
+              {resolvedColumns.map(({ col, width, pinned, pinLeft, isPinEdge }) => {
                 const canSort = Boolean(col.sortValue) && col.sortable !== false;
                 const active = canSort && sort?.key === col.id;
-                const colW = columnWidths.get(col.id) ?? col.width;
                 return (
                   <th
                     key={col.id}
@@ -364,7 +519,13 @@ export function VirtualizedTable<T>({
                     data-column-id={col.id}
                     data-pinned={pinned ? 'true' : undefined}
                     aria-sort={
-                      active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : canSort ? 'none' : undefined
+                      active
+                        ? sort!.dir === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : canSort
+                          ? 'none'
+                          : undefined
                     }
                     className={cn(
                       'table-head-cell sticky top-0 z-40 whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
@@ -374,9 +535,11 @@ export function VirtualizedTable<T>({
                       col.className,
                     )}
                     style={{
-                      width: colW,
+                      width,
                       minWidth: col.width,
-                      ...(pinned ? stickyStyle(pinOffsets.get(col.id)!, true) : undefined),
+                      ...(pinned && pinLeft !== undefined
+                        ? stickyStyle(pinLeft, true)
+                        : undefined),
                     }}
                   >
                     {canSort ? (
@@ -422,76 +585,21 @@ export function VirtualizedTable<T>({
             {virtualItems.map((virtualRow) => {
               const row = sortedRows[virtualRow.index];
               if (!row) return null;
-
               const rowId = getRowId(row);
-              const selected = activeSelected === rowId;
-              const zebra = virtualRow.index % 2 === 1;
-              const rowBg = selected
-                ? 'bg-blue-100/60 dark:bg-slate-700/80'
-                : zebra
-                  ? 'bg-muted/40'
-                  : 'bg-background';
-
               return (
-                <tr
+                <VirtualizedTableRow
                   key={rowId}
-                  data-index={virtualRow.index}
-                  data-state={selected ? 'selected' : undefined}
-                  aria-selected={selected || undefined}
-                  className={cn(
-                    'table-row-interactive density-row',
-                    densityStyles.row,
-                    rowBg,
-                    'border-b border-border',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40',
-                    onRowClick && 'cursor-pointer',
-                  )}
-                  style={{ height: virtualRow.size }}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  onClick={onRowClick ? () => handleRowClick(row) : undefined}
-                  onKeyDown={
-                    onRowClick
-                      ? (e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            handleRowClick(row);
-                          }
-                        }
-                      : undefined
-                  }
-                >
-                  {orderedVisible.map((col) => {
-                    const pinned = pinOffsets.has(col.id);
-                    const isPinEdge = col.id === lastPinnedId;
-                    const colW = columnWidths.get(col.id) ?? col.width;
-                    return (
-                      <td
-                        key={col.id}
-                        data-column-id={col.id}
-                        data-pinned={pinned ? 'true' : undefined}
-                        className={cn(
-                          'align-middle whitespace-nowrap',
-                          densityStyles.cell,
-                          alignClass(col.align),
-                          pinned && rowBg,
-                          isPinEdge && PIN_EDGE,
-                          col.className,
-                        )}
-                        style={{
-                          width: colW,
-                          minWidth: col.width,
-                          ...(pinned
-                            ? stickyStyle(pinOffsets.get(col.id)!, false)
-                            : undefined),
-                        }}
-                      >
-                        <div className="min-w-0 max-w-full">
-                          {col.cell(row, virtualRow.index)}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
+                  row={row}
+                  index={virtualRow.index}
+                  rowId={rowId}
+                  selected={activeSelected === rowId}
+                  rowPx={virtualRow.size}
+                  densityRowClass={densityStyles.row}
+                  densityCellClass={densityStyles.cell}
+                  columns={resolvedColumns}
+                  onRowClick={onRowClick}
+                  onActivate={handleActivate}
+                />
               );
             })}
             {paddingBottom > 0 && (
