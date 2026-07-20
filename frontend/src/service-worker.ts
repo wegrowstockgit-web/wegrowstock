@@ -8,7 +8,8 @@ declare const self: ServiceWorkerGlobalScope;
 clientsClaim();
 void self.skipWaiting();
 
-const SHELL_CACHE = 'invsys-shell-swr-v1';
+/** Bump when SW build or shell asset strategy changes so activate purges stale shells. */
+const SHELL_CACHE = 'invsys-shell-swr-v2';
 const MEDIA_CACHE = 'invsys-media-v1';
 
 self.addEventListener('install', (event) => {

@@ -246,6 +246,7 @@ export function InboundReceivePage() {
       className="flex min-h-dvh flex-col bg-surface px-4 py-5 pb-10 text-text"
       data-theme="warehouse"
       data-testid="inbound-receive-page"
+      data-tour="inbound-receive"
     >
       <ScanFlashOverlay flash={flash} />
 

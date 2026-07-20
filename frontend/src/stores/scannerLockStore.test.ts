@@ -115,12 +115,19 @@ describe('scannerLockStore', () => {
     expect(useScannerLockStore.getState().needsPinSetup).toBe(false);
   });
 
-  it('installScannerLockTestHook exposes lockDevice on window', async () => {
+  it('installScannerLockTestHook exposes lockDevice and getState on window', async () => {
     await useScannerLockStore.getState().setupPin('1234');
     installScannerLockTestHook();
-    (
-      window as Window & { __INVSYS_SCANNER_LOCK__?: { lockDevice: () => void } }
-    ).__INVSYS_SCANNER_LOCK__?.lockDevice();
+    const hook = (
+      window as Window & {
+        __INVSYS_SCANNER_LOCK__?: {
+          lockDevice: () => void;
+          getState: () => { hydrated: boolean; isLocked: boolean };
+        };
+      }
+    ).__INVSYS_SCANNER_LOCK__;
+    expect(hook?.getState?.().isLocked).toBe(false);
+    hook?.lockDevice();
     expect(useScannerLockStore.getState().isLocked).toBe(true);
     expect(useCryptoMemoryKeyStore.getState().memoryKey).toBeNull();
   });

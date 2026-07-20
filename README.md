@@ -44,51 +44,65 @@ docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_ex
 
 Password for every account below: **password123**.
 
+**Shift PIN (floor / scanners only):** on the first visit to a Surface B route, set a **4-digit shift PIN**. Demo / E2E convention: **1234**. The PIN is stored in the browser (IndexedDB) for that device profile — it is not a server password and is **not** shown on office login (`/dashboard`, settings, reports, showroom).
+
+| Role | Office (Surface A) | Floor / scanners (Surface B) | Shift PIN |
+|------|--------------------|------------------------------|-----------|
+| OWNER | Full (incl. fintech) | Yes | Prompted on first floor visit |
+| ADMIN | Ops + settings/billing (not fintech) | Yes | Prompted on first floor visit |
+| WAREHOUSE_MANAGER | Orders + floor oversight | Yes | Prompted on first floor visit |
+| PICKER | Nav-hidden; login lands on fulfillment | Yes (primary) | Prompted on first floor visit |
+| VIEWER | Read-only office | No floor routes | Never |
+| B2B_CUSTOMER | Showroom only | No | Never |
+
+Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cycle-counts`, `/manufacturing/terminal`, `/returns/receive`, `/issue-supplies`, `/replenishments`, `/field/*`.
+
 #### Demo Corp (`demo-corp`) — primary E2E tenant
 
-| Email | Role | Warehouses / LBAC |
-|-------|------|-------------------|
-| owner@demo.test | OWNER | All (WH-01, WH-02) |
-| admin@demo.test | ADMIN | All |
-| manager@demo.test | WAREHOUSE_MANAGER | WH-01 only |
-| picker@demo.test | PICKER | WH-01 only |
-| viewer@demo.test | VIEWER | WH-01 only |
-| b2b@demo.test | B2B_CUSTOMER | Showroom portal |
+| Email | Role | Warehouses / LBAC | Shift PIN |
+|-------|------|-------------------|-----------|
+| owner@demo.test | OWNER | All (WH-01, WH-02) | Yes — use **1234** on floor |
+| admin@demo.test | ADMIN | All | Yes — use **1234** on floor |
+| manager@demo.test | WAREHOUSE_MANAGER | WH-01 only | Yes — use **1234** on floor |
+| picker@demo.test | PICKER | WH-01 only | Yes — use **1234** on floor |
+| viewer@demo.test | VIEWER | WH-01 only | No (office only) |
+| b2b@demo.test | B2B_CUSTOMER | Showroom portal | No (showroom only) |
 
 #### Acme Wholesale (`acme-wholesale`) — RLS isolation + full roles
 
-| Email | Role | Warehouses / LBAC |
-|-------|------|-------------------|
-| owner@acme.test | OWNER | All (Acme Central, Acme West) |
-| admin@acme.test | ADMIN | All |
-| manager@acme.test | WAREHOUSE_MANAGER | WH-01 only |
-| picker@acme.test | PICKER | WH-01 only |
-| viewer@acme.test | VIEWER | WH-01 only |
-| b2b@acme.test | B2B_CUSTOMER | Showroom |
+| Email | Role | Warehouses / LBAC | Shift PIN |
+|-------|------|-------------------|-----------|
+| owner@acme.test | OWNER | All (Acme Central, Acme West) | Yes — **1234** on floor |
+| admin@acme.test | ADMIN | All | Yes — **1234** on floor |
+| manager@acme.test | WAREHOUSE_MANAGER | WH-01 only | Yes — **1234** on floor |
+| picker@acme.test | PICKER | WH-01 only | Yes — **1234** on floor |
+| viewer@acme.test | VIEWER | WH-01 only | No |
+| b2b@acme.test | B2B_CUSTOMER | Showroom | No |
 
 #### Northwind Logistics (`northwind-logistics`) — 3 DCs
 
-| Email | Role | Warehouses / LBAC |
-|-------|------|-------------------|
-| owner@northwind.test | OWNER | All (SEA, CHI, ATL) |
-| admin@northwind.test | ADMIN | All |
-| manager@northwind.test | WAREHOUSE_MANAGER | WH-SEA + WH-CHI |
-| picker@northwind.test | PICKER | WH-SEA only |
-| viewer@northwind.test | VIEWER | WH-SEA only |
-| b2b@northwind.test | B2B_CUSTOMER | Showroom |
+| Email | Role | Warehouses / LBAC | Shift PIN |
+|-------|------|-------------------|-----------|
+| owner@northwind.test | OWNER | All (SEA, CHI, ATL) | Yes — **1234** on floor |
+| admin@northwind.test | ADMIN | All | Yes — **1234** on floor |
+| manager@northwind.test | WAREHOUSE_MANAGER | WH-SEA + WH-CHI | Yes — **1234** on floor |
+| picker@northwind.test | PICKER | WH-SEA only | Yes — **1234** on floor |
+| viewer@northwind.test | VIEWER | WH-SEA only | No |
+| b2b@northwind.test | B2B_CUSTOMER | Showroom | No |
 
 #### Pacific Parts Co (`pacific-parts`) — single DC hierarchy
 
-| Email | Role | Warehouses / LBAC |
-|-------|------|-------------------|
-| owner@pacific.test | OWNER | WH-PDX |
-| admin@pacific.test | ADMIN | WH-PDX |
-| manager@pacific.test | WAREHOUSE_MANAGER | WH-PDX |
-| picker@pacific.test | PICKER | WH-PDX |
-| viewer@pacific.test | VIEWER | WH-PDX |
-| b2b@pacific.test | B2B_CUSTOMER | Showroom |
+| Email | Role | Warehouses / LBAC | Shift PIN |
+|-------|------|-------------------|-----------|
+| owner@pacific.test | OWNER | WH-PDX | Yes — **1234** on floor |
+| admin@pacific.test | ADMIN | WH-PDX | Yes — **1234** on floor |
+| manager@pacific.test | WAREHOUSE_MANAGER | WH-PDX | Yes — **1234** on floor |
+| picker@pacific.test | PICKER | WH-PDX | Yes — **1234** on floor |
+| viewer@pacific.test | VIEWER | WH-PDX | No |
+| b2b@pacific.test | B2B_CUSTOMER | Showroom | No |
 
-Quick login: http://localhost:3000 — **owner@demo.test** / **password123**.
+Quick login (office, no PIN): http://localhost:3000 — **owner@demo.test** / **password123**.  
+Floor smoke (PIN **1234** after first open): same password, then open **Fulfillment** or sign in as **picker@demo.test**.
 
 ## Local Development (without Docker for app code)
 

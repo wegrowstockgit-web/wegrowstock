@@ -1,14 +1,9 @@
 import { expect, test } from '@playwright/test';
-
-const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
+import { completeScannerPin, loginAsDemo } from './fixtures/roleFixture';
 
 test.describe('Authentication', () => {
   test('demo login reaches dashboard', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-
+    await loginAsDemo(page);
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByText('Stock value')).toBeVisible({ timeout: 15_000 });
   });
@@ -16,10 +11,7 @@ test.describe('Authentication', () => {
 
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await loginAsDemo(page);
     await expect(page).toHaveURL(/\/dashboard/);
   });
 
@@ -46,10 +38,7 @@ test.describe('Dashboard', () => {
 
 test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await loginAsDemo(page);
     await expect(page).toHaveURL(/\/dashboard/);
   });
 
@@ -58,19 +47,21 @@ test.describe('Navigation', () => {
     await page.getByRole('link', { name: 'Manufacturing' }).click();
     await expect(page).toHaveURL(/\/manufacturing/);
 
-    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByRole('button', { name: 'Integrations' })).toBeVisible();
   });
 
   test('settings billing and tax configuration load', async ({ page }) => {
     await page.goto('/settings/billing');
+    await completeScannerPin(page);
     await expect(page).toHaveURL(/\/settings\/billing/);
     await expect(page.getByText('Billing & payments')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Connect Stripe' })).toBeVisible();
     await expect(page.getByText('Shipping accounts')).toBeVisible();
 
     await page.goto('/settings');
+    await completeScannerPin(page);
     await page.getByRole('button', { name: 'Inventory Rules' }).click();
     await expect(page.getByRole('heading', { name: 'Stacked tax schemes' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Legacy single tax rates' })).toBeVisible();
@@ -114,7 +105,6 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('tab', { name: 'Low stock' })).toBeVisible();
 
     await expect(page.getByRole('button', { name: /Edit UoM for/ }).first()).toBeVisible();
-    // On-hand / numeric cells vary by density + column order — assert a numeric cell exists.
     await expect(page.locator('tbody tr').first()).toBeVisible();
     await expect(page.locator('tbody tr').first().getByText(/^[0-9.—]+$/).first()).toBeVisible();
   });
@@ -176,6 +166,7 @@ test.describe('Navigation', () => {
 
   test('settings billing page does not embed financing cockpit', async ({ page }) => {
     await page.goto('/settings/billing');
+    await completeScannerPin(page);
     await expect(page).toHaveURL(/\/settings\/billing/);
     await expect(page.getByText('Billing & payments')).toBeVisible();
     await expect(page.getByText('Financing Cockpit')).toHaveCount(0);
@@ -183,6 +174,7 @@ test.describe('Navigation', () => {
 
   test('settings fintech page loads cockpit', async ({ page }) => {
     await page.goto('/settings/fintech');
+    await completeScannerPin(page);
     await expect(page).toHaveURL(/\/settings\/fintech/);
     await expect(page.getByTestId('fintech-settings-page')).toBeVisible();
     await expect(page.getByText('Financing Cockpit')).toBeVisible();

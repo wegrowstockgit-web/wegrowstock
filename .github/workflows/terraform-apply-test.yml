@@ -1,0 +1,62 @@
+# Deploy Test environment (resting state + burst-capable) on merge to develop.
+name: Terraform Apply (Test)
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "ops/terraform/infra/**"
+      - ".github/workflows/terraform-apply-test.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_WORKING_DIR: ops/terraform/infra
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  apply-test:
+    name: Apply → test workspace
+    runs-on: ubuntu-latest
+    environment: test
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC → Test role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: invsys-gha-tf-test-${{ github.run_id }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Select test workspace
+        run: |
+          terraform workspace select test || terraform workspace new test
+
+      - name: Terraform apply (cost-saving test profile)
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            -var-file=envs/test.tfvars \
+            -var='instance_type=db.t4g.micro' \
+            -var='use_fargate_spot=true' \
+            -var='enable_instance_scheduler=true'

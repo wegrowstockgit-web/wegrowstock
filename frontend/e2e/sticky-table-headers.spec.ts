@@ -1,14 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-
-const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
-
-async function signInAsOwner(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('owner@demo.test');
-  await page.getByLabel('Password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/(dashboard|products|fulfillment)/, { timeout: 20_000 });
-}
+import { completeScannerPin, loginAsDemo } from './fixtures/roleFixture';
 
 async function padScrollport(scrollport: Locator) {
   await scrollport.evaluate((el) => {
@@ -30,7 +21,6 @@ async function expectStickyHeader(header: Locator, scrollport: Locator) {
     el.scrollTop = 420;
   });
   await expect.poll(async () => scrollport.evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
-  // Header remains painted after the list scrollport moves (sticky contract).
   await expect(header).toBeVisible();
   const headerBox = await header.boundingBox();
   expect(headerBox).toBeTruthy();
@@ -39,8 +29,9 @@ async function expectStickyHeader(header: Locator, scrollport: Locator) {
 
 test.describe('Sticky table headers', () => {
   test('list pages have one scrollport and sticky headers', async ({ page }) => {
-    await signInAsOwner(page);
+    await loginAsDemo(page);
     await page.goto('/purchase-orders');
+    await completeScannerPin(page);
     await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible({
       timeout: 20_000,
     });
@@ -48,7 +39,6 @@ test.describe('Sticky table headers', () => {
     const numberHeader = page.getByRole('columnheader', { name: /number/i }).first();
     await expect(numberHeader).toBeVisible({ timeout: 20_000 });
 
-    // Nested table scrollports must not exist (double scrollbar regression).
     await expect(page.locator('[data-table-scrollport]')).toHaveCount(0);
     const listScroll = page.locator('[data-list-scrollport="true"]');
     await expect(listScroll).toHaveCount(1);
@@ -57,8 +47,9 @@ test.describe('Sticky table headers', () => {
   });
 
   test('virtualized Products grid headers stay visible while rows scroll', async ({ page }) => {
-    await signInAsOwner(page);
+    await loginAsDemo(page);
     await page.goto('/products');
+    await completeScannerPin(page);
     await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible({
       timeout: 20_000,
     });

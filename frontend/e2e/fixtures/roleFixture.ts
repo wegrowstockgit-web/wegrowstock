@@ -33,6 +33,7 @@ async function pageForRole(
 
   const context: BrowserContext = await browser.newContext({ baseURL });
   const page = await context.newPage();
+  installAutoUnlockNavigations(page);
 
   let loginRes = await page.request.post('/api/v1/auth/login', {
     data: { email, password: DEMO_PASSWORD },
@@ -82,6 +83,21 @@ async function pageForRole(
           version: 0,
         }),
       );
+      // Prevent onboarding / multi-page tours from covering PIN pads and grids in e2e.
+      localStorage.setItem(
+        'invsys-preferences',
+        JSON.stringify({
+          state: {
+            densityMode: 'cozy',
+            showOnboardingTour: false,
+            activeTourId: null,
+            currentTourStep: 0,
+            isTourAwaitingRoute: false,
+            awaitingRoute: null,
+          },
+          version: 0,
+        }),
+      );
     },
     {
       user: {
@@ -119,9 +135,86 @@ async function pageForRole(
   };
 }
 
+const DEMO_PASSWORD_DEFAULT = process.env.E2E_DEMO_PASSWORD ?? 'password123';
+
+/**
+ * UI login for specs that don't use pageForRole / contextForRole.
+ * Disables onboarding tour prefs and unlocks the scanner PIN gate.
+ */
+export async function loginAsDemo(
+  page: Page,
+  email = 'owner@demo.test',
+  password = DEMO_PASSWORD_DEFAULT,
+): Promise<void> {
+  installAutoUnlockNavigations(page);
+  await page.goto('/login');
+  const retry = page.getByRole('button', { name: 'Retry' });
+  if (await retry.isVisible({ timeout: 1_500 }).catch(() => false)) {
+    await retry.click();
+    await page.goto('/login');
+  }
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'invsys-preferences',
+      JSON.stringify({
+        state: {
+          densityMode: 'cozy',
+          showOnboardingTour: false,
+          activeTourId: null,
+          currentTourStep: 0,
+          isTourAwaitingRoute: false,
+          awaitingRoute: null,
+        },
+        version: 0,
+      }),
+    );
+  });
+  // Reload so Zustand persist rehydrates showOnboardingTour=false (memory otherwise stays true).
+  await page.reload();
+  await expect(page.getByLabel('Email')).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45_000 });
+  await completeScannerPin(page);
+  await dismissOnboardingTourIfPresent(page);
+}
+
+/** Close the interactive-tour prompt if it is covering keypad / shell UI. */
+export async function dismissOnboardingTourIfPresent(page: Page): Promise<void> {
+  const dontShow = page.getByTestId('tour-dont-show');
+  if (await dontShow.isVisible({ timeout: 1_500 }).catch(() => false)) {
+    await dontShow.click();
+    await expect(page.getByTestId('onboarding-tour-prompt')).toBeHidden({ timeout: 5_000 });
+  }
+  const skip = page.getByTestId('tour-skip');
+  if (await skip.isVisible({ timeout: 500 }).catch(() => false)) {
+    await skip.click();
+  }
+}
+
+type ScannerGateSnapshot = {
+  hydrated: boolean;
+  isLocked: boolean;
+  needsPinSetup: boolean;
+  pinConfigured: boolean;
+};
+
+async function readScannerGate(page: Page): Promise<ScannerGateSnapshot | null> {
+  return page.evaluate(() => {
+    const hook = (
+      window as Window & {
+        __INVSYS_SCANNER_LOCK__?: { getState?: () => ScannerGateSnapshot };
+      }
+    ).__INVSYS_SCANNER_LOCK__;
+    return hook?.getState?.() ?? null;
+  });
+}
+
 /**
  * Enroll or unlock the 4-digit shift PIN after session hydration.
- * Safe to call on every authenticated navigation.
+ * Safe to call after every full navigation: SPA remount wipes the in-memory crypto key,
+ * so hydrate re-locks until PIN unlock (IndexedDB verifier still present).
  */
 export async function completeScannerPin(page: Page, pin = '1234'): Promise<void> {
   await page
@@ -129,39 +222,166 @@ export async function completeScannerPin(page: Page, pin = '1234'): Promise<void
     .waitFor({ state: 'detached', timeout: 30_000 })
     .catch(() => undefined);
 
-  const setup = page.getByTestId('scanner-pin-setup-overlay');
-  const lock = page.getByTestId('scanner-lock-overlay');
+  const path = new URL(page.url()).pathname;
+  if (path.includes('/login') || path.includes('/signup') || path.includes('/invite')) {
+    return;
+  }
+  const authed = await page.evaluate(() => {
+    try {
+      const raw = localStorage.getItem('invsys-session');
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as { state?: { authenticated?: boolean } };
+      return !!parsed.state?.authenticated;
+    } catch {
+      return false;
+    }
+  });
+  if (!authed) return;
 
-  // Wait for the security gate to hydrate into setup, lock, or already-unlocked.
+  // Kill tour preference before overlays race the PIN pad (journeys often skip pageForRole prefs).
+  await page.evaluate(() => {
+    try {
+      const raw = localStorage.getItem('invsys-preferences');
+      const parsed = raw ? (JSON.parse(raw) as { state?: Record<string, unknown>; version?: number }) : { state: {}, version: 0 };
+      parsed.state = {
+        ...(parsed.state ?? {}),
+        showOnboardingTour: false,
+        activeTourId: null,
+        currentTourStep: 0,
+        isTourAwaitingRoute: false,
+        awaitingRoute: null,
+      };
+      localStorage.setItem('invsys-preferences', JSON.stringify(parsed));
+    } catch {
+      /* ignore */
+    }
+  });
+  await dismissOnboardingTourIfPresent(page);
+
+  // Wait until ScannerSecurityGate has hydrated (overlays only mount after this).
   await expect
     .poll(
       async () => {
-        if (await setup.isVisible().catch(() => false)) return 'setup';
-        if (await lock.isVisible().catch(() => false)) return 'lock';
+        await dismissOnboardingTourIfPresent(page);
+        const gate = await readScannerGate(page);
+        return gate?.hydrated === true;
+      },
+      { timeout: 25_000 },
+    )
+    .toBe(true);
+
+  const setup = page.getByTestId('scanner-pin-setup-overlay');
+  const lock = page.getByTestId('scanner-lock-overlay');
+
+  // Paint tick for overlays after hydrate.
+  await expect
+    .poll(
+      async () => {
+        await dismissOnboardingTourIfPresent(page);
+        const gate = await readScannerGate(page);
+        if (!gate) return 'waiting';
+        if (gate.needsPinSetup || (await setup.isVisible().catch(() => false))) return 'setup';
+        if (gate.isLocked || (await lock.isVisible().catch(() => false))) return 'lock';
         return 'ready';
       },
-      { timeout: 20_000 },
+      { timeout: 15_000 },
     )
     .toMatch(/setup|lock|ready/);
 
-  if (await setup.isVisible().catch(() => false)) {
+  await dismissOnboardingTourIfPresent(page);
+
+  const clickDigit = async (testId: string) => {
+    await dismissOnboardingTourIfPresent(page);
+    await page.getByTestId(testId).click({ force: true, timeout: 10_000 });
+  };
+
+  // Office routes no longer show the PIN UI — enroll silently so offline crypto still works for e2e.
+  const gateAfter = await readScannerGate(page);
+  const setupVisible = await setup.isVisible().catch(() => false);
+  if (gateAfter?.needsPinSetup && !setupVisible) {
+    const enrolled = await page.evaluate(async (p) => {
+      const hook = (
+        window as Window & {
+          __INVSYS_SCANNER_LOCK__?: { setupPin: (pin: string) => Promise<void> };
+        }
+      ).__INVSYS_SCANNER_LOCK__;
+      if (!hook?.setupPin) return false;
+      await hook.setupPin(p);
+      return true;
+    }, pin);
+    if (enrolled) {
+      await expect
+        .poll(async () => (await readScannerGate(page))?.needsPinSetup === false, {
+          timeout: 15_000,
+        })
+        .toBe(true);
+    }
+  } else if (setupVisible) {
     for (const digit of pin) {
-      await page.getByTestId(`scanner-setup-digit-${digit}`).click();
+      await clickDigit(`scanner-setup-digit-${digit}`);
     }
     await expect(setup.getByText('Confirm PIN')).toBeVisible({ timeout: 8_000 });
+    await dismissOnboardingTourIfPresent(page);
     for (const digit of pin) {
-      await page.getByTestId(`scanner-setup-digit-${digit}`).click();
+      await clickDigit(`scanner-setup-digit-${digit}`);
     }
     await expect(setup).toBeHidden({ timeout: 30_000 });
-    return;
-  }
-
-  if (await lock.isVisible().catch(() => false)) {
+  } else if (await lock.isVisible().catch(() => false)) {
     for (const digit of pin) {
-      await page.getByTestId(`scanner-unlock-digit-${digit}`).click();
+      await clickDigit(`scanner-unlock-digit-${digit}`);
     }
     await expect(lock).toBeHidden({ timeout: 30_000 });
   }
+
+  // Full navigations can race a second hydrate/lock; clear once more if needed.
+  if (await lock.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    for (const digit of pin) {
+      await clickDigit(`scanner-unlock-digit-${digit}`);
+    }
+    await expect(lock).toBeHidden({ timeout: 30_000 });
+  }
+
+  await expect(setup).toBeHidden({ timeout: 5_000 });
+  await expect(lock).toBeHidden({ timeout: 5_000 });
+}
+
+/**
+ * Wrap page.goto / reload so full navigations auto-unlock the scanner PIN gate.
+ * Client-side React Router clicks do not remount the app and keep the crypto key.
+ */
+/** Peek the decrypted offline mutation queue (requires PIN unlock + test hook). */
+export async function peekMutationQueue(
+  page: Page,
+): Promise<Array<{ body?: Record<string, unknown> }>> {
+  return page.evaluate(async () => {
+    const hook = (
+      window as Window & {
+        __INVSYS_MUTATION_QUEUE__?: { peek: () => Promise<Array<{ body?: Record<string, unknown> }>> };
+      }
+    ).__INVSYS_MUTATION_QUEUE__;
+    if (!hook?.peek) return [];
+    return hook.peek();
+  });
+}
+
+export function installAutoUnlockNavigations(page: Page): void {
+  const marked = page as Page & { __invsysAutoUnlock?: boolean };
+  if (marked.__invsysAutoUnlock) return;
+  marked.__invsysAutoUnlock = true;
+
+  const originalGoto = page.goto.bind(page);
+  page.goto = async (url, options) => {
+    const result = await originalGoto(url, options);
+    await completeScannerPin(page);
+    return result;
+  };
+
+  const originalReload = page.reload.bind(page);
+  page.reload = async (options) => {
+    const result = await originalReload(options);
+    await completeScannerPin(page);
+    return result;
+  };
 }
 
 type RoleFixtures = {

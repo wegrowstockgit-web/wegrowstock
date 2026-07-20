@@ -1,4 +1,4 @@
-import { expect, hidScan, test } from './fixtures/roleFixture';
+import { expect, hidScan, peekMutationQueue, test } from './fixtures/roleFixture';
 
 const DEMO_BARCODE = '8901000000001';
 
@@ -45,29 +45,7 @@ test.describe('Offline picker mutation queue', () => {
     expect(flushed.method()).toBe('POST');
 
     await expect
-      .poll(async () => {
-        return pickerPage.evaluate(async () => {
-          return new Promise<number>((resolve) => {
-            const open = indexedDB.open('keyval-store');
-            open.onerror = () => resolve(-1);
-            open.onsuccess = () => {
-              const db = open.result;
-              if (!db.objectStoreNames.contains('keyval')) {
-                resolve(0);
-                return;
-              }
-              const tx = db.transaction('keyval', 'readonly');
-              const store = tx.objectStore('keyval');
-              const req = store.get('invsys-mutation-queue');
-              req.onsuccess = () => {
-                const value = req.result as unknown[] | undefined;
-                resolve(Array.isArray(value) ? value.length : 0);
-              };
-              req.onerror = () => resolve(-1);
-            };
-          });
-        });
-      })
+      .poll(async () => (await peekMutationQueue(pickerPage)).length)
       .toBe(0);
   });
 });

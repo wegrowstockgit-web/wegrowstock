@@ -1,23 +1,17 @@
-import { expect, test } from './fixtures/roleFixture';
+import { completeScannerPin, expect, test } from './fixtures/roleFixture';
 import { contextForRole } from './journeys/helpers';
-
-const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 
 /** Lightweight session check for fixtures that already authenticated via ownerPage. */
 async function signInOwner(page: import('@playwright/test').Page) {
   await page.goto('/dashboard');
-  if (page.url().includes('/login')) {
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 25_000 });
-  }
+  await completeScannerPin(page);
   await expect(page.getByTestId('floating-kpi-row')).toBeVisible({ timeout: 25_000 });
 }
 
 test.describe('Production tracks (conflicts, time-travel, migration wizard)', () => {
   test('action-required hub exposes sync conflicts for owners', async ({ ownerPage: page }) => {
     await page.goto('/exceptions?tab=sync');
+    await completeScannerPin(page);
     await expect(page.getByTestId('action-required-hub')).toBeVisible({ timeout: 25_000 });
     await expect(page.getByTestId('exceptions-tab-sync')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('sync-conflicts-panel')).toBeVisible({ timeout: 20_000 });
@@ -29,6 +23,7 @@ test.describe('Production tracks (conflicts, time-travel, migration wizard)', ()
   test('settings sync conflicts tab loads', async ({ ownerPage: page }) => {
     await signInOwner(page);
     await page.goto('/settings?tab=syncConflicts');
+    await completeScannerPin(page);
     await expect(page.getByTestId('settings-page')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('sync-conflicts-panel')).toBeVisible({ timeout: 20_000 });
   });

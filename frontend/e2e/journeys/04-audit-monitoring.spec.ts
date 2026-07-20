@@ -60,12 +60,13 @@ test.describe.serial('Journey 04: Ownership audit trail', () => {
         ).toBeTruthy();
       }
 
-      // UI grid shows compliance columns
-      await expect(owner.page.getByRole('columnheader', { name: 'Timestamp' })).toBeVisible();
-      await expect(owner.page.getByRole('columnheader', { name: 'Action' })).toBeVisible();
-      await expect(owner.page.getByRole('columnheader', { name: 'Entity Type' })).toBeVisible();
-      await expect(owner.page.getByRole('columnheader', { name: 'Actor' })).toBeVisible();
-      await expect(owner.page.getByRole('columnheader', { name: 'Changes (Diff)' })).toBeVisible();
+      // UI grid shows compliance columns (scope to audit grid — "Actions" also exists elsewhere)
+      const auditGrid = owner.page.getByTestId('virtualized-table-grid');
+      await expect(auditGrid.getByRole('columnheader', { name: 'Timestamp' })).toBeVisible();
+      await expect(auditGrid.getByRole('columnheader', { name: 'Action', exact: true })).toBeVisible();
+      await expect(auditGrid.getByRole('columnheader', { name: 'Entity Type' })).toBeVisible();
+      await expect(auditGrid.getByRole('columnheader', { name: 'Actor' })).toBeVisible();
+      await expect(auditGrid.getByRole('columnheader', { name: 'Changes (Diff)' })).toBeVisible();
     } finally {
       await owner.close();
     }

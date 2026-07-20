@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures/roleFixture';
+import { expect, peekMutationQueue, test } from './fixtures/roleFixture';
 
 /** GS1-128 composite: AI 01 GTIN + AI 10 lot + AI 17 expiry + AI 30 qty */
 const GS1_COMPOSITE = '(01)01234567890128(10)BATCH-E2E(17)251231(30)4';
@@ -38,27 +38,8 @@ test.describe('GS1-128 composite fulfillment scan', () => {
       timeout: 8_000,
     });
 
-    const queuedBody = await pickerPage.evaluate(async () => {
-      return new Promise<Record<string, unknown> | null>((resolve) => {
-        const open = indexedDB.open('keyval-store');
-        open.onerror = () => resolve(null);
-        open.onsuccess = () => {
-          const db = open.result;
-          if (!db.objectStoreNames.contains('keyval')) {
-            resolve(null);
-            return;
-          }
-          const tx = db.transaction('keyval', 'readonly');
-          const store = tx.objectStore('keyval');
-          const req = store.get('invsys-mutation-queue');
-          req.onsuccess = () => {
-            const queue = req.result as Array<{ body?: Record<string, unknown> }> | undefined;
-            resolve(Array.isArray(queue) && queue[0]?.body ? queue[0].body : null);
-          };
-          req.onerror = () => resolve(null);
-        };
-      });
-    });
+    const queue = await peekMutationQueue(pickerPage);
+    const queuedBody = queue[0]?.body ?? null;
 
     expect(queuedBody).toBeTruthy();
     expect(queuedBody?.barcode).toBe('01234567890128');

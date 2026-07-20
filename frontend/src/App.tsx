@@ -44,7 +44,11 @@ import { ShowroomCatalogPage } from '@/pages/showroom/ShowroomCatalogPage';
 import { ShowroomOrdersPage } from '@/pages/showroom/ShowroomOrdersPage';
 import { ShowroomCheckoutPage } from '@/pages/showroom/ShowroomCheckoutPage';
 import { ShowroomBillingPage } from '@/pages/showroom/ShowroomBillingPage';
+import { ScannerSecurityGate } from '@/components/security/ScannerSecurityGate';
 import { useIsAuthenticated, useSessionRoles, isExclusiveRole } from '@/stores/session';
+import { OnboardingTourHost } from '@/features/support/OnboardingTourHost';
+import { SupportAssistantWidget } from '@/features/support/SupportAssistantWidget';
+import { TourOrchestrator } from '@/features/support/TourOrchestrator';
 
 /** Prompt alias: /invite/accept?token=… → /invite/:token */
 function InviteAcceptRedirect() {
@@ -83,8 +87,12 @@ function E2eCrashProbe(): ReactElement {
 export function App() {
   return (
     <BrowserRouter>
-      <ErrorBoundary boundaryName="app-root">
-        <Routes>
+      <ScannerSecurityGate>
+        <ErrorBoundary boundaryName="app-root">
+          <OnboardingTourHost />
+          <TourOrchestrator />
+          <SupportAssistantWidget />
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
@@ -309,8 +317,9 @@ export function App() {
           </Route>
 
           <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </ErrorBoundary>
+          </Routes>
+        </ErrorBoundary>
+      </ScannerSecurityGate>
     </BrowserRouter>
   );
 }

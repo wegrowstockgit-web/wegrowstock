@@ -71,7 +71,9 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testMatch: ['**/e2e/**/*.spec.ts'],
+      // Top-level e2e/ only — persona suites live under tests/e2e.
+      testMatch: ['e2e/**/*.spec.ts'],
+      testIgnore: ['**/tests/**'],
       use: { ...devices['Desktop Chrome'] },
     },
   ],

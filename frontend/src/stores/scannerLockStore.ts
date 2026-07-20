@@ -116,6 +116,16 @@ export const useScannerLockStore = create<ScannerLockState>((set, get) => ({
   },
 
   resetLockState: () => {
+    const s = get();
+    if (
+      !s.isLocked &&
+      !s.pinConfigured &&
+      !s.needsPinSetup &&
+      s.failedAttempts === 0 &&
+      !s.hydrated
+    ) {
+      return;
+    }
     set({
       isLocked: false,
       pinConfigured: false,
@@ -129,8 +139,30 @@ export const useScannerLockStore = create<ScannerLockState>((set, get) => ({
 /** Test / E2E seam — never relied on by production UI. */
 export function installScannerLockTestHook(): void {
   if (typeof window === 'undefined') return;
-  (window as Window & { __INVSYS_SCANNER_LOCK__?: { lockDevice: () => void } }).__INVSYS_SCANNER_LOCK__ =
-    {
-      lockDevice: () => useScannerLockStore.getState().lockDevice(),
-    };
+  (
+    window as Window & {
+      __INVSYS_SCANNER_LOCK__?: {
+        lockDevice: () => void;
+        setupPin: (pin: string) => Promise<void>;
+        getState: () => {
+          hydrated: boolean;
+          isLocked: boolean;
+          needsPinSetup: boolean;
+          pinConfigured: boolean;
+        };
+      };
+    }
+  ).__INVSYS_SCANNER_LOCK__ = {
+    lockDevice: () => useScannerLockStore.getState().lockDevice(),
+    setupPin: (pin: string) => useScannerLockStore.getState().setupPin(pin),
+    getState: () => {
+      const s = useScannerLockStore.getState();
+      return {
+        hydrated: s.hydrated,
+        isLocked: s.isLocked,
+        needsPinSetup: s.needsPinSetup,
+        pinConfigured: s.pinConfigured,
+      };
+    },
+  };
 }

@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:16-alpine
+    # pgvector extension required for support RAG (Flyway V089+)
+    image: pgvector/pgvector:pg16
     container_name: invsys-db
     environment:
       POSTGRES_DB: invsys

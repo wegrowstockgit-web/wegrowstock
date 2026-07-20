@@ -177,6 +177,12 @@ invsys:
       batch-size: ${AUDIT_ARCHIVE_BATCH_SIZE:5000}
       # Nightly 02:00 UTC; override in IT for Awaitility-driven scheduling
       cron: ${AUDIT_ARCHIVE_CRON:0 0 2 * * ?}
+  support:
+    ai:
+      enabled: ${SUPPORT_AI_ENABLED:true}
+      # heuristic (default/CI) | openai (requires OPENAI_API_KEY + ChatClient.Builder bean)
+      llm: ${SUPPORT_AI_LLM:heuristic}
+      top-k: ${SUPPORT_AI_TOP_K:6}
 
 springdoc:
   api-docs:

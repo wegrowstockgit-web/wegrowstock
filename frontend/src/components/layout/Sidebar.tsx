@@ -443,6 +443,15 @@ export function Sidebar() {
                   title={coarsePointer || showOverlay ? undefined : label}
                   aria-label={label}
                   className={linkClass}
+                  data-tour={
+                    to === '/sales-orders'
+                      ? 'nav-sales-orders'
+                      : to === '/products'
+                        ? 'nav-products'
+                        : to === '/purchase-orders'
+                          ? 'nav-purchase-orders'
+                          : undefined
+                  }
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   <span

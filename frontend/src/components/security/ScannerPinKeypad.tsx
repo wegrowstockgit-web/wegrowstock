@@ -11,6 +11,8 @@ interface ScannerPinKeypadProps {
   onChange: (next: string) => void;
   title: string;
   subtitle?: string;
+  /** Optional step cue (e.g. "Step 1 of 2") for multi-step PIN enrollment. */
+  stepLabel?: string;
   testIdPrefix?: string;
 }
 
@@ -25,6 +27,7 @@ export function ScannerPinKeypad({
   onChange,
   title,
   subtitle,
+  stepLabel,
   testIdPrefix = 'scanner-pin',
 }: ScannerPinKeypadProps) {
   function press(digit: string) {
@@ -45,6 +48,14 @@ export function ScannerPinKeypad({
       data-theme="warehouse"
     >
       <div className="text-center">
+        {stepLabel ? (
+          <p
+            className="mb-2 text-xs font-semibold uppercase tracking-wide text-accent"
+            data-testid={`${testIdPrefix}-step`}
+          >
+            {stepLabel}
+          </p>
+        ) : null}
         <h1 className="text-2xl font-bold tracking-tight text-text">{title}</h1>
         {subtitle ? <p className="mt-2 text-sm text-text-muted">{subtitle}</p> : null}
       </div>

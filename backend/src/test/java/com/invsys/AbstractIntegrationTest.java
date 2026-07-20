@@ -24,7 +24,8 @@ public abstract class AbstractIntegrationTest {
     protected static boolean useDefaultMinioMedia = true;
 
     @SuppressWarnings("resource")
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
+            DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("invsys")
             .withUsername("app_owner")
             .withPassword("app_owner_secret")

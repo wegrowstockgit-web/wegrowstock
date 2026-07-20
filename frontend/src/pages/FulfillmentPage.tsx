@@ -982,7 +982,12 @@ export function FulfillmentPage() {
   });
 
   return (
-    <div className="flex min-h-full flex-col p-4 pb-8" data-theme="warehouse">
+    <div
+      className="flex min-h-full flex-col p-4 pb-8"
+      data-theme="warehouse"
+      data-tour="fulfillment-scan"
+      data-testid="fulfillment-page"
+    >
       <ScanFlashOverlay flash={flash} />
 
       <div className="mb-6 text-center">

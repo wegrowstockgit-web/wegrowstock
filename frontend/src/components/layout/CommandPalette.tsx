@@ -119,8 +119,8 @@ const commands: CommandItem[] = [
     icon: RotateCcw,
     path: '/returns/receive',
     keywords: ['receive', 'rma', 'scan'],
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
+    // Matches App route — exclusive pickers may deep-link / Ctrl+K from office shell.
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
     hideForViewer: true,
   },
   {

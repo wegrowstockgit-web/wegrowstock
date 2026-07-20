@@ -1,13 +1,9 @@
 import { expect, test } from '@playwright/test';
-
-const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
+import { completeScannerPin, loginAsDemo } from './fixtures/roleFixture';
 
 test.describe('B2B portal', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('b2b@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await loginAsDemo(page, 'b2b@demo.test');
     await expect(page).toHaveURL(/\/showroom/, { timeout: 15_000 });
   });
 
@@ -21,6 +17,7 @@ test.describe('B2B portal', () => {
 
   test('submits a draft portal order from catalog', async ({ page }) => {
     await page.goto('/showroom/catalog');
+    await completeScannerPin(page);
     await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible({ timeout: 15_000 });
 
     const firstCard = page.locator('.grid > div').first();
@@ -43,6 +40,7 @@ test.describe('B2B portal', () => {
 
   test('persistent cart FAB opens global drawer', async ({ page }) => {
     await page.goto('/showroom/catalog');
+    await completeScannerPin(page);
     await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible({ timeout: 15_000 });
     await page.getByLabel(/Open cart/i).click();
     await expect(page.getByRole('dialog')).toBeVisible();

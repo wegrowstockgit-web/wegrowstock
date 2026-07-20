@@ -129,7 +129,7 @@ test.describe.serial('Journey 03: Floor exception & resolution loop', () => {
 
       await manager.page.getByTestId('open-exceptions-queue').click();
       await expect(manager.page).toHaveURL(/\/exceptions/);
-      await expect(manager.page.getByRole('heading', { name: 'Fulfillment exceptions' })).toBeVisible();
+      await expect(manager.page.getByRole('heading', { name: 'Action required' })).toBeVisible();
 
       const lotInput = manager.page.getByPlaceholder('Lot #').first();
       await expect(lotInput).toBeVisible({ timeout: 15_000 });

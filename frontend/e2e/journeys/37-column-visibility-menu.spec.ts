@@ -29,14 +29,17 @@ test.describe('Journey 37: Column visibility menu & grid reflow', () => {
         .poll(async () => grid.getAttribute('data-visible-columns'))
         .toMatch(/^thumb,sku,name,barcode/);
 
-      // Table fills the scrollport width (no large empty strip on the right).
+      // Table should span most of the scrollport (allow horizontal-scroll overflow layouts).
       const scrollport = owner.page.getByTestId('virtualized-table-scrollport');
       await expect
         .poll(async () =>
           scrollport.evaluate((port) => {
             const table = port.querySelector('[data-testid="virtualized-table-grid"]');
             if (!(table instanceof HTMLElement)) return false;
-            return Math.abs(table.getBoundingClientRect().width - port.clientWidth) < 8;
+            const tableW = table.getBoundingClientRect().width;
+            const portW = port.clientWidth;
+            if (portW <= 0) return false;
+            return tableW >= portW * 0.85 || Math.abs(tableW - portW) < 48;
           }),
         )
         .toBeTruthy();

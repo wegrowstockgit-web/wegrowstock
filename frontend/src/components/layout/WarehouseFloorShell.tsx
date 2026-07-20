@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Header } from './Header';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
-import { useSessionStore, useIsAuthenticated } from '@/stores/session';
+import { useSessionStore, useIsAuthenticated, useSessionWarehouseIds } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useWarehouseStore } from '@/stores/warehouseStore';
 import { usePreferencesStore } from '@/stores/preferencesStore';
@@ -31,7 +31,7 @@ export function WarehouseFloorShell() {
   const queryClient = useQueryClient();
   const authenticated = useIsAuthenticated();
   const applyMeProfile = useSessionStore((s) => s.applyMeProfile);
-  const sessionWarehouseIds = useSessionStore((s) => s.user?.warehouseIds ?? []);
+  const sessionWarehouseIds = useSessionWarehouseIds();
   const warehouse = useActiveWarehouseStore((s) => s.warehouse);
   const setWarehouse = useActiveWarehouseStore((s) => s.setWarehouse);
   const lockFromJwtSingle = useActiveWarehouseStore((s) => s.lockFromJwtSingle);

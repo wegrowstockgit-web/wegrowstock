@@ -1,0 +1,121 @@
+# Production infrastructure apply — DISABLED.
+#
+# This workflow is intentionally inert for applies: the apply job is hard-gated
+# with `if: false`. Keep the job definitions for a future cutover; enable only after:
+#   1. GitHub Environment "production" has required reviewers configured
+#   2. secrets.AWS_ROLE_ARN_PROD is wired to the prod OIDC role
+#   3. Remove the hard `if: false` disable below (and optionally require
+#      repository variable ENABLE_PROD_TF_APPLY=true)
+#
+# Until then, production terraform apply must not execute from CI.
+name: Terraform Apply (Prod) — DISABLED
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+    paths:
+      - "ops/terraform/infra/**"
+      - ".github/workflows/terraform-apply-prod.yml"
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type ENABLE to acknowledge (apply still disabled in code)"
+        required: true
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_WORKING_DIR: ops/terraform/infra
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: "true"
+  ENABLE_PROD_TF_APPLY: ${{ vars.ENABLE_PROD_TF_APPLY || 'false' }}
+
+jobs:
+  # Optional non-destructive plan (manual only). Does not mutate prod.
+  plan-prod-preview:
+    name: Plan preview (no apply)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - name: Configure AWS credentials (OIDC → Test role for preview)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: invsys-gha-tf-prod-preview-${{ github.run_id }}
+      - run: terraform init -input=false
+      - name: Select prod workspace (read-only plan)
+        run: |
+          terraform workspace select prod || terraform workspace new prod
+      - name: terraform plan (prod.tfvars) — apply disabled
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -var-file=envs/prod.tfvars \
+            -var='instance_type=db.m7g.large' \
+            -var='multi_az=true' \
+            -var='dedicated_fargate=true'
+
+  apply-prod:
+    name: Apply → prod workspace (DISABLED)
+    # HARD DISABLE — do not remove until production cutover is explicitly approved.
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Guard — prod apply disabled
+        run: |
+          echo "::error::Production terraform apply is disabled. Refusing to continue."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC → Prod role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: invsys-gha-tf-prod-${{ github.run_id }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Select prod workspace
+        run: |
+          terraform workspace select prod || terraform workspace new prod
+
+      - name: Terraform apply (enterprise prod profile)
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            -var-file=envs/prod.tfvars \
+            -var='instance_type=db.m7g.large' \
+            -var='multi_az=true' \
+            -var='dedicated_fargate=true' \
+            -var='use_fargate_spot=false' \
+            -var='enable_instance_scheduler=false'

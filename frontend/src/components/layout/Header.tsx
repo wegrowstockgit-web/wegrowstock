@@ -134,7 +134,8 @@ export function Header({
         </div>
 
         <div className="flex items-center gap-3">
-          <NetworkStatusBadge className={cn(isWarehouseView ? 'text-sm' : undefined)} />
+          {/* Connectivity is for handheld / floor devices — not the office shell. */}
+          {isWarehouseView && <NetworkStatusBadge className="text-sm" />}
           {isWarehouseView && quarantineCount > 0 && (
             <button
               type="button"

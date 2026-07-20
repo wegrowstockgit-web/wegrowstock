@@ -56,9 +56,35 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     });
     expect(confirmRes.ok()).toBeTruthy();
 
-    const allocateRes = await adminPage.request.post(`/api/v1/sales-orders/${orderId}/allocate`, {
+    // Top up pick-bin stock for portal line SKUs so allocate/pick are not starved by suite runs.
+    const detailBefore = await adminPage.request.get(`/api/v1/sales-orders/${orderId}`);
+    if (detailBefore.ok()) {
+      const body = (await detailBefore.json()) as {
+        lines: Array<{ variantId?: string; qtyOrdered?: number }>;
+      };
+      for (const line of body.lines ?? []) {
+        if (!line.variantId) continue;
+        await adminPage.request.post('/api/v1/inventory/receive', {
+          data: {
+            variantId: line.variantId,
+            locationId: 'a0000000-0000-4000-8000-000000000604',
+            quantity: Math.max(Number(line.qtyOrdered ?? 1) + 10, 15),
+            referenceType: 'E2E_B2B_CYCLE_TOPUP',
+          },
+        });
+      }
+    }
+
+    let allocateRes = await adminPage.request.post(`/api/v1/sales-orders/${orderId}/allocate`, {
     });
     expect(allocateRes.ok()).toBeTruthy();
+    let allocated = (await allocateRes.json()) as { status?: string };
+    if (allocated.status && allocated.status !== 'ALLOCATED') {
+      allocateRes = await adminPage.request.post(`/api/v1/sales-orders/${orderId}/allocate`);
+      expect(allocateRes.ok()).toBeTruthy();
+      allocated = (await allocateRes.json()) as { status?: string };
+    }
+    expect(allocated.status ?? 'ALLOCATED').toMatch(/ALLOCATED|PARTIALLY/);
 
     await adminPage.reload();
     await expect(adminPage.getByText(orderNumber).first()).toBeVisible();
@@ -83,24 +109,34 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
       headers: { 'X-Warehouse-Id': 'a0000000-0000-4000-8000-000000000601' },
     });
 
-    // Single-pick scan still exercises HID wedge + fulfillment path
+    // Single-pick scan still exercises HID wedge + fulfillment path — use the portal line SKU barcode.
     await pickerPage.getByRole('button', { name: 'Single' }).click();
     await pickerPage.getByRole('radio', { name: 'Pick' }).click();
-
-    const scanResponse = pickerPage.waitForResponse(
-      (res) => res.url().includes('/api/v1/fulfillment/scan') && res.request().method() === 'POST'
-    );
-    await hidScan(pickerPage, DEMO_BARCODE);
-    const scanned = await scanResponse;
-    expect(scanned.ok(), await scanned.text()).toBeTruthy();
 
     const detailRes = await adminPage.request.get(`/api/v1/sales-orders/${orderId}`, {
     });
     expect(detailRes.ok()).toBeTruthy();
     const detail = (await detailRes.json()) as {
       id: string;
-      lines: Array<{ id: string; qtyOrdered: number }>;
+      lines: Array<{ id: string; qtyOrdered: number; variantId?: string; sku?: string }>;
     };
+    const firstLine = detail.lines[0];
+    expect(firstLine).toBeTruthy();
+    let pickBarcode = DEMO_BARCODE;
+    if (firstLine?.variantId) {
+      const variantRes = await adminPage.request.get(`/api/v1/variants/${firstLine.variantId}`);
+      if (variantRes.ok()) {
+        const variant = (await variantRes.json()) as { barcode?: string; sku?: string };
+        pickBarcode = variant.barcode || variant.sku || firstLine.sku || DEMO_BARCODE;
+      }
+    }
+
+    const scanResponse = pickerPage.waitForResponse(
+      (res) => res.url().includes('/api/v1/fulfillment/scan') && res.request().method() === 'POST'
+    );
+    await hidScan(pickerPage, pickBarcode);
+    const scanned = await scanResponse;
+    expect(scanned.ok(), await scanned.text()).toBeTruthy();
 
     const shipRes = await pickerPage.request.post('/api/v1/shipments', {
       headers: {

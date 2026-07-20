@@ -42,6 +42,20 @@ async function readQueue(): Promise<QueuedMutation[]> {
   return (await encryptedGetJson<QueuedMutation[]>(QUEUE_KEY)) ?? [];
 }
 
+/** Test / E2E seam — decrypts the AES-GCM queue for Playwright assertions. */
+export function installMutationQueueTestHook(): void {
+  if (typeof window === 'undefined') return;
+  (
+    window as Window & {
+      __INVSYS_MUTATION_QUEUE__?: {
+        peek: () => Promise<QueuedMutation[]>;
+      };
+    }
+  ).__INVSYS_MUTATION_QUEUE__ = {
+    peek: () => readQueue(),
+  };
+}
+
 async function writeQueue(queue: QueuedMutation[]): Promise<void> {
   await encryptedSetJson(QUEUE_KEY, queue);
   useNetworkSyncStore.getState().setPendingCount(queue.length);

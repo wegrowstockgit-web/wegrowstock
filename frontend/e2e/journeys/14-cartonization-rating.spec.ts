@@ -1,4 +1,5 @@
 import { test, type Page } from '@playwright/test';
+import { completeScannerPin, installAutoUnlockNavigations } from '../fixtures/roleFixture';
 import {
   DEMO_PASSWORD,
   PICK_BIN_ID,
@@ -86,25 +87,43 @@ test.describe('Journey 14: 3D Cartonization & Rate Shopping', () => {
       };
     });
     const packerPage = await packerCtx.newPage();
+    installAutoUnlockNavigations(packerPage);
 
     await packerPage.goto('/login');
+    await packerPage.evaluate(() => {
+      localStorage.setItem(
+        'invsys-preferences',
+        JSON.stringify({
+          state: {
+            densityMode: 'cozy',
+            showOnboardingTour: false,
+            activeTourId: null,
+            currentTourStep: 0,
+            isTourAwaitingRoute: false,
+            awaitingRoute: null,
+          },
+          version: 0,
+        }),
+      );
+    });
+    await packerPage.reload();
     await packerPage.getByLabel('Email').fill('picker@demo.test');
     await packerPage.getByLabel('Password').fill(DEMO_PASSWORD);
     await packerPage.getByRole('button', { name: 'Sign in' }).click();
     await expect(packerPage).not.toHaveURL(/\/login/, { timeout: 25_000 });
+    await completeScannerPin(packerPage);
 
     await packerPage.goto('/fulfillment', { waitUntil: 'domcontentloaded' });
     await expectFulfillmentSurface(packerPage);
 
     await packerPage.getByRole('button', { name: 'Pack', exact: true }).click();
+    const packOrderSelect = packerPage.getByLabel('Sales order');
     await expect
-      .poll(
-        async () =>
-          packerPage.locator(`select#sales-order option[value="${so.id}"]`).count(),
-        { timeout: 45_000 },
-      )
+      .poll(async () => packOrderSelect.locator(`option[value="${so.id}"]`).count(), {
+        timeout: 45_000,
+      })
       .toBe(1);
-    await packerPage.getByLabel('Sales order').selectOption(so.id);
+    await packOrderSelect.selectOption(so.id);
 
     await expect(packerPage.getByText('Use Box: Medium Corrugated').first()).toBeVisible({
       timeout: 45_000,

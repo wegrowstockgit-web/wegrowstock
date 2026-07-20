@@ -1,4 +1,5 @@
 import { test, type Browser, type Page } from '@playwright/test';
+import { completeScannerPin, installAutoUnlockNavigations } from '../fixtures/roleFixture';
 import {
   WH_01,
   WIDGET_S_BARCODE,
@@ -147,6 +148,7 @@ test.describe.serial('Journey 10–12: Hardware scanning matrix', () => {
     });
 
     const page = await pickerCtx.newPage();
+    installAutoUnlockNavigations(page);
 
     // Fresh picker login into this mocked context
     const loginRes = await page.request.post('/api/v1/auth/login', {
@@ -170,6 +172,20 @@ test.describe.serial('Journey 10–12: Hardware scanning matrix', () => {
               user,
               lastRequestId: null,
               primarySession: null,
+            },
+            version: 0,
+          }),
+        );
+        localStorage.setItem(
+          'invsys-preferences',
+          JSON.stringify({
+            state: {
+              densityMode: 'cozy',
+              showOnboardingTour: false,
+              activeTourId: null,
+              currentTourStep: 0,
+              isTourAwaitingRoute: false,
+              awaitingRoute: null,
             },
             version: 0,
           }),
@@ -202,6 +218,7 @@ test.describe.serial('Journey 10–12: Hardware scanning matrix', () => {
       }
 
       await openFulfillmentPick(page);
+      await completeScannerPin(page);
 
       // ── Track 10: HID global burst with focus loss ─────────────────────
       await page.locator('body').click({ position: { x: 4, y: 4 } });

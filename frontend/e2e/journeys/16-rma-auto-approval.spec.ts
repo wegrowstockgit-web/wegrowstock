@@ -3,12 +3,11 @@ import path from 'node:path';
 import { test } from '@playwright/test';
 import {
   CLIENT_A_METRO_ID,
-  WIDGET_S_SKU,
   apiJson,
   contextForRole,
   createShippedSalesOrder,
+  createZeroStockSellableVariant,
   expect,
-  findVariantId,
 } from './helpers';
 
 const FIXTURE_PNG = path.join(process.cwd(), 'e2e', 'fixtures', 'pixel.png');
@@ -26,7 +25,8 @@ test.describe.serial('Journey 16: Customer Self-Serve Auto-RMA Rules', () => {
     const b2b = await contextForRole(browser, 'b2b');
 
     try {
-      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const item = await createZeroStockSellableVariant(manager.page);
+      const variantId = item.variantId;
 
       const cheap = await createShippedSalesOrder(manager.page, {
         variantId,

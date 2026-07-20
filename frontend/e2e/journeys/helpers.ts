@@ -1,5 +1,10 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { completeScannerPin, expect, hidScan } from '../fixtures/roleFixture';
+import {
+  completeScannerPin,
+  expect,
+  hidScan,
+  installAutoUnlockNavigations,
+} from '../fixtures/roleFixture';
 
 export const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 export const WIDGET_S_BARCODE = '8901000000001';
@@ -49,6 +54,7 @@ export async function contextForRole(
   const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
   const context = await browser.newContext({ baseURL });
   const page = await context.newPage();
+  installAutoUnlockNavigations(page);
 
   let loginRes = await page.request.post('/api/v1/auth/login', {
     data: { email: ROLE_EMAIL[role], password: DEMO_PASSWORD },
@@ -98,6 +104,20 @@ export async function contextForRole(
           version: 0,
         }),
       );
+      localStorage.setItem(
+        'invsys-preferences',
+        JSON.stringify({
+          state: {
+            densityMode: 'cozy',
+            showOnboardingTour: false,
+            activeTourId: null,
+            currentTourStep: 0,
+            isTourAwaitingRoute: false,
+            awaitingRoute: null,
+          },
+          version: 0,
+        }),
+      );
     },
     {
       user: {
@@ -131,11 +151,30 @@ export async function freshLogin(
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
   });
   const page = await context.newPage();
+  installAutoUnlockNavigations(page);
   await page.goto('/login');
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'invsys-preferences',
+      JSON.stringify({
+        state: {
+          densityMode: 'cozy',
+          showOnboardingTour: false,
+          activeTourId: null,
+          currentTourStep: 0,
+          isTourAwaitingRoute: false,
+          awaitingRoute: null,
+        },
+        version: 0,
+      }),
+    );
+  });
+  await page.reload();
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 25_000 });
+  await completeScannerPin(page);
   return {
     context,
     page,
@@ -266,6 +305,12 @@ export async function createZeroStockSellableVariant(
       barcode,
       price: 12.5,
       currency: 'USD',
+      weight: 1,
+      weightUnit: 'kg',
+      length: 10,
+      width: 10,
+      height: 10,
+      dimUnit: 'cm',
     }),
   });
 
@@ -294,12 +339,12 @@ export async function createShippedSalesOrder(
   const unitPrice = opts.unitPrice ?? 12.5;
   const binId = PICK_BIN_ID;
 
-  // Top up free stock at the pick bin so allocate + ship can succeed.
+  // Top up free stock at the pick bin so allocate + ship can succeed amid suite contention.
   const receiveRes = await page.request.post('/api/v1/inventory/receive', {
     data: {
       variantId: opts.variantId,
       locationId: binId,
-      quantity: qty + 5,
+      quantity: qty + 50,
       referenceType: 'E2E_RMA_TOPUP',
     },
   });
@@ -316,15 +361,38 @@ export async function createShippedSalesOrder(
       lines: [{ variantId: opts.variantId, qtyOrdered: qty, unitPrice }],
     }),
   });
-  await page.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
-  await page.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+  const confirmRes = await page.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
+  if (!confirmRes.ok()) {
+    throw new Error(`RMA seed confirm failed: ${confirmRes.status()} ${await confirmRes.text()}`);
+  }
+  let allocRes = await page.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+  if (!allocRes.ok()) {
+    // Second top-up + retry when other journeys raced the free stock.
+    await page.request.post('/api/v1/inventory/receive', {
+      data: {
+        variantId: opts.variantId,
+        locationId: binId,
+        quantity: qty + 50,
+        referenceType: 'E2E_RMA_TOPUP_RETRY',
+      },
+    });
+    allocRes = await page.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+  }
+  if (!allocRes.ok()) {
+    throw new Error(`RMA seed allocate failed: ${allocRes.status()} ${await allocRes.text()}`);
+  }
 
   const detail = await apiJson<{
     id: string;
-    lines: Array<{ id: string; qtyOrdered: number }>;
+    status: string;
+    lines: Array<{ id: string; qtyOrdered: number; qtyShipped?: number }>;
   }>(page, `/api/v1/sales-orders/${so.id}`);
   const line = detail.lines[0];
   if (!line) throw new Error('SO missing lines');
+  if (!['ALLOCATED', 'PARTIALLY_SHIPPED'].includes(detail.status)) {
+    throw new Error(`RMA seed SO ${so.id} not allocated (status=${detail.status})`);
+  }
+  const shipQty = Math.min(qty, Number(line.qtyOrdered ?? qty));
 
   const shipRes = await page.request.post('/api/v1/shipments', {
     headers: {
@@ -335,7 +403,7 @@ export async function createShippedSalesOrder(
       salesOrderId: so.id,
       carrier: 'GROUND',
       trackingNumber: `RMA-${Date.now()}`,
-      lines: [{ salesOrderLineId: line.id, quantity: qty }],
+      lines: [{ salesOrderLineId: line.id, quantity: shipQty }],
     },
   });
   if (!shipRes.ok()) {

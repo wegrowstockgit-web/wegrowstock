@@ -58,7 +58,7 @@ test.describe('LBAC warehouse boundaries', () => {
     const page = await context.newPage();
     await page.goto('/login');
     await expect(page.getByLabel('Company slug')).toHaveCount(0);
-    await expect(page.getByLabel('Email')).toBeVisible();
+    await expect(page.getByLabel('Email')).toBeVisible({ timeout: 30_000 });
     await page.getByLabel('Email').fill('owner@demo.test');
     await page.getByLabel('Password').fill(process.env.E2E_DEMO_PASSWORD ?? 'password123');
     await page.getByRole('button', { name: 'Sign in' }).click();

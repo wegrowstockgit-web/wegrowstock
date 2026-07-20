@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { QueryProvider } from './offline/queryPersistence';
 import { SessionHydrationGate } from './components/layout/SessionHydrationGate';
-import { ScannerSecurityGate } from './components/security/ScannerSecurityGate';
 import { ToastProvider } from './components/ui/Toast';
 import { startMutationQueueReplay } from './offline/mutationQueue';
 import { installGlobalErrorTelemetry } from './lib/errorTelemetry';
@@ -19,9 +18,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryProvider>
       <SessionHydrationGate>
         <ToastProvider>
-          <ScannerSecurityGate>
-            <App />
-          </ScannerSecurityGate>
+          <App />
         </ToastProvider>
       </SessionHydrationGate>
     </QueryProvider>

@@ -1,0 +1,81 @@
+# Manual burst widget: scale Test infra up for stress, or back to resting state.
+name: Infra-Stress-Test-Scale
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Scale action"
+        required: true
+        type: choice
+        options:
+          - SCALE_UP_FOR_STRESS
+          - SCALE_DOWN_TO_RESTING
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_WORKING_DIR: ops/terraform/infra
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  stress-scale:
+    name: ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+    environment: test
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC → Test role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: invsys-gha-tf-stress-${{ github.run_id }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Select test workspace
+        run: |
+          terraform workspace select test || terraform workspace new test
+
+      - name: Resolve tfvars for action
+        id: profile
+        run: |
+          case "${{ github.event.inputs.action }}" in
+            SCALE_UP_FOR_STRESS)
+              echo "tfvars=envs/stress-up.tfvars" >> "$GITHUB_OUTPUT"
+              echo "summary=2 load generators + db.m7g.large" >> "$GITHUB_OUTPUT"
+              ;;
+            SCALE_DOWN_TO_RESTING)
+              echo "tfvars=envs/stress-down.tfvars" >> "$GITHUB_OUTPUT"
+              echo "summary=resting db.t4g.micro + Fargate Spot" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown action" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Terraform apply (dynamic compute override)
+        run: |
+          echo "Applying ${{ github.event.inputs.action }} → ${{ steps.profile.outputs.summary }}"
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            -var-file="${{ steps.profile.outputs.tfvars }}"

@@ -4,6 +4,7 @@ import { useScannerLockStore } from '@/stores/scannerLockStore';
 
 /**
  * First-shift PIN enrollment — PIN salts PBKDF2 → AES-GCM key for offline IDB.
+ * Two steps: choose PIN, then re-enter to confirm (not a failed first attempt).
  */
 export function ScannerPinSetupOverlay() {
   const needsPinSetup = useScannerLockStore((s) => s.needsPinSetup);
@@ -25,10 +26,15 @@ export function ScannerPinSetupOverlay() {
     }
   }, [needsPinSetup]);
 
+  // Advance to confirm after 4 digits — brief beat so the filled dots are noticeable.
   useEffect(() => {
-    if (phase === 'create' && pin.length === 4) {
+    if (phase !== 'create' || pin.length !== 4) return;
+    const id = window.setTimeout(() => {
+      setConfirm('');
+      setError(false);
       setPhase('confirm');
-    }
+    }, 180);
+    return () => window.clearTimeout(id);
   }, [phase, pin]);
 
   useEffect(() => {
@@ -40,7 +46,7 @@ export function ScannerPinSetupOverlay() {
         setPin('');
         setPhase('create');
         setError(false);
-      }, 400);
+      }, 450);
       return;
     }
     committingRef.current = true;
@@ -53,26 +59,34 @@ export function ScannerPinSetupOverlay() {
 
   if (!needsPinSetup) return null;
 
+  const isConfirm = phase === 'confirm';
+
   return (
     <div
       className="fixed inset-0 z-50 flex h-screen w-screen items-center justify-center bg-surface"
       data-testid="scanner-pin-setup-overlay"
+      data-phase={phase}
       data-theme="warehouse"
       role="dialog"
       aria-modal="true"
-      aria-label="Set scanner PIN"
+      aria-label={isConfirm ? 'Confirm scanner PIN' : 'Set scanner PIN'}
     >
       <ScannerPinKeypad
-        value={phase === 'create' ? pin : confirm}
+        value={isConfirm ? confirm : pin}
         error={error}
-        disabled={busy}
+        disabled={busy || (phase === 'create' && pin.length === 4)}
         onChange={(next) => {
           setError(false);
           if (phase === 'create') setPin(next);
           else setConfirm(next);
         }}
-        title={phase === 'create' ? 'Set shift PIN' : 'Confirm PIN'}
-        subtitle="This PIN unlocks offline scans after idle lock"
+        title={isConfirm ? 'Confirm PIN' : 'Set shift PIN'}
+        subtitle={
+          isConfirm
+            ? 'Enter the same 4 digits again to save'
+            : 'Choose a 4-digit PIN, then you will confirm it'
+        }
+        stepLabel={isConfirm ? 'Step 2 of 2' : 'Step 1 of 2'}
         testIdPrefix="scanner-setup"
       />
     </div>

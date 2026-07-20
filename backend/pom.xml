@@ -19,7 +19,20 @@
     <properties>
         <java.version>25</java.version>
         <jacoco.minimum.coverage>0.85</jacoco.minimum.coverage>
+        <spring-ai.version>1.1.6</spring-ai.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -142,6 +155,16 @@
             <groupId>com.stripe</groupId>
             <artifactId>stripe-java</artifactId>
             <version>28.4.0</version>
+        </dependency>
+
+        <!-- Support RAG: ChatClient + embeddings (OpenAI optional; heuristic fallback always available) -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
         </dependency>
 
         <dependency>

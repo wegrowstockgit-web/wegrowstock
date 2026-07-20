@@ -28,12 +28,13 @@ test.describe.serial('Journey 05: B2B Showroom → Admin fulfillment', () => {
       expect([401, 403]).toContain(officeApi.status());
 
       // Custom pricing on catalog API
-      const items = await apiJson<Array<{ variantId: string; unitPrice: number }>>(
+      const items = await apiJson<Array<{ variantId: string; unitPrice: number | string | null }>>(
         b2b.page,
         '/api/v1/portal/catalog',
       );
       expect(items.length).toBeGreaterThan(0);
-      expect(items[0]!.unitPrice).toBeGreaterThan(0);
+      const priced = items.find((i) => Number(i.unitPrice) > 0);
+      expect(priced, 'catalog should include at least one priced SKU').toBeTruthy();
 
       // UI cart add + checkout (mirrors b2b-portal.spec)
       await b2b.page.goto('/showroom/catalog');

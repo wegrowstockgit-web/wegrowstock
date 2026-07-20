@@ -80,4 +80,15 @@ describe('useScannerIdle', () => {
 
     expect(useScannerLockStore.getState().isLocked).toBe(true);
   });
+
+  it('does not arm when disabled (office routes)', async () => {
+    renderHook(() => useScannerIdle({ idleMs: 5_000, enabled: false }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    expect(useScannerLockStore.getState().isLocked).toBe(false);
+    expect(useCryptoMemoryKeyStore.getState().memoryKey).toBeTruthy();
+  });
 });

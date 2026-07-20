@@ -5,11 +5,22 @@ import { useIsAuthenticated } from '@/stores/session';
 
 const ACTIVITY_EVENTS = ['touchstart', 'keydown', 'click', 'scroll'] as const;
 
+export type UseScannerIdleOptions = {
+  idleMs?: number;
+  /** When false (office routes), idle lock never arms. */
+  enabled?: boolean;
+};
+
 /**
  * Floor scanner idle lock — after {@link SCANNER_IDLE_MS} without interaction,
  * wipes the AES-GCM key from memory and sets `isLocked`.
  */
-export function useScannerIdle(idleMs: number = SCANNER_IDLE_MS): void {
+export function useScannerIdle(
+  idleMsOrOptions: number | UseScannerIdleOptions = {},
+): void {
+  const options =
+    typeof idleMsOrOptions === 'number' ? { idleMs: idleMsOrOptions } : idleMsOrOptions;
+  const { idleMs = SCANNER_IDLE_MS, enabled = true } = options;
   const authenticated = useIsAuthenticated();
   const isLocked = useScannerLockStore((s) => s.isLocked);
   const needsPinSetup = useScannerLockStore((s) => s.needsPinSetup);
@@ -19,7 +30,12 @@ export function useScannerIdle(idleMs: number = SCANNER_IDLE_MS): void {
 
   useEffect(() => {
     const armed =
-      authenticated && pinConfigured && !needsPinSetup && !isLocked && !!useCryptoMemoryKeyStore.getState().memoryKey;
+      enabled &&
+      authenticated &&
+      pinConfigured &&
+      !needsPinSetup &&
+      !isLocked &&
+      !!useCryptoMemoryKeyStore.getState().memoryKey;
     if (!armed) {
       if (timerRef.current) clearTimeout(timerRef.current);
       return;
@@ -43,5 +59,5 @@ export function useScannerIdle(idleMs: number = SCANNER_IDLE_MS): void {
         window.removeEventListener(event, arm, { capture: true });
       }
     };
-  }, [authenticated, pinConfigured, needsPinSetup, isLocked, idleMs, lockDevice]);
+  }, [enabled, authenticated, pinConfigured, needsPinSetup, isLocked, idleMs, lockDevice]);
 }

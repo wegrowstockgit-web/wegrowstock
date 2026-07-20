@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import { installAutoUnlockNavigations } from '../fixtures/roleFixture';
 import {
   RESERVE_BIN_PATH,
   STAGING_BARCODE,
@@ -36,6 +37,7 @@ test.describe.serial('Journey 13: Cross-docking orchestration', () => {
       hasTouch: true,
     });
     const pickerPage = await pickerMobile.newPage();
+    installAutoUnlockNavigations(pickerPage);
     {
       const loginRes = await pickerPage.request.post('/api/v1/auth/login', {
         data: { email: 'picker@demo.test', password: 'password123' },
@@ -69,6 +71,20 @@ test.describe.serial('Journey 13: Cross-docking orchestration', () => {
                 user,
                 lastRequestId: null,
                 primarySession: null,
+              },
+              version: 0,
+            }),
+          );
+          localStorage.setItem(
+            'invsys-preferences',
+            JSON.stringify({
+              state: {
+                densityMode: 'cozy',
+                showOnboardingTour: false,
+                activeTourId: null,
+                currentTourStep: 0,
+                isTourAwaitingRoute: false,
+                awaitingRoute: null,
               },
               version: 0,
             }),
@@ -204,9 +220,8 @@ test.describe.serial('Journey 13: Cross-docking orchestration', () => {
 
       // Confirm staging drop-off via location barcode
       await hidScan(pickerPage, STAGING_BARCODE);
-      await expect(pickerPage.getByText(/Drop-off confirmed|staging confirmed/i).first()).toBeVisible({
-        timeout: 8_000,
-      });
+      await expect(pickerPage.getByText('S-01').first()).toBeVisible({ timeout: 8_000 });
+      await expect(pickerPage.getByText(/Drop-off confirmed at/i)).toBeAttached({ timeout: 8_000 });
 
       // Post the physical receive into staging (PO line) — engine routes + fulfills backorder
       const poDetail = await apiJson<{

@@ -50,6 +50,7 @@ export default defineConfig({
         'src/components/ui/AlertDialog.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
+      // Support assistant: Vitest + Playwright personas e2e (not in threshold set).
       // Scanner PIN overlays: covered by Mobile-Scanner Playwright + store/hook unit tests.
       thresholds: {
         lines: 85,

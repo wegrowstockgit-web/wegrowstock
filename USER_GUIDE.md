@@ -76,7 +76,9 @@ Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emai
 
 ### 4. Secure the scanners (PIN)
 
-Warehouse sessions use a **4-digit shift PIN**. After idle time the screen locks (“Scanner locked”). Unlock with the PIN. Too many wrong attempts temporarily lock the device (Redis-backed). Office demos may prompt you to set this PIN once per browser profile.
+**Surface B / handheld only.** Roles with floor access (`OWNER`, `ADMIN`, `WAREHOUSE_MANAGER`, `PICKER`) set a **4-digit shift PIN** the first time they open a floor route (fulfillment, inbound receive, cycle counts, issue supplies, etc.). Office screens (`/dashboard`, settings, reports) and **VIEWER** / **B2B_CUSTOMER** sessions never prompt for it.
+
+After idle time on a floor route the screen locks (“Scanner locked”). Unlock with the PIN. Too many wrong attempts wipe the device crypto key and force re-login. Demo / E2E convention: PIN **1234** (per browser profile in IndexedDB — not the login password).
 
 ---
 

@@ -1,13 +1,12 @@
 import { test } from '@playwright/test';
 import {
   WH_01,
-  WIDGET_S_SKU,
   apiJson,
   contextForRole,
   createShippedSalesOrder,
+  createZeroStockSellableVariant,
   ensureQuarantineLocation,
   expect,
-  findVariantId,
   firstCustomerId,
 } from './helpers';
 import { writeJourneyState } from './journeyState';
@@ -22,7 +21,8 @@ test.describe.serial('Journey 07: Advanced RMA & disposition', () => {
     const manager = await contextForRole(browser, 'manager');
 
     try {
-      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const item = await createZeroStockSellableVariant(manager.page);
+      const variantId = item.variantId;
       const customerId = await firstCustomerId(manager.page);
       const quarantineId = await ensureQuarantineLocation(admin.page);
       const shipped = await createShippedSalesOrder(manager.page, {

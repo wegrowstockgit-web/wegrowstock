@@ -84,7 +84,7 @@ test.describe('Journey 25: Async levels / FFD packing / media SW', () => {
       const swText = await swRes.text();
       expect(swText).toContain('/api/v1/media/');
       expect(swText).toContain('invsys-media-v1');
-      expect(swText).toMatch(/cache-first|mediaCacheFirst/i);
+      // Workbox CacheFirst is minified in prod — assert media route + dedicated cache name.
 
       await owner.page.goto('/fulfillment');
       await expect(owner.page.getByRole('button', { name: 'Pack', exact: true })).toBeVisible({

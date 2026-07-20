@@ -12,3 +12,6 @@ $$;
 
 GRANT ALL PRIVILEGES ON DATABASE invsys TO app_owner;
 ALTER DATABASE invsys OWNER TO app_owner;
+
+-- pgvector for support RAG (Flyway V089). Init runs as superuser against POSTGRES_DB.
+CREATE EXTENSION IF NOT EXISTS vector;

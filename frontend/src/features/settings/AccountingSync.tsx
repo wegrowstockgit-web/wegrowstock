@@ -277,7 +277,9 @@ export function AccountingSync() {
                   <TableCell>{log.system}</TableCell>
                   <TableCell>
                     <span className="text-text-muted">{log.entityType}</span>
-                    <span className="ml-1 font-mono text-xs">{log.entityId.slice(0, 8)}</span>
+                    {log.entityId ? (
+                      <span className="ml-1 font-mono text-xs">{log.entityId.slice(0, 8)}</span>
+                    ) : null}
                   </TableCell>
                   <TableCell>{statusChip(log.status)}</TableCell>
                   <TableCell mono>{log.retryCount}</TableCell>

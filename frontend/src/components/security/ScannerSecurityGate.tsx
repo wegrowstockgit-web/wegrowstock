@@ -1,7 +1,10 @@
 import { useEffect, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ScannerLockOverlay } from '@/components/security/ScannerLockOverlay';
 import { ScannerPinSetupOverlay } from '@/components/security/ScannerPinSetupOverlay';
+import { isFloorRoute } from '@/features/support/tourSteps';
 import { useScannerIdle } from '@/hooks/useScannerIdle';
+import { installMutationQueueTestHook } from '@/offline/mutationQueue';
 import {
   installScannerLockTestHook,
   useScannerLockStore,
@@ -9,18 +12,22 @@ import {
 import { useIsAuthenticated } from '@/stores/session';
 
 /**
- * Orchestrates shift PIN setup, idle cryptographic wipe, and unlock overlays.
+ * Orchestrates shift PIN setup, idle cryptographic wipe, and unlock overlays
+ * for Surface B / handheld scanner routes only — never on office dashboard.
  */
 export function ScannerSecurityGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const onFloor = isFloorRoute(location.pathname);
   const authenticated = useIsAuthenticated();
   const hydrate = useScannerLockStore((s) => s.hydrate);
   const hydrated = useScannerLockStore((s) => s.hydrated);
   const resetLockState = useScannerLockStore((s) => s.resetLockState);
 
-  useScannerIdle();
+  useScannerIdle({ enabled: onFloor });
 
   useEffect(() => {
     installScannerLockTestHook();
+    installMutationQueueTestHook();
   }, []);
 
   useEffect(() => {
@@ -34,7 +41,7 @@ export function ScannerSecurityGate({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      {authenticated && hydrated ? (
+      {authenticated && hydrated && onFloor ? (
         <>
           <ScannerPinSetupOverlay />
           <ScannerLockOverlay />
