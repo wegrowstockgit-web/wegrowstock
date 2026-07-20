@@ -1,12 +1,13 @@
 import { expect, test } from './fixtures/roleFixture';
+import { expectNavLinkHidden, expectNavLinkVisible } from './fixtures/nav';
 
 test.describe('Pillar role visibility', () => {
   test('owner sees Compliance, Issue Supplies, and Settings cost centers tab', async ({
     ownerPage,
   }) => {
     await ownerPage.goto('/dashboard');
-    await expect(ownerPage.getByTestId('icon-rail').getByRole('link', { name: 'Lot Trace' })).toBeVisible();
-    await expect(ownerPage.getByTestId('icon-rail').getByRole('link', { name: 'Issue Supplies' })).toBeVisible();
+    await expectNavLinkVisible(ownerPage, 'Lot Trace');
+    await expectNavLinkVisible(ownerPage, 'Issue Supplies');
 
     await ownerPage.goto('/settings');
     await expect(ownerPage.getByRole('button', { name: 'Cost Centers & Requisitions' })).toBeVisible();
@@ -14,8 +15,8 @@ test.describe('Pillar role visibility', () => {
 
   test('viewer sees Compliance but not Issue Supplies nav or Issue Fact', async ({ viewerPage }) => {
     await viewerPage.goto('/dashboard');
-    await expect(viewerPage.getByTestId('icon-rail').getByRole('link', { name: 'Lot Trace' })).toBeVisible();
-    await expect(viewerPage.getByTestId('icon-rail').getByRole('link', { name: 'Issue Supplies' })).toHaveCount(0);
+    await expectNavLinkVisible(viewerPage, 'Lot Trace');
+    await expectNavLinkHidden(viewerPage, 'Issue Supplies');
 
     await viewerPage.goto('/issue-supplies');
     await expect(viewerPage).not.toHaveURL(/\/issue-supplies/);

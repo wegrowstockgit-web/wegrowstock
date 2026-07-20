@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { completeScannerPin, loginAsDemo } from './fixtures/roleFixture';
+import { clickNavLink } from './fixtures/nav';
 
 test.describe('Authentication', () => {
   test('demo login reaches dashboard', async ({ page }) => {
@@ -44,10 +45,10 @@ test.describe('Navigation', () => {
 
   test('manufacturing and settings routes load', async ({ page }) => {
     await expect(page.getByTestId('icon-rail')).toBeVisible();
-    await page.getByRole('link', { name: 'Manufacturing' }).click();
+    await clickNavLink(page, 'Manufacturing');
     await expect(page).toHaveURL(/\/manufacturing/);
 
-    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await clickNavLink(page, 'Organization');
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByRole('button', { name: 'Integrations' })).toBeVisible();
   });
@@ -68,20 +69,20 @@ test.describe('Navigation', () => {
   });
 
   test('cycle counts warehouse page loads', async ({ page }) => {
-    await page.getByRole('link', { name: 'Cycle counts' }).click();
+    await clickNavLink(page, 'Cycle counts');
     await expect(page).toHaveURL(/\/cycle-counts/);
     await expect(page.getByRole('heading', { name: 'Priority audits' })).toBeVisible();
   });
 
   test('purchase order form includes warehouse and freight fields', async ({ page }) => {
-    await page.getByRole('link', { name: 'Purchase Orders' }).click();
+    await clickNavLink(page, 'Purchase Orders');
     await page.getByRole('button', { name: 'New PO' }).click();
     await expect(page.getByText('Destination warehouse')).toBeVisible();
     await expect(page.getByLabel('Freight amount')).toBeVisible();
   });
 
   test('sales order form includes customer PO and ship date', async ({ page }) => {
-    await page.getByRole('link', { name: 'Sales Orders' }).click();
+    await clickNavLink(page, 'Sales Orders');
     await page.getByRole('button', { name: 'New order' }).click();
     await expect(page.getByLabel('Customer PO number')).toBeVisible();
     await expect(page.getByLabel('Requested ship date')).toBeVisible();
@@ -89,7 +90,7 @@ test.describe('Navigation', () => {
   });
 
   test('fulfillment pack mode shows scale workflow', async ({ page }) => {
-    await page.getByRole('link', { name: 'Fulfillment' }).click();
+    await clickNavLink(page, 'Fulfillment');
     await expect(page.getByText('Floor ops')).toBeVisible();
     await page.getByRole('button', { name: 'Pack' }).click();
     await expect(page.getByText('Packing & shipping label')).toBeVisible();
@@ -97,7 +98,7 @@ test.describe('Navigation', () => {
   });
 
   test('products page shows UoM editor control', async ({ page }) => {
-    await page.getByRole('link', { name: 'Products' }).click();
+    await clickNavLink(page, 'Products');
     await expect(page).toHaveURL(/\/products/);
     await expect(page.getByRole('button', { name: /Edit UoM for/ }).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('On hand', { exact: true })).toBeVisible();
@@ -109,8 +110,17 @@ test.describe('Navigation', () => {
     await expect(page.locator('tbody tr').first().getByText(/^[0-9.—]+$/).first()).toBeVisible();
   });
 
+  test('products header opens Import wizard (not rail nav)', async ({ page }) => {
+    await clickNavLink(page, 'Products');
+    await expect(page).toHaveURL(/\/products/);
+    await expect(page.getByTestId('icon-rail').getByRole('link', { name: 'Import' })).toHaveCount(0);
+    await page.getByTestId('products-import-button').click();
+    await expect(page.getByTestId('products-import-dialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Import catalog' })).toBeVisible();
+  });
+
   test('products save view uses toast instead of alert', async ({ page }) => {
-    await page.getByRole('link', { name: 'Products' }).click();
+    await clickNavLink(page, 'Products');
     await expect(page).toHaveURL(/\/products/);
     await page.getByRole('tab', { name: 'Low stock' }).click();
     await page.getByRole('button', { name: 'Save view' }).click();
@@ -121,20 +131,20 @@ test.describe('Navigation', () => {
   });
 
   test('fulfillment receive mode is available', async ({ page }) => {
-    await page.getByRole('link', { name: 'Fulfillment' }).click();
+    await clickNavLink(page, 'Fulfillment');
     await page.getByRole('radio', { name: 'Receive' }).click();
     await expect(page.getByText(/Scan to receive/i)).toBeVisible();
   });
 
   test('production orders page shows disassemble action', async ({ page }) => {
-    await page.getByRole('link', { name: 'Production Orders' }).click();
+    await clickNavLink(page, 'Production Orders');
     await expect(page).toHaveURL(/\/manufacturing\/orders/);
     await expect(page.getByRole('button', { name: 'Disassemble' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'New order' })).toBeVisible();
   });
 
   test('reports demand sensing tab loads chart', async ({ page }) => {
-    await page.getByRole('link', { name: 'Reports' }).click();
+    await clickNavLink(page, 'Reports');
     await page.getByRole('button', { name: 'Demand sensing' }).click();
     await expect(page.getByText('30-day velocity by SKU')).toBeVisible({ timeout: 15_000 });
   });
@@ -144,21 +154,21 @@ test.describe('Navigation', () => {
   });
 
   test('sales orders peek drawer opens on row click', async ({ page }) => {
-    await page.getByRole('link', { name: 'Sales Orders' }).click();
+    await clickNavLink(page, 'Sales Orders');
     const firstRow = page.locator('table tbody tr').first();
     await firstRow.click({ timeout: 15_000 });
     await expect(page.getByTestId('right-peek-drawer')).toBeVisible();
   });
 
   test('purchase orders peek drawer opens on row click', async ({ page }) => {
-    await page.getByRole('link', { name: 'Purchase Orders' }).click();
+    await clickNavLink(page, 'Purchase Orders');
     const firstRow = page.locator('table tbody tr').first();
     await firstRow.click({ timeout: 15_000 });
     await expect(page.getByTestId('right-peek-drawer')).toBeVisible();
   });
 
   test('cycle counts uses warehouse floor chrome', async ({ page }) => {
-    await page.getByRole('link', { name: 'Cycle counts' }).click();
+    await clickNavLink(page, 'Cycle counts');
     await expect(page).toHaveURL(/\/cycle-counts/);
     await expect(page.getByText('Floor ops')).toBeVisible();
     await expect(page.getByTestId('icon-rail')).toHaveCount(0);
@@ -182,7 +192,7 @@ test.describe('Navigation', () => {
   });
 
   test('purchase orders AP ingestion panel loads', async ({ page }) => {
-    await page.getByRole('link', { name: 'Purchase Orders' }).click();
+    await clickNavLink(page, 'Purchase Orders');
     await expect(page.getByText('AP invoice ingestion')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Upload & reconcile' })).toBeVisible();
   });

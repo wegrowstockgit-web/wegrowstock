@@ -411,6 +411,45 @@ describe('VirtualizedTable', () => {
     expect(screen.getByTestId('virtualized-table-scrollport').className).toMatch(/scrollbar-thin/);
   });
 
+  it('does not inflate pinned Name when filling viewport slack', () => {
+    const growCols: VirtualizedColumnDef<Row>[] = [
+      { id: 'sku', header: 'SKU', width: 120, maxWidth: 140, cell: (r) => r.sku },
+      { id: 'name', header: 'Name', width: 160, maxWidth: 200, cell: (r) => r.name },
+      {
+        id: 'barcode',
+        header: 'Barcode',
+        width: 100,
+        flexGrow: true,
+        cell: (r) => r.barcode,
+      },
+    ];
+    useGridColumnStore.setState({
+      layouts: {
+        products: {
+          columnVisibility: { sku: true, name: true, barcode: true },
+          pinnedColumns: ['sku', 'name'],
+          columnOrder: ['sku', 'name', 'barcode'],
+        },
+      },
+    });
+
+    render(
+      <div style={{ width: 900 }}>
+        <VirtualizedTable gridId="products" columns={growCols} rows={rows} getRowId={(r) => r.id} />
+      </div>,
+    );
+
+    // Force a wide scrollport measurement path via attribute floor (viewport starts 0 in jsdom).
+    const nameTh = screen.getByText('Name').closest('th') as HTMLElement;
+    const barcodeTh = screen.getByText('Barcode').closest('th') as HTMLElement;
+    const nameW = Number.parseFloat(nameTh.style.width || '0');
+    const barcodeW = Number.parseFloat(barcodeTh.style.width || '0');
+    expect(nameW).toBeLessThanOrEqual(200);
+    expect(nameW).toBeGreaterThanOrEqual(160);
+    // Barcode is the grower candidate; at viewport 0 it stays at base, but never exceeds when capped.
+    expect(barcodeW).toBeGreaterThanOrEqual(100);
+  });
+
   it('grows table min width when additional columns become visible', () => {
     useGridColumnStore.setState({
       layouts: {

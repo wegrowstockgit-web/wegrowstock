@@ -12,6 +12,13 @@ interface GridColumnStore {
   /** One local layout per grid (products, etc.) — persisted; no server Save View. */
   layouts: Record<string, GridColumnState>;
   toggleColumnVisibility: (gridId: string, id: string) => void;
+  /**
+   * Bulk-set visibility for known column ids. Pinned columns stay forced visible.
+   */
+  setColumnVisibilityMap: (
+    gridId: string,
+    visibility: Record<string, boolean>,
+  ) => void;
   pinColumn: (gridId: string, id: string) => void;
   unpinColumn: (gridId: string, id: string) => void;
   setColumnOrder: (gridId: string, order: string[]) => void;
@@ -134,6 +141,20 @@ export const useGridColumnStore = create<GridColumnStore>()(
                 ...current.columnVisibility,
                 [id]: !visible,
               },
+            }),
+          };
+        }),
+
+      setColumnVisibilityMap: (gridId, visibility) =>
+        set((state) => {
+          const current = layoutOrEmpty(state.layouts, gridId);
+          const next = { ...current.columnVisibility, ...visibility };
+          for (const pinnedId of current.pinnedColumns) {
+            next[pinnedId] = true;
+          }
+          return {
+            layouts: patchLayout(state.layouts, gridId, {
+              columnVisibility: next,
             }),
           };
         }),

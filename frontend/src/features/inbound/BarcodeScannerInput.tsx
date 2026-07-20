@@ -47,6 +47,7 @@ export function BarcodeScannerInput({
         className,
       )}
       data-testid="barcode-scanner-input"
+      data-tour="tour-inbound-scanner"
     >
       <ScanLine className="mx-auto mb-3 h-12 w-12 text-accent" aria-hidden />
       <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">{label}</p>

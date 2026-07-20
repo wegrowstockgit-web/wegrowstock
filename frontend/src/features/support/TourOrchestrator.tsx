@@ -2,20 +2,28 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { driver, type Driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
-import { installPreferencesTestHook, usePreferencesStore } from '@/stores/preferencesStore';
+import {
+  installPreferencesTestHook,
+  registerTourDriverDestroy,
+  usePreferencesStore,
+} from '@/stores/preferencesStore';
 import { useIsAuthenticated } from '@/stores/session';
 import { getWorkflowTour, routeMatches, type WorkflowTourStep } from './tourSteps';
 
+type DriverHookOpts = { driver: Driver };
+
 /**
  * Router-aware driver.js orchestrator for cross-page workflow tours.
- * Pauses/destroys on route transition, resumes with drive(nextStep) when the target mounts.
+ * Uses preferencesStore.isTourMovingRoutes / targetRoute for inter-page hops.
  */
 export function TourOrchestrator() {
   const location = useLocation();
   const navigate = useNavigate();
   const authenticated = useIsAuthenticated();
   const driverRef = useRef<Driver | null>(null);
-  const resumeTimer = useRef<number | null>(null);
+  const resumeRaf = useRef<number | null>(null);
+  /** Skip clearTour in onDestroyed while advancing or changing routes mid-tour. */
+  const retainTourOnDestroyRef = useRef(false);
 
   useEffect(() => {
     installPreferencesTestHook();
@@ -23,39 +31,57 @@ export function TourOrchestrator() {
 
   const activeTourId = usePreferencesStore((s) => s.activeTourId);
   const currentTourStep = usePreferencesStore((s) => s.currentTourStep);
-  const isTourAwaitingRoute = usePreferencesStore((s) => s.isTourAwaitingRoute);
-  const awaitingRoute = usePreferencesStore((s) => s.awaitingRoute);
+  const isTourMovingRoutes = usePreferencesStore((s) => s.isTourMovingRoutes);
+  const targetRoute = usePreferencesStore((s) => s.targetRoute);
   const setTourStep = usePreferencesStore((s) => s.setTourStep);
-  const setAwaitingRoute = usePreferencesStore((s) => s.setAwaitingRoute);
+  const transitionToSubpage = usePreferencesStore((s) => s.transitionToSubpage);
+  const clearRouteTransition = usePreferencesStore((s) => s.clearRouteTransition);
   const clearTour = usePreferencesStore((s) => s.clearTour);
 
-  // Persisted tour + logged-out /login must not navigate into protected routes.
+  useEffect(() => {
+    registerTourDriverDestroy(() => {
+      retainTourOnDestroyRef.current = true;
+      destroyDriver();
+    });
+    return () => registerTourDriverDestroy(null);
+  }, []);
+
   useEffect(() => {
     if (authenticated || !activeTourId) return;
+    retainTourOnDestroyRef.current = false;
     destroyDriver();
     clearTour();
   }, [authenticated, activeTourId, clearTour]);
 
-  // When awaiting a route, resume as soon as React Router mounts the target.
+  // Resume after inter-page transition once the destination pathname matches.
   useEffect(() => {
-    if (!authenticated || !activeTourId || !isTourAwaitingRoute || !awaitingRoute) return;
-    if (!routeMatches(location.pathname, awaitingRoute)) return;
+    if (!authenticated || !activeTourId || !isTourMovingRoutes || !targetRoute) return;
+    if (!routeMatches(location.pathname, targetRoute)) return;
 
-    setAwaitingRoute(null);
-    if (resumeTimer.current) window.clearTimeout(resumeTimer.current);
-    resumeTimer.current = window.setTimeout(() => {
-      mountDriverAtStep(activeTourId, currentTourStep);
-    }, 350);
+    clearRouteTransition();
+    if (resumeRaf.current != null) cancelAnimationFrame(resumeRaf.current);
+    resumeRaf.current = requestAnimationFrame(() => {
+      resumeRaf.current = requestAnimationFrame(() => {
+        mountDriverAtStep(activeTourId, currentTourStep);
+      });
+    });
 
     return () => {
-      if (resumeTimer.current) window.clearTimeout(resumeTimer.current);
+      if (resumeRaf.current != null) cancelAnimationFrame(resumeRaf.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mountDriver closes over latest helpers
-  }, [authenticated, location.pathname, activeTourId, isTourAwaitingRoute, awaitingRoute, currentTourStep]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    authenticated,
+    location.pathname,
+    activeTourId,
+    isTourMovingRoutes,
+    targetRoute,
+    currentTourStep,
+  ]);
 
-  // Fresh tour start (not awaiting): drive when step route matches current location.
+  // Fresh tour start (not mid-transition): drive when step route matches.
   useEffect(() => {
-    if (!authenticated || !activeTourId || isTourAwaitingRoute) return;
+    if (!authenticated || !activeTourId || isTourMovingRoutes) return;
     const steps = getWorkflowTour(activeTourId);
     const step = steps[currentTourStep];
     if (!step) {
@@ -63,16 +89,16 @@ export function TourOrchestrator() {
       return;
     }
     if (!routeMatches(location.pathname, step.route)) {
-      // Navigate to the step's route first, then await resume.
+      retainTourOnDestroyRef.current = true;
       destroyDriver();
-      setAwaitingRoute(step.route);
+      transitionToSubpage(step.route, currentTourStep);
       navigate(step.route);
       return;
     }
     const timer = window.setTimeout(() => mountDriverAtStep(activeTourId, currentTourStep), 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, activeTourId, currentTourStep, isTourAwaitingRoute]);
+  }, [authenticated, activeTourId, currentTourStep, isTourMovingRoutes]);
 
   useEffect(() => () => destroyDriver(), []);
 
@@ -85,6 +111,27 @@ export function TourOrchestrator() {
     driverRef.current = null;
   }
 
+  function syncProgressLabel(
+    popover: { progress?: HTMLElement | null },
+    stepIndex: number,
+    total: number,
+  ) {
+    if (popover.progress) {
+      popover.progress.textContent = `Step ${stepIndex + 1} of ${total}`;
+    }
+  }
+
+  function waitForElement(selector: string, attempt = 0): void {
+    if (document.querySelector(selector)) {
+      const tourId = usePreferencesStore.getState().activeTourId;
+      const step = usePreferencesStore.getState().currentTourStep;
+      if (tourId != null) mountDriverAtStep(tourId, step);
+      return;
+    }
+    if (attempt > 20) return;
+    requestAnimationFrame(() => waitForElement(selector, attempt + 1));
+  }
+
   function mountDriverAtStep(tourId: NonNullable<typeof activeTourId>, stepIndex: number) {
     const steps = getWorkflowTour(tourId);
     const step = steps[stepIndex];
@@ -93,22 +140,45 @@ export function TourOrchestrator() {
       return;
     }
     if (!document.querySelector(step.element)) {
-      // Anchor not mounted yet — retry briefly.
-      window.setTimeout(() => {
-        if (document.querySelector(step.element)) {
-          mountDriverAtStep(tourId, stepIndex);
-        }
-      }, 400);
+      waitForElement(step.element);
       return;
     }
 
+    retainTourOnDestroyRef.current = true;
     destroyDriver();
+    retainTourOnDestroyRef.current = false;
+
+    const isLast = stepIndex >= steps.length - 1;
+    const total = steps.length;
+    const doneLabel = step.doneBtnText ?? (isLast ? 'Finish Onboarding' : 'Next');
+
+    const handleAdvance = (_el: Element | undefined, _step: unknown, opts: DriverHookOpts) => {
+      retainTourOnDestroyRef.current = true;
+      advanceFrom(tourId, stepIndex, steps);
+      opts.driver.destroy();
+    };
+
+    const handleFinish = (_el: Element | undefined, _step: unknown, opts: DriverHookOpts) => {
+      retainTourOnDestroyRef.current = false;
+      opts.driver.destroy();
+      clearTour();
+    };
+
+    const handleDismiss = (_el: Element | undefined, _step: unknown, opts: DriverHookOpts) => {
+      retainTourOnDestroyRef.current = false;
+      opts.driver.destroy();
+      clearTour();
+    };
 
     const d = driver({
       showProgress: true,
+      progressText: 'Step {{current}} of {{total}}',
       animate: true,
+      smoothScroll: true,
       overlayOpacity: 0.45,
-      stagePadding: 6,
+      stagePadding: 10,
+      doneBtnText: doneLabel,
+      nextBtnText: 'Next',
       popoverClass: 'invsys-driver-popover',
       steps: [
         {
@@ -116,36 +186,62 @@ export function TourOrchestrator() {
           popover: {
             title: step.title,
             description: step.description,
-            onNextClick: (_el, _step, opts) => {
-              advanceFrom(tourId, stepIndex, steps);
-              opts.driver.destroy();
+            showProgress: true,
+            progressText: 'Step {{current}} of {{total}}',
+            doneBtnText: doneLabel,
+            onNextClick: isLast ? handleFinish : handleAdvance,
+            onCloseClick: handleDismiss,
+            onPopoverRender: (popover: { progress?: HTMLElement | null }) => {
+              syncProgressLabel(popover, stepIndex, total);
             },
-            onCloseClick: (_el, _step, opts) => {
-              opts.driver.destroy();
-              clearTour();
-            },
+            onDoneClick: isLast ? handleFinish : handleAdvance,
           },
         },
       ],
-      onDestroyStarted: () => {
-        d.destroy();
+      onPopoverRender: (popover) => {
+        syncProgressLabel(popover, stepIndex, total);
+      },
+      onDestroyed: () => {
+        driverRef.current = null;
+        if (!retainTourOnDestroyRef.current) {
+          clearTour();
+        }
+        retainTourOnDestroyRef.current = false;
+      },
+      onDestroyStarted: (_el, _step, opts) => {
+        opts.driver.destroy();
       },
     });
     driverRef.current = d;
     d.drive(0);
   }
 
-  function advanceFrom(tourId: NonNullable<typeof activeTourId>, stepIndex: number, steps: WorkflowTourStep[]) {
+  function advanceFrom(
+    tourId: NonNullable<typeof activeTourId>,
+    stepIndex: number,
+    steps: WorkflowTourStep[],
+  ) {
+    const step = steps[stepIndex];
+    if (step?.transition) {
+      const { route, nextStep, href } = step.transition;
+      retainTourOnDestroyRef.current = true;
+      transitionToSubpage(route, nextStep);
+      navigate(href ?? route);
+      return;
+    }
+
     const nextIndex = stepIndex + 1;
     if (nextIndex >= steps.length) {
+      retainTourOnDestroyRef.current = false;
       clearTour();
       return;
     }
     const next = steps[nextIndex];
     setTourStep(nextIndex);
+    retainTourOnDestroyRef.current = true;
     destroyDriver();
     if (!routeMatches(location.pathname, next.route)) {
-      setAwaitingRoute(next.route);
+      transitionToSubpage(next.route, nextIndex);
       navigate(next.route);
       return;
     }

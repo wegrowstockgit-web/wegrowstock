@@ -9,6 +9,17 @@ export type WorkflowTourStep = {
   element: string;
   title: string;
   description: string;
+  /** Override Done/Next label for this step (single-step driver mounts). */
+  doneBtnText?: string;
+  /**
+   * When advancing from this step, destroy the driver and move to another page
+   * at `nextStep` (global index). `href` may include query params.
+   */
+  transition?: {
+    route: string;
+    nextStep: number;
+    href?: string;
+  };
 };
 
 /** Desktop office tour — allocation, waves, dense grids. */
@@ -41,8 +52,10 @@ export function isFloorRoute(pathname: string): boolean {
 
 export function routeMatches(pathname: string, stepRoute: string): boolean {
   if (pathname === stepRoute) return true;
-  return pathname.startsWith(stepRoute.endsWith('/') ? stepRoute : `${stepRoute}/`)
-    || pathname.startsWith(stepRoute);
+  return (
+    pathname.startsWith(stepRoute.endsWith('/') ? stepRoute : `${stepRoute}/`) ||
+    pathname.startsWith(stepRoute)
+  );
 }
 
 function workflowToDriveSteps(steps: WorkflowTourStep[]): DriveStep[] {
@@ -132,38 +145,74 @@ export const WORKFLOW_TOURS: Record<TourId, WorkflowTourStep[]> = {
         'Ask scanner-first questions (inbound, putaway, PIN unlock). Desktop PO creation is never suggested to pickers because it would create paper without a physical receipt.',
     },
   ],
+  /**
+   * 6-step procurement → receive → allocate journey (indices 0–5).
+   * Cross-page hops use `transition` + TourOrchestrator navigate.
+   */
   'receiving-to-allocation': [
     {
-      id: 'r2a-po',
+      id: 'r2a-po-grid',
       route: '/purchase-orders',
-      element: '[data-tour="nav-purchase-orders"]',
-      title: 'Start at purchase orders',
+      element: '[data-tour="tour-po-grid"]',
+      title: 'Inbound purchase orders',
       description:
-        'Office staff submit the PO document here. That digital record is what the dock scanner will match — without it, inbound scans cannot post inventory.',
+        'This PO grid is the digital dock ticket. Each row is what the handheld will match when freight arrives — without it, inbound scans cannot post inventory.',
+      doneBtnText: 'Next',
     },
     {
-      id: 'r2a-inbound',
+      id: 'r2a-po-receive',
+      route: '/purchase-orders',
+      element: '[data-tour="tour-po-receive-cta"]',
+      title: 'Hand off to the floor',
+      description:
+        'When the truck arrives, open receive from the PO. Next we move to the warehouse scanner so putaway can unlock sellable stock.',
+      doneBtnText: 'Next',
+      transition: {
+        route: '/inbound/receive',
+        nextStep: 2,
+        href: '/inbound/receive?po=PO-2026-00001',
+      },
+    },
+    {
+      id: 'r2a-inbound-shell',
       route: '/inbound/receive',
       element: '[data-tour="inbound-receive"]',
-      title: 'Receive on the floor',
+      title: 'Warehouse receive shell',
       description:
-        'Confirming this PO on the handheld (scan PO → product → bin) unlocks inventory for the B2B portal and frees stock for later allocation on Sales Orders.',
+        'Glove-friendly putaway view. Confirming scans here writes the ledger receive — that is what the B2B portal and allocation see as available inventory.',
+      doneBtnText: 'Next',
     },
     {
-      id: 'r2a-allocate',
+      id: 'r2a-inbound-scanner',
+      route: '/inbound/receive',
+      element: '[data-tour="tour-inbound-scanner"]',
+      title: 'GS1 / barcode wedge',
+      description:
+        'Aim the scanner at this input. PO → product → bin closes the physical loop. Next we return to Sales Orders to allocate the newly received lots.',
+      doneBtnText: 'Next',
+      transition: {
+        route: '/sales-orders',
+        nextStep: 4,
+        href: '/sales-orders',
+      },
+    },
+    {
+      id: 'r2a-so-allocation',
       route: '/sales-orders',
-      element: '[data-tour="nav-sales-orders"]',
-      title: 'Allocate after receive',
+      element: '[data-tour="tour-so-allocation"]',
+      title: 'Outbound allocation',
       description:
-        'After putaway posts, Allocate here to reserve FEFO lots against customer orders. That reservation is what Generate Wave turns into physical pick tasks.',
+        'After putaway posts, Allocate here to reserve FEFO lots against customer demand. That reservation is what Generate Wave turns into physical pick tasks.',
+      doneBtnText: 'Next',
     },
     {
-      id: 'r2a-copilot',
+      id: 'r2a-finish',
       route: '/sales-orders',
       element: '[data-testid="support-assistant-fab"]',
-      title: 'Workflow copilot',
+      title: 'You are ready',
       description:
-        'Ask “what next after receive?” — the agent traces Purchase Order → Bin → Sales Order edges so you never skip the digital step that unlocks the floor.',
+        'Ask the copilot “what next after receive?” anytime. The Purchase Order → Bin → Sales Order path is the heartbeat of inventory truth.',
+      doneBtnText: 'Finish Onboarding',
     },
   ],
 };

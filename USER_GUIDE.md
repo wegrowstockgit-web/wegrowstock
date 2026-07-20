@@ -40,6 +40,27 @@ Pickers are steered to floor screens. Office users get the full desktop navigati
 
 ---
 
+## Office navigation (nested sidebar)
+
+The left rail groups related screens. Click a **category** to expand it, then open a page:
+
+| Category | Typical pages |
+|----------|----------------|
+| *(top)* | **Dashboard** |
+| **Inbound** | Purchase Orders, Suppliers, Returns |
+| **Outbound** | Sales Orders, Customers, Invoices, Fulfillment |
+| **Inventory** | Products, Replenishments, Cycle counts, Exceptions, Lot Trace |
+| **Manufacturing** | BOMs, Production Orders |
+| **Field** | Issue Supplies, Technician Truck |
+| **Admin** | Reports, RTLS map, Organization (settings) |
+| *(footer)* | **Profile** |
+
+What you see depends on your **role**. Pickers do not see commercial Inbound/Outbound lists. Import is **not** a sidebar item — open it from the **Products** page (**Import** button) or go to `/import` if your role allows.
+
+On phones/tablets, use **Open navigation** to show the same rail as a drawer.
+
+---
+
 ## First-time setup (new company)
 
 ### 1. Create the workspace
@@ -55,11 +76,11 @@ Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emai
 
 - Email + password (slug is inferred from email for demo).
 - **Magic link** login when enabled (rate-limited at the gateway for safety).
-- Enterprise **SSO** (SAML/OIDC) if your admin configured it under Settings.
+- Enterprise **SSO** (SAML/OIDC) if your admin configured it under **Admin → Organization** (Settings).
 
 ### 3. Invite your team
 
-1. Open **Settings → Users & invitations**.
+1. Open **Admin → Organization** (or `/settings`) → **Users & invitations**.
 2. **Invite user** → email + role:
 
 | Role | Typical access |
@@ -99,7 +120,8 @@ Tip: one concern per file. Fix duplicates and blank SKUs in the spreadsheet firs
 ### Import into InventorySystem
 
 1. Sign in as **OWNER**, **ADMIN**, or **WAREHOUSE_MANAGER**.
-2. Open **Import** from the nav (or Settings → Import).
+2. Open **Inventory → Products**, then click **Import** in the page header  
+   (or go to `/import` / Settings → Import if your workspace still exposes the legacy entry).
 3. Choose **CSV import**.
 4. Upload a file → **map columns** (your `ProductCode` → our `SKU`, etc.).
 5. Run **Preflight**. Bad rows are flagged; good rows can still import.
@@ -125,17 +147,48 @@ Tip: one concern per file. Fix duplicates and blank SKUs in the spreadsheet firs
 
 ---
 
+## Products grid (office)
+
+Open **Inventory → Products**. The catalog is a high-performance grid (virtualized rows) with tools above the table:
+
+| Control | What it does |
+|---------|----------------|
+| **Search** | Filter by SKU or name (typing stays snappy while results catch up) |
+| **Saved views** | Quick filters such as All / Low stock |
+| **Columns** | Show/hide fields; pin identifiers; presets below |
+| **Density** | **Compact** / **Cozy** / **Spacious** row height |
+
+### Columns: Show all vs Ops only
+
+Inside **Columns**:
+
+- **Show all** — turns on every optional field (Weight, L×W×H, HS code, Origin, Hazmat, Temp, Fragile, ABC, Lifecycle, …). The table grows wider; use **horizontal scroll** under the frozen SKU/Name columns.
+- **Ops only** — back to daily pillars: SKU, Name, Barcode, On hand, Allocated, ATP, Reorder (plus UoM / Channel sync when those features apply).
+
+Pinned columns (usually **SKU** and **Name**) stay visible when you scroll sideways. Your choices are remembered in this browser.
+
+### Phones and tablets
+
+| Device | Layout |
+|--------|--------|
+| **Phone** | Product **cards** (SKU/Name, location chip, On hand / Allocated / ATP) — not the wide table |
+| **Tablet** | Table kept, but compliance/master columns are shed so stock numbers stay readable |
+| **Desktop** | Full virtualized table with sticky identifiers |
+
+---
+
 ## Daily office flow
 
 ### Buy stock (purchase order)
 
-1. **Purchase Orders → Create PO**.
+1. **Inbound → Purchase Orders → New PO** (or **Create**).
 2. Choose supplier, warehouse, lines (SKU + qty) → submit.
 3. When the truck is on the way, mark **In transit** if you use that status.
+4. When freight arrives, use **Floor receive** / open **Inbound receive** on a scanner so putaway posts to the ledger.
 
 ### Sell stock (sales order)
 
-1. Orders appear under **Sales Orders** (manual entry or channel sync such as Shopify).
+1. Orders appear under **Outbound → Sales Orders** (manual entry or channel sync such as Shopify).
 2. **Allocate** reserves stock (FEFO/lot rules apply when lots matter). Short stock may show **Backordered** until inbound arrives (including **cross-dock** to staging).
 3. **Generate wave** to release pick work to the floor.
 4. After pack/ship, office updates shipment / tracking; invoices can follow under **Invoices**.
@@ -144,15 +197,18 @@ Tip: one concern per file. Fix duplicates and blank SKUs in the spreadsheet firs
 
 | Area | Use it for |
 |------|------------|
-| **Products** | Catalog, images, reorder points, dense virtualized grid (search, columns, density) |
+| **Products** | Catalog, images, reorder points, columns/density, Import |
 | **Customers / Suppliers** | Master data |
 | **Exceptions** | Resolve “skip & flag” issues from the floor |
 | **Manufacturing** | BOMs and production orders |
 | **Returns** | Approve RMAs; floor receives dispositions |
-| **Reports** | Profit, COGS, inventory analytics |
-| **Settings** | Warehouses map, inventory rules, users, integrations, documents, SSO |
+| **Reports** | Profit, COGS, inventory analytics (**Admin**) |
+| **RTLS map** | Live tag map when enabled (**Admin**) |
+| **Organization / Settings** | Warehouses, inventory rules, users, integrations, documents, SSO |
 
-Products and other large grids support **Compact / Cozy / Spacious** density and a **Columns** menu (show/hide/pin). Search stays responsive while the table updates in the background.
+### Guided tour (optional)
+
+New sessions may offer an interactive **onboarding tour**. The multi-page **receiving → allocation** path walks Purchase Orders → Inbound receive → Sales Orders so the digital loop matches the dock. You can dismiss it or choose not to show again. The blue **support assistant** button (bottom-right) answers role-aware “what next?” questions from the manuals.
 
 ---
 
@@ -165,7 +221,7 @@ Floor routes use a **warehouse shell** (large tap targets, high contrast) — no
 1. Open **Inbound receive** (or fulfillment receive mode).
 2. Scan PO / paperwork, then product barcodes (lots/expiry when required).
 3. Follow suggested putaway path; scan the **bin** to confirm.
-4. Stock is written to the ledger immediately.
+4. Stock is written to the ledger immediately — that is what unlocks ATP for allocation and the B2B portal.
 
 ### Picking & staging
 
@@ -181,7 +237,7 @@ Floor routes use a **warehouse shell** (large tap targets, high contrast) — no
 - **Returns receive** — scan RMA lines into restock or scrap.
 - **Replenishments** — move reserve stock to pick faces when triggered.
 
-Offline: if the handheld loses Wi‑Fi, scans can queue and sync later. Conflicts that cannot auto-apply appear for office review on the dashboard.
+Offline: if the handheld loses Wi‑Fi, scans can queue and sync later. Conflicts that cannot auto-apply appear for office review on the dashboard. The header **Connected** badge appears on warehouse/device views when the network is healthy.
 
 ---
 
@@ -211,6 +267,9 @@ Wholesale buyers invited as **B2B_CUSTOMER**:
 |---------|-------------|
 | “Scanner locked” | Enter the 4-digit shift PIN |
 | Cannot see a warehouse | Ask admin to add you on **User warehouses** |
+| Cannot find Import in the sidebar | Use **Products → Import** (or `/import`) |
+| Missing product columns | **Columns → Show all**; scroll horizontally under sticky SKU/Name |
+| Table too wide / hard to read | **Columns → Ops only** or Compact density |
 | Import row failed | Open preflight errors; fix SKU/barcode/location; re-upload |
 | Order stuck backordered | Check inbound / cross-dock staging; allocate again when stock arrives |
 | Channel / accounting sync failed | Settings → Integrations; check sync logs; ask an admin |
@@ -220,6 +279,7 @@ Wholesale buyers invited as **B2B_CUSTOMER**:
 
 ## Where to get help next
 
+- In-app **support assistant** (chat FAB) — role-aware answers from product manuals  
 - **README.md** — install, demo users, URLs  
 - **DATABASE_GUIDE.md** — why the ledger and tenancy work this way  
 - **DEVELOPER_ARCHITECTURE.md** — for IT / implementers integrating or extending the product  

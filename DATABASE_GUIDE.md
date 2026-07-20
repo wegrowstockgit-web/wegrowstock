@@ -6,7 +6,7 @@ A plain-language map of how InventorySystem stores warehouse data in PostgreSQL 
 
 **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (how the app uses this schema), `USER_GUIDE.md` (day-to-day product use), `README.md` (run the stack).
 
-Schema is owned by Flyway (`backend/src/main/resources/db/migration/`). Current head includes **V088**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
+Schema is owned by Flyway (`backend/src/main/resources/db/migration/`). Current head includes **V090**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
 
 ---
 
@@ -180,6 +180,41 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 | `document_sequences` | Gapless INV-/SO- numbers |
 | `audit_log` | Security / compliance trail (partitioned; cold-archived) |
 
+### 11. Ops extensions (cartons, 3PL, views, workstations)
+
+| Table | Purpose |
+|-------|---------|
+| `shipping_cartons` | Cartonization / pack dimensions (**V065**) |
+| `workstation_settings` | Pack-station printers & device prefs (**V066**) |
+| `billing_slas` / `billing_accruals` | 3PL SLA billing (**V067**) |
+| `user_saved_views` | Named filter presets for office grids (**V070**) |
+| `picking_batches.claimed_at` / `completed_at` | LMS labor timing (**V069**) |
+
+### 12. Support RAG & GraphRAG (**global** — not tenant-scoped)
+
+These power the in-app support copilot (`/api/v1/support/chat`). They deliberately have **no `tenant_id` and no RLS** — they hold product manuals / runbooks, not customer secrets. Same pattern as `currency_rates`.
+
+| Table | Flyway | Purpose |
+|-------|--------|---------|
+| `support_knowledge_chunks` | **V089** | Embedded doc chunks: `slug`, `title`, `body`, `audience_roles[]`, `route_hints[]`, `embedding vector(384)` with **HNSW** cosine index (`pgvector`) |
+| `support_knowledge_nodes` | **V090** | GraphRAG nodes (`ZONE`, `FLOW`, `DOC`, `ENTITY`, `ROLE`) optionally linked to a chunk slug |
+| `support_knowledge_edges` | **V090** | Typed relationships (`from_slug` → `to_slug`, e.g. Procurement → Fulfillment) |
+
+Extension `vector` is created in Postgres init (`ops/postgres/init`), not by `app_owner` migrations.
+
+---
+
+## How tenancy is bound (runtime)
+
+1. JWT filter authenticates the user and resolves `tenantId`.
+2. `TenantAwareDataSource` / connection wrapper runs  
+   `SET LOCAL app.current_tenant = '<uuid>'` on the borrowed connection.
+3. RLS policies compare `tenant_id` to  
+   `nullif(current_setting('app.current_tenant', true), '')::uuid` (fail-closed when unset).
+4. PgBouncer transaction pooling uses `DISCARD ALL` so the next checkout never inherits another tenant’s GUC.
+
+Bootstrap / migration SQL uses `app_owner`. Application runtime uses `app_user`.
+
 ---
 
 ## Security helpers (SECURITY DEFINER)
@@ -212,19 +247,38 @@ Property: `invsys.integration.vault-provider`.
 
 ---
 
+## Recent Flyway head (V080–V090)
+
+| Version | Purpose |
+|---------|---------|
+| **V080** | ProductVariant enterprise trade/handling/lifecycle fields |
+| **V081** | Two-tier user profile + UI density preferences |
+| **V082** | Sales order status `NEEDS_REVIEW` |
+| **V083** | `integration_channels` + richer sync logs |
+| **V084** | Geo coords on locations; `rtls_tags` / `rtls_position_events` |
+| **V085** | Append-only audit trigger hardening |
+| **V086** | `archive_purge_audit_logs` SECURITY DEFINER |
+| **V087** | RANGE partition `inventory_ledger` + `audit_log` |
+| **V088** | Ensure ~12 months back + 6 months forward partitions |
+| **V089** | `support_knowledge_chunks` + HNSW (pgvector 384-d) |
+| **V090** | `support_knowledge_nodes` / `support_knowledge_edges` (GraphRAG) |
+
+---
+
 ## Summary for developers
 
-1. New business tables need `tenant_id` + RLS policies (copy a recent migration such as V083/V084).
+1. New **tenant** business tables need `tenant_id` + FORCE RLS policies (copy a recent migration such as V083/V084). Global platform tables (`currency_rates`, `support_knowledge_*`) are the rare exception — document why they skip RLS.
 2. Never treat `inventory_levels` as writable truth — append to `inventory_ledger`.
 3. External side effects belong in `outbox_events`, not in the request transaction.
 4. Do not DELETE from `audit_log` by hand — use the archival worker + `archive_purge_audit_logs`.
 5. When adding history-heavy tables, plan partition strategy early (ledger/audit are the template).
-6. Prefer seed scripts over Flyway INSERTs for tenant demo data under FORCE RLS.
+6. Prefer seed scripts (`ops/demo_seed.sql`) over Flyway INSERTs for tenant demo data under FORCE RLS.
+7. Support RAG embeddings require the `vector` extension at Postgres init time; do not `CREATE EXTENSION` from Flyway as `app_owner`.
 
 ---
 
 ## Schema dictionary (quick index)
 
-Global exception: `currency_rates` is not tenant-RLS’d. Almost everything else is.
+Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_chunks`, `support_knowledge_nodes`, `support_knowledge_edges`. Almost everything else is tenant-scoped.
 
-See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V088`) or the matching JPA entity under `backend/src/main/java/com/invsys/domain/`.
+See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V090`) or the matching JPA entity under `backend/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).

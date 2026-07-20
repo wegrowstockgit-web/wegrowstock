@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures/roleFixture';
+import { expectNavLinkHidden, expectNavLinkVisible, iconRail } from './fixtures/nav';
 
 /**
  * Fuller role × surface matrix for nav visibility, route walls, and CTA affordances.
@@ -7,24 +8,20 @@ import { expect, test } from './fixtures/roleFixture';
  * those suites leave (VIEWER walls, Reports labor negatives, picker office deep-links).
  */
 
-async function rail(page: Page) {
-  return page.getByTestId('icon-rail');
+async function expectNavVisible(page: Page, name: string) {
+  await expectNavLinkVisible(page, name);
 }
 
-async function expectNavVisible(page: Page, name: string | RegExp) {
-  await expect((await rail(page)).getByRole('link', { name, exact: true })).toBeVisible();
-}
-
-async function expectNavHidden(page: Page, name: string | RegExp) {
-  await expect((await rail(page)).getByRole('link', { name, exact: true })).toHaveCount(0);
+async function expectNavHidden(page: Page, name: string) {
+  await expectNavLinkHidden(page, name);
 }
 
 async function expectOrgSettingsVisible(page: Page) {
-  await expect((await rail(page)).locator('a[href="/settings"]')).toBeVisible();
+  await expectNavLinkVisible(page, 'Organization');
 }
 
 async function expectOrgSettingsHidden(page: Page) {
-  await expect((await rail(page)).locator('a[href="/settings"]')).toHaveCount(0);
+  await expectNavLinkHidden(page, 'Organization');
 }
 
 /** Settles after ProtectedRoute Navigate (picker → fulfillment, others → dashboard/showroom). */
@@ -45,11 +42,15 @@ test.describe('Role access matrix', () => {
       await gotoAndSettle(ownerPage, '/dashboard');
       await expectNavVisible(ownerPage, 'Reports');
       await expectNavVisible(ownerPage, 'Exceptions');
-      await expectNavVisible(ownerPage, 'Import');
+      await expectNavHidden(ownerPage, 'Import');
       await expectNavVisible(ownerPage, 'Lot Trace');
       await expectNavVisible(ownerPage, 'Issue Supplies');
       await expectNavVisible(ownerPage, 'Fulfillment');
       await expectOrgSettingsVisible(ownerPage);
+
+      // Import lives on Products header (not the rail).
+      await gotoAndSettle(ownerPage, '/products');
+      await expect(ownerPage.getByTestId('products-import-button')).toBeVisible();
     });
 
     test('admin sees reports + settings; manager does not', async ({ adminPage, managerPage }) => {
@@ -81,7 +82,8 @@ test.describe('Role access matrix', () => {
       await expectNavHidden(viewerPage, 'Import');
       await expectNavHidden(viewerPage, 'Reports');
       await expectNavHidden(viewerPage, 'Returns');
-      await expectNavHidden(viewerPage, 'Manufacturing');
+      await expectNavHidden(viewerPage, 'BOMs');
+      await expect((await iconRail(viewerPage)).getByTestId('nav-category-manufacturing')).toHaveCount(0);
       await expectOrgSettingsHidden(viewerPage);
     });
 

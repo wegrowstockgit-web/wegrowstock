@@ -48,13 +48,13 @@
   }
 
   /**
-   * Virtualized body rows: promote a compositing layer without absolute
-   * translateY (which breaks sticky thead/td freeze inside <table>).
+   * Virtualized body rows: layout containment only.
+   * Do NOT set transform/will-change:transform on <tr> — that creates a
+   * containing block and breaks position:sticky on frozen <td> cells
+   * (headers stick, body columns shear/overlap on horizontal scroll).
    */
   .virtual-row-layer {
-    will-change: transform;
     contain: layout style;
-    transform: translateZ(0);
   }
 
   /** Icon-rail nav: hide native scrollbar chrome (Track 1). */
@@ -147,6 +147,11 @@
   }
 
   /* Sticky column headers: opaque fill + edge so rows pass underneath cleanly. */
+  /* Pinned header cells must paint above scrolling header labels. */
+  th.table-head-cell[data-pinned='true'] {
+    z-index: 60;
+  }
+
   th.table-head-cell.sticky {
     box-shadow: 0 1px 0 0 #155a9c;
   }

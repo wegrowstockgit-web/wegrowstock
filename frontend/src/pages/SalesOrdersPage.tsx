@@ -419,8 +419,11 @@ export function SalesOrdersPage() {
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div
+        className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4"
+        data-tour="tour-so-allocation"
+      >
         <div>
           <h1 className="text-2xl font-bold text-text">Sales Orders</h1>
           <p className="mt-1 text-sm text-text-muted">Outbound fulfillment</p>
@@ -445,7 +448,7 @@ export function SalesOrdersPage() {
         </DataListToolbar>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto" data-list-scrollport="true">
       <ListPageState
         isLoading={isLoading}
         isError={isError}

@@ -55,6 +55,34 @@ describe('gridColumnStore', () => {
     ).not.toBe(false);
   });
 
+  it('setColumnVisibilityMap applies show-all / ops-only while forcing pins visible', () => {
+    useGridColumnStore
+      .getState()
+      .ensureColumns(GRID, ['sku', 'name', 'barcode', 'onHand', 'weight']);
+
+    useGridColumnStore.getState().setColumnVisibilityMap(GRID, {
+      sku: true,
+      name: true,
+      barcode: true,
+      onHand: true,
+      weight: true,
+    });
+    expect(selectColumnVisible(useGridColumnStore.getState(), GRID, 'weight')).toBe(true);
+
+    useGridColumnStore.getState().setColumnVisibilityMap(GRID, {
+      sku: false,
+      name: false,
+      barcode: true,
+      onHand: true,
+      weight: false,
+    });
+    // Pinned sku/name stay forced on.
+    expect(selectColumnVisible(useGridColumnStore.getState(), GRID, 'sku')).toBe(true);
+    expect(selectColumnVisible(useGridColumnStore.getState(), GRID, 'name')).toBe(true);
+    expect(selectColumnVisible(useGridColumnStore.getState(), GRID, 'barcode')).toBe(true);
+    expect(selectColumnVisible(useGridColumnStore.getState(), GRID, 'weight')).toBe(false);
+  });
+
   it('pins and unpins columns', () => {
     useGridColumnStore.getState().ensureColumns(GRID, ['sku', 'name', 'barcode']);
     useGridColumnStore.getState().pinColumn(GRID, 'barcode');

@@ -32,6 +32,7 @@ async function wedgeScan(page: Page, barcode: string): Promise<void> {
 /**
  * Mobile-Scanner persona — PICKER on rugged Android viewport (360×640).
  * Full-screen inbound receive must not mount the desktop office AppShell.
+ * Office rail nesting is covered in e2e/app.spec.ts via `clickNavLink`.
  */
 test.describe('Mobile Picker suite', () => {
   test.setTimeout(240_000);
@@ -87,6 +88,22 @@ test.describe('Mobile Picker suite', () => {
 
     const picker = await contextForRole(browser, 'picker');
     try {
+      // Office shell smoke: expand grouped parents (Inbound is hidden for pickers).
+      // Soft-check only — floor receive below is the persona assertion.
+      await picker.page.goto('/dashboard');
+      await completeScannerPin(picker.page);
+      const rail = picker.page.getByTestId('icon-rail');
+      if (await rail.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        const openNav = picker.page.getByRole('button', { name: /open navigation/i });
+        if (await openNav.isVisible().catch(() => false)) {
+          await openNav.click();
+        }
+        await rail.getByText('Outbound', { exact: true }).click({ timeout: 5_000 }).catch(() => undefined);
+        await rail.getByText('Inventory', { exact: true }).click({ timeout: 5_000 }).catch(() => undefined);
+        await expect(rail.getByText('Outbound', { exact: true })).toBeVisible({ timeout: 5_000 });
+        await expect(rail.getByText('Inventory', { exact: true })).toBeVisible({ timeout: 5_000 });
+      }
+
       // Floor picking vector — WarehouseFloorShell, never corporate AppShell rail.
       await picker.page.goto('/fulfillment');
       await completeScannerPin(picker.page);

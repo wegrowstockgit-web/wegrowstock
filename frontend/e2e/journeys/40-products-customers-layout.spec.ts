@@ -78,10 +78,10 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
       });
       expect(aligned).toBeTruthy();
 
-      // Customers: page itself must not own a trapped overflow-y scrollport.
+      // Customers: viewport-locked shell (overflow-hidden on <main>) — page must not
+      // trap a nested vertical scrollport; horizontal table scroll stays local.
       await owner.page.goto('/customers');
       await expect(owner.page.getByTestId('customers-page')).toBeVisible({ timeout: 30_000 });
-      // Page content must not trap vertical scroll (AppShell <main> owns it).
       const pageOverflowY = await owner.page
         .getByTestId('customers-page')
         .evaluate((el) => getComputedStyle(el).overflowY);
@@ -91,10 +91,7 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
       await expect(main).toBeVisible();
       await expect
         .poll(async () =>
-          main.evaluate((el) => {
-            const style = getComputedStyle(el);
-            return style.overflowY === 'auto' || style.overflowY === 'scroll';
-          }),
+          main.evaluate((el) => getComputedStyle(el).overflowY === 'hidden'),
         )
         .toBeTruthy();
     } finally {
@@ -102,3 +99,4 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
     }
   });
 });
+

@@ -5,6 +5,13 @@ export type DensityMode = 'compact' | 'cozy' | 'spacious';
 
 export type TourId = 'office' | 'floor' | 'receiving-to-allocation';
 
+/** Registered by TourOrchestrator so transitionToSubpage can tear down driver.js safely. */
+let destroyActiveTourDriver: (() => void) | null = null;
+
+export function registerTourDriverDestroy(fn: (() => void) | null): void {
+  destroyActiveTourDriver = fn;
+}
+
 interface PreferencesState {
   densityMode: DensityMode;
   setDensityMode: (mode: DensityMode) => void;
@@ -15,11 +22,18 @@ interface PreferencesState {
   /** Cross-route workflow tour machine (persisted). */
   activeTourId: TourId | null;
   currentTourStep: number;
-  isTourAwaitingRoute: boolean;
-  awaitingRoute: string | null;
+  /** Gate: driver destroyed; waiting for targetRoute to mount before resume. */
+  isTourMovingRoutes: boolean;
+  targetRoute: string | null;
   startTour: (tourId: TourId, stepIndex?: number) => void;
   setTourStep: (stepIndex: number) => void;
-  setAwaitingRoute: (route: string | null) => void;
+  /**
+   * Destroy the live driver, set the next step + target pathname, then let the
+   * caller navigate (href may include query params).
+   */
+  transitionToSubpage: (route: string, nextStep: number) => void;
+  /** Clear the inter-page gate after the destination has resumed the tour. */
+  clearRouteTransition: () => void;
   clearTour: () => void;
 }
 
@@ -56,6 +70,11 @@ export const DENSITY_STYLES: Record<
   },
 };
 
+function pathnameOnly(route: string): string {
+  const q = route.indexOf('?');
+  return q >= 0 ? route.slice(0, q) : route;
+}
+
 export const usePreferencesStore = create<PreferencesState>()(
   persist(
     (set) => ({
@@ -66,27 +85,37 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       activeTourId: null,
       currentTourStep: 0,
-      isTourAwaitingRoute: false,
-      awaitingRoute: null,
+      isTourMovingRoutes: false,
+      targetRoute: null,
 
       startTour: (tourId, stepIndex = 0) =>
         set({
           activeTourId: tourId,
           currentTourStep: stepIndex,
-          isTourAwaitingRoute: false,
-          awaitingRoute: null,
+          isTourMovingRoutes: false,
+          targetRoute: null,
           showOnboardingTour: false,
         }),
 
       setTourStep: (currentTourStep) => set({ currentTourStep }),
 
-      setAwaitingRoute: (route) =>
+      transitionToSubpage: (route, nextStep) => {
+        try {
+          destroyActiveTourDriver?.();
+        } catch {
+          /* already torn down */
+        }
+        set({
+          isTourMovingRoutes: true,
+          targetRoute: pathnameOnly(route),
+          currentTourStep: nextStep,
+        });
+      },
+
+      clearRouteTransition: () =>
         set((state) => {
-          const isTourAwaitingRoute = route != null;
-          if (state.awaitingRoute === route && state.isTourAwaitingRoute === isTourAwaitingRoute) {
-            return state;
-          }
-          return { isTourAwaitingRoute, awaitingRoute: route };
+          if (!state.isTourMovingRoutes && state.targetRoute == null) return state;
+          return { isTourMovingRoutes: false, targetRoute: null };
         }),
 
       clearTour: () =>
@@ -94,16 +123,16 @@ export const usePreferencesStore = create<PreferencesState>()(
           if (
             state.activeTourId == null &&
             state.currentTourStep === 0 &&
-            !state.isTourAwaitingRoute &&
-            state.awaitingRoute == null
+            !state.isTourMovingRoutes &&
+            state.targetRoute == null
           ) {
             return state;
           }
           return {
             activeTourId: null,
             currentTourStep: 0,
-            isTourAwaitingRoute: false,
-            awaitingRoute: null,
+            isTourMovingRoutes: false,
+            targetRoute: null,
           };
         }),
     }),
@@ -114,9 +143,28 @@ export const usePreferencesStore = create<PreferencesState>()(
         showOnboardingTour: state.showOnboardingTour,
         activeTourId: state.activeTourId,
         currentTourStep: state.currentTourStep,
-        isTourAwaitingRoute: state.isTourAwaitingRoute,
-        awaitingRoute: state.awaitingRoute,
+        isTourMovingRoutes: state.isTourMovingRoutes,
+        targetRoute: state.targetRoute,
       }),
+      // Migrate pre-rename keys from older clients.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Record<string, unknown>;
+        const migrating = {
+          ...current,
+          ...p,
+          isTourMovingRoutes:
+            (p.isTourMovingRoutes as boolean | undefined) ??
+            (p.isTourAwaitingRoute as boolean | undefined) ??
+            current.isTourMovingRoutes,
+          targetRoute:
+            (p.targetRoute as string | null | undefined) ??
+            (p.awaitingRoute as string | null | undefined) ??
+            current.targetRoute,
+        };
+        delete (migrating as Record<string, unknown>).isTourAwaitingRoute;
+        delete (migrating as Record<string, unknown>).awaitingRoute;
+        return migrating as PreferencesState;
+      },
     },
   ),
 );
@@ -129,10 +177,13 @@ export function installPreferencesTestHook(): void {
       __INVSYS_PREFERENCES__?: {
         startTour: (tourId: TourId, stepIndex?: number) => void;
         clearTour: () => void;
+        transitionToSubpage: (route: string, nextStep: number) => void;
       };
     }
   ).__INVSYS_PREFERENCES__ = {
     startTour: (tourId, stepIndex) => usePreferencesStore.getState().startTour(tourId, stepIndex),
     clearTour: () => usePreferencesStore.getState().clearTour(),
+    transitionToSubpage: (route, nextStep) =>
+      usePreferencesStore.getState().transitionToSubpage(route, nextStep),
   };
 }

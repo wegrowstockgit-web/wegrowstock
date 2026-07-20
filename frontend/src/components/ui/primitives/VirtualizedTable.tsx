@@ -29,10 +29,14 @@ export interface VirtualizedColumnDef<T> {
   /** Base width used for sticky left-offset calculation (px). */
   width: number;
   /**
-   * When true, this column absorbs leftover viewport width so the grid
-   * fills the screen instead of leaving a blank strip on the right.
-   * Columns never shrink below {@link width} — extra fields expand the
-   * table and the scrollport gains a horizontal track instead.
+   * Cap resolved width (px). Pinned identity columns should set this so
+   * leftover viewport width cannot inflate a sticky “canyon”.
+   */
+  maxWidth?: number;
+  /**
+   * When true, this non-pinned column absorbs leftover viewport width so the
+   * grid fills the screen. Pinned/sticky columns never grow — that would
+   * create a blank horizontal canyon between identifiers and ops metrics.
    */
   flexGrow?: boolean;
   align?: 'left' | 'right' | 'center';
@@ -63,6 +67,11 @@ export interface VirtualizedTableProps<T> {
   toolbarSlot?: ReactNode;
   /** Isolates column layout in localStorage (default: products). */
   gridId?: string;
+  /**
+   * Floor for virtual row height (px). Tablet touch targets often need ≥48
+   * even when density is compact/cozy.
+   */
+  minRowPx?: number;
 }
 
 const PIN_EDGE =
@@ -88,8 +97,16 @@ function stickyStyle(left: number, isHeader: boolean): CSSProperties {
     position: 'sticky',
     left,
     ...(isHeader ? { top: 0 } : undefined),
-    zIndex: isHeader ? 50 : 20,
+    // Pinned headers above scrolling headers; pinned body above scrolling cells.
+    zIndex: isHeader ? 60 : 30,
   };
+}
+
+/** Solid fills so horizontally scrolling cells never show through the freeze lane. */
+function stickyBodyBackground(selected: boolean, zebra: boolean): string {
+  if (selected) return 'rgb(219 234 254)'; // blue-100
+  if (zebra) return 'var(--color-muted, rgb(241 245 249))';
+  return 'var(--color-background, #ffffff)';
 }
 
 interface ResolvedColumn<T> {
@@ -131,10 +148,11 @@ const VirtualizedTableRow = memo(function VirtualizedTableRow<T>({
 }: VirtualizedTableRowProps<T>) {
   const zebra = index % 2 === 1;
   const rowBg = selected
-    ? 'bg-blue-100/60 dark:bg-slate-700/80'
+    ? 'bg-blue-100 dark:bg-slate-700'
     : zebra
-      ? 'bg-muted/40'
+      ? 'bg-muted'
       : 'bg-background';
+  const stickyBg = stickyBodyBackground(selected, zebra);
 
   return (
     <tr
@@ -150,12 +168,7 @@ const VirtualizedTableRow = memo(function VirtualizedTableRow<T>({
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40',
         onRowClick && 'cursor-pointer',
       )}
-      style={{
-        height: rowPx,
-        // Vertical offset is owned by padding spacers so sticky <th>/<td>
-        // freeze keeps working; translateZ promotes a GPU layer only.
-        transform: 'translateZ(0)',
-      }}
+      style={{ height: rowPx }}
       tabIndex={onRowClick ? 0 : undefined}
       onClick={onRowClick ? () => onActivate(row) : undefined}
       onKeyDown={
@@ -175,7 +188,7 @@ const VirtualizedTableRow = memo(function VirtualizedTableRow<T>({
           data-column-id={col.id}
           data-pinned={pinned ? 'true' : undefined}
           className={cn(
-            'align-middle whitespace-nowrap',
+            'align-middle overflow-hidden',
             densityCellClass,
             alignClass(col.align),
             pinned && rowBg,
@@ -183,14 +196,22 @@ const VirtualizedTableRow = memo(function VirtualizedTableRow<T>({
             col.className,
           )}
           style={{
+            // table-layout:fixed — keep th/td on the same track (no content-driven drift).
             width,
-            minWidth: col.width,
+            minWidth: width,
+            maxWidth: width,
+            boxSizing: 'border-box',
             ...(pinned && pinLeft !== undefined
-              ? stickyStyle(pinLeft, false)
+              ? {
+                  ...stickyStyle(pinLeft, false),
+                  backgroundColor: stickyBg,
+                }
               : undefined),
           }}
         >
-          <div className="min-w-0 max-w-full">{col.cell(row, index)}</div>
+          <div className="min-w-0 max-w-full overflow-hidden text-ellipsis">
+            {col.cell(row, index)}
+          </div>
         </td>
       ))}
     </tr>
@@ -216,11 +237,12 @@ export function VirtualizedTable<T>({
   empty,
   selectedRowId,
   gridId = 'products',
+  minRowPx,
 }: VirtualizedTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endReachedLock = useRef(false);
   const { densityMode, rowPx, styles: densityStyles } = useDensity();
-  const estimatedRowPx = DENSITY_ROW_PX[densityMode] ?? rowPx;
+  const estimatedRowPx = Math.max(DENSITY_ROW_PX[densityMode] ?? rowPx, minRowPx ?? 0);
 
   // Atomic slices — toggling visibility on another grid does not notify us.
   const columnVisibility = useGridColumnStore((s) =>
@@ -327,37 +349,78 @@ export function VirtualizedTable<T>({
     return () => ro?.disconnect();
   }, []);
 
-  /** Resolved px widths — grow flex columns (default: name) so the grid fills the viewport. */
+  /**
+   * Resolved px widths. Leftover viewport width goes only to non-sticky growers
+   * (never into pinned SKU/Name) so identity columns stay tight and ops columns
+   * sit flush — no blank canyon between Name and On Hand.
+   */
   const columnWidths = useMemo(() => {
     const widths = new Map<string, number>();
     for (const col of orderedVisible) {
       widths.set(col.id, col.width);
     }
-    const target = Math.max(viewportWidth, minTableWidth);
-    const extra = target - minTableWidth;
-    if (extra <= 0 || orderedVisible.length === 0) return widths;
+    if (orderedVisible.length === 0) return widths;
 
-    const growCandidates = orderedVisible.filter(
-      (c) => c.flexGrow || c.id === 'name',
-    );
-    const growers =
-      growCandidates.length > 0
-        ? growCandidates
-        : orderedVisible.filter((c) => !stickyColumnIds.includes(c.id));
-    if (growers.length === 0) {
-      const last = orderedVisible[orderedVisible.length - 1]!;
-      widths.set(last.id, last.width + extra);
-      return widths;
+    const stickySet = new Set(stickyColumnIds);
+    const capOf = (col: VirtualizedColumnDef<T>) =>
+      col.maxWidth != null ? col.maxWidth : Number.POSITIVE_INFINITY;
+
+    // Enforce maxWidth on base widths before distributing slack.
+    for (const col of orderedVisible) {
+      widths.set(col.id, Math.min(col.width, capOf(col)));
     }
-    const share = Math.floor(extra / growers.length);
-    let remainder = extra - share * growers.length;
-    for (const col of growers) {
-      const bump = share + (remainder > 0 ? 1 : 0);
-      if (remainder > 0) remainder -= 1;
-      widths.set(col.id, (widths.get(col.id) ?? col.width) + bump);
+
+    const currentSum = () => {
+      let sum = 0;
+      for (const col of orderedVisible) sum += widths.get(col.id) ?? col.width;
+      return sum;
+    };
+
+    let extra = Math.max(0, viewportWidth - currentSum());
+    if (extra <= 0) return widths;
+
+    const pickGrowers = (): VirtualizedColumnDef<T>[] => {
+      const flexNonSticky = orderedVisible.filter(
+        (c) => c.flexGrow && !stickySet.has(c.id),
+      );
+      if (flexNonSticky.length > 0) return flexNonSticky;
+      const nonSticky = orderedVisible.filter((c) => !stickySet.has(c.id));
+      if (nonSticky.length > 0) return nonSticky;
+      // All columns sticky — grow the rightmost under its maxWidth only.
+      return orderedVisible.slice(-1);
+    };
+
+    // Iteratively fill slack while respecting maxWidth caps.
+    let guard = 0;
+    while (extra > 0 && guard < 32) {
+      guard += 1;
+      const growers = pickGrowers().filter(
+        (c) => (widths.get(c.id) ?? c.width) < capOf(c),
+      );
+      if (growers.length === 0) break;
+      const room = growers.map((c) => ({
+        col: c,
+        room: capOf(c) - (widths.get(c.id) ?? c.width),
+      }));
+      const totalRoom = room.reduce((s, r) => s + r.room, 0);
+      if (totalRoom <= 0) break;
+      const budget = Math.min(extra, totalRoom);
+      let allocated = 0;
+      for (let i = 0; i < room.length; i++) {
+        const { col, room: r } = room[i]!;
+        const share =
+          i === room.length - 1
+            ? budget - allocated
+            : Math.floor((budget * r) / totalRoom);
+        const bump = Math.min(r, Math.max(0, share));
+        widths.set(col.id, (widths.get(col.id) ?? col.width) + bump);
+        allocated += bump;
+      }
+      extra -= allocated;
+      if (allocated === 0) break;
     }
     return widths;
-  }, [orderedVisible, stickyColumnIds, viewportWidth, minTableWidth]);
+  }, [orderedVisible, stickyColumnIds, viewportWidth]);
 
   const tableWidth = useMemo(() => {
     let sum = 0;
@@ -478,30 +541,41 @@ export function VirtualizedTable<T>({
   return (
     <div
       className={cn(
-        'flex min-h-0 max-w-full flex-1 flex-col overflow-hidden containment-layout',
+        'flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden containment-layout',
         'bg-background',
         className,
       )}
+      style={{ minWidth: 0, flex: '1 1 0%', width: '100%', maxWidth: '100%' }}
       data-testid="virtualized-table"
       data-density={densityMode}
       data-row-px={String(estimatedRowPx)}
     >
-      {/* Sole scrollport — horizontal track when columns exceed the viewport */}
+      {/* Sole scrollport — horizontal + vertical; outer shell must not also scroll-x */}
       <div
         ref={scrollRef}
-        className="w-full min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain scrollbar-thin"
+        className="min-h-0 min-w-0 w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain scrollbar-thin"
+        style={{ minWidth: 0, width: '100%' }}
         data-testid="virtualized-table-scrollport"
       >
         <table
           className={cn(
-            'min-w-full border-separate border-spacing-0 table-auto',
+            'border-separate border-spacing-0 table-fixed',
             densityStyles.typography,
           )}
-          style={{ width: tableWidth, minWidth: Math.max(tableWidth, minTableWidth) }}
+          style={{
+            width: tableWidth,
+            minWidth: tableWidth,
+            tableLayout: 'fixed',
+          }}
           data-testid="virtualized-table-grid"
           data-visible-columns={visibleColumnIds}
           data-table-width={String(tableWidth)}
         >
+          <colgroup>
+            {resolvedColumns.map(({ col, width }) => (
+              <col key={col.id} style={{ width, minWidth: width, maxWidth: width }} />
+            ))}
+          </colgroup>
           <thead className="table-head-accent">
             <tr
               className={cn(
@@ -528,7 +602,8 @@ export function VirtualizedTable<T>({
                           : undefined
                     }
                     className={cn(
-                      'table-head-cell sticky top-0 z-40 whitespace-nowrap bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
+                      'table-head-cell sticky top-0 overflow-hidden bg-[var(--color-table-header)] text-[var(--color-table-header-fg)]',
+                      pinned ? 'z-[60]' : 'z-40',
                       densityStyles.cell,
                       alignClass(col.align),
                       isPinEdge && PIN_EDGE,
@@ -536,10 +611,12 @@ export function VirtualizedTable<T>({
                     )}
                     style={{
                       width,
-                      minWidth: col.width,
+                      minWidth: width,
+                      maxWidth: width,
+                      boxSizing: 'border-box',
                       ...(pinned && pinLeft !== undefined
                         ? stickyStyle(pinLeft, true)
-                        : undefined),
+                        : { top: 0, position: 'sticky' }),
                     }}
                   >
                     {canSort ? (

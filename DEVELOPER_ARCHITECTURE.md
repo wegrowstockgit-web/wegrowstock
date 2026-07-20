@@ -16,7 +16,7 @@
 5. [Tenancy, security, and request path](#5-tenancy-security-and-request-path)
 6. [Domain model (entities)](#6-domain-model-entities)
 7. [Backend packages and classes](#7-backend-packages-and-classes)
-8. [Frontend structure](#8-frontend-structure)
+8. [Frontend structure](#8-frontend-structure) (nav matrix, tours, products grid)
 9. [Sequential business flows](#9-sequential-business-flows)
 10. [Cross-cutting mechanisms](#10-cross-cutting-mechanisms)
 11. [Database, Flyway, and seed](#11-database-flyway-and-seed)
@@ -45,9 +45,9 @@
 |-------|------|
 | API | Java 25, Spring Boot 4.1, JPA + selective jOOQ, Flyway |
 | DB | PostgreSQL 16, **FORCE RLS**, append-only `inventory_ledger` |
-| UI | React 19.2, Vite 7, TanStack Query, Zustand, Tailwind |
+| UI | React 19.2, Vite 7, TanStack Query, Zustand, Tailwind, TanStack Virtual, driver.js |
 | Edge | Nginx API gateway + frontend nginx |
-| Infra | Redis (PIN lockout / rate limits), MinIO/S3 media |
+| Infra | Redis (PIN lockout / rate limits), MinIO/S3 media, pgvector for support RAG |
 | Auth | RS256 JWT in HttpOnly cookies (`invsys_access` / `invsys_refresh`) |
 
 **Two golden rules** (also in `DATABASE_GUIDE.md`):
@@ -55,7 +55,7 @@
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
 2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
 
-**Scale notes (current head ~V088):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`.
+**Scale notes (current head ~V090):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS).
 
 ---
 
@@ -70,32 +70,36 @@ InventorySystem/
 │       ├── billing/         Stripe / capital gateways
 │       ├── common/          ApiException, filters, helpers
 │       ├── config/          Beans, Redis, OpenAPI, rate limit
+│       ├── dns/             Custom domain verification helpers
 │       ├── domain/          JPA entities
 │       ├── gateway/         CORS whitelist filter
 │       ├── integration/     Outbox, Shopify, EasyPost, accounting, alerts
 │       ├── media/           S3/MinIO upload + attachments
 │       ├── mesh/            Cross-tenant partner bridge
 │       ├── repository/      Spring Data JPA (+ a few jOOQ helpers)
+│       ├── rtls/            Real-time location services
 │       ├── service/         Business logic
+│       ├── support/         RAG / GraphRAG chat (`SupportChatService`)
 │       └── tenancy/         TenantContext, datasource binding
 ├── frontend/                React SPA + Playwright e2e
 │   └── src/
 │       ├── api/             Axios client + DTOs
-│       ├── components/      Shells (AppShell, WarehouseFloorShell) + UI
-│       ├── features/        Domain UI modules
-│       ├── hooks/           Scanner, density, concurrent search, warehouse gate
-│       ├── offline/         IDB mutation queue + query persist
-│       ├── pages/           Route screens
-│       ├── stores/          Zustand (session, grid columns, density, …)
+│       ├── components/      Shells + UI + layout (`navConfig.ts`, `Sidebar.tsx`)
+│       ├── features/        Domain UI (`support/` tours + copilot, fulfillment, …)
+│       ├── hooks/           Scanner, density, media query, concurrent search
+│       ├── offline/         IDB mutation queue + PIN vault + query persist
+│       ├── pages/           Route screens (`products/ProductMobileCards`)
+│       ├── stores/          Zustand (session, grid, prefs/tour, scanner lock, …)
 │       └── styles/          Design tokens
 ├── ops/
 │   ├── api-gateway/nginx.conf   Edge rate limits + proxy
 │   ├── jwt/                     Dev RS256 PEMs
-│   ├── postgres/init/           app_owner / app_user roles
+│   ├── postgres/init/           app_owner / app_user roles + vector ext
+│   ├── terraform/               Infra workspaces (test/prod)
 │   └── demo_seed.sql            Demo Corp + Acme skeleton data
 ├── docker-compose.yml           db, pgbouncer, redis, minio, api, gateway, web, LGTM
 ├── deploy.bat                   Windows deploy / seed / status
-├── DATABASE_GUIDE.md            Schema narrative (RLS, partitions, archival)
+├── DATABASE_GUIDE.md            Schema narrative (RLS, partitions, archival, RAG)
 ├── USER_GUIDE.md                 Operator / migration guide
 └── DEVELOPER_ARCHITECTURE.md    (this file)
 ```
@@ -245,7 +249,7 @@ Vite UI:     Browser → :5173 Vite  → localhost:8080 (gateway) → backend
 | `B2B_CUSTOMER` | Showroom portal only |
 | `SUPPLIER` | Authenticated supplier portal |
 
-Frontend mirrors this in `useSessionStore.hasRole` and `ProtectedRoute` / Sidebar filters.
+Frontend mirrors this in `useSessionStore.hasRole`, `ProtectedRoute`, and nested `NAV_MATRIX` filters (`roles`, `hideForPicker`, `hideForViewer`) in `components/layout/navConfig.ts`.
 
 ### 5.3 DB roles
 
@@ -529,6 +533,17 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 
 **jOOQ is used when:** scan matching, cross-dock demand SQL, put-away suggestions, replenishment, genealogy, serial scan, heavy reports — not for ordinary CRUD.
 
+### 7.10 `support` — in-app copilot (RAG + GraphRAG)
+
+| Piece | Role |
+|-------|------|
+| `SupportChatService` | Role-aware chat; retrieves chunks by embedding + audience |
+| Knowledge repos | Back `support_knowledge_chunks` / `_nodes` / `_edges` (V089–V090) |
+| API | `POST /api/v1/support/chat` (authenticated) |
+| Frontend | `SupportAssistantWidget` FAB (`support-assistant-fab`) + `TourOrchestrator` |
+
+Chunks are **global** (no tenant RLS). Never store customer PII or tenant ledger data in the knowledge base.
+
 ---
 
 ## 8. Frontend structure
@@ -557,11 +572,28 @@ Floor:      /fulfillment, cycle-counts, manufacturing/terminal, returns/receive,
 Floor home: exclusive PICKER users land on /fulfillment
 ```
 
-Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/import`, `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings`, `/settings/fintech` (OWNER).
+Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/import` (not in sidebar — Products **Import** button), `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings` (Admin → Organization), `/settings/fintech` (OWNER).
 
 **Do not** wrap floor routes in `AppShell` — that regresses glove-friendly hit targets and dual-surface design.
 
-### 8.3 State split (important)
+### 8.3 Nested sidebar (`NAV_MATRIX`)
+
+Config: `frontend/src/components/layout/navConfig.ts`  
+UI: `Sidebar.tsx` (expand/collapse categories; mobile drawer ≤1023px).
+
+| Category | Parent icon | Leaf examples |
+|----------|-------------|---------------|
+| *(solo)* | LayoutDashboard | Dashboard |
+| Inbound | DownloadCloud | PO `FileSpreadsheet`, Suppliers `Factory`, Returns |
+| Outbound | UploadCloud | SO `ShoppingCart`, Customers, Invoices, Fulfillment |
+| Inventory | Package | Products `Layers`, Replenishments, Cycle counts, Exceptions, Lot Trace |
+| Manufacturing | Component | BOMs, Production Orders |
+| Field | MapPin | Issue Supplies, Technician Truck |
+| Admin | Settings | Reports, RTLS, Organization (`/settings`) |
+
+Icons must stay unique across parent + leaves. Tour anchors (`tourAnchor`) live on key leaves (e.g. `nav-products`). E2E helpers: `e2e/fixtures/nav.ts` (`expandNavCategory`, `clickNavLink`).
+
+### 8.4 State split (important)
 
 ```
 ┌────────────────────┐     ┌─────────────────────────────┐
@@ -571,6 +603,8 @@ Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders
 │ - scan buffer      │     │ - invalidate after mutate   │
 │ - offline quarantine│    │ - offlineFirst networkMode  │
 │ - UI density/grid  │     └─────────────────────────────┘
+│ - tour machine     │
+│ - scanner PIN lock │
 └────────────────────┘
          │
          ▼
@@ -586,31 +620,39 @@ Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders
 | `useScanBufferStore` | HID buffer / last scan |
 | `useWarehouseUXStore` | 5s mis-scan undo |
 | `useOfflineStore` / `useSyncConflictStore` | Offline failures / conflict toasts |
-| `usePreferencesStore` / `useGridColumnStore` / `useRailStore` | UX chrome |
+| `usePreferencesStore` | Density + **tour machine** (`activeTourId`, `currentTourStep`, `isTourMovingRoutes`, `targetRoute`, `transitionToSubpage` / `clearTour`) |
+| `useGridColumnStore` | Per-`gridId` visibility / pin / order (`setColumnVisibilityMap` for Show all / Ops only) |
+| `useRailStore` | Sidebar open/collapsed chrome |
+| `useScannerLockStore` | Floor PIN hydrate / lock / `tryUnlock` / wipe |
+| `useCryptoMemoryKeyStore` | Volatile AES key (RAM only) after PIN unlock |
+| `usePrintStore` | Workstation print targets (when used) |
 | `useVariantCacheStore` | SKU → lot-tracking for GS1 UX |
 
-### 8.4 Pages (route → purpose)
+PIN material: `offline/pinVault` + IndexedDB verifier. E2E hook: `window.__INVSYS_SCANNER_LOCK__` / `__INVSYS_PREFERENCES__`.
+
+### 8.5 Pages (route → purpose)
 
 | Page | Purpose |
 |------|---------|
 | `LoginPage` / `SignupPage` / `InvitePage` | Auth & onboarding |
 | `DashboardPage` | KPIs, work queue, ledger, conflicts |
-| `ProductsPage` | Virtualized catalog (`useConcurrentSearch` + `VirtualizedTable`) |
+| `ProductsPage` | Virtualized catalog + Import dialog + responsive cards |
 | `FulfillmentPage` | Surface B scanner hub (`WarehouseFloorShell`) |
-| `PurchaseOrdersPage` / `SalesOrdersPage` / `InvoicesPage` | Office order ops |
+| `InboundReceivePage` | Floor PO → item → qty → bin putaway |
+| `PurchaseOrdersPage` / `SalesOrdersPage` / `InvoicesPage` | Office order ops (+ tour anchors) |
 | `CustomersPage` / `SuppliersPage` | Master data |
 | `ExceptionsPage` | Resolve Skip & Flag |
 | `ManufacturingBomsPage` / `ManufacturingOrdersPage` / `ProductionTerminalPage` | Manufacturing |
 | `ReturnsPage` / `ReturnsReceivePage` | RMA office + floor |
 | `IssueSuppliesPage` / `TechnicianTruckPage` | Internal + field |
 | `LotTracePage` | Genealogy |
-| `ImportPage` | CSV / legacy ingest |
+| `ImportPage` | CSV / legacy ingest route (also embedded on Products) |
 | `ReportsPage` | Analytics charts |
 | `SettingsPage` / `BillingSettingsPage` / `FintechSettingsPage` | Admin |
 | `showroom/*` | B2B portal |
 | `SupplierPortalPage` | Public supplier PO |
 
-### 8.5 Features modules
+### 8.6 Features modules
 
 | Feature | Purpose |
 |---------|---------|
@@ -619,15 +661,41 @@ Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders
 | `fulfillment/QuarantineReview` / `ReplenishmentQueue` | Floor side panels |
 | `inventory/LedgerHistoryTable` | Dashboard reverse UX |
 | `offline/SyncConflictsPanel` | Office conflict resolution |
-| `ingestion/ImportWizard` | Import UX |
+| `ingestion/ImportWizard` | Import UX (Products dialog + `/import`) |
 | `compliance/LotTraceView` | Genealogy UI |
+| `support/TourOrchestrator` | Cross-route driver.js resume |
+| `support/tourSteps` | `office` / `floor` / `receiving-to-allocation` |
+| `support/OnboardingTourHost` | Post-login prompt |
+| `support/SupportAssistantWidget` | Copilot FAB |
 | `settings/*` | Integrations, carriers, accounting, warehouse map |
 
-### 8.6 Design system (`components/ui`)
+### 8.7 Design system & products grid
 
-Buttons (`Button`, `BigButton`), forms (`Input`, `Select`), `Card`, `Modal`/`AlertDialog`, enterprise `Table` + **`VirtualizedTable`** (TanStack Virtual, sticky/pinned columns, density `estimateSize` 32/44/64, GPU `virtual-row-layer`), drawers, density toolbar, `ColumnVisibilityMenu` (atomic Zustand selectors), `ScanFlashOverlay`, `UndoToast`, media capture components. Theming via `data-theme=office|warehouse` and `data-density`.
+Buttons (`Button`, `BigButton`), forms (`Input`, `Select`), `Card`, `Modal`/`AlertDialog`, enterprise `Table` + **`VirtualizedTable`** (TanStack Virtual, sticky/pinned columns, density `estimateSize` 32/44/64, non-sticky `flexGrow` only — never inflate pinned Name into a canyon), drawers, density toolbar, `ColumnVisibilityMenu` (**Show all** / **Ops only** presets when `opsOnlyColumnIds` set), `ScanFlashOverlay`, `UndoToast`, media capture. Theming via `data-theme=office|warehouse` and `data-density`.
 
-**High-density grids:** bind search inputs with `useConcurrentSearch` (`useDeferredValue` + `useTransition`) so typing stays urgent while query keys / client filters defer. Column layout lives in `useGridColumnStore` keyed by `gridId` (persisted).
+**Products (`gridId="products"`):**
+
+| Concern | Implementation |
+|---------|----------------|
+| Ops preset ids | `sku,name,barcode,onHand,allocated,atp,reorder,uom,channelSync` |
+| Sticky freeze | Default pin `sku` + `name` (+ non-hideable `thumb`) |
+| Desktop | Sticky left identifiers; H-scroll for overflow |
+| Tablet (768–1023) | Shed compliance columns (`TABLET_SHED_COLUMN_IDS`); `minRowPx ≥ 48` |
+| Mobile (<768) | Unmount table → `ProductMobileCards` |
+| Density | Compact 32 / Cozy 44 / Spacious 64 via `usePreferencesStore` |
+| Search | `useConcurrentSearch` (`useDeferredValue` + `useTransition`) |
+
+E2E: `e2e/products-responsive-grid-matrix.spec.ts`, journeys 37/39/40.
+
+### 8.8 Multi-page tours (driver.js)
+
+| TourId | Routes | Notes |
+|--------|--------|-------|
+| `office` | SO / products / density / columns | Single-app-shell highlights |
+| `floor` | fulfillment / inbound | Scanner shell |
+| `receiving-to-allocation` | PO → `/inbound/receive` → SO (6 steps) | `transitionToSubpage` destroys driver, sets `isTourMovingRoutes` + `targetRoute`, navigates; `TourOrchestrator` resumes on `requestAnimationFrame` after pathname match |
+
+Progress text: `Step {{current}} of {{total}}`. Final done: **Finish Onboarding** → `clearTour()`.
 
 ---
 
@@ -652,7 +720,7 @@ Buttons (`Button`, `BigButton`), forms (`Input`, `Select`), `Card`, `Modal`/`Ale
     │ GET /api/v1/auth/me → applyMeProfile
     │ load warehouses; WarehouseContextGate (SSID/geo)
     ▼
-[Sidebar] filtered by hasRole / hideForPicker
+[Sidebar] NAV_MATRIX categories; filtered by hasRole / hideForPicker / hideForViewer
 ```
 
 ### 9.2 Purchase order → receive (standard)
@@ -894,6 +962,8 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V086` | `archive_purge_audit_logs` SECURITY DEFINER |
 | `V087` | RANGE partition `inventory_ledger` + `audit_log` by `created_at`; `ensure_monthly_partitions` |
 | `V088` | Ensure ~12 months back + 6 months forward partitions (idempotent) |
+| `V089` | `support_knowledge_chunks` + HNSW pgvector(384) — global RAG corpus |
+| `V090` | `support_knowledge_nodes` / `support_knowledge_edges` — GraphRAG |
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 
@@ -980,7 +1050,9 @@ Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + 
 | `AuditLogArchivalWorkerIT` | LocalStack S3 + Awaitility cron + Toxiproxy chaos (no silent purge) |
 | `PartitionedTelemetryIT` | Ledger/audit partition presence + immutability |
 
-Frontend grid/scroll journeys: `18-grid-customization`, `37-column-visibility-menu`, `39-products-table-dashboard-scroll`, `40-products-customers-layout`, `sticky-table-headers`, `surface-a-enterprise-grid`.
+Frontend grid/scroll journeys: `18-grid-customization`, `37-column-visibility-menu`, `39-products-table-dashboard-scroll`, `40-products-customers-layout`, `products-responsive-grid-matrix` (desktop H-scroll + tablet shed + mobile cards + Show all/Ops chaos), `sticky-table-headers`, `surface-a-enterprise-grid`.
+
+Tour / nav personas: `support-multipage-tour.spec.ts` (receiving-to-allocation step counters), `tests/e2e/admin.spec.ts` / `picker.spec.ts` (grouped rail expand), `e2e/fixtures/nav.ts`.
 
 ---
 
@@ -1044,6 +1116,9 @@ Env template: `.env.example`.
 - Calling external APIs inside the request transaction (use outbox)  
 - Wrapping Surface B routes in office `AppShell`  
 - Absolute `translateY` row virtualization that breaks sticky table headers (use spacer rows)  
+- Growing pinned identifier columns to fill the viewport (creates a sticky “canyon”; grow non-sticky cols only)  
+- Putting Import back on the office rail (it lives on Products / `/import`)  
+- Storing tenant secrets in `support_knowledge_*` (global, no RLS)  
 - Ad-hoc `DELETE FROM audit_log` (use archival worker + security-definer purge)
 
 ---

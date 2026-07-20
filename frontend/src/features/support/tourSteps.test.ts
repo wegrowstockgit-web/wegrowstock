@@ -30,14 +30,25 @@ describe('tourSteps', () => {
     expect(text).toMatch(/inbound|putaway/i);
   });
 
-  it('receiving-to-allocation is multi-route with empathy copy', () => {
+  it('receiving-to-allocation is a 6-step multi-route journey', () => {
     const steps = getWorkflowTour('receiving-to-allocation');
+    expect(steps).toHaveLength(6);
     expect(steps.map((s) => s.route)).toEqual([
       '/purchase-orders',
+      '/purchase-orders',
+      '/inbound/receive',
       '/inbound/receive',
       '/sales-orders',
       '/sales-orders',
     ]);
-    expect(steps[1].description).toMatch(/unlocks inventory for the B2B portal/i);
+    expect(steps[1].transition).toEqual({
+      route: '/inbound/receive',
+      nextStep: 2,
+      href: '/inbound/receive?po=PO-2026-00001',
+    });
+    expect(steps[3].transition?.route).toBe('/sales-orders');
+    expect(steps[5].doneBtnText).toMatch(/Finish Onboarding/i);
+    expect(steps[0].description).toMatch(/dock ticket|inbound|purchase/i);
   });
 });
+

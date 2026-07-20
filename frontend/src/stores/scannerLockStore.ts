@@ -144,6 +144,7 @@ export function installScannerLockTestHook(): void {
       __INVSYS_SCANNER_LOCK__?: {
         lockDevice: () => void;
         setupPin: (pin: string) => Promise<void>;
+        tryUnlock: (pin: string) => Promise<'ok' | 'bad' | 'wiped'>;
         getState: () => {
           hydrated: boolean;
           isLocked: boolean;
@@ -155,6 +156,7 @@ export function installScannerLockTestHook(): void {
   ).__INVSYS_SCANNER_LOCK__ = {
     lockDevice: () => useScannerLockStore.getState().lockDevice(),
     setupPin: (pin: string) => useScannerLockStore.getState().setupPin(pin),
+    tryUnlock: (pin: string) => useScannerLockStore.getState().tryUnlock(pin),
     getState: () => {
       const s = useScannerLockStore.getState();
       return {

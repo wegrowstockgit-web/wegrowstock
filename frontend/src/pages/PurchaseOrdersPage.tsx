@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ClipboardList, FileUp, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -704,6 +705,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
 }
 
 export function PurchaseOrdersPage() {
+  const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const canReceive = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER');
@@ -717,25 +719,40 @@ export function PurchaseOrdersPage() {
   const peekPo = data?.find((po) => po.id === peekPoId) ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
         <div>
           <h1 className="text-2xl font-bold text-text">Purchase Orders</h1>
           <p className="mt-1 text-sm text-text-muted">Inbound supply chain</p>
         </div>
-        {canCreate && (
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus className="h-4 w-4" />
-            New PO
-          </Button>
-        )}
+        <div className="flex shrink-0 flex-wrap items-center gap-2" data-tour="tour-po-receive-cta">
+          {canReceive && (
+            <Button
+              variant="secondary"
+              onClick={() => navigate('/inbound/receive?po=PO-2026-00001')}
+              data-testid="tour-po-floor-receive"
+            >
+              Floor receive
+            </Button>
+          )}
+          {canCreate && (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New PO
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="shrink-0 px-6 pt-4">
         <DataListToolbar />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
+      <div
+        className="min-h-0 min-w-0 flex-1 overflow-auto"
+        data-list-scrollport="true"
+        data-tour="tour-po-grid"
+      >
         <ListPageState
           isLoading={isLoading}
           isError={isError}

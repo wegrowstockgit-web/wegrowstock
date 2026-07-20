@@ -1,10 +1,13 @@
 import { completeScannerPin, expect, test } from '../../e2e/fixtures/roleFixture';
+import { clickNavLink, expandNavCategory } from '../../e2e/fixtures/nav';
 import { contextForRole } from '../../e2e/journeys/helpers';
 
 const DEMO_VIEWER_USER_ID = 'a0000000-0000-4000-8000-000000000205';
 
 /**
  * Desktop-Admin persona — ADMIN on 1920×1080 office chrome.
+ * Office rail is grouped (Inbound / Outbound / Inventory / …); deep-links use
+ * `page.goto`. Prefer `clickNavLink` from `e2e/fixtures/nav` when clicking the rail.
  */
 test.describe('Admin security & settings suite', () => {
   test.setTimeout(180_000);
@@ -17,6 +20,18 @@ test.describe('Admin security & settings suite', () => {
 
     const admin = await contextForRole(browser, 'admin');
     try {
+      await admin.page.goto('/dashboard');
+      await completeScannerPin(admin.page);
+      await expect(admin.page.getByTestId('icon-rail')).toBeVisible({ timeout: 20_000 });
+
+      // Grouped sidebar: expand parents before nested leaf clicks.
+      await expandNavCategory(admin.page, 'Inbound');
+      await expandNavCategory(admin.page, 'Inventory');
+      await clickNavLink(admin.page, 'Purchase Orders');
+      await expect(admin.page).toHaveURL(/\/purchase-orders/, { timeout: 15_000 });
+      await clickNavLink(admin.page, 'Products');
+      await expect(admin.page).toHaveURL(/\/products/, { timeout: 15_000 });
+
       await admin.page.goto('/settings/operations');
       // Full navigations wipe the in-memory AES key — re-unlock the shift PIN gate.
       await completeScannerPin(admin.page);

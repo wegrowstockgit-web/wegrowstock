@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Search, Settings2 } from 'lucide-react';
+import { FileUp, Package, Plus, Search, Settings2, X } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PaginatedResponse, ProductVariant, VariantUomConversion } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -15,13 +15,41 @@ import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { MediaPicker } from '@/components/ui/MediaPicker';
 import { ProductMediaDropZone } from '@/components/ui/ProductMediaDropZone';
 import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
+import { ImportWizard } from '@/features/ingestion/ImportWizard';
 import {
   VirtualizedTable,
   type VirtualizedColumnDef,
 } from '@/components/ui/primitives/VirtualizedTable';
 import { VariantThumb } from '@/components/ui/VariantThumb';
+import { ProductMobileCards } from '@/pages/products/ProductMobileCards';
 import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSessionStore } from '@/stores/session';
+
+/** Compliance / master-data tracks shed on tablet (768–1023) so ops pillars stay readable. */
+const TABLET_SHED_COLUMN_IDS = new Set([
+  'hsTariffCode',
+  'countryOfOrigin',
+  'abcClassification',
+  'isFragile',
+  'storageTempZone',
+  'isHazmat',
+  'palletTiHi',
+  'lifecycleStatus',
+]);
+
+/** Columns menu "Ops only" preset — daily WMS pillars (plus optional UoM / sync). */
+const PRODUCTS_OPS_COLUMN_IDS = [
+  'sku',
+  'name',
+  'barcode',
+  'onHand',
+  'allocated',
+  'atp',
+  'reorder',
+  'uom',
+  'channelSync',
+] as const;
 
 function qty(value: number | null | undefined): string {
   if (value == null || Number.isNaN(Number(value))) return '—';
@@ -409,6 +437,8 @@ function ExternalSyncToggle({
 export function ProductsPage() {
   const queryClient = useQueryClient();
   const canManage = useSessionStore((s) => s.canManageInventory());
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const isTablet = useMediaQuery('(min-width: 768px) and (max-width: 1023px)');
   const {
     inputValue: searchInput,
     deferredValue: search,
@@ -418,9 +448,18 @@ export function ProductsPage() {
   } = useConcurrentSearch('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const importDialogRef = useRef<HTMLDialogElement>(null);
   const [uomVariant, setUomVariant] = useState<ProductVariant | null>(null);
   const [peekProductId, setPeekProductId] = useState<string | null>(null);
   const [peekTab, setPeekTab] = useState<'details' | 'ledger'>('details');
+
+  useEffect(() => {
+    const dialog = importDialogRef.current;
+    if (!dialog) return;
+    if (importOpen && !dialog.open) dialog.showModal();
+    else if (!importOpen && dialog.open) dialog.close();
+  }, [importOpen]);
 
   const {
     data,
@@ -518,17 +557,20 @@ export function ProductsPage() {
         id: 'sku',
         header: 'SKU',
         width: 128,
+        maxWidth: 148,
         sortable: true,
         sortValue: (product) => product.sku,
         cell: (product) => (
-          <span className="truncate font-mono text-text">{product.sku}</span>
+          <span className="block truncate font-mono text-text" title={product.sku}>
+            {product.sku}
+          </span>
         ),
       },
       {
         id: 'name',
         header: 'Name',
-        width: 220,
-        flexGrow: true,
+        width: 200,
+        maxWidth: 280,
         sortable: true,
         sortValue: (product) => product.name,
         cell: (product) => (
@@ -541,10 +583,14 @@ export function ProductsPage() {
         id: 'barcode',
         header: 'Barcode',
         width: 120,
+        maxWidth: 160,
+        flexGrow: true,
         sortable: true,
         sortValue: (product) => product.barcode ?? '',
         cell: (product) => (
-          <span className="truncate font-mono text-text-muted">{product.barcode ?? '—'}</span>
+          <span className="block truncate font-mono text-text-muted" title={product.barcode ?? undefined}>
+            {product.barcode ?? '—'}
+          </span>
         ),
       },
       {
@@ -623,31 +669,42 @@ export function ProductsPage() {
         id: 'dims',
         header: 'L×W×H',
         width: 120,
+        maxWidth: 140,
         defaultHidden: true,
-        cell: (product) => (
-          <span className="font-mono text-xs text-text-muted">
-            {product.length != null && product.width != null && product.height != null
+        cell: (product) => {
+          const label =
+            product.length != null && product.width != null && product.height != null
               ? `${product.length}×${product.width}×${product.height} ${product.dimUnit ?? ''}`.trim()
-              : '—'}
-          </span>
-        ),
+              : '—';
+          return (
+            <span className="block truncate font-mono text-xs text-text-muted" title={label}>
+              {label}
+            </span>
+          );
+        },
       },
       {
         id: 'hsTariffCode',
         header: 'HS code',
         width: 100,
+        maxWidth: 120,
         defaultHidden: true,
         cell: (product) => (
-          <span className="font-mono text-xs text-text-muted">{product.hsTariffCode ?? '—'}</span>
+          <span className="block truncate font-mono text-xs text-text-muted" title={product.hsTariffCode ?? undefined}>
+            {product.hsTariffCode ?? '—'}
+          </span>
         ),
       },
       {
         id: 'countryOfOrigin',
         header: 'Origin',
         width: 72,
+        maxWidth: 80,
         defaultHidden: true,
         cell: (product) => (
-          <span className="font-mono text-xs text-text-muted">{product.countryOfOrigin ?? '—'}</span>
+          <span className="block truncate font-mono text-xs text-text-muted">
+            {product.countryOfOrigin ?? '—'}
+          </span>
         ),
       },
       {
@@ -774,6 +831,14 @@ export function ProductsPage() {
     [columns],
   );
 
+  /** Tablet sheds compliance/master columns so SKU/Name/OH/Alloc/ATP stay readable. */
+  const tableColumns = useMemo(() => {
+    if (!isTablet) return columns;
+    return columns.filter((c) => !TABLET_SHED_COLUMN_IDS.has(c.id));
+  }, [columns, isTablet]);
+
+  const layoutMode = isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop';
+
   if (isLoading) {
     return (
       <div className="p-6">
@@ -796,7 +861,7 @@ export function ProductsPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-var(--header-height))] max-h-[calc(100dvh-var(--header-height))] min-h-0 flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-var(--header-height))] max-h-[calc(100dvh-var(--header-height))] min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="mb-0 flex shrink-0 flex-col gap-4 border-b border-border/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Products</h1>
@@ -804,8 +869,8 @@ export function ProductsPage() {
             {displayed.length} variants loaded
           </p>
         </div>
-        <div className="flex gap-3">
-          <div className="relative w-full sm:w-64">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <div className="relative w-full min-w-0 sm:w-64">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <Input
               value={searchInput}
@@ -817,16 +882,31 @@ export function ProductsPage() {
             />
           </div>
           {canManage && (
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add product
-            </Button>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setImportOpen(true)}
+                data-testid="products-import-button"
+                aria-label="Import catalog"
+              >
+                <FileUp className="h-4 w-4" />
+                Import
+              </Button>
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add product
+              </Button>
+            </div>
           )}
         </div>
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar columnItems={columnItems} gridId="products">
+        <DataListToolbar
+          columnItems={columnItems}
+          gridId="products"
+          opsOnlyColumnIds={PRODUCTS_OPS_COLUMN_IDS}
+        >
           <SavedFilterViews
             className="mb-0"
             storageKey="products-filters"
@@ -844,36 +924,53 @@ export function ProductsPage() {
         </DataListToolbar>
       </div>
 
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-        <VirtualizedTable
-          gridId="products"
-          columns={columns}
-          rows={displayed}
-          getRowId={(row) => row.id}
-          selectedRowId={peekProductId}
-          onRowClick={(row) => {
-            setPeekTab('details');
-            setPeekProductId(row.id);
-          }}
-          onEndReached={loadMore}
-          empty={
-            <div className="p-6">
-              <EmptyState
-                icon={Package}
-                title="No products yet"
-                description="Add your first product to start receiving and selling stock."
-                action={
-                  canManage ? (
-                    <Button onClick={() => setModalOpen(true)}>
-                      <Plus className="h-4 w-4" />
-                      Add your first product
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </div>
-          }
-        />
+      <div
+        className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden"
+        data-testid="products-grid-shell"
+        data-layout={layoutMode}
+      >
+        {isMobile ? (
+          <ProductMobileCards
+            rows={displayed}
+            selectedRowId={peekProductId}
+            onRowClick={(row) => {
+              setPeekTab('details');
+              setPeekProductId(row.id);
+            }}
+            onEndReached={loadMore}
+          />
+        ) : (
+          <VirtualizedTable
+            gridId="products"
+            columns={tableColumns}
+            rows={displayed}
+            getRowId={(row) => row.id}
+            selectedRowId={peekProductId}
+            minRowPx={isTablet ? 48 : undefined}
+            onRowClick={(row) => {
+              setPeekTab('details');
+              setPeekProductId(row.id);
+            }}
+            onEndReached={loadMore}
+            empty={
+              <div className="p-6">
+                <EmptyState
+                  icon={Package}
+                  title="No products yet"
+                  description="Add your first product to start receiving and selling stock."
+                  action={
+                    canManage ? (
+                      <Button onClick={() => setModalOpen(true)}>
+                        <Plus className="h-4 w-4" />
+                        Add your first product
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </div>
+            }
+          />
+        )}
       </div>
 
       {isFetchingNextPage && (
@@ -884,6 +981,36 @@ export function ProductsPage() {
 
       <AddProductModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <UomEditModal variant={uomVariant} open={uomVariant !== null} onClose={() => setUomVariant(null)} />
+
+      <dialog
+        ref={importDialogRef}
+        onClose={() => setImportOpen(false)}
+        onClick={(e) => {
+          if (e.target === importDialogRef.current) setImportOpen(false);
+        }}
+        className="m-auto w-[min(100vw-1rem,56rem)] max-h-[min(92dvh,900px)] overflow-hidden rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]"
+        data-testid="products-import-dialog"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-text">Import catalog</h2>
+            <p className="mt-0.5 text-sm text-text-muted">
+              Upload CSV to create or update product variants.
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Close import"
+            onClick={() => setImportOpen(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="max-h-[calc(min(92dvh,900px)-4.5rem)] overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+          {importOpen ? <ImportWizard key="products-import" /> : null}
+        </div>
+      </dialog>
 
       <RightPeekDrawer
         open={!!peekProductId}

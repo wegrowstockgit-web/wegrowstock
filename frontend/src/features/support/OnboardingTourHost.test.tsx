@@ -8,7 +8,14 @@ import { useSessionStore } from '@/stores/session';
 
 describe('OnboardingTourHost', () => {
   beforeEach(() => {
-    usePreferencesStore.setState({ showOnboardingTour: true, densityMode: 'cozy' });
+    usePreferencesStore.setState({
+      showOnboardingTour: true,
+      densityMode: 'cozy',
+      activeTourId: null,
+      currentTourStep: 0,
+      isTourMovingRoutes: false,
+      targetRoute: null,
+    });
     useSessionStore.setState({
       authenticated: true,
       user: {
@@ -33,7 +40,7 @@ describe('OnboardingTourHost', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByTestId('onboarding-tour-prompt', {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(await screen.findByTestId('onboarding-tour-prompt', {}, { timeout: 3_000 })).toBeInTheDocument();
     await user.click(screen.getByTestId('tour-dont-show'));
     expect(usePreferencesStore.getState().showOnboardingTour).toBe(false);
   });

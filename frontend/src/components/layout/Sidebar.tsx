@@ -1,28 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  AlertTriangle,
   Boxes,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
-  ClipboardList,
-  Factory,
-  FileBarChart,
-  FileText,
-  FileUp,
-  GitBranch,
-  LayoutDashboard,
-  Layers,
-  Package,
-  PackageCheck,
-  PackageOpen,
   Pin,
-  RotateCcw,
-  ScanLine,
-  Settings,
-  ShoppingCart,
-  Truck,
-  Users,
+  UserCircle,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,130 +14,94 @@ import { useSessionStore } from '@/stores/session';
 import { useRailStore } from '@/stores/rail';
 import { useCoarsePointer } from '@/hooks/useCoarsePointer';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import {
+  NAV_MATRIX,
+  type NavCategoryConfig,
+  type NavLeafConfig,
+} from './navConfig';
 
-type NavItem = {
-  to: string;
-  label: string;
-  icon: LucideIcon;
-  roles?: string[];
-  hideForPicker?: boolean;
-  hideForViewer?: boolean;
-};
+function leafVisible(
+  item: NavLeafConfig,
+  hasRole: (...roles: string[]) => boolean,
+  isPickerOnly: boolean,
+  isViewerOnly: boolean,
+): boolean {
+  if (item.roles && !hasRole(...item.roles)) return false;
+  if (isPickerOnly && item.hideForPicker) return false;
+  if (isViewerOnly && item.hideForViewer) return false;
+  return true;
+}
 
-const navItems: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/products', label: 'Products', icon: Package },
-  {
-    to: '/fulfillment',
-    label: 'Fulfillment',
-    icon: ScanLine,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
-    hideForViewer: true,
-  },
-  {
-    to: '/exceptions',
-    label: 'Exceptions',
-    icon: AlertTriangle,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  {
-    to: '/import',
-    label: 'Import',
-    icon: FileUp,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  {
-    to: '/cycle-counts',
-    label: 'Cycle counts',
-    icon: ClipboardList,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
-    hideForViewer: true,
-  },
-  {
-    to: '/rtls',
-    label: 'RTLS map',
-    icon: ScanLine,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  {
-    to: '/issue-supplies',
-    label: 'Issue Supplies',
-    icon: PackageCheck,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
-    hideForViewer: true,
-  },
-  {
-    to: '/replenishments',
-    label: 'Replenishments',
-    icon: PackageOpen,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
-    hideForViewer: true,
-  },
-  {
-    to: '/field/truck',
-    label: 'Technician Truck',
-    icon: Truck,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
-    hideForViewer: true,
-  },
-  {
-    to: '/compliance/lot-trace',
-    label: 'Lot Trace',
-    icon: GitBranch,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER'],
-  },
-  {
-    to: '/manufacturing/boms',
-    label: 'Manufacturing',
-    icon: Layers,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  {
-    to: '/manufacturing/orders',
-    label: 'Production Orders',
-    icon: Factory,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  {
-    to: '/returns',
-    label: 'Returns',
-    icon: RotateCcw,
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  { to: '/purchase-orders', label: 'Purchase Orders', icon: ClipboardList, hideForPicker: true },
-  { to: '/sales-orders', label: 'Sales Orders', icon: ShoppingCart, hideForPicker: true },
-  { to: '/invoices', label: 'Invoices', icon: FileText, hideForPicker: true },
-  {
-    to: '/reports',
-    label: 'Reports',
-    icon: FileBarChart,
-    roles: ['OWNER', 'ADMIN'],
-    hideForPicker: true,
-    hideForViewer: true,
-  },
-  { to: '/customers', label: 'Customers', icon: Users, hideForPicker: true },
-  { to: '/suppliers', label: 'Suppliers', icon: Truck, hideForPicker: true },
-];
+function pathInGroup(pathname: string, items: NavLeafConfig[]): boolean {
+  return items.some(
+    (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
+  );
+}
 
 const railTransition =
   'transition-[width,padding,gap,transform] duration-[var(--rail-duration)] ease-[var(--rail-ease)]';
 
+function LabelSpan({
+  visible,
+  children,
+  className,
+}: {
+  visible: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'truncate text-sm font-medium',
+        'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
+        visible
+          ? 'max-w-[10rem] translate-x-0 opacity-100 delay-75'
+          : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SoloLink({
+  to,
+  label,
+  icon: Icon,
+  labelsVisible,
+  coarsePointer,
+  showOverlay,
+  linkClass,
+  testId,
+}: {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  labelsVisible: boolean;
+  coarsePointer: boolean;
+  showOverlay: boolean;
+  linkClass: (args: { isActive: boolean }) => string;
+  testId?: string;
+}) {
+  return (
+    <NavLink
+      to={to}
+      title={coarsePointer || showOverlay ? undefined : label}
+      aria-label={label}
+      className={linkClass}
+      data-testid={testId}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <LabelSpan visible={labelsVisible}>{label}</LabelSpan>
+    </NavLink>
+  );
+}
+
 /**
- * Expandable icon-rail: hover/focus peeks labels on fine pointers; pin locks
- * expanded width. Below 768px this becomes an overlay drawer. Ctrl/⌘K remains
- * the primary route switcher.
+ * Expandable icon-rail driven by {@link NAV_MATRIX}.
+ * Mobile (≤1023px): overlay drawer. Desktop: hover peek + pin.
  */
 export function Sidebar() {
   const location = useLocation();
@@ -169,15 +117,44 @@ export function Sidebar() {
   const setScrollFold = useRailStore((s) => s.setScrollFold);
 
   const coarsePointer = useCoarsePointer();
-  // iPad / tablet footprints (incl. portrait iPad) collapse the rail into a tap drawer.
   const isTabletOrBelow = useMediaQuery('(max-width: 1023px)');
 
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  /** After unpin, ignore hover/focus until the pointer leaves so collapse feels immediate. */
   const [peekLocked, setPeekLocked] = useState(false);
+  /** Localized open/closed state per category id. */
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const navRef = useRef<HTMLElement>(null);
+  const pickerOnly = isPickerOnly();
+  const viewerOnly = isViewerOnly();
+
+  const visibleCategories = useMemo(() => {
+    return NAV_MATRIX.categories
+      .map(
+        (group): NavCategoryConfig => ({
+          ...group,
+          items: group.items.filter((item) =>
+            leafVisible(item, hasRole, pickerOnly, viewerOnly),
+          ),
+        }),
+      )
+      .filter((group) => group.items.length > 0);
+  }, [hasRole, pickerOnly, viewerOnly]);
+
+  const activeGroupId = useMemo(() => {
+    for (const group of visibleCategories) {
+      if (pathInGroup(location.pathname, group.items)) return group.id;
+    }
+    return null;
+  }, [location.pathname, visibleCategories]);
+
+  useEffect(() => {
+    if (!activeGroupId) return;
+    setOpenGroups((prev) =>
+      prev[activeGroupId] ? prev : { ...prev, [activeGroupId]: true },
+    );
+  }, [activeGroupId]);
 
   const updateScrollFold = useCallback(() => {
     const el = navRef.current;
@@ -201,19 +178,16 @@ export function Sidebar() {
       el.removeEventListener('scroll', updateScrollFold);
       ro?.disconnect();
     };
-  }, [updateScrollFold, mobileOpen, pinned]);
+  }, [updateScrollFold, mobileOpen, pinned, openGroups]);
 
   useEffect(() => {
-    if (!isTabletOrBelow) {
-      setMobileOpen(false);
-    }
+    if (!isTabletOrBelow) setMobileOpen(false);
   }, [isTabletOrBelow, setMobileOpen]);
 
   useEffect(() => {
     if (isTabletOrBelow) setMobileOpen(false);
   }, [location.pathname, isTabletOrBelow, setMobileOpen]);
 
-  // Hover peek only on fine pointers / desktop; touch uses pin or drawer.
   const peeking = !isTabletOrBelow && !coarsePointer && !peekLocked && (hovered || focused);
   const expanded = isTabletOrBelow ? true : pinned || peeking;
 
@@ -222,18 +196,15 @@ export function Sidebar() {
       document.documentElement.style.setProperty('--rail-width', '0px');
       return;
     }
-    // Keep main content padding in sync with peek/pin width so the flyout
-    // cannot intercept clicks on page chrome (settings subnav, etc.).
     document.documentElement.style.setProperty(
       '--rail-width',
-      expanded ? 'var(--rail-width-expanded)' : 'var(--rail-width-collapsed)'
+      expanded ? 'var(--rail-width-expanded)' : 'var(--rail-width-collapsed)',
     );
   }, [expanded, isTabletOrBelow]);
 
   const handlePinToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-
     if (pinned) {
       setPinned(false);
       setPeekLocked(true);
@@ -242,17 +213,13 @@ export function Sidebar() {
       event.currentTarget.blur();
       return;
     }
-
     setPeekLocked(false);
     setPinned(true);
   };
 
-  const visibleItems = navItems.filter((item) => {
-    if (item.roles && !hasRole(...item.roles)) return false;
-    if (isPickerOnly() && item.hideForPicker) return false;
-    if (isViewerOnly() && item.hideForViewer) return false;
-    return true;
-  });
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -263,12 +230,25 @@ export function Sidebar() {
       expanded ? 'w-full px-3 gap-3' : 'w-11 justify-center px-0',
       isActive
         ? 'bg-accent-muted text-accent'
-        : 'text-text-muted hover:bg-surface-overlay hover:text-text'
+        : 'text-text-muted hover:bg-surface-overlay hover:text-text',
+    );
+
+  const childLinkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      'group relative flex min-h-10 shrink-0 items-center rounded-lg touch-target',
+      'transition-[background-color,color,transform] duration-150 ease-out',
+      'motion-safe:active:scale-[0.97]',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+      expanded || isTabletOrBelow ? 'w-full gap-2.5 px-3 pl-4' : 'w-11 justify-center px-0',
+      isActive
+        ? 'bg-accent-muted text-accent'
+        : 'text-text-muted hover:bg-surface-overlay hover:text-text',
     );
 
   const showOverlay = isTabletOrBelow;
   const railVisible = !showOverlay || mobileOpen;
   const hasOverflowMask = canScrollUp || canScrollDown;
+  const labelsVisible = expanded || showOverlay;
 
   return (
     <>
@@ -307,13 +287,13 @@ export function Sidebar() {
           showOverlay
             ? cn(
                 'w-[min(18rem,calc(100vw-2rem))] pointer-events-auto',
-                railVisible ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+                railVisible ? 'translate-x-0' : '-translate-x-full pointer-events-none',
               )
             : cn(
                 'pointer-events-none',
                 expanded ? 'w-[var(--rail-width-expanded)]' : 'w-[var(--rail-width-collapsed)]',
-                !pinned && expanded && 'z-50'
-              )
+                !pinned && expanded && 'z-50',
+              ),
         )}
       >
         <div
@@ -322,23 +302,21 @@ export function Sidebar() {
             'border border-border/80 bg-surface-raised/95 py-3 shadow-elevated backdrop-blur-md',
             'supports-[backdrop-filter]:bg-surface-raised/80',
             railTransition,
-            showOverlay || expanded
-              ? 'w-[calc(100%-0rem)] px-2'
-              : 'w-14 items-center px-0',
-            !showOverlay && expanded && 'w-[calc(var(--rail-width-expanded)-0.75rem)]'
+            showOverlay || expanded ? 'w-full px-2' : 'w-14 items-center px-0',
+            !showOverlay && expanded && 'w-[calc(var(--rail-width-expanded)-0.75rem)]',
           )}
         >
           <div
             className={cn(
               'relative mb-1 flex w-full items-center',
               railTransition,
-              expanded || showOverlay ? 'justify-between gap-2 px-1' : 'justify-center'
+              labelsVisible ? 'justify-between gap-2 px-1' : 'justify-center',
             )}
           >
             <div
               className={cn(
                 'flex min-w-0 items-center',
-                expanded || showOverlay ? 'gap-2.5' : 'justify-center'
+                labelsVisible ? 'gap-2.5' : 'justify-center',
               )}
             >
               <div
@@ -349,13 +327,13 @@ export function Sidebar() {
                 <Boxes className="h-4 w-4" />
               </div>
               <span
-                aria-hidden={!expanded && !showOverlay}
+                aria-hidden={!labelsVisible}
                 className={cn(
                   'truncate text-sm font-semibold tracking-tight text-text',
                   'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
-                  expanded || showOverlay
+                  labelsVisible
                     ? 'max-w-[9rem] translate-x-0 opacity-100 delay-75'
-                    : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0'
+                    : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0',
                 )}
               >
                 InventorySystem
@@ -375,20 +353,19 @@ export function Sidebar() {
                   'text-text-muted transition-[background-color,color,transform] duration-150 ease-out',
                   'hover:bg-surface-overlay hover:text-text motion-safe:active:scale-[0.96]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                  pinned && 'bg-accent-muted text-accent'
+                  pinned && 'bg-accent-muted text-accent',
                 )}
               >
                 <Pin
                   className={cn(
                     'h-3.5 w-3.5 transition-transform duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
-                    pinned ? 'rotate-0 fill-current' : 'rotate-45'
+                    pinned ? 'rotate-0 fill-current' : 'rotate-45',
                   )}
                 />
               </button>
             )}
           </div>
 
-          {/* Coarse pointer: expand labels via pin control in the icon stack (no hover peek). */}
           {!showOverlay && coarsePointer && !expanded && (
             <button
               type="button"
@@ -401,14 +378,14 @@ export function Sidebar() {
                 'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl touch-target',
                 'text-text-muted hover:bg-surface-overlay hover:text-text',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                'motion-safe:active:scale-[0.97]'
+                'motion-safe:active:scale-[0.97]',
               )}
             >
               <Pin className="h-3.5 w-3.5 rotate-45" />
             </button>
           )}
 
-          <div className="relative min-h-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
             {canScrollUp && (
               <div
                 className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-0.5"
@@ -429,83 +406,135 @@ export function Sidebar() {
             <nav
               ref={navRef}
               className={cn(
-                'flex h-full flex-col gap-0.5 overflow-y-auto overflow-x-hidden scrollbar-none',
+                'flex h-full min-w-0 flex-col gap-0.5 overflow-y-auto overflow-x-hidden scrollbar-none',
                 hasOverflowMask && 'rail-scroll-mask',
                 railTransition,
-                expanded || showOverlay ? 'items-stretch px-0' : 'items-center px-1'
+                labelsVisible ? 'items-stretch px-0' : 'items-center px-1',
               )}
               aria-label="Primary"
             >
-              {visibleItems.map(({ to, label, icon: Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  title={coarsePointer || showOverlay ? undefined : label}
-                  aria-label={label}
-                  className={linkClass}
-                  data-tour={
-                    to === '/sales-orders'
-                      ? 'nav-sales-orders'
-                      : to === '/products'
-                        ? 'nav-products'
-                        : to === '/purchase-orders'
-                          ? 'nav-purchase-orders'
-                          : undefined
-                  }
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span
-                    className={cn(
-                      'truncate text-sm font-medium',
-                      'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
-                      expanded || showOverlay
-                        ? 'max-w-[10rem] translate-x-0 opacity-100 delay-75'
-                        : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0'
-                    )}
-                  >
-                    {label}
-                  </span>
-                </NavLink>
+              {NAV_MATRIX.solos.map((solo) => (
+                <SoloLink
+                  key={solo.id}
+                  to={solo.to}
+                  label={solo.label}
+                  icon={solo.icon}
+                  labelsVisible={labelsVisible}
+                  coarsePointer={coarsePointer}
+                  showOverlay={showOverlay}
+                  linkClass={linkClass}
+                />
               ))}
+
+              {visibleCategories.map((group) => {
+                const GroupIcon = group.icon;
+                const isOpen = Boolean(openGroups[group.id]);
+                const groupActive = activeGroupId === group.id;
+
+                return (
+                  <div
+                    key={group.id}
+                    className="flex min-w-0 flex-col gap-0.5"
+                    data-testid={`nav-group-${group.id}`}
+                    data-open={isOpen ? 'true' : 'false'}
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={`nav-group-panel-${group.id}`}
+                      data-testid={`nav-category-${group.id}`}
+                      title={coarsePointer || showOverlay ? undefined : group.category}
+                      aria-label={group.category}
+                      onClick={() => {
+                        if (!labelsVisible) {
+                          setPeekLocked(false);
+                          setPinned(true);
+                          setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
+                          return;
+                        }
+                        toggleGroup(group.id);
+                      }}
+                      className={cn(
+                        'group relative flex min-h-11 shrink-0 items-center rounded-xl touch-target',
+                        'transition-[width,background-color,color,padding,transform] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
+                        'motion-safe:active:scale-[0.97]',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                        labelsVisible ? 'w-full px-3 gap-3' : 'w-11 justify-center px-0',
+                        groupActive
+                          ? 'bg-surface-overlay text-text'
+                          : 'text-text-muted hover:bg-surface-overlay hover:text-text',
+                      )}
+                    >
+                      <GroupIcon className="h-4 w-4 shrink-0" />
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate text-left text-sm font-semibold',
+                          'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
+                          labelsVisible
+                            ? 'max-w-[10rem] translate-x-0 opacity-100 delay-75'
+                            : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0',
+                        )}
+                      >
+                        {group.category}
+                      </span>
+                      {labelsVisible && (
+                        <ChevronRight
+                          className={cn(
+                            'h-3.5 w-3.5 shrink-0 text-text-muted transition-transform duration-150',
+                            isOpen && 'rotate-90',
+                          )}
+                          aria-hidden
+                        />
+                      )}
+                    </button>
+
+                    {isOpen && (
+                      <div
+                        id={`nav-group-panel-${group.id}`}
+                        role="group"
+                        aria-label={group.category}
+                        className={cn(
+                          'flex flex-col gap-0.5',
+                          labelsVisible && 'ml-5 border-l border-border/70 pl-1',
+                        )}
+                      >
+                        {group.items.map(({ to, label, icon: Icon, tourAnchor }) => (
+                          <NavLink
+                            key={to}
+                            to={to}
+                            title={coarsePointer || showOverlay ? undefined : label}
+                            aria-label={label}
+                            className={childLinkClass}
+                            data-tour={tourAnchor}
+                            onClick={() => {
+                              if (showOverlay) setMobileOpen(false);
+                            }}
+                          >
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <LabelSpan visible={labelsVisible} className="max-w-[9.5rem]">
+                              {label}
+                            </LabelSpan>
+                          </NavLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
             </nav>
           </div>
 
-          <NavLink
+          <SoloLink
             to="/settings/profile"
-            title={coarsePointer ? undefined : 'Personal settings'}
-            aria-label="Personal settings"
-            className={linkClass}
-            data-testid="nav-personal-profile"
-          >
-            <Users className="h-4 w-4 shrink-0" />
-            <span
-              className={cn(
-                'truncate text-sm font-medium',
-                'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
-                expanded || showOverlay
-                  ? 'max-w-[10rem] translate-x-0 opacity-100 delay-75'
-                  : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0'
-              )}
-            >
-              Profile
-            </span>
-          </NavLink>
-          {hasRole('ADMIN', 'OWNER') && (
-            <NavLink to="/settings" title={coarsePointer ? undefined : 'Settings'} aria-label="Settings" className={linkClass}>
-              <Settings className="h-4 w-4 shrink-0" />
-              <span
-                className={cn(
-                  'truncate text-sm font-medium',
-                  'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
-                  expanded || showOverlay
-                    ? 'max-w-[10rem] translate-x-0 opacity-100 delay-75'
-                    : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0'
-                )}
-              >
-                Settings
-              </span>
-            </NavLink>
-          )}
+            label="Profile"
+            icon={UserCircle}
+            labelsVisible={labelsVisible}
+            coarsePointer={coarsePointer}
+            showOverlay={showOverlay}
+            linkClass={linkClass}
+            testId="nav-personal-profile"
+          />
         </div>
       </aside>
     </>

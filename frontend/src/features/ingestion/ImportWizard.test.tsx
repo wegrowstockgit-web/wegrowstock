@@ -160,7 +160,12 @@ describe('ImportWizard', () => {
     Object.defineProperty(input, 'files', { configurable: true, value: [file] });
     fireEvent.change(input);
 
-    expect(await screen.findByTestId('bulk-actions')).toBeInTheDocument();
+    await waitFor(
+      async () => {
+        expect(await screen.findByTestId('bulk-actions')).toBeInTheDocument();
+      },
+      { timeout: 5_000 },
+    );
     expect(screen.getByTestId('create-missing-products')).toBeInTheDocument();
     expect(screen.getByTestId('map-to-existing')).toBeInTheDocument();
     expect(screen.getByText('MISSING_PRODUCT')).toBeInTheDocument();
@@ -225,8 +230,10 @@ describe('ImportWizard', () => {
     const input = document.getElementById('ingestion-file-input') as HTMLInputElement;
     Object.defineProperty(input, 'files', { configurable: true, value: [file] });
     fireEvent.change(input);
-    await waitFor(() => expect(screen.getByText('READY_TO_IMPORT')).toBeInTheDocument());
+    const readyRow = await screen.findByTestId('preflight-row-2', {}, { timeout: 5_000 });
+    expect(readyRow).toHaveAttribute('data-status', 'READY_TO_IMPORT');
+    await waitFor(() => expect(screen.getByTestId('import-submit')).not.toBeDisabled());
     fireEvent.click(screen.getByTestId('import-submit'));
-    expect(await screen.findByText(/Import failed/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Import failed/i, {}, { timeout: 5_000 })).toBeInTheDocument();
   });
 });

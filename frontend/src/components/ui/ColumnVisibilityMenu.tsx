@@ -25,6 +25,11 @@ interface ColumnVisibilityMenuProps {
   /** Isolates localStorage layout per table (default: products). */
   gridId?: string;
   className?: string;
+  /**
+   * When set, shows Show all / Ops only presets. Ops only keeps these ids
+   * visible and hides every other toggleable column.
+   */
+  opsOnlyColumnIds?: readonly string[];
 }
 
 interface AtomicColumnToggleProps {
@@ -93,7 +98,24 @@ export function ColumnVisibilityMenu({
   columns,
   gridId = 'products',
   className,
+  opsOnlyColumnIds,
 }: ColumnVisibilityMenuProps) {
+  const setColumnVisibilityMap = useGridColumnStore((s) => s.setColumnVisibilityMap);
+
+  const applyShowAll = () => {
+    const visibility: Record<string, boolean> = {};
+    for (const col of columns) visibility[col.id] = true;
+    setColumnVisibilityMap(gridId, visibility);
+  };
+
+  const applyOpsOnly = () => {
+    if (!opsOnlyColumnIds) return;
+    const ops = new Set(opsOnlyColumnIds);
+    const visibility: Record<string, boolean> = {};
+    for (const col of columns) visibility[col.id] = ops.has(col.id);
+    setColumnVisibilityMap(gridId, visibility);
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -118,6 +140,29 @@ export function ColumnVisibilityMenu({
         data-testid="column-visibility-menu"
         className="flex max-h-[min(70vh,28rem)] w-56 flex-col overflow-y-auto overscroll-contain p-1"
       >
+        {opsOnlyColumnIds && opsOnlyColumnIds.length > 0 && (
+          <>
+            <div className="sticky top-0 z-10 flex gap-1 bg-surface-raised p-1">
+              <button
+                type="button"
+                data-testid="column-preset-show-all"
+                className="flex-1 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-text hover:bg-surface-overlay active:scale-[0.98] transition-transform duration-150 ease-out"
+                onClick={applyShowAll}
+              >
+                Show all
+              </button>
+              <button
+                type="button"
+                data-testid="column-preset-ops-only"
+                className="flex-1 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-text hover:bg-surface-overlay active:scale-[0.98] transition-transform duration-150 ease-out"
+                onClick={applyOpsOnly}
+              >
+                Ops only
+              </button>
+            </div>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuLabel className="sticky top-0 z-10 bg-surface-raised">
           Toggle columns
         </DropdownMenuLabel>

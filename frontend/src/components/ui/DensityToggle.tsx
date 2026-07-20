@@ -94,6 +94,7 @@ export function DataListToolbar({
   className,
   columnItems,
   gridId = 'products',
+  opsOnlyColumnIds,
   trailing,
 }: {
   children?: ReactNode;
@@ -102,6 +103,8 @@ export function DataListToolbar({
   columnItems?: ColumnVisibilityItem[];
   /** Local layout key for Zustand persist (one layout per grid). */
   gridId?: string;
+  /** Ops-only preset ids for the Columns menu (Show all / Ops only). */
+  opsOnlyColumnIds?: readonly string[];
   /** Extra toolbar controls rendered before Columns. */
   trailing?: ReactNode;
 }) {
@@ -117,7 +120,11 @@ export function DataListToolbar({
       <div className="flex shrink-0 items-center gap-2">
         {trailing}
         {columnItems && columnItems.length > 0 && (
-          <ColumnVisibilityMenu columns={columnItems} gridId={gridId} />
+          <ColumnVisibilityMenu
+            columns={columnItems}
+            gridId={gridId}
+            opsOnlyColumnIds={opsOnlyColumnIds}
+          />
         )}
         <DensityToggle />
       </div>

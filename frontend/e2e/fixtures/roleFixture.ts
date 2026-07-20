@@ -92,8 +92,8 @@ async function pageForRole(
             showOnboardingTour: false,
             activeTourId: null,
             currentTourStep: 0,
-            isTourAwaitingRoute: false,
-            awaitingRoute: null,
+            isTourMovingRoutes: false,
+            targetRoute: null,
           },
           version: 0,
         }),
@@ -162,8 +162,8 @@ export async function loginAsDemo(
           showOnboardingTour: false,
           activeTourId: null,
           currentTourStep: 0,
-          isTourAwaitingRoute: false,
-          awaitingRoute: null,
+          isTourMovingRoutes: false,
+          targetRoute: null,
         },
         version: 0,
       }),
@@ -248,8 +248,8 @@ export async function completeScannerPin(page: Page, pin = '1234'): Promise<void
         showOnboardingTour: false,
         activeTourId: null,
         currentTourStep: 0,
-        isTourAwaitingRoute: false,
-        awaitingRoute: null,
+        isTourMovingRoutes: false,
+        targetRoute: null,
       };
       localStorage.setItem('invsys-preferences', JSON.stringify(parsed));
     } catch {

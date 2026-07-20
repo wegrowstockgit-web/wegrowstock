@@ -33,6 +33,19 @@ function isMainFadeScrollRoute(pathname: string): boolean {
   return pathname === '/' || pathname === '/dashboard';
 }
 
+/** Virtualized grids own their scrollport — clip main so the page never pushes sideways. */
+function isViewportLockedRoute(pathname: string): boolean {
+  return (
+    pathname === '/products' ||
+    pathname.startsWith('/products/') ||
+    pathname === '/purchase-orders' ||
+    pathname === '/sales-orders' ||
+    pathname === '/invoices' ||
+    pathname === '/customers' ||
+    pathname === '/suppliers'
+  );
+}
+
 interface MeResponse {
   userId: string;
   tenantId: string;
@@ -190,9 +203,10 @@ export function AppShell() {
         */}
         <main
           className={cn(
-            'flex min-h-0 flex-1 flex-col overscroll-contain',
+            'flex min-h-0 min-w-0 flex-1 flex-col overscroll-contain',
             isSettingsOwnedScrollRoute(location.pathname) ||
-              isMainFadeScrollRoute(location.pathname)
+              isMainFadeScrollRoute(location.pathname) ||
+              isViewportLockedRoute(location.pathname)
               ? 'overflow-hidden'
               : 'overflow-y-auto',
           )}
@@ -201,12 +215,12 @@ export function AppShell() {
             <ScrollFadePort
               data-testid="app-main-scroll"
               measureKey={location.pathname}
-              shellClassName="min-h-0 flex-1"
+              shellClassName="min-h-0 min-w-0 flex-1"
               className="h-full overflow-y-auto overflow-x-hidden"
             >
               <ErrorBoundary
                 boundaryName={`route:${location.pathname}`}
-                className="flex min-h-0 flex-1 flex-col"
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
               >
                 <Outlet />
               </ErrorBoundary>
@@ -214,7 +228,7 @@ export function AppShell() {
           ) : (
             <ErrorBoundary
               boundaryName={`route:${location.pathname}`}
-              className="flex min-h-0 flex-1 flex-col"
+              className="flex min-h-0 min-w-0 flex-1 flex-col"
             >
               <Outlet />
             </ErrorBoundary>
