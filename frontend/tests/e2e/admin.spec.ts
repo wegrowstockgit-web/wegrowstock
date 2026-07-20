@@ -1,5 +1,14 @@
-import { completeScannerPin, expect, test } from '../../e2e/fixtures/roleFixture';
+import {
+  completeScannerPin,
+  dismissOnboardingTourIfPresent,
+  expect,
+  test,
+} from '../../e2e/fixtures/roleFixture';
 import { clickNavLink, expandNavCategory } from '../../e2e/fixtures/nav';
+import {
+  assertReceivingToAllocationTour,
+  clearActiveTour,
+} from '../../e2e/fixtures/tourContinuity';
 import { contextForRole } from '../../e2e/journeys/helpers';
 
 const DEMO_VIEWER_USER_ID = 'a0000000-0000-4000-8000-000000000205';
@@ -11,6 +20,34 @@ const DEMO_VIEWER_USER_ID = 'a0000000-0000-4000-8000-000000000205';
  */
 test.describe('Admin security & settings suite', () => {
   test.setTimeout(180_000);
+
+  test('receiving-to-allocation tour keeps Step 1–6 across accordion nav hops', async ({
+    browser,
+  }, testInfo) => {
+    expect(testInfo.project.name).toBe('Desktop-Admin');
+
+    const admin = await contextForRole(browser, 'admin');
+    try {
+      await admin.page.goto('/dashboard');
+      await completeScannerPin(admin.page);
+      await dismissOnboardingTourIfPresent(admin.page);
+      await expect(admin.page.getByTestId('icon-rail')).toBeVisible({ timeout: 20_000 });
+
+      // Accordion parents must expand before leaf navigation (hidden until open).
+      await expandNavCategory(admin.page, 'Inbound');
+      await expandNavCategory(admin.page, 'Inventory');
+      await clickNavLink(admin.page, 'Purchase Orders');
+      await admin.page.waitForURL(/\/purchase-orders/, { timeout: 15_000 });
+      await expect(admin.page.locator('[data-tour="tour-po-grid"]')).toBeVisible({
+        timeout: 20_000,
+      });
+
+      await assertReceivingToAllocationTour(admin.page);
+    } finally {
+      await clearActiveTour(admin.page);
+      await admin.close();
+    }
+  });
 
   test('operations grids, role mutation toast, fintech OWNER boundary', async ({ browser }, testInfo) => {
     expect(testInfo.project.name).toBe('Desktop-Admin');
@@ -28,9 +65,9 @@ test.describe('Admin security & settings suite', () => {
       await expandNavCategory(admin.page, 'Inbound');
       await expandNavCategory(admin.page, 'Inventory');
       await clickNavLink(admin.page, 'Purchase Orders');
-      await expect(admin.page).toHaveURL(/\/purchase-orders/, { timeout: 15_000 });
+      await admin.page.waitForURL(/\/purchase-orders/, { timeout: 15_000 });
       await clickNavLink(admin.page, 'Products');
-      await expect(admin.page).toHaveURL(/\/products/, { timeout: 15_000 });
+      await admin.page.waitForURL(/\/products/, { timeout: 15_000 });
 
       await admin.page.goto('/settings/operations');
       // Full navigations wipe the in-memory AES key — re-unlock the shift PIN gate.

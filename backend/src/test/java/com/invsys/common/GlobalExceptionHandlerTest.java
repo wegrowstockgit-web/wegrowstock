@@ -145,7 +145,7 @@ class GlobalExceptionHandlerTest {
 
         OfflineSyncConflict saved = new OfflineSyncConflict();
         saved.setId(UUID.randomUUID());
-        when(offlineSyncConflictService.sink(any(), anyString())).thenReturn(saved);
+        when(offlineSyncConflictService.sink(any(), anyString(), any(), any(), any())).thenReturn(saved);
 
         ResponseEntity<?> response = handler.handleBusiness(
                 new InsufficientStockException("no stock"), request);

@@ -86,7 +86,11 @@ test.describe.serial('Journey 09: Offline Zustand/IndexedDB conflict resolution'
           timeout: 20_000,
         });
         await expect(
-          manager.page.getByText(/Force Retry|Dismiss|PENDING|conflict|BLIND|receiving/i).first(),
+          manager.page
+            .getByText(
+              /Approve & Re-process|Discard Transaction|Floor Operator|PENDING|conflict|BLIND|receiving/i,
+            )
+            .first(),
         ).toBeVisible({ timeout: 15_000 });
       } else {
         await manager.page.goto('/exceptions?tab=sync');

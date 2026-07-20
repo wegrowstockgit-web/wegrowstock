@@ -136,6 +136,71 @@ public class SupportKnowledgeSeed implements ApplicationRunner {
                     """,
                     List.of("PICKER", "WAREHOUSE_MANAGER"),
                     List.of("/fulfillment", "/inbound/receive"),
-                    "USER_GUIDE.md#scanner")
+                    "USER_GUIDE.md#scanner"),
+            new Doc(
+                    "ops-offline-mutation-parking",
+                    "Offline mutation parking space (sync conflicts)",
+                    """
+                    Floor mutations that fail business rules while replaying offline work (HTTP 409 Conflict or \
+                    422 Unprocessable Entity) must never block the picker with a hard error toast.
+
+                    What happens:
+                    1. While offline, the scanner queues the mutation in IndexedDB with an Idempotency-Key.
+                    2. On reconnect, the mutation queue replays with header X-Offline-Replay: 1.
+                    3. If the API rejects the replay for a business conflict (wrong qty, allocation gone, \
+                       bin locked), GlobalExceptionHandler sinks the payload into OfflineSyncConflictService \
+                       instead of surfacing a blocking toast.
+                    4. The handheld receives HTTP 202 Accepted with a conflictId — the operator keeps picking.
+                    5. Office managers open the Dashboard Sync Conflicts panel to retry, dismiss, or overwrite \
+                       the parked discrepancy later.
+
+                    Teaching tip: tell pickers "your scan is parked for the office — keep moving." Tell managers \
+                    to adjudicate the parking space before forcing ledger adjustments.
+                    """,
+                    List.of("PICKER", "WAREHOUSE_MANAGER", "ADMIN", "OWNER"),
+                    List.of("/fulfillment", "/inbound/receive", "/dashboard", "/exceptions"),
+                    "SEQUENCE_FLOW.md#12"),
+            new Doc(
+                    "ops-skip-and-flag-exceptions",
+                    "Fulfillment exceptions (Skip & Flag)",
+                    """
+                    When a picker hits an empty bin, damaged stock, or an unpickable line, use Skip & Flag — \
+                    do not invent an inventory adjustment on the floor.
+
+                    What Skip & Flag does via FulfillmentExceptionService:
+                    1. Bound allocations move to EXCEPTION_SHUNTED immediately so the outbound pipeline can re-route.
+                    2. inventory_levels.allocated is reduced (the promise is released) without writing an \
+                       inventory_ledger ADJUST row — accounting stays clean while physical truth is unknown.
+                    3. A fulfillment_exceptions row opens for the office Exceptions board.
+                    4. Warehouse managers resolve from /exceptions: confirm disposition and only then post an \
+                       optional ledger ADJUST after investigation.
+
+                    Pickers: Skip & Flag keeps the wave moving. Managers: resolve exceptions before re-allocating.
+                    """,
+                    List.of("PICKER", "WAREHOUSE_MANAGER", "ADMIN", "OWNER"),
+                    List.of("/fulfillment", "/exceptions", "/sales-orders"),
+                    "SEQUENCE_FLOW.md#7.4"),
+            new Doc(
+                    "ops-cross-dock-intercept",
+                    "Cross-docking interrupts on receive",
+                    """
+                    When inbound stock matches an open BACKORDERED sales order, CrossDockService diverts the \
+                    receipt away from deep warehouse storage straight to an outbound staging lane.
+
+                    Flow:
+                    1. Office confirms/allocates an SO with zero on-hand → order stays BACKORDERED.
+                    2. A matching PO is submitted for the same variant.
+                    3. On floor receive, FulfillmentController calls CrossDockService.checkVariant.
+                    4. If open demand ranks first, the handheld shows a CrossDockOverlay ("go to staging") \
+                       instead of the normal putaway bin.
+                    5. Picker confirms the staging barcode; receive posts with reason CROSS_DOCK_ROUTING.
+                    6. CrossDockService.fulfillOpenDemand flips the SO to ALLOCATED / CROSS_DOCK_ROUTED.
+
+                    Instruct operators: do not force deep-storage putaway when the overlay appears — staging \
+                    shortens dock-to-ship time for backorders.
+                    """,
+                    List.of("PICKER", "WAREHOUSE_MANAGER", "ADMIN", "OWNER"),
+                    List.of("/inbound/receive", "/fulfillment", "/sales-orders", "/purchase-orders"),
+                    "SEQUENCE_FLOW.md#5.4")
     );
 }

@@ -83,10 +83,46 @@ final class HeuristicSupportComposer {
             }
         }
 
-        if (manager && (q.contains("damaged") || q.contains("exception") || q.contains("damage"))) {
-            SupportKnowledgeChunk doc = firstSlug(retrieved, "manager-damaged-exception");
+        // Operational conflict playbooks (offline parking / Skip & Flag / cross-dock).
+        if (q.contains("offline") || q.contains("sync conflict") || q.contains("parking")
+                || q.contains("409") || q.contains("mutation queue") || q.contains("replay")) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-offline-mutation-parking");
             if (doc != null) {
                 return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (q.contains("skip") || q.contains("skip & flag") || q.contains("skip and flag")
+                || ((q.contains("exception") || q.contains("empty bin") || q.contains("unpickable"))
+                && !q.contains("damaged"))) {
+            SupportKnowledgeChunk skip = firstSlug(retrieved, "ops-skip-and-flag-exceptions");
+            if (skip != null) {
+                return HeuristicSupportResult.of(trimBody(skip.body()));
+            }
+        }
+
+        if (q.contains("cross-dock") || q.contains("cross dock") || q.contains("crossdock")
+                || q.contains("staging lane") || (q.contains("backorder") && q.contains("receive"))) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-cross-dock-intercept");
+            if (doc != null) {
+                return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (manager && (q.contains("damaged") || q.contains("exception") || q.contains("damage"))) {
+            SupportKnowledgeChunk skip = firstSlug(retrieved, "ops-skip-and-flag-exceptions");
+            SupportKnowledgeChunk damage = firstSlug(retrieved, "manager-damaged-exception");
+            if (skip != null && damage != null) {
+                return HeuristicSupportResult.of(
+                        trimBody(skip.body())
+                                + "\n\nRelated (GraphRAG): damaged-stock disposition after the exception:\n"
+                                + trimBody(damage.body()));
+            }
+            if (damage != null) {
+                return HeuristicSupportResult.of(trimBody(damage.body()));
+            }
+            if (skip != null) {
+                return HeuristicSupportResult.of(trimBody(skip.body()));
             }
         }
 

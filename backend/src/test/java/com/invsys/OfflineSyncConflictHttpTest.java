@@ -22,6 +22,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -114,9 +116,101 @@ class OfflineSyncConflictHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(conflict.getId().toString()));
 
+        mockMvc.perform(get("/api/v1/offline-sync-conflicts")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .param("status", "PENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].schemaMetadata").isArray())
+                .andExpect(jsonPath("$[0].humanSummary").exists())
+                .andExpect(jsonPath("$[0].actionType").value("OUTBOUND_PICK"));
+
         mockMvc.perform(post("/api/v1/offline-sync-conflicts/" + conflict.getId() + "/dismiss")
                         .header("Authorization", "Bearer " + owner.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("DISMISSED"));
+                .andExpect(jsonPath("$.status").value("DISCARDED"));
+    }
+
+    @Test
+    void resolveConflictReplaysAsManagerOverride() throws Exception {
+        String slug = "osc-r-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "OSC Resolve", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = owner.tenantId();
+        TenantContext.setTenantId(tenantId);
+        TenantContext.setUserId(owner.userId());
+
+        Product product = new Product();
+        product.setTenantId(tenantId);
+        product.setSkuRoot("OSCR");
+        product.setName("OSCR");
+        product = productRepository.save(product);
+
+        ProductVariant variant = new ProductVariant();
+        variant.setTenantId(tenantId);
+        variant.setProductId(product.getId());
+        variant.setSku("OSCR-1");
+        variant.setBarcode("9900000222223");
+        variant = variantRepository.save(variant);
+
+        Location wh = new Location();
+        wh.setTenantId(tenantId);
+        wh.setType("WAREHOUSE");
+        wh.setCode("WH-OSCR");
+        wh.setName("OSCR WH");
+        wh.setPath("/WH-OSCR");
+        wh = locationRepository.save(wh);
+
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("mode", "receive");
+        body.put("barcode", "9900000222223");
+        body.put("quantity", 2);
+        body.put("warehouseId", wh.getId().toString());
+
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("method", "POST");
+        payload.put("url", "/api/v1/fulfillment/scan");
+        payload.put("body", body);
+
+        OfflineSyncConflict parked = new OfflineSyncConflict();
+        parked.setTenantId(tenantId);
+        parked.setPickerUserId(owner.userId());
+        parked.setActionType(com.invsys.domain.ConflictActionType.INBOUND_RECEIVE);
+        parked.setRequestUrl("/api/v1/fulfillment/scan");
+        parked.setErrorMessage("BIN_FULL: allocated bin location is full");
+        parked.setStatus(OfflineSyncConflict.STATUS_PENDING);
+        parked.setPayload(payload);
+        parked.setSchemaMetadata(List.of(
+                Map.of(
+                        "key", "quantity",
+                        "label", "Corrected Quantity Count",
+                        "type", "number",
+                        "mutable", true,
+                        "constraints", Map.of("min", 1)),
+                Map.of(
+                        "key", "barcode",
+                        "label", "Scanned Item Master GTIN",
+                        "type", "string",
+                        "mutable", false,
+                        "constraints", Map.of())));
+        parked = conflictRepository.save(parked);
+        UUID conflictId = parked.getId();
+        TenantContext.clear();
+
+        mockMvc.perform(post("/api/v1/offline-sync-conflicts/" + conflictId + "/resolve")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "corrections": { "quantity": 3 } }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RESOLVED_AND_REPLAYED"))
+                .andExpect(jsonPath("$.resolvedByUserId").value(owner.userId().toString()))
+                .andExpect(jsonPath("$.humanSummary").exists());
+
+        TenantContext.setTenantId(tenantId);
+        OfflineSyncConflict resolved = conflictRepository.findByTenantIdAndId(tenantId, conflictId).orElseThrow();
+        assertThat(resolved.getStatus()).isEqualTo(OfflineSyncConflict.STATUS_RESOLVED_AND_REPLAYED);
+        assertThat(resolved.getResolvedByUserId()).isEqualTo(owner.userId());
+        assertThat(resolved.getResolvedAt()).isNotNull();
     }
 }

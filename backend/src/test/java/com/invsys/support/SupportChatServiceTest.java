@@ -146,6 +146,57 @@ class SupportChatServiceTest {
         assertThat(result).containsEntry("cycleCountId", "abc");
     }
 
+    @Test
+    void offlineConflictMentionsParkingSpace() {
+        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+                .thenReturn(List.of(chunk(
+                        "ops-offline-mutation-parking",
+                        "Offline mutation parking",
+                        "Business conflicts park in OfflineSyncConflictService; picker gets HTTP 202, not a toast.")));
+
+        String answer = ask(
+                List.of("PICKER"),
+                "/fulfillment",
+                "What happens when offline replay hits a 409 conflict?");
+
+        assertThat(answer).containsIgnoringCase("OfflineSyncConflictService");
+        assertThat(answer).containsIgnoringCase("202");
+    }
+
+    @Test
+    void skipAndFlagMentionsExceptionService() {
+        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+                .thenReturn(List.of(chunk(
+                        "ops-skip-and-flag-exceptions",
+                        "Skip & Flag",
+                        "FulfillmentExceptionService releases allocations without writing inventory_ledger ADJUST.")));
+
+        String answer = ask(
+                List.of("WAREHOUSE_MANAGER"),
+                "/exceptions",
+                "How does Skip & Flag clear allocations without a ledger adjust?");
+
+        assertThat(answer).containsIgnoringCase("FulfillmentExceptionService");
+        assertThat(answer.toLowerCase()).containsAnyOf("allocation", "ledger");
+    }
+
+    @Test
+    void crossDockMentionsStagingDivert() {
+        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+                .thenReturn(List.of(chunk(
+                        "ops-cross-dock-intercept",
+                        "Cross-dock",
+                        "CrossDockService sends backorder receipts to staging instead of deep storage.")));
+
+        String answer = ask(
+                List.of("PICKER"),
+                "/inbound/receive",
+                "Why did cross-dock send me to a staging lane on receive?");
+
+        assertThat(answer).containsIgnoringCase("CrossDockService");
+        assertThat(answer).containsIgnoringCase("staging");
+    }
+
     private String ask(List<String> roles, String route, String message) {
         StringBuilder sb = new StringBuilder();
         service.streamAnswer(message, roles, route, sb::append, a -> {}, () -> {});

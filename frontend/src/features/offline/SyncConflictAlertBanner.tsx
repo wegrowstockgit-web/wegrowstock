@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
-import type { ServerSyncConflict } from '@/features/offline/SyncConflictsPanel';
+import type { ServerSyncConflict } from '@/features/offline/syncConflictTypes';
 
 /** Glanceable dashboard alert — full resolution lives on /exceptions?tab=sync. */
 export function SyncConflictAlertBanner() {

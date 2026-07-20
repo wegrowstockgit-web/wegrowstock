@@ -110,6 +110,51 @@ class HeuristicSupportComposerTest {
         assertThat(result.actions().getFirst().params()).containsEntry("waveId", waveId);
     }
 
+    @Test
+    void offlineConflictUsesParkingPlaybook() {
+        var result = HeuristicSupportComposer.compose(
+                "What happens when an offline scan hits a 409 sync conflict?",
+                List.of("PICKER"),
+                "/fulfillment",
+                List.of(chunk(
+                        "ops-offline-mutation-parking",
+                        "Conflicts park in OfflineSyncConflictService; picker gets HTTP 202.")),
+                "system");
+
+        assertThat(result.answer()).containsIgnoringCase("OfflineSyncConflictService");
+        assertThat(result.answer()).containsIgnoringCase("202");
+    }
+
+    @Test
+    void skipAndFlagUsesExceptionPlaybook() {
+        var result = HeuristicSupportComposer.compose(
+                "How does Skip & Flag free allocations without a ledger adjust?",
+                List.of("PICKER"),
+                "/fulfillment",
+                List.of(chunk(
+                        "ops-skip-and-flag-exceptions",
+                        "FulfillmentExceptionService shunts allocations without inventory_ledger ADJUST.")),
+                "system");
+
+        assertThat(result.answer()).containsIgnoringCase("FulfillmentExceptionService");
+        assertThat(result.answer()).containsIgnoringCase("ledger");
+    }
+
+    @Test
+    void crossDockUsesInterceptPlaybook() {
+        var result = HeuristicSupportComposer.compose(
+                "Why did receive send me to a staging lane for a backorder?",
+                List.of("WAREHOUSE_MANAGER"),
+                "/inbound/receive",
+                List.of(chunk(
+                        "ops-cross-dock-intercept",
+                        "CrossDockService diverts receipts to staging instead of deep storage.")),
+                "system");
+
+        assertThat(result.answer()).containsIgnoringCase("CrossDockService");
+        assertThat(result.answer()).containsIgnoringCase("staging");
+    }
+
     private static SupportKnowledgeChunk chunk(String slug, String body) {
         return new SupportKnowledgeChunk(
                 UUID.randomUUID(), slug, slug, body, List.of(), List.of(), "test", 0.5);

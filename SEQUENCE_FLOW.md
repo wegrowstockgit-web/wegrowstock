@@ -823,7 +823,7 @@ sequenceDiagram
 
 ## 12. Offline-first mutation queue & conflict parking
 
-Applies to every floor persona (PICKER, technician). Failed *business* rules while replaying offline work never block the operator — they park as conflicts for the office.
+Applies to every floor persona (PICKER, technician). Failed *business* rules while replaying offline work never block the operator — they park as conflicts for the office. Parking attaches hybrid `schema_metadata_json` field descriptors so managers correct values in a glove-friendly form (never raw JSON). Approve & Re-process stamps the ledger as the manager with reason `OFFLINE_CONFLICT_OVERRIDE`.
 
 ```mermaid
 sequenceDiagram
@@ -834,6 +834,7 @@ sequenceDiagram
     participant API as Spring API
     participant GEH as GlobalExceptionHandler
     participant Con as OfflineSyncConflictService
+    participant Inv as InventoryService
     actor Office as Office Manager
 
     Picker->>UI: scan while network is down
@@ -845,9 +846,16 @@ sequenceDiagram
         API-->>UI: 200 — cache invalidated, levels reconcile
     else business rule violation (409/422)
         API->>GEH: ApiException
-        GEH->>Con: sink(conflict) — body cached by OfflineReplayBodyFilter
+        GEH->>Con: sink + schema_metadata_json (mutable/immutable fields)
         GEH-->>UI: HTTP 202 { conflictId } (not an error toast)
-        Office->>Con: Dashboard SyncConflictsPanel → retry / dismiss / resolve
+        Office->>Con: SyncConflictsPanel — human summary + dynamic form
+        alt Discard Transaction
+            Con-->>Office: status DISCARDED
+        else Approve & Re-process
+            Office->>Con: resolveConflict(manualCorrections)
+            Con->>Inv: adjust(... reason OFFLINE_CONFLICT_OVERRIDE)<br/>created_by = manager
+            Con-->>Office: status RESOLVED_AND_REPLAYED
+        end
     end
 ```
 

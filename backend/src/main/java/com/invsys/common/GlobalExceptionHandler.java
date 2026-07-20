@@ -2,8 +2,10 @@ package com.invsys.common;
 
 import com.invsys.common.exception.BusinessValidationException;
 import com.invsys.common.exception.SystemFailureException;
+import com.invsys.domain.ConflictActionType;
 import com.invsys.metrics.WmsMetrics;
 import com.invsys.service.OfflineSyncConflictService;
+import com.invsys.tenancy.TenantContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
@@ -256,12 +258,25 @@ public class GlobalExceptionHandler {
         payload.put("query", request.getQueryString());
         payload.put("idempotencyKey", request.getHeader("Idempotency-Key"));
         payload.put("errorCode", errorCode);
-        payload.put("body", request.getAttribute("offlineReplayBody"));
-        var saved = offlineSyncConflictService.sink(payload, errorCode + ": " + message);
+        Object replayBody = request.getAttribute("offlineReplayBody");
+        payload.put("body", replayBody);
+
+        ConflictActionType actionType = null;
+        if (replayBody instanceof Map<?, ?> map && map.get("mode") != null) {
+            actionType = ConflictActionType.fromScanMode(String.valueOf(map.get("mode")));
+        }
+
+        var saved = offlineSyncConflictService.sink(
+                payload,
+                errorCode + ": " + message,
+                actionType,
+                TenantContext.getUserId().orElse(null),
+                request.getRequestURI());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("conflictId", saved.getId());
         body.put("status", "PENDING");
         body.put("accepted", true);
+        body.put("actionType", saved.getActionType() != null ? saved.getActionType().name() : null);
         body.put("message", "Offline mutation parked in sync conflict queue");
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
     }

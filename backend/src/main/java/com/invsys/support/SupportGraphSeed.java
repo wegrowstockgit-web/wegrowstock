@@ -44,6 +44,11 @@ public class SupportGraphSeed implements ApplicationRunner {
         graph.upsertNode("doc-damage", "DOC", "Damaged item", "manager-damaged-exception");
         graph.upsertNode("doc-showroom", "DOC", "B2B showroom", "b2b-showroom-orders");
         graph.upsertNode("doc-scanner", "DOC", "Scanner basics", "scanner-hardware-basics");
+        graph.upsertNode("doc-offline-parking", "DOC", "Offline conflict parking", "ops-offline-mutation-parking");
+        graph.upsertNode("doc-skip-flag", "DOC", "Skip & Flag exceptions", "ops-skip-and-flag-exceptions");
+        graph.upsertNode("doc-cross-dock", "DOC", "Cross-dock intercept", "ops-cross-dock-intercept");
+        graph.upsertNode("flow-exception", "FLOW", "Fulfillment exception", "ops-skip-and-flag-exceptions");
+        graph.upsertNode("flow-cross-dock", "FLOW", "Cross-dock routing", "ops-cross-dock-intercept");
 
         // Relationships
         graph.upsertEdge("entity-purchase-order", "entity-sales-order", "FULFILLS");
@@ -61,6 +66,16 @@ public class SupportGraphSeed implements ApplicationRunner {
         graph.upsertEdge("doc-allocate", "doc-po", "DEPENDS_ON_STOCK_FROM");
         graph.upsertEdge("doc-damage", "doc-allocate", "UNBLOCKS");
         graph.upsertEdge("doc-showroom", "entity-sales-order", "TRACKS_STATUS_OF");
+        // Conflict-resolution graph: parking ↔ skip/flag ↔ cross-dock ↔ allocate
+        graph.upsertEdge("role-picker", "doc-offline-parking", "PARKS_CONFLICTS_IN");
+        graph.upsertEdge("doc-offline-parking", "doc-skip-flag", "RELATED_TO");
+        graph.upsertEdge("doc-skip-flag", "flow-exception", "OPENS");
+        graph.upsertEdge("doc-skip-flag", "doc-allocate", "RELEASES_ALLOCATION_FOR");
+        graph.upsertEdge("doc-inbound", "doc-cross-dock", "MAY_TRIGGER");
+        graph.upsertEdge("doc-cross-dock", "flow-cross-dock", "ROUTES_VIA");
+        graph.upsertEdge("doc-cross-dock", "zone-staging", "DIVERTS_TO");
+        graph.upsertEdge("doc-cross-dock", "doc-allocate", "AUTO_ALLOCATES");
+        graph.upsertEdge("entity-sales-order", "doc-cross-dock", "BACKORDER_DEMAND_FOR");
 
         log.info("Support GraphRAG seeded nodes={}", graph.nodeCount());
     }

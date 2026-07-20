@@ -1,4 +1,14 @@
-import { completeScannerPin, expect, test } from '../../e2e/fixtures/roleFixture';
+import {
+  completeScannerPin,
+  dismissOnboardingTourIfPresent,
+  expect,
+  test,
+} from '../../e2e/fixtures/roleFixture';
+import { expandNavCategory } from '../../e2e/fixtures/nav';
+import {
+  assertReceivingToAllocationTour,
+  clearActiveTour,
+} from '../../e2e/fixtures/tourContinuity';
 import {
   contextForRole,
   WIDGET_S_BARCODE,
@@ -36,6 +46,48 @@ async function wedgeScan(page: Page, barcode: string): Promise<void> {
  */
 test.describe('Mobile Picker suite', () => {
   test.setTimeout(240_000);
+
+  /**
+   * Cross-page tour continuity on the Mobile-Scanner project.
+   * Uses a manager session (office tour anchors) while asserting accordion expand
+   * gates and Step 1→6 progress across waitForURL hops — same pipeline pickers hand off into.
+   */
+  test('receiving-to-allocation tour keeps Step 1–6 across multi-page jumps', async ({
+    browser,
+  }, testInfo) => {
+    expect(testInfo.project.name).toBe('Mobile-Scanner');
+
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      await manager.page.goto('/dashboard');
+      await completeScannerPin(manager.page);
+      await dismissOnboardingTourIfPresent(manager.page);
+
+      const rail = manager.page.getByTestId('icon-rail');
+      if (await rail.isVisible({ timeout: 8_000 }).catch(() => false)) {
+        const openNav = manager.page.getByRole('button', { name: /open navigation/i });
+        if (await openNav.isVisible().catch(() => false)) {
+          await openNav.click();
+        }
+        // Accordion parents must expand before nested leaf options are clickable.
+        await expandNavCategory(manager.page, 'Inbound');
+        await expandNavCategory(manager.page, 'Inventory');
+      }
+
+      await manager.page.goto('/purchase-orders');
+      await completeScannerPin(manager.page);
+      await dismissOnboardingTourIfPresent(manager.page);
+      await manager.page.waitForURL(/\/purchase-orders/, { timeout: 15_000 });
+      await expect(manager.page.locator('[data-tour="tour-po-grid"]')).toBeVisible({
+        timeout: 20_000,
+      });
+
+      await assertReceivingToAllocationTour(manager.page);
+    } finally {
+      await clearActiveTour(manager.page);
+      await manager.close();
+    }
+  });
 
   test('picker inbound receive via HID wedge; office shell hidden; touch targets', async ({
     browser,
@@ -88,8 +140,8 @@ test.describe('Mobile Picker suite', () => {
 
     const picker = await contextForRole(browser, 'picker');
     try {
-      // Office shell smoke: expand grouped parents (Inbound is hidden for pickers).
-      // Soft-check only — floor receive below is the persona assertion.
+      // Office shell smoke: expand grouped parents via accordion helpers.
+      // Inbound is hidden for exclusive pickers; Outbound + Inventory remain.
       await picker.page.goto('/dashboard');
       await completeScannerPin(picker.page);
       const rail = picker.page.getByTestId('icon-rail');
@@ -98,8 +150,8 @@ test.describe('Mobile Picker suite', () => {
         if (await openNav.isVisible().catch(() => false)) {
           await openNav.click();
         }
-        await rail.getByText('Outbound', { exact: true }).click({ timeout: 5_000 }).catch(() => undefined);
-        await rail.getByText('Inventory', { exact: true }).click({ timeout: 5_000 }).catch(() => undefined);
+        await expandNavCategory(picker.page, 'Outbound').catch(() => undefined);
+        await expandNavCategory(picker.page, 'Inventory').catch(() => undefined);
         await expect(rail.getByText('Outbound', { exact: true })).toBeVisible({ timeout: 5_000 });
         await expect(rail.getByText('Inventory', { exact: true })).toBeVisible({ timeout: 5_000 });
       }

@@ -54,19 +54,42 @@ export function TourOrchestrator() {
   }, [authenticated, activeTourId, clearTour]);
 
   // Resume after inter-page transition once the destination pathname matches.
+  // rAF-poll until the step's DOM anchor exists, then clear the gate and drive.
   useEffect(() => {
     if (!authenticated || !activeTourId || !isTourMovingRoutes || !targetRoute) return;
     if (!routeMatches(location.pathname, targetRoute)) return;
 
-    clearRouteTransition();
-    if (resumeRaf.current != null) cancelAnimationFrame(resumeRaf.current);
-    resumeRaf.current = requestAnimationFrame(() => {
-      resumeRaf.current = requestAnimationFrame(() => {
+    const steps = getWorkflowTour(activeTourId);
+    const step = steps[currentTourStep];
+    if (!step) {
+      clearTour();
+      return;
+    }
+
+    let cancelled = false;
+    let attempt = 0;
+    const maxAttempts = 90; // ~1.5s at 60fps
+
+    const resumeWhenReady = () => {
+      if (cancelled) return;
+      if (document.querySelector(step.element)) {
+        clearRouteTransition();
         mountDriverAtStep(activeTourId, currentTourStep);
-      });
-    });
+        return;
+      }
+      if (attempt++ > maxAttempts) {
+        // Anchor never appeared — still clear the gate so the machine cannot stick.
+        clearRouteTransition();
+        return;
+      }
+      resumeRaf.current = requestAnimationFrame(resumeWhenReady);
+    };
+
+    if (resumeRaf.current != null) cancelAnimationFrame(resumeRaf.current);
+    resumeRaf.current = requestAnimationFrame(resumeWhenReady);
 
     return () => {
+      cancelled = true;
       if (resumeRaf.current != null) cancelAnimationFrame(resumeRaf.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
