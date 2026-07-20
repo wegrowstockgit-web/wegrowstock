@@ -126,6 +126,18 @@ final class HeuristicSupportComposer {
             }
         }
 
+        // Prefer page-local reversal guidance when the SPA injected System Context.
+        if (q.contains("system context:") && (q.contains("reversal") || q.contains("undo") || q.contains("reverse")
+                || q.contains("cancel") || q.contains("un-allocate") || q.contains("how do i undo"))) {
+            String fromContext = extractReversalFromSystemContext(question);
+            if (!fromContext.isBlank()) {
+                return HeuristicSupportResult.of(
+                        fromContext
+                                + "\n\nNever delete append-only inventory_ledger rows — post a compensating "
+                                + "ERROR_CORRECTION or OFFLINE_CONFLICT_OVERRIDE instead.");
+            }
+        }
+
         if (!retrieved.isEmpty()) {
             SupportKnowledgeChunk best = retrieved.getFirst();
             if (pickerOnly && best.slug().contains("office-create-po")) {
@@ -152,6 +164,26 @@ final class HeuristicSupportComposer {
                 "I do not have a grounded answer for that yet. Try Fulfillment for scans, Sales Orders for "
                         + "allocation/waves, Exceptions for floor issues, or Showroom Orders if you are a B2B customer. "
                         + "(route=" + route + ")");
+    }
+
+    /** Pull the "Reversal mechanism: …" sentence from the SPA-injected system context prefix. */
+    static String extractReversalFromSystemContext(String question) {
+        if (question == null) {
+            return "";
+        }
+        String marker = "Reversal mechanism:";
+        int start = question.indexOf(marker);
+        if (start < 0) {
+            return "";
+        }
+        int end = question.indexOf("Emphasize how to safely", start);
+        if (end < 0) {
+            end = question.indexOf("User Query:", start);
+        }
+        if (end < 0) {
+            end = question.length();
+        }
+        return question.substring(start + marker.length(), end).trim();
     }
 
     private static String extractZone(String question) {

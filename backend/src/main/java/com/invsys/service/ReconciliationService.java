@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -67,21 +68,49 @@ public class ReconciliationService {
 
         BigDecimal drift = physicalValue.subtract(accountingValue);
 
+        // Channel-style FAILED rows may key off external_id only (entity_id nullable since V083).
         List<SyncDriftItem> syncDrifts = syncLogRepository.findByTenantIdAndStatusOrderByCreatedAtDesc(tenantId, "FAILED")
                 .stream()
                 .limit(10)
-                .map(log -> new SyncDriftItem(log.getSystem(), log.getEntityType(), log.getEntityId().toString(),
-                        log.getStatus(), log.getLastError()))
+                .map(log -> new SyncDriftItem(
+                        log.getSystem(),
+                        log.getEntityType(),
+                        resolveEntityKey(log),
+                        log.getStatus(),
+                        firstNonBlank(log.getLastError(), log.getErrorMessage())))
                 .toList();
 
         String currency = tenantSettingsRepository.findAll().stream()
                 .findFirst()
-                .map(s -> s.getSettings().get("currency"))
+                .map(s -> s.getSettings())
+                .filter(Objects::nonNull)
+                .map(settings -> settings.get("currency"))
                 .filter(String.class::isInstance)
                 .map(String.class::cast)
+                .filter(c -> !c.isBlank())
                 .orElse("USD");
 
         return new ReconciliationReport(physicalValue, accountingValue, drift, currency, inventoryMappings.size(), syncDrifts);
+    }
+
+    static String resolveEntityKey(IntegrationSyncLog log) {
+        if (log.getEntityId() != null) {
+            return log.getEntityId().toString();
+        }
+        if (log.getExternalId() != null && !log.getExternalId().isBlank()) {
+            return log.getExternalId();
+        }
+        return "n/a";
+    }
+
+    private static String firstNonBlank(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+        return null;
     }
 
     public record ReconciliationReport(

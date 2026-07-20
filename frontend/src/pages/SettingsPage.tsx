@@ -1592,13 +1592,16 @@ function ReconciliationTab() {
   const hasDrift = Math.abs(drift) > 0.01;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="reconciliation-report">
       <Card>
         <CardHeader title="Financial truth" description="Physical inventory vs accounting sync" />
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-lg border border-border p-4">
             <p className="text-xs text-text-muted">Physical inventory value</p>
-            <p className="mt-1 font-mono text-xl font-semibold text-text">
+            <p
+              className="mt-1 font-mono text-xl font-semibold text-text"
+              data-testid="reconciliation-physical-value"
+            >
               {Number(data.physicalInventoryValue).toLocaleString(undefined, {
                 style: 'currency',
                 currency: data.currency,

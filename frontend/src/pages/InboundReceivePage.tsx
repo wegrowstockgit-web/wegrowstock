@@ -6,6 +6,7 @@ import { apiClient } from '@/api/client';
 import { BarcodeScannerInput } from '@/features/inbound/BarcodeScannerInput';
 import { BigButton } from '@/components/ui/BigButton';
 import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
+import { PageHelpOverlay } from '@/components/ui/PageHelpOverlay';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { enqueueScanMutation } from '@/offline/mutationQueue';
@@ -259,7 +260,10 @@ export function InboundReceivePage() {
           <ArrowLeft className="h-4 w-4" /> Floor
         </Link>
         <div className="flex flex-col items-end gap-2">
-          <NetworkStatusBadge />
+          <div className="flex items-center gap-2">
+            <PageHelpOverlay />
+            <NetworkStatusBadge />
+          </div>
           <div className="text-right">
             <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Inbound</p>
             <h1 className="text-lg font-bold text-text">Receive & Putaway</h1>

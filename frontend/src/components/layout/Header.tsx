@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, LogOut, Menu, Search, Settings2, User, Warehouse } from 'lucide-react';
 import { Avatar, initialsFromName } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { PageHelpOverlay } from '@/components/ui/PageHelpOverlay';
 import { ProfileSettingsDialog } from '@/components/layout/ProfileSettingsDialog';
 import { TerminalPinPad } from '@/components/layout/TerminalPinPad';
 import { useSessionStore } from '@/stores/session';
@@ -134,6 +135,8 @@ export function Header({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Page Info — shared by AppShell (office) and WarehouseFloorShell (floor). */}
+          <PageHelpOverlay />
           {/* Connectivity is for handheld / floor devices — not the office shell. */}
           {isWarehouseView && <NetworkStatusBadge className="text-sm" />}
           {isWarehouseView && quarantineCount > 0 && (

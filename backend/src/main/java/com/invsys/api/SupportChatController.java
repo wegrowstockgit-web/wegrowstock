@@ -36,7 +36,15 @@ public class SupportChatController {
         this.supportChatService = supportChatService;
     }
 
-    public record ChatRequest(@NotBlank String message) {
+    public record ChatRequest(
+            @NotBlank String message,
+            Map<String, Object> pageContext
+    ) {
+        public ChatRequest {
+            if (pageContext == null) {
+                pageContext = Map.of();
+            }
+        }
     }
 
     public record ExecuteActionRequest(
@@ -65,6 +73,7 @@ public class SupportChatController {
                         request.message(),
                         roleSnapshot,
                         route,
+                        request.pageContext(),
                         token -> {
                             try {
                                 emitter.send(SseEmitter.event().name("token").data(token));

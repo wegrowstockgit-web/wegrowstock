@@ -51,6 +51,9 @@ export default defineConfig({
         'src/features/offline/SyncConflictsPanel.tsx',
         'src/features/offline/conflictSummary.ts',
         'src/features/offline/SyncConflictAlertBanner.tsx',
+        'src/features/support/RouteKnowledgeRegistry.ts',
+        'src/features/support/supportChatApi.ts',
+        'src/components/ui/PageHelpOverlay.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       // Support assistant: Vitest + Playwright personas e2e (not in threshold set).

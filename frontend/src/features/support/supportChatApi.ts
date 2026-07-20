@@ -1,4 +1,9 @@
 import { apiClient } from '@/api/client';
+import {
+  formatRouteKnowledgeForChat,
+  resolveRouteKnowledge,
+  type RouteKnowledge,
+} from './RouteKnowledgeRegistry';
 
 export interface SupportActionButton {
   type: 'action_button';
@@ -14,9 +19,46 @@ export interface SupportChatStreamHandlers {
   onError?: (err: Error) => void;
 }
 
+export type SupportPageContext = {
+  pathname: string;
+  title: string;
+  purpose: string;
+  reversals: string[];
+  correlations: string[];
+  flow: string[];
+};
+
+/** Build the structured page context sent alongside the user message. */
+export function buildSupportPageContext(pathname: string): SupportPageContext | null {
+  const knowledge = resolveRouteKnowledge(pathname);
+  if (!knowledge) return null;
+  return toPageContext(pathname, knowledge);
+}
+
+function toPageContext(pathname: string, knowledge: RouteKnowledge): SupportPageContext {
+  return {
+    pathname,
+    title: knowledge.title,
+    purpose: knowledge.purpose,
+    reversals: knowledge.reversals,
+    correlations: knowledge.correlations,
+    flow: knowledge.flow,
+  };
+}
+
 /**
- * Streams POST /api/v1/support/chat with role + route context headers.
- * Emits token text and structured action_button events.
+ * Prefix the typed question with a hidden system-context block derived from the
+ * active route's {@link RouteKnowledgeRegistry} entry.
+ */
+export function injectRouteContextIntoMessage(userMessage: string, pathname: string): string {
+  const knowledge = resolveRouteKnowledge(pathname);
+  const prefix = formatRouteKnowledgeForChat(pathname, knowledge);
+  return `${prefix} ${userMessage.trim()}`;
+}
+
+/**
+ * Streams POST /api/v1/support/chat with role + route context headers and
+ * structured pageContext for RAG/LLM grounding.
  */
 export async function streamSupportChat(
   message: string,
@@ -27,6 +69,9 @@ export async function streamSupportChat(
 ): Promise<void> {
   const base = (apiClient.defaults.baseURL ?? '').replace(/\/$/, '');
   const url = base ? `${base}/api/v1/support/chat` : '/api/v1/support/chat';
+  const pathname = route.split('?')[0] || route;
+  const pageContext = buildSupportPageContext(pathname);
+  const enrichedMessage = injectRouteContextIntoMessage(message, pathname);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -37,7 +82,10 @@ export async function streamSupportChat(
       'X-User-Roles': roles.join(','),
       'X-Current-Route': route,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message: enrichedMessage,
+      pageContext,
+    }),
     signal,
   });
 

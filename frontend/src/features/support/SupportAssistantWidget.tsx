@@ -18,6 +18,8 @@ type TranscriptLine = {
 
 /**
  * Global floating support copilot — agentic action buttons + scanner-safe layout.
+ * Chat submissions go through {@link streamSupportChat}, which injects the active
+ * route's {@link RouteKnowledgeRegistry} playbook as hidden system context.
  */
 export function SupportAssistantWidget() {
   const location = useLocation();

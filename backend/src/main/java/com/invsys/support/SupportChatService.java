@@ -41,10 +41,23 @@ public class SupportChatService {
         this.agentTools = agentTools;
     }
 
+    /** Backward-compatible entry (no structured page context). */
     public void streamAnswer(
             String message,
             List<String> roles,
             String route,
+            Consumer<String> onToken,
+            Consumer<SupportActionProposal> onAction,
+            Runnable onComplete
+    ) {
+        streamAnswer(message, roles, route, Map.of(), onToken, onAction, onComplete);
+    }
+
+    public void streamAnswer(
+            String message,
+            List<String> roles,
+            String route,
+            Map<String, Object> pageContext,
             Consumer<String> onToken,
             Consumer<SupportActionProposal> onAction,
             Runnable onComplete
@@ -62,16 +75,20 @@ public class SupportChatService {
         }
 
         List<String> normalizedRoles = normalizeRoles(roles);
-        float[] embedding = embeddingModel.embed(question);
+        // Embed on the user-facing tail when a System Context prefix is present.
+        String embedText = extractUserQueryTail(question);
+        float[] embedding = embeddingModel.embed(embedText);
         List<SupportKnowledgeChunk> seeds = repository.searchSimilar(
                 embedding, normalizedRoles, route, properties.getTopK());
         List<SupportKnowledgeChunk> retrieved = graphRepository.retrieveWithGraph(seeds, 2);
-        String system = SupportSystemPromptBuilder.build(normalizedRoles, route, retrieved)
+        String system = SupportSystemPromptBuilder.build(normalizedRoles, route, retrieved, pageContext)
                 + """
 
                 GraphRAG: retrieved fragments include 2-hop neighbors (e.g. Allocation pulls Purchase Orders \
                 and Shipping Staging). When a mutating platform step is needed, propose a confirmable \
                 action_button rather than claiming it already ran.
+                Always emphasize safe reversals that append compensating ledger rows \
+                (ERROR_CORRECTION / OFFLINE_CONFLICT_OVERRIDE) and never delete append-only history.
                 """;
 
         if ("openai".equalsIgnoreCase(properties.getLlm()) && chatClientBuilder.getIfAvailable() != null) {
@@ -101,6 +118,19 @@ public class SupportChatService {
             onAction.accept(action);
         }
         onComplete.run();
+    }
+
+    /** Prefer the text after "User Query:" when the SPA injects route system context. */
+    static String extractUserQueryTail(String message) {
+        if (message == null) {
+            return "";
+        }
+        String marker = "User Query:";
+        int idx = message.lastIndexOf(marker);
+        if (idx >= 0) {
+            return message.substring(idx + marker.length()).trim();
+        }
+        return message.trim();
     }
 
     public Map<String, Object> executeAction(String action, Map<String, String> params) {

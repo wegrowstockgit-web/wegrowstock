@@ -141,6 +141,23 @@ class HeuristicSupportComposerTest {
     }
 
     @Test
+    void systemContextReversalAnswersWithoutRetrievedChunks() {
+        var result = HeuristicSupportComposer.compose(
+                """
+                System Context: The user is currently on the Sales Orders page (/sales-orders). \
+                Reversal mechanism: Un-allocate / Cancel releases ACTIVE allocations back to the ATP pool. \
+                Emphasize how to safely reverse. User Query: How do I undo allocation?
+                """,
+                List.of("WAREHOUSE_MANAGER"),
+                "/sales-orders",
+                List.of(),
+                "system");
+
+        assertThat(result.answer()).containsIgnoringCase("Un-allocate");
+        assertThat(result.answer()).containsIgnoringCase("ERROR_CORRECTION");
+    }
+
+    @Test
     void crossDockUsesInterceptPlaybook() {
         var result = HeuristicSupportComposer.compose(
                 "Why did receive send me to a staging lane for a backorder?",

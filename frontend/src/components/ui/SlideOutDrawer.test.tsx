@@ -14,7 +14,10 @@ describe('SlideOutDrawer', () => {
       </SlideOutDrawer>
     );
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+    expect(screen.getByTestId('slide-out-drawer-root')).toBeInTheDocument();
     expect(screen.getByText('Order SO-100')).toBeInTheDocument();
     expect(screen.getByText('Line items')).toBeInTheDocument();
 
@@ -22,13 +25,15 @@ describe('SlideOutDrawer', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('is hidden when closed', () => {
+  it('is not mounted when closed', () => {
     render(
       <SlideOutDrawer open={false} title="Hidden" onClose={() => {}}>
         <p>Hidden content</p>
       </SlideOutDrawer>
     );
 
+    expect(screen.queryByTestId('slide-out-drawer-root')).not.toBeInTheDocument();
     expect(screen.queryByText('Hidden content')).not.toBeInTheDocument();
   });
 });
+

@@ -45,8 +45,50 @@ describe('streamSupportChat', () => {
           'X-User-Roles': 'B2B_CUSTOMER',
           'X-Current-Route': '/showroom',
         }),
+        body: expect.stringContaining('System Context:'),
       }),
     );
+    const requestBody = JSON.parse(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string,
+    ) as {
+      message: string;
+      pageContext: { title: string } | null;
+    };
+    expect(requestBody.message).toContain('User Query:');
+    expect(requestBody.message).toContain('hi');
+    expect(requestBody.pageContext?.title).toBe('B2B Showroom');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('injects sales-order reversals into the chat payload', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event:done\ndata: {"ok":true}\n\n'));
+            controller.close();
+          },
+        }),
+        text: async () => '',
+      }),
+    );
+
+    await streamSupportChat('How do I undo allocation?', ['WAREHOUSE_MANAGER'], '/sales-orders', {
+      onToken: () => {},
+    });
+
+    const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string };
+    const payload = JSON.parse(init.body) as {
+      message: string;
+      pageContext: { title: string; reversals: string[] };
+    };
+    expect(payload.pageContext.title).toBe('Sales Orders');
+    expect(payload.pageContext.reversals.join(' ')).toMatch(/Un-allocate|Cancel/i);
+    expect(payload.message).toContain('Reversal mechanism:');
+    expect(payload.message).toContain('How do I undo allocation?');
 
     vi.unstubAllGlobals();
   });
