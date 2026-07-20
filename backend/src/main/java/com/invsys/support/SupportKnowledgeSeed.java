@@ -201,6 +201,159 @@ public class SupportKnowledgeSeed implements ApplicationRunner {
                     """,
                     List.of("PICKER", "WAREHOUSE_MANAGER", "ADMIN", "OWNER"),
                     List.of("/inbound/receive", "/fulfillment", "/sales-orders", "/purchase-orders"),
-                    "SEQUENCE_FLOW.md#5.4")
+                    "SEQUENCE_FLOW.md#5.4"),
+            new Doc(
+                    "ops-landed-cost-distribution",
+                    "How landed cost spreads into unit cost on a PO",
+                    """
+                    Freight, customs, and similar surcharges are not a separate mystery number — they roll into \
+                    each line's unit valuation so inventory value stays honest after receive.
+
+                    Steps (office):
+                    1. Open Purchase Orders and select the PO (or create lines with base unit cost first).
+                    2. Attach the landed-cost surcharge (freight, customs duty, or similar).
+                    3. Choose how to spread it — by value, weight, or quantity (the system uses the strategy \
+                       for that cost type).
+                    4. Confirm. The engine distributes the surcharge across lines and updates unit costs.
+                    5. When the floor receives, those unit valuations are what the ledger and stock value use.
+
+                    Tip: do this before or right after Submit so receive does not post with incomplete cost. \
+                    Pickers do not enter landed cost on the scanner — office owns the surcharge.
+                    """,
+                    List.of("OWNER", "ADMIN", "WAREHOUSE_MANAGER"),
+                    List.of("/purchase-orders", "/inbound/receive", "/invoices"),
+                    "SEQUENCE_FLOW.md#5.1"),
+            new Doc(
+                    "ops-fefo-allocation-credit-holds",
+                    "FEFO lot picks and why credit holds stop orders",
+                    """
+                    When you Allocate a sales order, the system reserves real stock — not just a number on a sheet.
+
+                    FEFO (first expiry, first out):
+                    1. Confirm the sales order on the desktop Sales Orders page.
+                    2. Click Allocate. The system picks lots with the soonest expiry first (FEFO).
+                    3. If stock is found → status ALLOCATED and those lots are reserved for the wave.
+                    4. If no stock → BACKORDERED until inbound (or cross-dock) can fill the demand.
+                    5. Generate Wave only after ALLOCATED so pickers get the right lot tasks.
+
+                    Credit holds:
+                    1. Accounts set each customer's line-of-credit limit under Customers.
+                    2. On confirm/allocate, CreditService checks open exposure against that limit.
+                    3. Over the limit → the order is held for review (NEEDS_REVIEW / credit hold) — stock \
+                       is not waved until credit is cleared or raised.
+                    4. Within limit → allocation proceeds normally.
+
+                    Floor tip: if a wave never appears, ask the office whether the order is BACKORDERED or \
+                    on credit hold — do not invent picks.
+                    """,
+                    List.of("OWNER", "ADMIN", "WAREHOUSE_MANAGER"),
+                    List.of("/sales-orders", "/customers", "/dashboard"),
+                    "SEQUENCE_FLOW.md#6.1"),
+            new Doc(
+                    "ops-append-only-ledger-reversals",
+                    "Immutable ledger and how to reverse a bad entry",
+                    """
+                    The inventory ledger is append-only: every receive, pick, ship, and adjust stays forever. \
+                    You never delete or overwrite a past row — that is how audits and lot trace stay trustworthy.
+
+                    When a posted entry is wrong:
+                    1. Do not ask anyone to "delete the ledger line."
+                    2. From the office inventory / ledger tools, reverse the entry \
+                       (API: POST /api/v1/inventory/ledger/{id}/reverse).
+                    3. The system writes a compensating row with reason ERROR_CORRECTION that undoes the \
+                       quantity impact while keeping the original visible.
+                    4. Offline conflict overrides use OFFLINE_CONFLICT_OVERRIDE the same way — a new attributed \
+                       row, not an erase.
+
+                    Teaching tip: history stays; corrections stack. You can reverse a normal entry once; \
+                    you cannot reverse an ERROR_CORRECTION or an already-reversed row again.
+                    """,
+                    List.of("OWNER", "ADMIN", "WAREHOUSE_MANAGER"),
+                    List.of("/products", "/exceptions", "/dashboard", "/cycle-counts"),
+                    "SEQUENCE_FLOW.md#7"),
+            new Doc(
+                    "ops-blind-cycle-count-escalation",
+                    "Blind cycle counts: auto-approve vs manager review",
+                    """
+                    Blind counts hide the expected quantity so the picker counts what is really in the bin.
+
+                    Floor (picker):
+                    1. Open count mode on the scanner and scan the directed bin.
+                    2. Enter the physical quantity you see — no system target is shown.
+                    3. Submit. Keep moving; the office handles large variances.
+
+                    What happens next (automatic policy):
+                    - Match or small variance (within Max Auto-Adjust Value) → auto-approved; ledger ADJUST \
+                      posts and the bin unlocks.
+                    - Large variance → line goes PENDING_MANAGER_REVIEW and the slot stays locked until \
+                      a manager acts.
+
+                    Office (manager):
+                    1. Open Cycle Counts variance queue.
+                    2. Approve Adjustment (ledger ADJUST attributed to you) or request a recount.
+                    3. Do not tell pickers to invent a separate adjust outside the count workflow.
+
+                    Tip: big swings need human eyes; small ones should not block the aisle.
+                    """,
+                    List.of("PICKER", "WAREHOUSE_MANAGER", "ADMIN", "OWNER"),
+                    List.of("/cycle-counts", "/fulfillment", "/products"),
+                    "SEQUENCE_FLOW.md#7.2"),
+            new Doc(
+                    "ops-offline-conflict-panel-resolve",
+                    "Resolve parked scans in the Conflict Panel",
+                    """
+                    When a picker was offline and a replayed scan fails a business rule, the scan parks for \
+                    the office — the handheld keeps working (HTTP 202). Managers finish the story here.
+
+                    Steps:
+                    1. Open Dashboard Sync Conflicts (or Exceptions → Sync Conflicts).
+                    2. Select a parked conflict. Read the human summary — not raw JSON.
+                    3. Correct any editable fields in the glove-friendly form (immutable fields stay locked).
+                    4. Choose one action:
+                       - Discard Transaction — drop the parked mutation (status DISCARDED). Do not re-scan \
+                         the same Idempotency-Key afterward.
+                       - Approve & Re-process — apply your corrections; the ledger posts as you with reason \
+                         OFFLINE_CONFLICT_OVERRIDE (status RESOLVED_AND_REPLAYED).
+                    5. Confirm the related order/bin looks right, then clear the next conflict.
+
+                    Tip: tell pickers their scan is parked, not lost. Only managers Discard or Approve.
+                    """,
+                    List.of("WAREHOUSE_MANAGER", "ADMIN", "OWNER"),
+                    List.of("/dashboard", "/exceptions", "/fulfillment"),
+                    "SEQUENCE_FLOW.md#12"),
+            new Doc(
+                    "ops-status-codes-po-so-invoice-rma",
+                    "Status guide: PO, SO, Invoice, Production Order, RMA",
+                    """
+                    Quick chip meanings so office and floor speak the same language.
+
+                    Purchase Order: DRAFT (editable) → SUBMITTED (firm; floor may receive) → IN_TRANSIT \
+                    (freight moving) → PARTIALLY_RECEIVED (some qty in) → RECEIVED (complete).
+
+                    Sales Order: DRAFT → CONFIRMED → ALLOCATED (lots reserved) or BACKORDERED (no stock) or \
+                    NEEDS_REVIEW (often credit hold) → PARTIALLY_SHIPPED → SHIPPED → CLOSED. Any open state \
+                    can become CANCELLED (releases allocations).
+
+                    Invoice: DRAFT (not sent) → OPEN (awaiting payment) → PAID (settled). VOID cancels for \
+                    finance and does not reverse warehouse stock.
+
+                    Production Order: DRAFT → COMPONENTS_ALLOCATED (raw locked) → WIP / IN_ROUTING (floor \
+                    assembly) → COMPLETED (finished goods in). CANCELLED releases component reservations.
+
+                    RMA / Return: REQUESTED or PENDING_REVIEW → APPROVED (floor may receive) or REJECTED → \
+                    RECEIVED after intake. Disposition RESTOCK vs SCRAP decides whether sellable stock returns.
+
+                    Tip: if a wave or receive button is missing, check the status chip first — the document \
+                    may not be ready for that step yet.
+                    """,
+                    List.of("OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "B2B_CUSTOMER"),
+                    List.of(
+                            "/purchase-orders",
+                            "/sales-orders",
+                            "/invoices",
+                            "/manufacturing/orders",
+                            "/returns",
+                            "/showroom"),
+                    "SEQUENCE_FLOW.md#status")
     );
 }

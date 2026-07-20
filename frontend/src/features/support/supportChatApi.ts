@@ -1,23 +1,52 @@
 import { apiClient } from '@/api/client';
 import {
   formatRouteKnowledgeForChat,
-  resolveRouteKnowledge,
+  knowledgeContextKey,
+  resolveKnowledgeContext,
   type RouteKnowledge,
+  type RouteKnowledgeComponent,
 } from './RouteKnowledgeRegistry';
+import type { PageStateSnapshot } from './usePageStateSnapshot';
 
 export interface SupportActionButton {
   type: 'action_button';
   action: string;
   label: string;
   params: Record<string, string>;
+  target?: string;
+}
+
+export interface SupportActionChip {
+  type: 'action_chip';
+  action: 'NAVIGATE' | 'SPOTLIGHT' | string;
+  label: string;
+  target: string;
+  params: Record<string, string>;
+}
+
+export type SupportStreamAction = SupportActionButton | SupportActionChip;
+
+export interface SupportChatDonePayload {
+  ok?: boolean;
+  replyMarkdown?: string;
+  followUpQuestions?: string[];
+  actionChips?: SupportStreamAction[];
 }
 
 export interface SupportChatStreamHandlers {
   onToken: (token: string) => void;
-  onAction?: (action: SupportActionButton) => void;
-  onDone?: () => void;
+  onAction?: (action: SupportStreamAction) => void;
+  onDone?: (payload?: SupportChatDonePayload) => void;
   onError?: (err: Error) => void;
 }
+
+export type SupportPageContextComponent = {
+  name: string;
+  description: string;
+  dataOrigin: string;
+  columns?: { name: string; purpose: string }[];
+  statuses?: Record<string, string>;
+};
 
 export type SupportPageContext = {
   pathname: string;
@@ -26,39 +55,70 @@ export type SupportPageContext = {
   reversals: string[];
   correlations: string[];
   flow: string[];
+  components: SupportPageContextComponent[];
 };
 
-/** Build the structured page context sent alongside the user message. */
-export function buildSupportPageContext(pathname: string): SupportPageContext | null {
-  const knowledge = resolveRouteKnowledge(pathname);
-  if (!knowledge) return null;
-  return toPageContext(pathname, knowledge);
+export type SupportChatRequestOptions = {
+  pageState?: Partial<PageStateSnapshot> | null;
+  userRoles?: readonly string[];
+};
+
+function serializeComponent(component: RouteKnowledgeComponent): SupportPageContextComponent {
+  return {
+    name: component.name,
+    description: component.description,
+    dataOrigin: component.dataOrigin,
+    ...(component.columns?.length ? { columns: component.columns } : {}),
+    ...(component.statuses && Object.keys(component.statuses).length
+      ? { statuses: component.statuses }
+      : {}),
+  };
 }
 
-function toPageContext(pathname: string, knowledge: RouteKnowledge): SupportPageContext {
+function splitRoute(route: string): { pathname: string; search: string } {
+  const raw = route || '/';
+  const q = raw.indexOf('?');
+  if (q === -1) {
+    return { pathname: raw, search: '' };
+  }
+  return { pathname: raw.slice(0, q) || '/', search: raw.slice(q) };
+}
+
+/** Build the structured page context sent alongside the user message. */
+export function buildSupportPageContext(route: string): SupportPageContext | null {
+  const { pathname, search } = splitRoute(route);
+  const knowledge = resolveKnowledgeContext(pathname, search);
+  if (!knowledge) return null;
+  return toPageContext(knowledgeContextKey(pathname, search), knowledge);
+}
+
+function toPageContext(routeKey: string, knowledge: RouteKnowledge): SupportPageContext {
   return {
-    pathname,
+    pathname: routeKey,
     title: knowledge.title,
     purpose: knowledge.purpose,
     reversals: knowledge.reversals,
     correlations: knowledge.correlations,
     flow: knowledge.flow,
+    components: knowledge.components.map(serializeComponent),
   };
 }
 
 /**
  * Prefix the typed question with a hidden system-context block derived from the
- * active route's {@link RouteKnowledgeRegistry} entry.
+ * active route's {@link RouteKnowledgeRegistry} entry (including settings tabs).
  */
-export function injectRouteContextIntoMessage(userMessage: string, pathname: string): string {
-  const knowledge = resolveRouteKnowledge(pathname);
-  const prefix = formatRouteKnowledgeForChat(pathname, knowledge);
+export function injectRouteContextIntoMessage(userMessage: string, route: string): string {
+  const { pathname, search } = splitRoute(route);
+  const routeKey = knowledgeContextKey(pathname, search);
+  const knowledge = resolveKnowledgeContext(pathname, search);
+  const prefix = formatRouteKnowledgeForChat(routeKey, knowledge);
   return `${prefix} ${userMessage.trim()}`;
 }
 
 /**
  * Streams POST /api/v1/support/chat with role + route context headers and
- * structured pageContext for RAG/LLM grounding.
+ * structured pageContext / pageState for RAG/LLM grounding.
  */
 export async function streamSupportChat(
   message: string,
@@ -66,12 +126,30 @@ export async function streamSupportChat(
   route: string,
   handlers: SupportChatStreamHandlers,
   signal?: AbortSignal,
+  options?: SupportChatRequestOptions,
 ): Promise<void> {
   const base = (apiClient.defaults.baseURL ?? '').replace(/\/$/, '');
   const url = base ? `${base}/api/v1/support/chat` : '/api/v1/support/chat';
-  const pathname = route.split('?')[0] || route;
-  const pageContext = buildSupportPageContext(pathname);
-  const enrichedMessage = injectRouteContextIntoMessage(message, pathname);
+  const pageContext = buildSupportPageContext(route);
+  const enrichedMessage = injectRouteContextIntoMessage(message, route);
+  const { pathname, search } = splitRoute(route);
+  const userRoles = options?.userRoles ?? roles;
+  const rawPageState = options?.pageState
+    ? {
+        ...options.pageState,
+        userRoles: options.pageState.userRoles ?? [...userRoles],
+        routePath: options.pageState.routePath ?? route,
+      }
+    : {
+        routePath: route,
+        pathname,
+        search,
+        userRoles: [...userRoles],
+      };
+  // Drop null/undefined so Jackson → Map.copyOf on the API never NPEs.
+  const pageState = Object.fromEntries(
+    Object.entries(rawPageState).filter(([, v]) => v !== null && v !== undefined),
+  );
 
   const res = await fetch(url, {
     method: 'POST',
@@ -85,6 +163,9 @@ export async function streamSupportChat(
     body: JSON.stringify({
       message: enrichedMessage,
       pageContext,
+      routeContext: { pathname, search },
+      pageState,
+      userRoles: [...userRoles],
     }),
     signal,
   });
@@ -97,6 +178,7 @@ export async function streamSupportChat(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let sawDone = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -122,11 +204,14 @@ export async function streamSupportChat(
         if (parsed) handlers.onAction?.(parsed);
       }
       if (event === 'done') {
-        handlers.onDone?.();
+        sawDone = true;
+        handlers.onDone?.(parseDonePayload(data));
       }
     }
   }
-  handlers.onDone?.();
+  if (!sawDone) {
+    handlers.onDone?.();
+  }
 }
 
 export async function executeSupportAction(
@@ -140,16 +225,44 @@ export async function executeSupportAction(
   return data;
 }
 
-function parseActionPayload(raw: string): SupportActionButton | null {
+function parseDonePayload(raw: string): SupportChatDonePayload | undefined {
+  if (!raw) return undefined;
   try {
-    const json = JSON.parse(raw) as Partial<SupportActionButton>;
-    if (json.type !== 'action_button' || !json.action) return null;
-    return {
-      type: 'action_button',
-      action: json.action,
-      label: json.label ?? json.action,
-      params: (json.params as Record<string, string>) ?? {},
+    return JSON.parse(raw) as SupportChatDonePayload;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseActionPayload(raw: string): SupportStreamAction | null {
+  try {
+    const json = JSON.parse(raw) as Partial<SupportStreamAction> & {
+      params?: Record<string, string>;
+      target?: string;
     };
+    if (!json.action) return null;
+    const params = json.params ?? {};
+    const target = json.target ?? params.target ?? '';
+
+    if (json.type === 'action_chip' || json.action === 'NAVIGATE' || json.action === 'SPOTLIGHT') {
+      return {
+        type: 'action_chip',
+        action: json.action,
+        label: json.label ?? json.action,
+        target,
+        params,
+      };
+    }
+    if (json.type === 'action_button') {
+      return {
+        type: 'action_button',
+        action: json.action,
+        label: json.label ?? json.action,
+        params,
+        ...(target ? { target } : {}),
+      };
+    }
+    return null;
   } catch {
     return null;
   }

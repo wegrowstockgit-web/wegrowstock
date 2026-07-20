@@ -20,7 +20,8 @@ class HeuristicSupportComposerTest {
 
         assertThat(result.answer()).containsIgnoringCase("putaway");
         assertThat(result.answer()).containsIgnoringCase("scan");
-        assertThat(result.actions()).isEmpty();
+        assertThat(result.actions()).anyMatch(a -> "NAVIGATE".equals(a.action()));
+        assertThat(result.followUps()).isNotEmpty();
     }
 
     @Test
@@ -34,8 +35,9 @@ class HeuristicSupportComposerTest {
 
         assertThat(result.answer()).containsIgnoringCase("showroom");
         assertThat(result.answer()).containsIgnoringCase("not visible");
-        assertThat(result.answer().toLowerCase()).doesNotContain("ledger");
         assertThat(result.answer().toLowerCase()).doesNotContain("bin location");
+        assertThat(result.answer().toLowerCase()).doesNotContain("inventory_ledger");
+        assertThat(result.actions()).anyMatch(a -> "NAVIGATE".equals(a.action()));
     }
 
     @Test
@@ -60,10 +62,12 @@ class HeuristicSupportComposerTest {
                 List.of(),
                 "system");
 
-        assertThat(result.actions()).hasSize(1);
-        assertThat(result.actions().getFirst().type()).isEqualTo("action_button");
-        assertThat(result.actions().getFirst().action()).isEqualTo("generateCycleCount");
-        assertThat(result.actions().getFirst().params()).containsEntry("zoneId", "Dock-1");
+        assertThat(result.actions()).anyMatch(a ->
+                "action_button".equals(a.type()) && "generateCycleCount".equals(a.action()));
+        assertThat(result.actions()).anyMatch(a ->
+                "generateCycleCount".equals(a.action()) && "Dock-1".equals(a.params().get("zoneId")));
+        assertThat(result.answer()).contains("**Diagnosis:**");
+        assertThat(result.followUps()).isNotEmpty();
     }
 
     @Test
@@ -105,9 +109,9 @@ class HeuristicSupportComposerTest {
                 List.of(chunk("office-allocate-wave", "Release the wave after allocation.")),
                 "system");
 
-        assertThat(result.actions()).hasSize(1);
-        assertThat(result.actions().getFirst().action()).isEqualTo("releaseWave");
-        assertThat(result.actions().getFirst().params()).containsEntry("waveId", waveId);
+        assertThat(result.actions()).anyMatch(a ->
+                "releaseWave".equals(a.action()) && waveId.equals(a.params().get("waveId")));
+        assertThat(result.actions()).anyMatch(a -> "NAVIGATE".equals(a.action()));
     }
 
     @Test

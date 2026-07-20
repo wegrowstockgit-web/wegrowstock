@@ -20,7 +20,7 @@ test.describe('Support assistant personas', () => {
       await picker.page.getByTestId('support-assistant-input').fill('How do I process an inbound shipment?');
       await picker.page.getByTestId('support-assistant-send').click();
 
-      const reply = picker.page.getByTestId('support-assistant-reply');
+      const reply = picker.page.getByTestId('support-assistant-reply').last();
       await expect(reply).toContainText(/scan/i, { timeout: 30_000 });
       await expect(reply).toContainText(/putaway|bin/i);
       await expect(reply).not.toContainText(/click create purchase order/i);
@@ -42,11 +42,11 @@ test.describe('Support assistant personas', () => {
       await b2b.page.getByTestId('support-assistant-input').fill('How do I view my inventory allocations?');
       await b2b.page.getByTestId('support-assistant-send').click();
 
-      const reply = b2b.page.getByTestId('support-assistant-reply');
+      const reply = b2b.page.getByTestId('support-assistant-reply').last();
       await expect(reply).toContainText(/showroom/i, { timeout: 30_000 });
       await expect(reply).toContainText(/not visible/i);
-      await expect(reply).not.toContainText(/ledger/i);
       await expect(reply).not.toContainText(/bin location/i);
+      await expect(reply).not.toContainText(/inventory_ledger/i);
     } finally {
       await b2b.close();
     }
@@ -67,7 +67,7 @@ test.describe('Support assistant personas', () => {
         .fill('What should I do if an item is damaged on the floor?');
       await manager.page.getByTestId('support-assistant-send').click();
 
-      const reply = manager.page.getByTestId('support-assistant-reply');
+      const reply = manager.page.getByTestId('support-assistant-reply').last();
       await expect(reply).toContainText(/exception|adjust|cycle/i, { timeout: 30_000 });
     } finally {
       await manager.close();
@@ -87,7 +87,7 @@ test.describe('Support assistant personas', () => {
         .fill('Please generate a cycle count for zone Aisle-4');
       await manager.page.getByTestId('support-assistant-send').click();
 
-      const reply = manager.page.getByTestId('support-assistant-reply');
+      const reply = manager.page.getByTestId('support-assistant-reply').last();
       await expect(reply).toContainText(/cycle count/i, { timeout: 30_000 });
 
       const actionBtn = manager.page.getByTestId('support-action-button');

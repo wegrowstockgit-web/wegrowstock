@@ -48,9 +48,9 @@ public class SupportChatService {
             String route,
             Consumer<String> onToken,
             Consumer<SupportActionProposal> onAction,
-            Runnable onComplete
+            Consumer<SupportStructuredReply> onComplete
     ) {
-        streamAnswer(message, roles, route, Map.of(), onToken, onAction, onComplete);
+        streamAnswer(message, roles, route, Map.of(), Map.of(), onToken, onAction, onComplete);
     }
 
     public void streamAnswer(
@@ -60,17 +60,32 @@ public class SupportChatService {
             Map<String, Object> pageContext,
             Consumer<String> onToken,
             Consumer<SupportActionProposal> onAction,
-            Runnable onComplete
+            Consumer<SupportStructuredReply> onComplete
+    ) {
+        streamAnswer(message, roles, route, pageContext, Map.of(), onToken, onAction, onComplete);
+    }
+
+    public void streamAnswer(
+            String message,
+            List<String> roles,
+            String route,
+            Map<String, Object> pageContext,
+            Map<String, Object> pageState,
+            Consumer<String> onToken,
+            Consumer<SupportActionProposal> onAction,
+            Consumer<SupportStructuredReply> onComplete
     ) {
         if (!properties.isEnabled()) {
-            onToken.accept("Support assistant is disabled.");
-            onComplete.run();
+            String disabled = "Support assistant is disabled.";
+            onToken.accept(disabled);
+            onComplete.accept(SupportStructuredReply.of(disabled, List.of(), List.of()));
             return;
         }
         String question = message == null ? "" : message.trim();
         if (question.isEmpty()) {
-            onToken.accept("Ask a short operations question to get started.");
-            onComplete.run();
+            String hint = "Ask a short operations question to get started.";
+            onToken.accept(hint);
+            onComplete.accept(SupportStructuredReply.of(hint, List.of(), List.of()));
             return;
         }
 
@@ -81,14 +96,18 @@ public class SupportChatService {
         List<SupportKnowledgeChunk> seeds = repository.searchSimilar(
                 embedding, normalizedRoles, route, properties.getTopK());
         List<SupportKnowledgeChunk> retrieved = graphRepository.retrieveWithGraph(seeds, 2);
-        String system = SupportSystemPromptBuilder.build(normalizedRoles, route, retrieved, pageContext)
+        Map<String, Object> safePageContext = pageContext == null ? Map.of() : pageContext;
+        Map<String, Object> safePageState = pageState == null ? Map.of() : pageState;
+        String system = SupportSystemPromptBuilder.build(
+                        normalizedRoles, route, retrieved, safePageContext, safePageState)
                 + """
 
                 GraphRAG: retrieved fragments include 2-hop neighbors (e.g. Allocation pulls Purchase Orders \
                 and Shipping Staging). When a mutating platform step is needed, propose a confirmable \
                 action_button rather than claiming it already ran.
-                Always emphasize safe reversals that append compensating ledger rows \
-                (ERROR_CORRECTION / OFFLINE_CONFLICT_OVERRIDE) and never delete append-only history.
+                Prefer NAVIGATE / SPOTLIGHT action chips for teaching. Always emphasize safe reversals that \
+                append compensating ledger rows (ERROR_CORRECTION / OFFLINE_CONFLICT_OVERRIDE) and never \
+                delete append-only history.
                 """;
 
         if ("openai".equalsIgnoreCase(properties.getLlm()) && chatClientBuilder.getIfAvailable() != null) {
@@ -100,24 +119,24 @@ public class SupportChatService {
                     .tools(agentTools)
                     .call()
                     .content();
-            streamChunks(content == null ? "" : content, onToken);
-            // Also surface heuristic proposals so UI buttons work even if the model only narrates.
             HeuristicSupportResult side = HeuristicSupportComposer.compose(
-                    question, normalizedRoles, route, retrieved, system);
+                    question, normalizedRoles, route, retrieved, system, safePageState);
+            String markdown = content == null || content.isBlank() ? side.answer() : content;
+            streamChunks(markdown, onToken);
             for (SupportActionProposal action : side.actions()) {
                 onAction.accept(action);
             }
-            onComplete.run();
+            onComplete.accept(SupportStructuredReply.of(markdown, side.actions(), side.followUps()));
             return;
         }
 
         HeuristicSupportResult result = HeuristicSupportComposer.compose(
-                question, normalizedRoles, route, retrieved, system);
+                question, normalizedRoles, route, retrieved, system, safePageState);
         streamChunks(result.answer(), onToken);
         for (SupportActionProposal action : result.actions()) {
             onAction.accept(action);
         }
-        onComplete.run();
+        onComplete.accept(SupportStructuredReply.of(result.answer(), result.actions(), result.followUps()));
     }
 
     /** Prefer the text after "User Query:" when the SPA injects route system context. */

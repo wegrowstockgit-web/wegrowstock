@@ -88,6 +88,59 @@ class SupportChatHttpTest extends AbstractIntegrationTest {
         assertThat(body).contains("generateCycleCount");
         assertThat(body).contains("Aisle-4");
         assertThat(body).contains("event:done");
+        assertThat(body).contains("replyMarkdown");
+        assertThat(body).contains("followUpQuestions");
+        assertThat(body).contains("actionChips");
+    }
+
+    @Test
+    void streamsStructuredInstructorPayloadWithPageState() throws Exception {
+        String slug = "sup-struct-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse tokens = authService.signup(new SignupRequest(
+                "Support Struct", slug, "mgr@" + slug + ".test", "password123", "Owner"));
+
+        String content = """
+                {
+                  "message": "Why is this order BACKORDERED and how do I Un-allocate?",
+                  "routeContext": { "pathname": "/sales-orders", "search": "?status=BACKORDERED" },
+                  "pageState": {
+                    "routePath": "/sales-orders?status=BACKORDERED",
+                    "activeFilter": "status=BACKORDERED",
+                    "selectedEntity": "SO-2026-0012",
+                    "networkState": "online",
+                    "userRoles": ["WAREHOUSE_MANAGER"]
+                  },
+                  "userRoles": ["WAREHOUSE_MANAGER"],
+                  "pageContext": {
+                    "title": "Sales Orders",
+                    "purpose": "Allocate demand",
+                    "reversals": ["Un-allocate releases ACTIVE allocations."]
+                  }
+                }
+                """;
+
+        MvcResult mvcResult = mockMvc.perform(post("/api/v1/support/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .header("Authorization", "Bearer " + tokens.accessToken())
+                        .header("X-User-Roles", "WAREHOUSE_MANAGER")
+                        .header("X-Current-Route", "/sales-orders?status=BACKORDERED")
+                        .content(content))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).contains("event:token");
+        assertThat(body).contains("event:done");
+        assertThat(body).contains("replyMarkdown");
+        assertThat(body).contains("followUpQuestions");
+        assertThat(body).containsIgnoringCase("Diagnosis");
+        assertThat(body).contains("NAVIGATE");
     }
 
     @Test

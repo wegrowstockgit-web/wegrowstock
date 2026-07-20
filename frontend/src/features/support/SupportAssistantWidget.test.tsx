@@ -55,16 +55,27 @@ describe('SupportAssistantWidget', () => {
     });
   });
 
-  it('renders support-action-button and executes on click', async () => {
-    vi.mocked(streamSupportChat).mockImplementation(async (_msg, _roles, _route, handlers) => {
-      handlers.onToken('I can start a cycle count for Aisle-4.');
+  it('renders action chips, follow-ups, and executes platform buttons', async () => {
+    vi.mocked(streamSupportChat).mockImplementation(async (_msg, _roles, _route, handlers, _signal, options) => {
+      expect(options?.pageState).toBeTruthy();
+      handlers.onToken('**Diagnosis:** I can start a cycle count for Aisle-4.\n\n1. Confirm the button.');
       handlers.onAction?.({
         type: 'action_button',
         action: 'generateCycleCount',
         label: 'Generate cycle count for Aisle-4',
         params: { zoneId: 'Aisle-4' },
       });
-      handlers.onDone?.();
+      handlers.onAction?.({
+        type: 'action_chip',
+        action: 'NAVIGATE',
+        label: 'Open Cycle Counts',
+        target: '/cycle-counts',
+        params: { target: '/cycle-counts' },
+      });
+      handlers.onDone?.({
+        ok: true,
+        followUpQuestions: ['How do I undo the last step safely?'],
+      });
     });
 
     useSessionStore.setState({
@@ -96,6 +107,8 @@ describe('SupportAssistantWidget', () => {
     const actionBtn = await screen.findByTestId('support-action-button');
     expect(actionBtn).toHaveTextContent(/Generate cycle count for Aisle-4/i);
     expect(actionBtn).toHaveAttribute('data-action', 'generateCycleCount');
+    expect(screen.getByTestId('support-action-chip')).toHaveAttribute('data-action', 'NAVIGATE');
+    expect(screen.getByTestId('support-follow-up')).toHaveTextContent(/undo/i);
 
     await user.click(actionBtn);
     await waitFor(() => {
@@ -106,3 +119,4 @@ describe('SupportAssistantWidget', () => {
     });
   });
 });
+

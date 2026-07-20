@@ -107,7 +107,7 @@ class SupportChatServiceTest {
                 "/cycle-counts",
                 sb::append,
                 actions::add,
-                () -> {});
+                r -> {});
 
         assertThat(sb.toString()).containsIgnoringCase("cycle count");
         assertThat(actions).isNotEmpty();
@@ -199,7 +199,7 @@ class SupportChatServiceTest {
 
     private String ask(List<String> roles, String route, String message) {
         StringBuilder sb = new StringBuilder();
-        service.streamAnswer(message, roles, route, sb::append, a -> {}, () -> {});
+        service.streamAnswer(message, roles, route, sb::append, a -> {}, r -> {});
         return sb.toString();
     }
 

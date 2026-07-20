@@ -156,6 +156,22 @@ export function Sidebar() {
     );
   }, [activeGroupId]);
 
+  /** Copilot NAVIGATE chips expand the matching parent accordion before/while routing. */
+  useEffect(() => {
+    const onExpand = (event: Event) => {
+      const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+      if (!path) return;
+      for (const group of visibleCategories) {
+        if (pathInGroup(path, group.items)) {
+          setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
+          break;
+        }
+      }
+    };
+    window.addEventListener('invsys:expand-nav', onExpand);
+    return () => window.removeEventListener('invsys:expand-nav', onExpand);
+  }, [visibleCategories]);
+
   const updateScrollFold = useCallback(() => {
     const el = navRef.current;
     if (!el) {

@@ -30,6 +30,27 @@ final class HeuristicSupportComposer {
             List<SupportKnowledgeChunk> retrieved,
             String systemPrompt
     ) {
+        return compose(question, roles, route, retrieved, systemPrompt, Map.of());
+    }
+
+    static HeuristicSupportResult compose(
+            String question,
+            List<String> roles,
+            String route,
+            List<SupportKnowledgeChunk> retrieved,
+            String systemPrompt,
+            Map<String, Object> pageState
+    ) {
+        HeuristicSupportResult raw = composeRaw(question, roles, route, retrieved);
+        return OperationsInstructorFormatter.enrich(raw, question, roles, route, pageState);
+    }
+
+    private static HeuristicSupportResult composeRaw(
+            String question,
+            List<String> roles,
+            String route,
+            List<SupportKnowledgeChunk> retrieved
+    ) {
         String q = question.toLowerCase(Locale.ROOT);
         boolean pickerOnly = roles.size() == 1 && roles.contains("PICKER");
         boolean b2b = roles.contains("B2B_CUSTOMER");
@@ -85,8 +106,50 @@ final class HeuristicSupportComposer {
 
         // Operational conflict playbooks (offline parking / Skip & Flag / cross-dock).
         if (q.contains("offline") || q.contains("sync conflict") || q.contains("parking")
-                || q.contains("409") || q.contains("mutation queue") || q.contains("replay")) {
+                || q.contains("409") || q.contains("mutation queue") || q.contains("replay")
+                || q.contains("conflict panel")) {
+            SupportKnowledgeChunk panel = firstSlug(retrieved, "ops-offline-conflict-panel-resolve");
+            if (panel != null) {
+                return HeuristicSupportResult.of(trimBody(panel.body()));
+            }
             SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-offline-mutation-parking");
+            if (doc != null) {
+                return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (q.contains("landed cost") || q.contains("surcharge") || q.contains("unit valuation")) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-landed-cost-distribution");
+            if (doc != null) {
+                return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (q.contains("fefo") || q.contains("credit limit") || q.contains("credit hold")) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-fefo-allocation-credit-holds");
+            if (doc != null) {
+                return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (q.contains("ledger") || q.contains("error_correction") || q.contains("append-only")
+                || (q.contains("reverse") && q.contains("inventory"))) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-append-only-ledger-reversals");
+            if (doc != null) {
+                return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (q.contains("blind") || q.contains("cycle count escalate") || q.contains("pending_manager_review")) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-blind-cycle-count-escalation");
+            if (doc != null) {
+                return HeuristicSupportResult.of(trimBody(doc.body()));
+            }
+        }
+
+        if (q.contains("status code") || (q.contains("what does") && (q.contains("draft") || q.contains("allocated")
+                || q.contains("backordered") || q.contains("mean")))) {
+            SupportKnowledgeChunk doc = firstSlug(retrieved, "ops-status-codes-po-so-invoice-rma");
             if (doc != null) {
                 return HeuristicSupportResult.of(trimBody(doc.body()));
             }

@@ -1,16 +1,74 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Info, Undo2, Users, Workflow, X } from 'lucide-react';
+import { Info, Layers, Undo2, Users, Workflow, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { DENSITY_STYLES } from '@/stores/preferencesStore';
 import { cn } from '@/lib/utils';
 import {
-  resolveRouteKnowledge,
+  knowledgeContextKey,
+  resolveKnowledgeContext,
   type RouteKnowledge,
+  type RouteKnowledgeComponent,
 } from '@/features/support/RouteKnowledgeRegistry';
 
 const density = DENSITY_STYLES.spacious;
+
+function StatusBadges({ statuses }: { statuses: Record<string, string> }) {
+  return (
+    <ul className="mt-2 space-y-1.5" data-testid="page-help-statuses">
+      {Object.entries(statuses).map(([code, meaning]) => (
+        <li key={code} className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+          <span
+            className={cn(
+              'inline-flex w-fit shrink-0 rounded-md px-2 py-0.5 font-mono text-xs font-semibold',
+              'bg-muted/50 text-text',
+            )}
+          >
+            {code}
+          </span>
+          <span className="text-sm text-text-muted">{meaning}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ComponentCard({ component }: { component: RouteKnowledgeComponent }) {
+  return (
+    <div
+      className={cn('rounded-md border border-border/70 bg-surface', density.cell)}
+      data-testid="page-help-component"
+    >
+      <p className="font-medium text-text">{component.name}</p>
+      <p className="mt-1 text-text-muted">{component.description}</p>
+      <p className="mt-2 text-xs text-text-muted">
+        <span className="font-semibold text-text">Data origin:</span> {component.dataOrigin}
+      </p>
+
+      {component.columns && component.columns.length > 0 ? (
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Columns</p>
+          <ul className="mt-2 space-y-1.5 pl-3">
+            {component.columns.map((col) => (
+              <li key={col.name} className="text-sm">
+                <span className="font-medium text-text">{col.name}</span>
+                <span className="text-text-muted"> — {col.purpose}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {component.statuses && Object.keys(component.statuses).length > 0 ? (
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Statuses</p>
+          <StatusBadges statuses={component.statuses} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function KnowledgeBody({ knowledge }: { knowledge: RouteKnowledge }) {
   return (
@@ -57,25 +115,25 @@ function KnowledgeBody({ knowledge }: { knowledge: RouteKnowledge }) {
       </section>
 
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Key elements</h3>
-        <dl className="mt-2 space-y-3">
-          {Object.entries(knowledge.components).map(([name, def]) => (
-            <div key={name} className={cn('rounded-md border border-border/70 bg-surface', density.cell)}>
-              <dt className="font-medium text-text">{name}</dt>
-              <dd className="mt-1 text-text-muted">{def}</dd>
-            </div>
+        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <Layers className="h-3.5 w-3.5" aria-hidden />
+          Components, columns & statuses
+        </h3>
+        <div className="mt-2 space-y-3">
+          {knowledge.components.map((component) => (
+            <ComponentCard key={component.name} component={component} />
           ))}
-        </dl>
+        </div>
       </section>
     </div>
   );
 }
 
-function FallbackBody({ pathname }: { pathname: string }) {
+function FallbackBody({ routeKey }: { routeKey: string }) {
   return (
     <div className={cn('space-y-3 text-text', density.typography)} data-testid="page-help-fallback">
       <p>
-        No specialized playbook is registered for <span className="font-mono text-sm">{pathname}</span>{' '}
+        No specialized playbook is registered for <span className="font-mono text-sm">{routeKey}</span>{' '}
         yet.
       </p>
       <p className="text-text-muted">
@@ -89,23 +147,23 @@ function FallbackBody({ pathname }: { pathname: string }) {
 /**
  * Global Page Info trigger + responsive help surface.
  * Portaled to document.body so header `backdrop-filter` cannot trap `position: fixed`.
- * Mobile (&lt;md): bottom sheet. Desktop (md+): right drawer.
+ * Content stays bound to pathname + search while open (settings tabs cross-fade in place).
  */
 export function PageHelpOverlay() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
 
+  const routeKey = useMemo(
+    () => knowledgeContextKey(location.pathname, location.search),
+    [location.pathname, location.search],
+  );
+
   const knowledge = useMemo(
-    () => resolveRouteKnowledge(location.pathname),
-    [location.pathname],
+    () => resolveKnowledgeContext(location.pathname, location.search),
+    [location.pathname, location.search],
   );
 
   const title = knowledge?.title ?? 'Page info';
-  const description = location.pathname;
-
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
 
   useEffect(() => {
     if (!open) return;
@@ -113,39 +171,32 @@ export function PageHelpOverlay() {
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
+    // Non-modal panel: do not lock body scroll so tab navigation remains usable.
+    return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
   const panel =
     open && typeof document !== 'undefined'
       ? createPortal(
           <div
-            className="fixed inset-0 z-[80] pointer-events-auto"
+            className="fixed inset-0 z-[80] pointer-events-none"
             data-testid="page-help-overlay-root"
           >
-            <button
-              type="button"
-              className="absolute inset-0 bg-text/40 transition-opacity duration-200"
-              onClick={() => setOpen(false)}
-              aria-label="Close page help"
+            {/* Soft dim only — pointer-events none so settings tabs / nav stay clickable while open. */}
+            <div
+              className="absolute inset-0 bg-text/25 transition-opacity duration-200 md:bg-text/15"
+              aria-hidden
             />
             <aside
               role="dialog"
-              aria-modal="true"
+              aria-modal="false"
               aria-labelledby="page-help-title"
               data-testid="page-help-panel"
               className={cn(
-                'absolute flex flex-col border-border bg-surface-raised shadow-elevated',
+                'pointer-events-auto absolute flex flex-col border-border bg-surface-raised shadow-elevated',
                 'transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
                 'motion-reduce:transition-none',
-                // Mobile: bottom sheet
                 'inset-x-0 bottom-0 max-h-[min(88dvh,40rem)] rounded-t-2xl border',
-                // Desktop: full-height right drawer
                 'md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:h-full md:max-h-[100dvh] md:w-full md:max-w-xl md:rounded-none md:border-y-0 md:border-l md:border-r-0',
               )}
             >
@@ -154,10 +205,16 @@ export function PageHelpOverlay() {
               </div>
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3 md:py-4">
                 <div className="min-w-0">
-                  <h2 id="page-help-title" className="text-lg font-semibold text-text">
+                  <h2
+                    id="page-help-title"
+                    className="text-lg font-semibold text-text"
+                    data-testid="page-help-title"
+                  >
                     {title}
                   </h2>
-                  <p className="mt-0.5 text-sm text-text-muted">{description}</p>
+                  <p className="mt-0.5 font-mono text-sm text-text-muted" data-testid="page-help-route">
+                    {routeKey}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -173,11 +230,19 @@ export function PageHelpOverlay() {
                 className="min-h-0 flex-1 overflow-y-auto px-5 py-4 pb-8"
                 data-testid="page-help-drawer"
               >
-                {knowledge ? (
-                  <KnowledgeBody knowledge={knowledge} />
-                ) : (
-                  <FallbackBody pathname={location.pathname} />
-                )}
+                {/* Keyed body cross-fades when pathname/search resolves a new playbook. */}
+                <div
+                  key={routeKey}
+                  className="page-help-fade"
+                  data-testid="page-help-context"
+                  data-route-key={routeKey}
+                >
+                  {knowledge ? (
+                    <KnowledgeBody knowledge={knowledge} />
+                  ) : (
+                    <FallbackBody routeKey={routeKey} />
+                  )}
+                </div>
               </div>
             </aside>
           </div>,

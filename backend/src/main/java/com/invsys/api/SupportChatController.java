@@ -2,6 +2,7 @@ package com.invsys.api;
 
 import com.invsys.support.SupportActionProposal;
 import com.invsys.support.SupportChatService;
+import com.invsys.support.SupportStructuredReply;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
@@ -38,11 +39,23 @@ public class SupportChatController {
 
     public record ChatRequest(
             @NotBlank String message,
-            Map<String, Object> pageContext
+            Map<String, Object> pageContext,
+            Map<String, Object> routeContext,
+            Map<String, Object> pageState,
+            List<String> userRoles
     ) {
         public ChatRequest {
             if (pageContext == null) {
                 pageContext = Map.of();
+            }
+            if (routeContext == null) {
+                routeContext = Map.of();
+            }
+            if (pageState == null) {
+                pageState = Map.of();
+            }
+            if (userRoles == null) {
+                userRoles = List.of();
             }
         }
     }
@@ -61,11 +74,15 @@ public class SupportChatController {
     ) {
         SseEmitter emitter = new SseEmitter(120_000L);
         List<String> roles = SupportChatService.parseRolesHeader(rolesHeader);
+        if (roles.isEmpty() && request.userRoles() != null && !request.userRoles().isEmpty()) {
+            roles = SupportChatService.normalizeRoles(request.userRoles());
+        }
         if (roles.isEmpty()) {
             roles = rolesFromSecurityContext();
         }
-        String route = routeHeader == null ? "" : routeHeader;
+        String route = resolveRoute(routeHeader, request.routeContext(), request.pageState());
         List<String> roleSnapshot = roles;
+        Map<String, Object> pageState = mergePageState(request.pageState(), roleSnapshot, route);
 
         executor.execute(() -> {
             try {
@@ -74,6 +91,7 @@ public class SupportChatController {
                         roleSnapshot,
                         route,
                         request.pageContext(),
+                        pageState,
                         token -> {
                             try {
                                 emitter.send(SseEmitter.event().name("token").data(token));
@@ -88,9 +106,9 @@ public class SupportChatController {
                                 emitter.completeWithError(ex);
                             }
                         },
-                        () -> {
+                        reply -> {
                             try {
-                                emitter.send(SseEmitter.event().name("done").data(Map.of("ok", true)));
+                                emitter.send(SseEmitter.event().name("done").data(toDoneMap(reply)));
                                 emitter.complete();
                             } catch (IOException ex) {
                                 emitter.completeWithError(ex);
@@ -112,13 +130,74 @@ public class SupportChatController {
                 request.params() == null ? Map.of() : request.params());
     }
 
-    private static Map<String, Object> toActionMap(SupportActionProposal action) {
+    static Map<String, Object> toActionMap(SupportActionProposal action) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("type", action.type());
         map.put("action", action.action());
         map.put("label", action.label());
         map.put("params", action.params());
+        if (!action.target().isBlank()) {
+            map.put("target", action.target());
+        }
         return map;
+    }
+
+    static Map<String, Object> toDoneMap(SupportStructuredReply reply) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("ok", true);
+        map.put("replyMarkdown", reply.replyMarkdown());
+        map.put("followUpQuestions", reply.followUpQuestions());
+        List<Map<String, Object>> chips = new ArrayList<>();
+        for (SupportActionProposal action : reply.actionChips()) {
+            chips.add(toActionMap(action));
+        }
+        map.put("actionChips", chips);
+        return map;
+    }
+
+    private static String resolveRoute(
+            String routeHeader,
+            Map<String, Object> routeContext,
+            Map<String, Object> pageState
+    ) {
+        if (routeHeader != null && !routeHeader.isBlank()) {
+            return routeHeader;
+        }
+        if (routeContext != null) {
+            Object path = routeContext.get("pathname");
+            Object search = routeContext.get("search");
+            if (path != null) {
+                String s = search == null ? "" : String.valueOf(search);
+                return String.valueOf(path) + s;
+            }
+        }
+        if (pageState != null && pageState.get("routePath") != null) {
+            return String.valueOf(pageState.get("routePath"));
+        }
+        return "";
+    }
+
+    private static Map<String, Object> mergePageState(
+            Map<String, Object> pageState,
+            List<String> roles,
+            String route
+    ) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (pageState != null) {
+            for (Map.Entry<String, Object> entry : pageState.entrySet()) {
+                // Map.copyOf rejects null values — SPA snapshots often send null filters/tabs.
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    merged.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        if (!merged.containsKey("userRoles")) {
+            merged.put("userRoles", roles);
+        }
+        if (!merged.containsKey("routePath") || String.valueOf(merged.get("routePath")).isBlank()) {
+            merged.put("routePath", route == null ? "" : route);
+        }
+        return Map.copyOf(merged);
     }
 
     private static List<String> rolesFromSecurityContext() {

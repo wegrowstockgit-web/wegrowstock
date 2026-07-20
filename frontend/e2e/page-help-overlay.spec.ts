@@ -33,7 +33,7 @@ test.describe('Page help overlay', () => {
 
       await expect(owner.page.getByRole('button', { name: /New PO/i })).toBeVisible();
 
-      await owner.page.getByRole('button', { name: 'Close', exact: true }).click();
+      await owner.page.getByTestId('page-help-panel').getByRole('button', { name: 'Close', exact: true }).click();
       await expect(owner.page.getByTestId('page-help-body')).toHaveCount(0);
     } finally {
       await owner.close();
@@ -88,8 +88,10 @@ test.describe('Page help overlay', () => {
       expect(box!.width).toBeGreaterThan(300);
       expect(box!.height).toBeGreaterThan(200);
 
-      // Prefer the sheet X control — the backdrop label is covered by the sheet itself.
-      await manager.page.getByRole('button', { name: 'Close', exact: true }).click();
+      await manager.page
+        .getByTestId('page-help-panel')
+        .getByRole('button', { name: 'Close', exact: true })
+        .click();
       await expect(manager.page.getByTestId('page-help-body')).toHaveCount(0);
     } finally {
       await manager.close();

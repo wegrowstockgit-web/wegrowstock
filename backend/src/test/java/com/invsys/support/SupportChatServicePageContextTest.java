@@ -75,7 +75,7 @@ class SupportChatServicePageContextTest {
                         "reversals", List.of("Un-allocate / Cancel releases ACTIVE allocations.")),
                 sb::append,
                 a -> {},
-                () -> {});
+                r -> {});
 
         assertThat(sb.toString()).containsIgnoringCase("Un-allocate");
         assertThat(sb.toString()).containsIgnoringCase("ledger");

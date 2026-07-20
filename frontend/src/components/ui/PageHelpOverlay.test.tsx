@@ -45,7 +45,8 @@ describe('PageHelpOverlay', () => {
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Confirm customer demand/i);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Un-allocate/i);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Who else this affects/i);
-    expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Key elements/i);
+    expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Components, columns & statuses/i);
+    expect(screen.getByTestId('page-help-statuses')).toHaveTextContent(/ALLOCATED/i);
   });
 
   it('opens inbound receive playbook', async () => {
@@ -75,7 +76,7 @@ describe('PageHelpOverlay', () => {
     expect(screen.getByTestId('page-help-fallback')).toHaveTextContent(/ERROR_CORRECTION/i);
   });
 
-  it('closes via Escape and backdrop', async () => {
+  it('closes via Escape and the X control', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/sales-orders']}>
@@ -93,13 +94,13 @@ describe('PageHelpOverlay', () => {
 
     await user.click(screen.getByTestId('page-help-trigger'));
     await waitFor(() => expect(screen.getByTestId('page-help-body')).toBeVisible());
-    await user.click(screen.getByLabelText('Close page help'));
+    await user.click(screen.getByRole('button', { name: 'Close', exact: true }));
     await waitFor(() =>
       expect(screen.queryByTestId('page-help-body')).not.toBeInTheDocument(),
     );
   });
 
-  it('closes when the route changes', async () => {
+  it('keeps the drawer open and cross-fades content when the route changes', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/sales-orders']}>
@@ -119,9 +120,50 @@ describe('PageHelpOverlay', () => {
 
     await user.click(screen.getByTestId('page-help-trigger'));
     await waitFor(() => expect(screen.getByTestId('page-help-panel')).toBeInTheDocument());
+    expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Sales Orders/i);
+
     await user.click(screen.getByRole('button', { name: 'Go /products' }));
+    await waitFor(() => expect(screen.getByTestId('page-help-panel')).toBeInTheDocument());
     await waitFor(() =>
-      expect(screen.queryByTestId('page-help-panel')).not.toBeInTheDocument(),
+      expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Products/i),
     );
+    expect(screen.getByTestId('page-help-route')).toHaveTextContent('/products');
+  });
+
+  it('swaps settings-tab playbooks when search params change while open', async () => {
+    const user = userEvent.setup();
+    function TabNav() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <PageHelpOverlay />
+          <button type="button" onClick={() => navigate('/settings?tab=users')}>
+            Users tab
+          </button>
+          <button type="button" onClick={() => navigate('/settings?tab=operations')}>
+            Operations tab
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=users']}>
+        <Routes>
+          <Route path="*" element={<TabNav />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByTestId('page-help-trigger'));
+    await waitFor(() => expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Users/i));
+    expect(screen.getByTestId('page-help-body').textContent).toMatch(/OWNER|PICKER|LBAC/i);
+
+    await user.click(screen.getByRole('button', { name: 'Operations tab' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Operations/i),
+    );
+    expect(screen.getByTestId('page-help-route')).toHaveTextContent('/settings?tab=operations');
+    expect(screen.getByTestId('page-help-body').textContent).toMatch(/Audit|adjustment/i);
   });
 });

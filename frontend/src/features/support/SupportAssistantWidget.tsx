@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useSessionStore, useSessionRoles } from '@/stores/session';
@@ -8,22 +8,30 @@ import {
   executeSupportAction,
   streamSupportChat,
   type SupportActionButton,
+  type SupportActionChip,
+  type SupportStreamAction,
 } from './supportChatApi';
+import { SupportMarkdown } from './supportMarkdown';
+import { usePageStateSnapshot } from './usePageStateSnapshot';
+import { expandSidebarForPath, spotlightSelector } from './supportSpotlight';
 
 type TranscriptLine = {
   role: 'user' | 'assistant';
   text: string;
-  actions?: SupportActionButton[];
+  actions?: SupportStreamAction[];
+  followUps?: string[];
 };
 
 /**
- * Global floating support copilot — agentic action buttons + scanner-safe layout.
- * Chat submissions go through {@link streamSupportChat}, which injects the active
- * route's {@link RouteKnowledgeRegistry} playbook as hidden system context.
+ * Global floating support copilot — Operations Instructor with action chips,
+ * follow-ups, and scanner-safe layout. Chat submissions inject RouteKnowledge
+ * + live {@link usePageStateSnapshot} into `/api/v1/support/chat`.
  */
 export function SupportAssistantWidget() {
   const location = useLocation();
+  const navigate = useNavigate();
   const roles = useSessionRoles();
+  const pageState = usePageStateSnapshot();
   const authenticated = useSessionStore((s) => s.authenticated);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -44,11 +52,15 @@ export function SupportAssistantWidget() {
   // Showroom cart FAB uses the same corner (z-40); keep the copilot clear of it.
   const onShowroom = location.pathname.startsWith('/showroom');
 
-  const send = async () => {
-    const message = input.trim();
+  const send = async (rawMessage?: string) => {
+    const message = (rawMessage ?? input).trim();
     if (!message || busy) return;
-    setInput('');
-    setTranscript((t) => [...t, { role: 'user', text: message }, { role: 'assistant', text: '', actions: [] }]);
+    if (!rawMessage) setInput('');
+    setTranscript((t) => [
+      ...t,
+      { role: 'user', text: message },
+      { role: 'assistant', text: '', actions: [], followUps: [] },
+    ]);
     setBusy(true);
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -80,25 +92,61 @@ export function SupportAssistantWidget() {
               return copy;
             });
           },
+          onDone: (payload) => {
+            if (!payload) return;
+            setTranscript((t) => {
+              const copy = [...t];
+              const last = copy[copy.length - 1];
+              if (last?.role !== 'assistant') return t;
+              const followUps = payload.followUpQuestions ?? last.followUps ?? [];
+              let actions = last.actions ?? [];
+              if (payload.actionChips?.length) {
+                const keys = new Set(actions.map((a) => `${a.type}:${a.action}:${a.label}`));
+                for (const chip of payload.actionChips) {
+                  const key = `${chip.type}:${chip.action}:${chip.label}`;
+                  if (!keys.has(key)) {
+                    actions = [...actions, chip];
+                    keys.add(key);
+                  }
+                }
+              }
+              if (payload.replyMarkdown && !last.text.trim()) {
+                copy[copy.length - 1] = {
+                  ...last,
+                  text: payload.replyMarkdown,
+                  actions,
+                  followUps,
+                };
+              } else {
+                copy[copy.length - 1] = { ...last, actions, followUps };
+              }
+              return copy;
+            });
+          },
         },
         ac.signal,
+        { pageState, userRoles: roles },
       );
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setTranscript((t) => [
-          ...t,
-          {
-            role: 'assistant',
-            text: 'Could not reach the support assistant. Check your connection and try again.',
-          },
-        ]);
+        setTranscript((t) => {
+          const copy = [...t];
+          const last = copy[copy.length - 1];
+          const msg =
+            'Could not reach the support assistant. Check your connection and try again.';
+          if (last?.role === 'assistant') {
+            copy[copy.length - 1] = { ...last, text: msg };
+            return copy;
+          }
+          return [...t, { role: 'assistant', text: msg }];
+        });
       }
     } finally {
       setBusy(false);
     }
   };
 
-  const runAction = async (action: SupportActionButton, lineIndex: number) => {
+  const runPlatformAction = async (action: SupportActionButton, lineIndex: number) => {
     const key = `${lineIndex}:${action.action}`;
     setExecuting(key);
     try {
@@ -123,6 +171,18 @@ export function SupportAssistantWidget() {
       ]);
     } finally {
       setExecuting(null);
+    }
+  };
+
+  const runChip = (chip: SupportActionChip) => {
+    const target = chip.target || chip.params?.target || '';
+    if (chip.action === 'NAVIGATE' && target) {
+      expandSidebarForPath(target);
+      navigate(target);
+      return;
+    }
+    if (chip.action === 'SPOTLIGHT' && target) {
+      spotlightSelector(target);
     }
   };
 
@@ -166,6 +226,7 @@ export function SupportAssistantWidget() {
               <p className="text-sm font-semibold text-text">Operations copilot</p>
               <p className="text-xs text-text-muted">
                 {roles.join(', ') || 'Signed in'} · {location.pathname}
+                {pageState.networkState !== 'online' ? ` · ${pageState.networkState}` : ''}
               </p>
             </div>
             <Button
@@ -183,37 +244,86 @@ export function SupportAssistantWidget() {
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
             {transcript.length === 0 && (
               <p className="text-sm text-text-muted">
-                Ask how to receive, allocate, handle damage, or start a cycle count — answers stay
-                within your role. Confirmable actions appear as buttons.
+                Ask how to receive, allocate, handle damage, or reverse a mistake — answers stay
+                within your role. Action chips can navigate or spotlight on-screen controls.
               </p>
             )}
             {transcript.map((line, i) => (
               <div key={`${line.role}-${i}`} className="space-y-2">
                 <div
                   className={cn(
-                    'rounded-lg px-3 py-2 text-sm whitespace-pre-wrap',
+                    'rounded-lg px-3 py-2',
                     line.role === 'user'
-                      ? 'ml-6 bg-accent/15 text-text'
+                      ? 'ml-6 bg-accent/15 text-text text-sm whitespace-pre-wrap'
                       : 'mr-4 bg-surface-overlay text-text',
                   )}
                   data-testid={line.role === 'assistant' ? 'support-assistant-reply' : undefined}
                 >
-                  {line.text || (busy && i === transcript.length - 1 ? '…' : '')}
+                  {line.role === 'assistant' ? (
+                    line.text ? (
+                      <SupportMarkdown text={line.text} />
+                    ) : busy && i === transcript.length - 1 ? (
+                      <span className="text-sm text-text-muted">…</span>
+                    ) : null
+                  ) : (
+                    line.text
+                  )}
                 </div>
-                {line.actions?.map((action) => (
-                  <Button
-                    key={`${i}-${action.action}-${action.label}`}
-                    type="button"
-                    size="sm"
-                    className="ml-2"
-                    data-testid="support-action-button"
-                    data-action={action.action}
-                    disabled={executing != null}
-                    onClick={() => void runAction(action, i)}
+                {line.actions?.map((action) =>
+                  action.type === 'action_chip' ? (
+                    <Button
+                      key={`${i}-chip-${action.action}-${action.label}`}
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="ml-2 min-h-11 touch-manipulation"
+                      data-testid="support-action-chip"
+                      data-action={action.action}
+                      data-target={action.target}
+                      disabled={busy}
+                      onClick={() => runChip(action)}
+                    >
+                      {action.label}
+                    </Button>
+                  ) : (
+                    <Button
+                      key={`${i}-${action.action}-${action.label}`}
+                      type="button"
+                      size="sm"
+                      className="ml-2 min-h-11 touch-manipulation"
+                      data-testid="support-action-button"
+                      data-action={action.action}
+                      disabled={executing != null}
+                      onClick={() => void runPlatformAction(action, i)}
+                    >
+                      {executing === `${i}:${action.action}` ? 'Running…' : action.label}
+                    </Button>
+                  ),
+                )}
+                {line.followUps && line.followUps.length > 0 && (
+                  <div
+                    className="ml-2 flex flex-wrap gap-2"
+                    data-testid="support-follow-ups"
                   >
-                    {executing === `${i}:${action.action}` ? 'Running…' : action.label}
-                  </Button>
-                ))}
+                    {line.followUps.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        data-testid="support-follow-up"
+                        disabled={busy}
+                        className={cn(
+                          'min-h-10 rounded-full border border-border bg-surface px-3 py-1.5',
+                          'text-left text-xs text-text touch-manipulation',
+                          'hover:border-accent/40 hover:bg-accent/5',
+                          'disabled:opacity-50',
+                        )}
+                        onClick={() => void send(q)}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <div ref={bottomRef} />

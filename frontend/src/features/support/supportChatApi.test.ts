@@ -53,10 +53,138 @@ describe('streamSupportChat', () => {
     ) as {
       message: string;
       pageContext: { title: string } | null;
+      routeContext: { pathname: string; search: string };
+      pageState: { routePath: string; userRoles: string[] };
+      userRoles: string[];
     };
     expect(requestBody.message).toContain('User Query:');
     expect(requestBody.message).toContain('hi');
     expect(requestBody.pageContext?.title).toBe('B2B Showroom');
+    expect(requestBody.routeContext).toEqual({ pathname: '/showroom', search: '' });
+    expect(requestBody.userRoles).toEqual(['B2B_CUSTOMER']);
+    expect(requestBody.pageState.userRoles).toEqual(['B2B_CUSTOMER']);
+    expect(requestBody.pageState.routePath).toBe('/showroom');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('embeds pageState snapshot fields in the chat payload', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event:done\ndata: {"ok":true}\n\n'));
+            controller.close();
+          },
+        }),
+        text: async () => '',
+      }),
+    );
+
+    await streamSupportChat(
+      'Why is this BACKORDERED?',
+      ['WAREHOUSE_MANAGER'],
+      '/sales-orders?status=BACKORDERED',
+      { onToken: () => {} },
+      undefined,
+      {
+        pageState: {
+          routePath: '/sales-orders?status=BACKORDERED',
+          pathname: '/sales-orders',
+          search: '?status=BACKORDERED',
+          userRoles: ['WAREHOUSE_MANAGER'],
+          activeWarehouseId: 'wh-1',
+          activeFilter: 'status=BACKORDERED',
+          networkState: 'online',
+          quarantineCount: 0,
+          selectedEntity: 'SO-1',
+          activeTab: null,
+          activeWarehouseName: 'Main',
+        },
+      },
+    );
+
+    const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string };
+    const payload = JSON.parse(init.body) as {
+      pageState: {
+        activeWarehouseId: string;
+        activeFilter: string;
+        selectedEntity: string;
+        networkState: string;
+      };
+      routeContext: { pathname: string; search: string };
+    };
+    expect(payload.routeContext).toEqual({
+      pathname: '/sales-orders',
+      search: '?status=BACKORDERED',
+    });
+    expect(payload.pageState.activeWarehouseId).toBe('wh-1');
+    expect(payload.pageState.activeFilter).toBe('status=BACKORDERED');
+    expect(payload.pageState.selectedEntity).toBe('SO-1');
+    expect(payload.pageState.networkState).toBe('online');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('parses action chips and follow-ups from done payload', async () => {
+    const done = {
+      ok: true,
+      replyMarkdown: '**Diagnosis:** Order is BACKORDERED.',
+      followUpQuestions: ['Why is this BACKORDERED?', 'How do I Un-allocate safely?'],
+      actionChips: [
+        {
+          type: 'action_chip',
+          action: 'NAVIGATE',
+          label: 'Take me to Sales Orders',
+          target: '/sales-orders',
+          params: { target: '/sales-orders' },
+        },
+      ],
+    };
+    const chunks = [
+      'event:token\ndata: **Diagnosis:** \n\n',
+      `event:action\ndata: ${JSON.stringify(done.actionChips[0])}\n\n`,
+      `event:done\ndata: ${JSON.stringify(done)}\n\n`,
+    ];
+    let i = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (i >= chunks.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode(chunks[i++]));
+      },
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body,
+        text: async () => '',
+      }),
+    );
+
+    const actions: Array<{ type: string; action: string }> = [];
+    let donePayload: { followUpQuestions?: string[] } | undefined;
+    await streamSupportChat('help', ['WAREHOUSE_MANAGER'], '/sales-orders', {
+      onToken: () => {},
+      onAction: (a) => actions.push(a),
+      onDone: (p) => {
+        donePayload = p;
+      },
+    });
+
+    expect(actions[0]).toMatchObject({
+      type: 'action_chip',
+      action: 'NAVIGATE',
+      label: 'Take me to Sales Orders',
+      target: '/sales-orders',
+    });
+    expect(donePayload?.followUpQuestions).toHaveLength(2);
 
     vi.unstubAllGlobals();
   });
@@ -83,12 +211,54 @@ describe('streamSupportChat', () => {
     const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string };
     const payload = JSON.parse(init.body) as {
       message: string;
-      pageContext: { title: string; reversals: string[] };
+      pageContext: {
+        title: string;
+        reversals: string[];
+        components: { name: string; statuses?: Record<string, string> }[];
+      };
     };
     expect(payload.pageContext.title).toBe('Sales Orders');
     expect(payload.pageContext.reversals.join(' ')).toMatch(/Un-allocate|Cancel/i);
     expect(payload.message).toContain('Reversal mechanism:');
     expect(payload.message).toContain('How do I undo allocation?');
+    expect(payload.message).toMatch(/ALLOCATED|Statuses/i);
+    expect(payload.pageContext.components?.length).toBeGreaterThan(0);
+    const withStatuses = payload.pageContext.components.find((c) => c.statuses?.ALLOCATED);
+    expect(withStatuses?.statuses?.ALLOCATED).toMatch(/reserv|pick|wave/i);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('injects settings-tab context including LBAC roles', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event:done\ndata: {"ok":true}\n\n'));
+            controller.close();
+          },
+        }),
+        text: async () => '',
+      }),
+    );
+
+    await streamSupportChat(
+      'What can a PICKER do?',
+      ['OWNER'],
+      '/settings?tab=users',
+      { onToken: () => {} },
+    );
+
+    const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string };
+    const payload = JSON.parse(init.body) as {
+      message: string;
+      pageContext: { title: string; pathname: string };
+    };
+    expect(payload.pageContext.pathname).toBe('/settings?tab=users');
+    expect(payload.pageContext.title).toMatch(/Users/i);
+    expect(payload.message).toMatch(/PICKER|LBAC|warehouse/i);
 
     vi.unstubAllGlobals();
   });

@@ -2169,7 +2169,7 @@ function CostCentersRequisitionsTab() {
 }
 
 export function SettingsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isOwner = useSessionStore((s) => s.user?.roles?.includes('OWNER') ?? false);
   const tabParam = searchParams.get('tab');
   const initialTab = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : 'profile';
@@ -2180,6 +2180,19 @@ export function SettingsPage() {
       setActiveTab(tabParam as TabId);
     }
   }, [tabParam]);
+
+  const selectTab = (tab: TabId) => {
+    setActiveTab(tab);
+    // Keep URL in sync so Page Info / support copilot resolve tab-specific playbooks.
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', tab);
+        return next;
+      },
+      { replace: true },
+    );
+  };
 
   return (
     <div
@@ -2208,7 +2221,7 @@ export function SettingsPage() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => selectTab(tab.id)}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
                 className={cn(
                   'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors lg:w-full lg:whitespace-normal',
