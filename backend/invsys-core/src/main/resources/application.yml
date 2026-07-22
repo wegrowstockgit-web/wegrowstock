@@ -20,6 +20,9 @@ spring:
   ai:
     # google-genai activates when GEMINI_API_KEY is set. Override to none for headless boots without a key.
     # Tests force none via application-test.yml.
+    chat:
+      client:
+        enabled: true
     model:
       chat: ${SPRING_AI_MODEL_CHAT:google-genai}
       embedding:
@@ -30,7 +33,7 @@ spring:
         api-key: ${GEMINI_API_KEY:}
         chat:
           options:
-            model: gemini-2.0-flash
+            model: ${SPRING_AI_GOOGLE_GENAI_CHAT_OPTIONS_MODEL:gemini-2.0-flash}
             temperature: 0.2
         embedding:
           text:

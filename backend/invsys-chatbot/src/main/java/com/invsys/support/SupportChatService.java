@@ -3,11 +3,14 @@ package com.invsys.support;
 import com.invsys.support.dto.ActionDraft;
 import com.invsys.support.dto.SupportChatResponse;
 import com.invsys.support.tools.SupportCopilotReadService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -36,11 +39,14 @@ import java.util.function.Consumer;
 @Service
 public class SupportChatService {
 
+    private static final Logger log = LoggerFactory.getLogger(SupportChatService.class);
+
     private final SupportAiProperties properties;
     private final SupportKnowledgeRepository repository;
     private final SupportGraphRepository graphRepository;
     private final EmbeddingModel embeddingModel;
     private final ObjectProvider<ChatClient.Builder> chatClientBuilder;
+    private final ObjectProvider<ChatModel> chatModel;
     private final SupportAgentTools agentTools;
     private final SupportEscalationTools escalationTools;
     private final SupportEscalationContext escalationContext;
@@ -57,6 +63,7 @@ public class SupportChatService {
             SupportGraphRepository graphRepository,
             EmbeddingModel embeddingModel,
             ObjectProvider<ChatClient.Builder> chatClientBuilder,
+            ObjectProvider<ChatModel> chatModel,
             SupportAgentTools agentTools,
             SupportEscalationTools escalationTools,
             SupportEscalationContext escalationContext,
@@ -72,6 +79,7 @@ public class SupportChatService {
         this.graphRepository = graphRepository;
         this.embeddingModel = embeddingModel;
         this.chatClientBuilder = chatClientBuilder;
+        this.chatModel = chatModel;
         this.agentTools = agentTools;
         this.escalationTools = escalationTools;
         this.escalationContext = escalationContext;
@@ -266,15 +274,19 @@ public class SupportChatService {
                     """;
         }
 
-        if (usesChatClientLlm() && chatClientBuilder.getIfAvailable() != null) {
-            // Bind read-only CQRS tools (Spring AI 1.1: defaultToolNames replaces defaultFunctions).
-            ChatClient.Builder builder = chatClientBuilder.getObject()
+        ChatClient.Builder builder = resolveChatClientBuilder();
+        if (usesChatClientLlm() && builder != null) {
+            log.info(
+                    "Support chat path=gemini llm={} chatModel={} embeddingModel={}",
+                    properties.getLlm(),
+                    chatModel.getIfAvailable() == null
+                            ? "unknown"
+                            : chatModel.getIfAvailable().getClass().getSimpleName(),
+                    embeddingModel.getClass().getSimpleName());
+            // @Tool beans via defaultTools; FunctionToolCallback list via defaultToolCallbacks.
+            builder = builder
                     .defaultSystem(system)
-                    .defaultToolNames(
-                            "checkOrderStatus",
-                            "getLedgerHistorySummary",
-                            "checkAvailableToPromise",
-                            "escalateToHumanSupport");
+                    .defaultTools(agentTools, escalationTools);
             if (!readToolCallbacks.isEmpty()) {
                 builder = builder.defaultToolCallbacks(readToolCallbacks);
             }
@@ -293,17 +305,25 @@ public class SupportChatService {
             ChatClient client = builder.build();
             SupportChatResponse structured = null;
             String content = null;
+            boolean usedGeminiText = false;
             try {
                 if (hasImage) {
                     content = callWithImage(client, question, imageBase64, imageMimeType, conversationId);
+                    usedGeminiText = content != null && !content.isBlank();
                 } else {
                     structured = withDiagnosticTools(client.prompt()
                             .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
                             .user(question))
                             .call()
                             .entity(SupportChatResponse.class);
+                    usedGeminiText = structured != null
+                            && structured.replyMarkdown() != null
+                            && !structured.replyMarkdown().isBlank();
                 }
             } catch (RuntimeException entityFailed) {
+                log.warn(
+                        "Support chat Gemini structured call failed; retrying plain content: {}",
+                        summarizeAiError(entityFailed));
                 try {
                     if (hasImage) {
                         content = callWithImage(client, question, imageBase64, imageMimeType, conversationId);
@@ -314,7 +334,11 @@ public class SupportChatService {
                                 .call()
                                 .content();
                     }
-                } catch (RuntimeException ignored) {
+                    usedGeminiText = content != null && !content.isBlank();
+                } catch (RuntimeException contentFailed) {
+                    log.warn(
+                            "Support chat Gemini content call failed; falling back to heuristic: {}",
+                            summarizeAiError(contentFailed));
                     content = null;
                 }
             }
@@ -324,8 +348,14 @@ public class SupportChatService {
             SupportStructuredReply reply;
             if (structured != null && structured.replyMarkdown() != null && !structured.replyMarkdown().isBlank()) {
                 reply = mergeStructured(structured.toStructuredReply(), side);
+                log.info("Support chat replySource=gemini-structured");
             } else {
                 String markdown = content == null || content.isBlank() ? side.answer() : content;
+                if (!usedGeminiText) {
+                    log.warn("Support chat replySource=heuristic-fallback (Gemini returned empty)");
+                } else {
+                    log.info("Support chat replySource=gemini-content");
+                }
                 if (!liveFacts.isBlank() && !markdown.contains("available-to-promise") && !markdown.contains("Live ATP")) {
                     markdown = prependLiveFacts(markdown, liveFacts);
                 }
@@ -352,6 +382,14 @@ public class SupportChatService {
             return;
         }
 
+        log.info(
+                "Support chat path=heuristic llm={} chatClientBuilder={} chatModel={} embeddingModel={}",
+                properties.getLlm(),
+                chatClientBuilder.getIfAvailable() != null,
+                chatModel.getIfAvailable() == null
+                        ? "absent"
+                        : chatModel.getIfAvailable().getClass().getSimpleName(),
+                embeddingModel.getClass().getSimpleName());
         HeuristicSupportResult result = HeuristicSupportComposer.compose(
                 question, normalizedRoles, route, retrieved, system, safePageState);
         String answer = result.answer();
@@ -374,6 +412,46 @@ public class SupportChatService {
             onAction.accept(action);
         }
         onComplete.accept(reply);
+    }
+
+    private static String summarizeAiError(Throwable error) {
+        Throwable cursor = error;
+        String best = error.toString();
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null && (message.contains("429")
+                    || message.contains("quota")
+                    || message.contains("API_KEY")
+                    || message.contains("PERMISSION")
+                    || message.contains("404")
+                    || message.contains("model"))) {
+                return cursor.getClass().getSimpleName() + ": " + message;
+            }
+            best = cursor.getClass().getSimpleName() + ": " + (message == null ? cursor.toString() : message);
+            cursor = cursor.getCause();
+        }
+        return best;
+    }
+
+    /**
+     * Prefer Spring AI's prototype {@link ChatClient.Builder} when present; otherwise build from
+     * {@link ChatModel} (Google GenAI {@code gemini-2.0-flash}).
+     */
+    private ChatClient.Builder resolveChatClientBuilder() {
+        try {
+            ChatClient.Builder fromAuto = chatClientBuilder.getIfAvailable();
+            if (fromAuto != null) {
+                return fromAuto;
+            }
+        } catch (RuntimeException ex) {
+            log.warn("ChatClient.Builder ObjectProvider failed: {}", ex.toString());
+        }
+        ChatModel model = chatModel.getIfAvailable();
+        if (model == null) {
+            return null;
+        }
+        log.info("Building ChatClient from ChatModel {}", model.getClass().getSimpleName());
+        return ChatClient.builder(model);
     }
 
     private SupportStructuredReply attachEscalation(SupportStructuredReply reply) {
@@ -482,11 +560,9 @@ public class SupportChatService {
      * ({@code checkAvailableToPromise}, {@code checkOrderStatus}, {@code getLedgerHistorySummary}).
      */
     private ChatClient.ChatClientRequestSpec withDiagnosticTools(ChatClient.ChatClientRequestSpec prompt) {
-        ChatClient.ChatClientRequestSpec withAgent = prompt.tools(agentTools, escalationTools);
-        if (readToolCallbacks.isEmpty()) {
-            return withAgent;
-        }
-        return withAgent.tools(readToolCallbacks.toArray(ToolCallback[]::new));
+        // Tools are already bound on the ChatClient via defaultTools / defaultToolCallbacks.
+        // Re-attaching them here duplicates names and fails ToolCallingChatOptions.
+        return prompt;
     }
 
     private String callWithImage(

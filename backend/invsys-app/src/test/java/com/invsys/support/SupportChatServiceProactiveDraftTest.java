@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -31,6 +32,7 @@ class SupportChatServiceProactiveDraftTest {
     @Mock SupportKnowledgeRepository repository;
     @Mock SupportGraphRepository graphRepository;
     @Mock ObjectProvider<ChatClient.Builder> chatClientBuilder;
+    @Mock ObjectProvider<ChatModel> chatModel;
     @Mock SupportAgentTools agentTools;
     @Mock SupportEscalationTools escalationTools;
     @Mock SupportEscalationContext escalationContext;
@@ -51,6 +53,7 @@ class SupportChatServiceProactiveDraftTest {
         properties.setLlm("heuristic");
         properties.setTopK(6);
         lenient().when(chatClientBuilder.getIfAvailable()).thenReturn(null);
+        lenient().when(chatModel.getIfAvailable()).thenReturn(null);
         lenient().when(readToolCallbacks.getIfAvailable()).thenReturn(List.of());
         lenient().when(vectorStore.getIfAvailable()).thenReturn(null);
         lenient().when(chatMemory.getIfAvailable()).thenReturn(null);
@@ -66,6 +69,7 @@ class SupportChatServiceProactiveDraftTest {
                 graphRepository,
                 embeddingModel,
                 chatClientBuilder,
+                chatModel,
                 agentTools,
                 escalationTools,
                 escalationContext,
