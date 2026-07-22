@@ -236,7 +236,7 @@ public class SupportChatService {
                         normalizedRoles, route, retrieved, safePageContext, safePageState)
                 + """
 
-                You are Gemini 2.0 Flash operating as the Growstock Inventory Level-1/Level-2 Support Agent.
+                You are Gemini 2.5 Flash operating as the Growstock Inventory Level-1/Level-2 Support Agent.
                 Rely STRICTLY on retrieved SOP / RAG context and live CQRS facts. If the answer is not in the \
                 retrieved manuals, say you do not know and call escalateToHumanSupport.
                 If the user is frustrated, asks for a human, or RAG context is insufficient, you MUST invoke \
@@ -435,7 +435,7 @@ public class SupportChatService {
 
     /**
      * Prefer Spring AI's prototype {@link ChatClient.Builder} when present; otherwise build from
-     * {@link ChatModel} (Google GenAI {@code gemini-2.0-flash}).
+     * {@link ChatModel} (Google GenAI {@code gemini-2.5-flash}).
      */
     private ChatClient.Builder resolveChatClientBuilder() {
         try {

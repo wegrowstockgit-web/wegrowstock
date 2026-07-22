@@ -601,7 +601,7 @@ Support Co-Pilot, CQRS tool-calling, Action Drafts, and training-simulator backe
 |-------|------|
 | `ChatbotAutoConfiguration` | `@ConditionalOnProperty(invsys.features.chatbot.enabled=true, matchIfMissing=true)` + `@ComponentScan(com.invsys.support)` |
 | `SupportChatService` | Role-aware chat; heuristic or Gemini (`invsys.support.ai.llm`); retrieves chunks by embedding + audience |
-| Spring AI config | `spring.ai.model.chat` / `embedding.text` default `google-genai`; chat model `gemini-2.0-flash`; embeddings `text-embedding-004` via `GEMINI_API_KEY`. Test profile forces `none` + `heuristic`. |
+| Spring AI config | `spring.ai.model.chat` / `embedding.text` default `google-genai`; chat model `gemini-2.5-flash`; embeddings `text-embedding-004` via `GEMINI_API_KEY`. Test profile forces `none` + `heuristic`. |
 | `SupportCopilotToolsConfig` / `SupportCopilotReadService` | CQRS tools — tenant **only** from `TenantContext` (never LLM/client tenant args) |
 | Knowledge repos | Back `support_knowledge_chunks` / `_nodes` / `_edges` (V089–V090) |
 | API | `SupportChatController` → `POST /api/v1/support/chat` (SSE), `/actions/*` |

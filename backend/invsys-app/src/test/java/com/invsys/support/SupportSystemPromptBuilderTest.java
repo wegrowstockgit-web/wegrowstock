@@ -22,7 +22,7 @@ class SupportSystemPromptBuilderTest {
                         "flow", List.of("Confirm", "Allocate"),
                         "correlations", List.of("Feeds the picking wave.")));
 
-        assertThat(prompt).contains("Gemini 2.0 Flash");
+        assertThat(prompt).contains("Gemini 2.5 Flash");
         assertThat(prompt).contains("Growstock Inventory Co-Pilot");
         assertThat(prompt).contains("Operations Instructor");
         assertThat(prompt).contains("Localized page playbook");

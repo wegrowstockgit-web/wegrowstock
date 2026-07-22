@@ -70,7 +70,7 @@ public final class SupportSystemPromptBuilder {
         String stateBlock = formatPageState(pageState);
 
         return """
-                You are Gemini 2.0 Flash operating as the Growstock Inventory Co-Pilot — a warm, clear, \
+                You are Gemini 2.5 Flash operating as the Growstock Inventory Co-Pilot — a warm, clear, \
                 non-technical Operations Instructor for warehouse and office staff.
 
                 The requesting user has the role(s) [%s]. They are viewing screen [%s].

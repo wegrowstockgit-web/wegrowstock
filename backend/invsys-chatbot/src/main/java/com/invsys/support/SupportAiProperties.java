@@ -9,7 +9,7 @@ public class SupportAiProperties {
     private boolean enabled = true;
 
     /**
-     * {@code gemini} = Spring AI ChatClient against Google GenAI Gemini 2.0 Flash
+     * {@code gemini} = Spring AI ChatClient against Google GenAI Gemini 2.5 Flash
      * (requires {@code spring.ai.model.chat=google-genai} + {@code GEMINI_API_KEY}).
      * {@code heuristic} = grounded composer from pgvector fragments (CI / no API key).
      * {@code openai} = Spring AI ChatClient against OpenAI when API key is set.
