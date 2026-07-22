@@ -93,11 +93,8 @@ InventorySystem/
 │   │       ├── domain/              Remaining shared / platform entities (legacy layer, shrinking)
 │   │       ├── api/ service/ …      Cross-cutting controllers/services not yet sliced
 │   │       └── …                    billing, media, mesh, rtls, config, …
-│   ├── invsys-chatbot/              Optional Support Co-Pilot (Spring AI)
-│   │   └── src/main/java/com/invsys/
-│   │       ├── chatbot/             `ChatbotAutoConfiguration` (conditional)
-│   │       ├── api/                 `SupportChatController` (`/api/v1/support/**`)
-│   │       └── support/             `SupportChatService`, tools, DTOs, RAG/GraphRAG
+│   ├── invsys-chatbot/              Optional Support Co-Pilot (Spring AI + PgVector RAG)
+│   ├── invsys-training/             Optional Flight Simulator (shadow tenant interceptor)
 │   └── invsys-app/                  Bootable runner (`InvSysApplication`, artifact `invsys-api`)
 │       ├── src/main/java/.../InvSysApplication.java
 │       └── src/test/java/...        Integration tests (`AbstractIntegrationTest`, …)
@@ -107,9 +104,11 @@ InventorySystem/
 │       ├── components/              Shells + UI + layout (`navConfig.ts`, `Sidebar.tsx`)
 │       ├── features/                Feature-sliced UI (products, purchasing, sales, fulfillment, fintech, …)
 │       ├── lib/router/              `moduleRegistry.ts` + `appModules.tsx` (pluggable routes/nav)
-│       ├── modules/chatbot/         Optional Support Co-Pilot + training (omit safely)
+│       ├── modules/chatbot/         Optional Support Co-Pilot (omit safely)
+│       ├── modules/training/        Optional Flight Simulator (omit safely)
 │       ├── lib/chatbot/             Stub + generated `active.ts` bridge
-│       ├── lib/featureFlags.ts      Chatbot + `VITE_ENABLE_*` feature module flags
+│       ├── lib/training/            Stub + generated `active.ts` bridge
+│       ├── lib/featureFlags.ts      Chatbot / training / `VITE_ENABLE_*` flags
 │       ├── lib/floorRoutes.ts       Surface B path detection (core; not chatbot)
 │       ├── hooks/                   Scanner, density, media query, concurrent search
 │       ├── offline/                 IDB mutation queue + PIN vault + query persist
@@ -601,7 +600,8 @@ Support Co-Pilot, CQRS tool-calling, Action Drafts, and training-simulator backe
 | Piece | Role |
 |-------|------|
 | `ChatbotAutoConfiguration` | `@ConditionalOnProperty(invsys.features.chatbot.enabled=true, matchIfMissing=true)` + `@ComponentScan(com.invsys.support)` |
-| `SupportChatService` | Role-aware chat; heuristic or Gemini; retrieves chunks by embedding + audience |
+| `SupportChatService` | Role-aware chat; heuristic or Gemini (`invsys.support.ai.llm`); retrieves chunks by embedding + audience |
+| Spring AI config | `spring.ai.model.chat` / `embedding.text` default `google-genai`; chat model `gemini-2.0-flash`; embeddings `text-embedding-004` via `GEMINI_API_KEY`. Test profile forces `none` + `heuristic`. |
 | `SupportCopilotToolsConfig` / `SupportCopilotReadService` | CQRS tools — tenant **only** from `TenantContext` (never LLM/client tenant args) |
 | Knowledge repos | Back `support_knowledge_chunks` / `_nodes` / `_edges` (V089–V090) |
 | API | `SupportChatController` → `POST /api/v1/support/chat` (SSE), `/actions/*` |

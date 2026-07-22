@@ -12,7 +12,7 @@ import {
 } from './supportChatApi';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { ToastProvider } from '@/components/ui/Toast';
-import { useTrainingSandboxStore } from './trainingSandboxStore';
+import { useTrainingSandboxStore } from '@/modules/training/trainingSandboxStore';
 import { compressImageForUpload } from '@/utils/imageCompression';
 
 vi.mock('./supportChatApi', () => ({

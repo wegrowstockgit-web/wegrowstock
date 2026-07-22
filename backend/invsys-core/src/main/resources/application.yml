@@ -1,6 +1,10 @@
 spring:
   application:
     name: invsys-api
+  autoconfigure:
+    # Prefer invsys-chatbot RagConfig (Flyway table support_knowledge_chunks) over Spring AI defaults.
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
   threads:
     virtual:
       enabled: true
@@ -14,12 +18,12 @@ spring:
       max-file-size: 15MB
       max-request-size: 16MB
   ai:
-    # chat=none keeps CI/heuristic boots safe (Google GenAI matchIfMissing would otherwise require a key).
-    # Enable with SUPPORT_AI_LLM=gemini, SPRING_AI_MODEL_CHAT=google-genai, and GEMINI_API_KEY.
+    # google-genai activates when GEMINI_API_KEY is set. Override to none for headless boots without a key.
+    # Tests force none via application-test.yml.
     model:
-      chat: ${SPRING_AI_MODEL_CHAT:none}
+      chat: ${SPRING_AI_MODEL_CHAT:google-genai}
       embedding:
-        text: ${SPRING_AI_MODEL_EMBEDDING_TEXT:none}
+        text: ${SPRING_AI_MODEL_EMBEDDING_TEXT:google-genai}
         multimodal: ${SPRING_AI_MODEL_EMBEDDING_MULTIMODAL:none}
     google:
       genai:
@@ -28,6 +32,10 @@ spring:
           options:
             model: gemini-2.0-flash
             temperature: 0.2
+        embedding:
+          text:
+            options:
+              model: text-embedding-004
   datasource:
     # prepareThreshold=0: inline binds (safe for PgBouncer transaction pooling and direct Postgres).
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:invsys}?prepareThreshold=0
@@ -199,8 +207,8 @@ invsys:
   support:
     ai:
       enabled: ${SUPPORT_AI_ENABLED:true}
-      # heuristic (default/CI) | openai | gemini (set SPRING_AI_MODEL_CHAT=google-genai + GEMINI_API_KEY)
-      llm: ${SUPPORT_AI_LLM:heuristic}
+      # gemini (default) | heuristic | openai — tests override to heuristic
+      llm: ${SUPPORT_AI_LLM:gemini}
       top-k: ${SUPPORT_AI_TOP_K:6}
 
 springdoc:

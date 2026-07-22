@@ -1,10 +1,11 @@
 spring:
   ai:
     model:
-      chat: none
+      # Keep Spring AI providers off in CI unless an explicit override + key is supplied
+      chat: ${SPRING_AI_MODEL_CHAT:none}
       embedding:
-        text: none
-        multimodal: none
+        text: ${SPRING_AI_MODEL_EMBEDDING_TEXT:none}
+        multimodal: ${SPRING_AI_MODEL_EMBEDDING_MULTIMODAL:none}
     google:
       genai:
         api-key: ${GEMINI_API_KEY:}
@@ -12,6 +13,10 @@ spring:
           options:
             model: gemini-2.0-flash
             temperature: 0.2
+        embedding:
+          text:
+            options:
+              model: text-embedding-004
   flyway:
     enabled: true
     user: app_owner
@@ -28,6 +33,9 @@ spring:
       enabled: false
 
 invsys:
+  support:
+    ai:
+      llm: ${SUPPORT_AI_LLM:heuristic}
   jwt:
     access-token-minutes: 15
     terminal-switch-token-minutes: 5

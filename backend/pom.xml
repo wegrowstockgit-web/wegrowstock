@@ -20,6 +20,7 @@
     <modules>
         <module>invsys-core</module>
         <module>invsys-chatbot</module>
+        <module>invsys-training</module>
         <module>invsys-app</module>
     </modules>
 
@@ -43,6 +44,11 @@
             <dependency>
                 <groupId>com.invsys</groupId>
                 <artifactId>invsys-chatbot</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.invsys</groupId>
+                <artifactId>invsys-training</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

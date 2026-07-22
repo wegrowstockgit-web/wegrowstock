@@ -1,32 +1,65 @@
-# Dependencies
+# Dependencies / build
 node_modules/
 dist/
 target/
 coverage/
+*.class
+*.tsbuildinfo
 
 # Environment / secrets
 .env
-.env.local
-*.pem
+.env.*
 !.env.example
+*.pem
 
 # IDE / local agent caches
 .idea/
 .vscode/
 *.iml
+.classpath
+.project
+.settings/
+.factorypath
 .cursor/*
 !.cursor/skills/
 !.cursor/skills/**
 
-# OS
+# OS / editor swap
 .DS_Store
 Thumbs.db
+*~
+*.swp
+*.swo
 
+# Local deploy / feature preference markers
 .invsys-chatbot-disabled
+.invsys-*-disabled
 
-# Test
+# Logs and one-off run output (deploy.bat, mvn, vitest, playwright, tsc)
+*.log
+.deploy-*.log
+
+# Accidental curl / API response dumps at repo root
+/login.json
+/login-body2.json
+/login*.json
+
+# Generated Spring metadata spilled outside Maven modules
+/backend/META-INF/
+
+# Frontend tooling caches
+frontend/.vite/
+**/.turbo/
+
+# Test reports / artifacts
 playwright-report/
 test-results/
 frontend/playwright-report/
 frontend/test-results/
 frontend/playwright/.auth/
+**/surefire-reports/
+**/failsafe-reports/
+
+# JVM crash dumps
+hs_err_pid*
+replay_pid*

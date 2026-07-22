@@ -4,11 +4,16 @@ import com.invsys.support.dto.ActionDraft;
 import com.invsys.support.dto.SupportChatResponse;
 import com.invsys.support.tools.SupportCopilotReadService;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
@@ -22,9 +27,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
-import com.invsys.domain.Tenant;
-import com.invsys.domain.User;
 
 /**
  * Agentic GraphRAG orchestrator with CQRS tools, bottleneck insights, drafts, and vision.
@@ -38,10 +42,14 @@ public class SupportChatService {
     private final EmbeddingModel embeddingModel;
     private final ObjectProvider<ChatClient.Builder> chatClientBuilder;
     private final SupportAgentTools agentTools;
+    private final SupportEscalationTools escalationTools;
+    private final SupportEscalationContext escalationContext;
     private final SupportCopilotReadService readService;
     private final SupportBottleneckService bottleneckService;
     private final SupportActionDraftExecutor draftExecutor;
     private final List<ToolCallback> readToolCallbacks;
+    private final ObjectProvider<VectorStore> vectorStore;
+    private final ObjectProvider<ChatMemory> chatMemory;
 
     public SupportChatService(
             SupportAiProperties properties,
@@ -50,10 +58,14 @@ public class SupportChatService {
             EmbeddingModel embeddingModel,
             ObjectProvider<ChatClient.Builder> chatClientBuilder,
             SupportAgentTools agentTools,
+            SupportEscalationTools escalationTools,
+            SupportEscalationContext escalationContext,
             SupportCopilotReadService readService,
             SupportBottleneckService bottleneckService,
             SupportActionDraftExecutor draftExecutor,
-            @Qualifier("supportCopilotReadToolCallbacks") ObjectProvider<List<ToolCallback>> readToolCallbacks
+            @Qualifier("supportCopilotReadToolCallbacks") ObjectProvider<List<ToolCallback>> readToolCallbacks,
+            ObjectProvider<VectorStore> vectorStore,
+            ObjectProvider<ChatMemory> chatMemory
     ) {
         this.properties = properties;
         this.repository = repository;
@@ -61,11 +73,15 @@ public class SupportChatService {
         this.embeddingModel = embeddingModel;
         this.chatClientBuilder = chatClientBuilder;
         this.agentTools = agentTools;
+        this.escalationTools = escalationTools;
+        this.escalationContext = escalationContext;
         this.readService = readService;
         this.bottleneckService = bottleneckService;
         this.draftExecutor = draftExecutor;
         List<ToolCallback> callbacks = readToolCallbacks.getIfAvailable();
         this.readToolCallbacks = callbacks == null ? List.of() : List.copyOf(callbacks);
+        this.vectorStore = vectorStore;
+        this.chatMemory = chatMemory;
     }
 
     public void streamAnswer(
@@ -76,7 +92,7 @@ public class SupportChatService {
             Consumer<SupportActionProposal> onAction,
             Consumer<SupportStructuredReply> onComplete
     ) {
-        streamAnswer(message, roles, route, Map.of(), Map.of(), null, null, onToken, onAction, onComplete);
+        streamAnswer(message, roles, route, Map.of(), Map.of(), null, null, null, onToken, onAction, onComplete);
     }
 
     public void streamAnswer(
@@ -88,7 +104,7 @@ public class SupportChatService {
             Consumer<SupportActionProposal> onAction,
             Consumer<SupportStructuredReply> onComplete
     ) {
-        streamAnswer(message, roles, route, pageContext, Map.of(), null, null, onToken, onAction, onComplete);
+        streamAnswer(message, roles, route, pageContext, Map.of(), null, null, null, onToken, onAction, onComplete);
     }
 
     public void streamAnswer(
@@ -101,7 +117,7 @@ public class SupportChatService {
             Consumer<SupportActionProposal> onAction,
             Consumer<SupportStructuredReply> onComplete
     ) {
-        streamAnswer(message, roles, route, pageContext, pageState, null, null, onToken, onAction, onComplete);
+        streamAnswer(message, roles, route, pageContext, pageState, null, null, null, onToken, onAction, onComplete);
     }
 
     public void streamAnswer(
@@ -112,6 +128,45 @@ public class SupportChatService {
             Map<String, Object> pageState,
             String imageBase64,
             String imageMimeType,
+            Consumer<String> onToken,
+            Consumer<SupportActionProposal> onAction,
+            Consumer<SupportStructuredReply> onComplete
+    ) {
+        streamAnswer(message, roles, route, pageContext, pageState, imageBase64, imageMimeType, null,
+                onToken, onAction, onComplete);
+    }
+
+    public void streamAnswer(
+            String message,
+            List<String> roles,
+            String route,
+            Map<String, Object> pageContext,
+            Map<String, Object> pageState,
+            String imageBase64,
+            String imageMimeType,
+            String sessionId,
+            Consumer<String> onToken,
+            Consumer<SupportActionProposal> onAction,
+            Consumer<SupportStructuredReply> onComplete
+    ) {
+        try {
+            streamAnswerInternal(
+                    message, roles, route, pageContext, pageState, imageBase64, imageMimeType, sessionId,
+                    onToken, onAction, onComplete);
+        } finally {
+            escalationContext.clear();
+        }
+    }
+
+    private void streamAnswerInternal(
+            String message,
+            List<String> roles,
+            String route,
+            Map<String, Object> pageContext,
+            Map<String, Object> pageState,
+            String imageBase64,
+            String imageMimeType,
+            String sessionId,
             Consumer<String> onToken,
             Consumer<SupportActionProposal> onAction,
             Consumer<SupportStructuredReply> onComplete
@@ -135,6 +190,12 @@ public class SupportChatService {
         }
 
         List<String> normalizedRoles = normalizeRoles(roles);
+        String conversationId = (sessionId == null || sessionId.isBlank())
+                ? UUID.randomUUID().toString()
+                : sessionId.trim();
+        String primaryRole = normalizedRoles.isEmpty() ? "" : normalizedRoles.getFirst();
+        escalationContext.begin(conversationId, route, primaryRole);
+
         String embedText = extractUserQueryTail(question);
         float[] embedding = embeddingModel.embed(embedText);
         List<SupportKnowledgeChunk> seeds = repository.searchSimilar(
@@ -167,7 +228,12 @@ public class SupportChatService {
                         normalizedRoles, route, retrieved, safePageContext, safePageState)
                 + """
 
-                You are Gemini 2.0 Flash operating as the Growstock Inventory Co-Pilot.
+                You are Gemini 2.0 Flash operating as the Growstock Inventory Level-1/Level-2 Support Agent.
+                Rely STRICTLY on retrieved SOP / RAG context and live CQRS facts. If the answer is not in the \
+                retrieved manuals, say you do not know and call escalateToHumanSupport.
+                If the user is frustrated, asks for a human, or RAG context is insufficient, you MUST invoke \
+                the escalateToHumanSupport tool.
+                Prefer manuals matching the activeRoute (pageState.pathname / route) and userRole.
                 Return structured SupportChatResponse with replyMarkdown, optional proactiveInsight, \
                 actionChips, optional actionDraft (title, description, targetEndpoint, httpMethod, payload), \
                 and followUpQuestions.
@@ -204,27 +270,47 @@ public class SupportChatService {
             // Bind read-only CQRS tools (Spring AI 1.1: defaultToolNames replaces defaultFunctions).
             ChatClient.Builder builder = chatClientBuilder.getObject()
                     .defaultSystem(system)
-                    .defaultToolNames("checkOrderStatus", "getLedgerHistorySummary", "checkAvailableToPromise");
+                    .defaultToolNames(
+                            "checkOrderStatus",
+                            "getLedgerHistorySummary",
+                            "checkAvailableToPromise",
+                            "escalateToHumanSupport");
             if (!readToolCallbacks.isEmpty()) {
                 builder = builder.defaultToolCallbacks(readToolCallbacks);
+            }
+            VectorStore store = vectorStore.getIfAvailable();
+            ChatMemory memory = chatMemory.getIfAvailable();
+            if (store != null) {
+                builder = builder.defaultAdvisors(
+                        QuestionAnswerAdvisor.builder(store)
+                                .searchRequest(SearchRequest.builder().topK(4).build())
+                                .build());
+            }
+            if (memory != null) {
+                builder = builder.defaultAdvisors(
+                        MessageChatMemoryAdvisor.builder(memory).build());
             }
             ChatClient client = builder.build();
             SupportChatResponse structured = null;
             String content = null;
             try {
                 if (hasImage) {
-                    content = callWithImage(client, question, imageBase64, imageMimeType);
+                    content = callWithImage(client, question, imageBase64, imageMimeType, conversationId);
                 } else {
-                    structured = withDiagnosticTools(client.prompt().user(question))
+                    structured = withDiagnosticTools(client.prompt()
+                            .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                            .user(question))
                             .call()
                             .entity(SupportChatResponse.class);
                 }
             } catch (RuntimeException entityFailed) {
                 try {
                     if (hasImage) {
-                        content = callWithImage(client, question, imageBase64, imageMimeType);
+                        content = callWithImage(client, question, imageBase64, imageMimeType, conversationId);
                     } else {
-                        content = withDiagnosticTools(client.prompt().user(question))
+                        content = withDiagnosticTools(client.prompt()
+                                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                                .user(question))
                                 .call()
                                 .content();
                     }
@@ -257,6 +343,7 @@ public class SupportChatService {
                 }
                 reply = reply.withActionDraft(draft);
             }
+            reply = attachEscalation(reply);
             streamChunks(reply.replyMarkdown(), onToken);
             for (SupportActionProposal action : reply.actionChips()) {
                 onAction.accept(action);
@@ -281,11 +368,19 @@ public class SupportChatService {
         SupportStructuredReply reply = SupportStructuredReply.of(answer, result.actions(), result.followUps())
                 .withActionDraft(draft)
                 .withProactiveInsight(insight);
+        reply = attachEscalation(reply);
         streamChunks(reply.replyMarkdown(), onToken);
         for (SupportActionProposal action : reply.actionChips()) {
             onAction.accept(action);
         }
         onComplete.accept(reply);
+    }
+
+    private SupportStructuredReply attachEscalation(SupportStructuredReply reply) {
+        return escalationContext.consumeCard()
+                .map(card -> reply.withEscalation(new SupportStructuredReply.EscalationCard(
+                        card.ticketId(), card.status(), card.message())))
+                .orElse(reply);
     }
 
     public String detectInsight(String route) {
@@ -387,7 +482,7 @@ public class SupportChatService {
      * ({@code checkAvailableToPromise}, {@code checkOrderStatus}, {@code getLedgerHistorySummary}).
      */
     private ChatClient.ChatClientRequestSpec withDiagnosticTools(ChatClient.ChatClientRequestSpec prompt) {
-        ChatClient.ChatClientRequestSpec withAgent = prompt.tools(agentTools);
+        ChatClient.ChatClientRequestSpec withAgent = prompt.tools(agentTools, escalationTools);
         if (readToolCallbacks.isEmpty()) {
             return withAgent;
         }
@@ -398,11 +493,16 @@ public class SupportChatService {
             ChatClient client,
             String question,
             String imageBase64,
-            String imageMimeType
+            String imageMimeType,
+            String conversationId
     ) {
         byte[] bytes = decodeImage(imageBase64);
         if (bytes.length == 0) {
-            return withDiagnosticTools(client.prompt().user(question)).call().content();
+            return withDiagnosticTools(client.prompt()
+                    .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                    .user(question))
+                    .call()
+                    .content();
         }
         String mime = imageMimeType == null || imageMimeType.isBlank() ? "image/jpeg" : imageMimeType;
         Media media = new Media(
@@ -412,7 +512,10 @@ public class SupportChatService {
                 .text(question)
                 .media(media)
                 .build();
-        return withDiagnosticTools(client.prompt(new Prompt(List.of(userMessage)))).call().content();
+        return withDiagnosticTools(client.prompt(new Prompt(List.of(userMessage)))
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId)))
+                .call()
+                .content();
     }
 
     private static byte[] decodeImage(String imageBase64) {

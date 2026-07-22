@@ -56,7 +56,9 @@ public class SupportChatController {
             String imageBase64,
             /** Alias accepted by multimodal clients (same bytes as {@code imageBase64}). */
             String base64Image,
-            String imageMimeType
+            String imageMimeType,
+            /** Conversation id for MessageChatMemoryAdvisor (stable per chat panel session). */
+            String sessionId
     ) {
         public ChatRequest {
             if (message == null) {
@@ -162,6 +164,7 @@ public class SupportChatController {
                         pageState,
                         request.imageBase64(),
                         request.imageMimeType(),
+                        request.sessionId(),
                         token -> {
                             try {
                                 emitter.send(SseEmitter.event().name("token").data(token));
@@ -241,6 +244,13 @@ public class SupportChatController {
         }
         if (reply.proactiveInsight() != null) {
             map.put("proactiveInsight", reply.proactiveInsight());
+        }
+        if (reply.escalation() != null) {
+            Map<String, Object> esc = new LinkedHashMap<>();
+            esc.put("ticketId", reply.escalation().ticketId());
+            esc.put("status", reply.escalation().status());
+            esc.put("message", reply.escalation().message());
+            map.put("escalation", esc);
         }
         return map;
     }

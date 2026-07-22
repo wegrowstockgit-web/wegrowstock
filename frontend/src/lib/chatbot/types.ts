@@ -6,18 +6,12 @@ export type SupportNetworkErrorInput = {
   traceId?: string | null;
 };
 
-export type TrainingGuard = {
-  isTrainingMode: () => boolean;
-  recordBlockedMutation: (method: string, url: string) => void;
-  onUiAction: (elementLabel: string) => void;
-};
-
 /**
- * Optional chatbot / training module surface.
+ * Optional chatbot module surface.
  * Page Info ("i") content is NOT part of this API — see {@code @/lib/pageKnowledge}.
+ * Flight Simulator is {@code @/lib/training/*}.
  */
 export type ChatbotModuleApi = {
   ChatbotHost: ComponentType;
   recordSupportNetworkError: (input: SupportNetworkErrorInput) => void;
-  getTrainingGuard: () => TrainingGuard;
 };

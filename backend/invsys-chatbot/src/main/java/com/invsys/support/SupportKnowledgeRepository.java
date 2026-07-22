@@ -30,11 +30,15 @@ public class SupportKnowledgeRepository {
     ) {
         jdbcTemplate.update("""
                 INSERT INTO support_knowledge_chunks (
-                    slug, title, body, audience_roles, route_hints, source_path, embedding, updated_at
-                ) VALUES (?, ?, ?, ?::text[], ?::text[], ?, ?::vector, now())
+                    slug, title, body, content, metadata, audience_roles, route_hints, source_path, embedding, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?::json, ?::text[], ?::text[], ?, ?::vector, now()
+                )
                 ON CONFLICT (slug) DO UPDATE SET
                     title = EXCLUDED.title,
                     body = EXCLUDED.body,
+                    content = EXCLUDED.content,
+                    metadata = EXCLUDED.metadata,
                     audience_roles = EXCLUDED.audience_roles,
                     route_hints = EXCLUDED.route_hints,
                     source_path = EXCLUDED.source_path,
@@ -44,10 +48,51 @@ public class SupportKnowledgeRepository {
                 slug,
                 title,
                 body,
+                body,
+                toMetadataJson(slug, title, audienceRoles, routeHints, sourcePath),
                 toPgArrayLiteral(audienceRoles),
                 toPgArrayLiteral(routeHints),
                 sourcePath,
                 toVectorLiteral(embedding));
+    }
+
+    private static String toMetadataJson(
+            String slug,
+            String title,
+            List<String> audienceRoles,
+            List<String> routeHints,
+            String sourcePath
+    ) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"slug\":\"").append(jsonEsc(slug)).append("\",");
+        sb.append("\"title\":\"").append(jsonEsc(title)).append("\",");
+        sb.append("\"source_path\":\"").append(jsonEsc(sourcePath == null ? "" : sourcePath)).append("\",");
+        sb.append("\"audience_roles\":").append(toJsonStringArray(audienceRoles)).append(',');
+        sb.append("\"route_hints\":").append(toJsonStringArray(routeHints));
+        sb.append('}');
+        return sb.toString();
+    }
+
+    private static String toJsonStringArray(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append('"').append(jsonEsc(values.get(i))).append('"');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private static String jsonEsc(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     public List<SupportKnowledgeChunk> searchSimilar(

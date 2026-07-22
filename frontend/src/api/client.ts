@@ -2,7 +2,8 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useSessionStore } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { clearQueryCache, queryClient } from '@/offline/queryPersistence';
-import { getTrainingGuard, recordSupportNetworkError } from '@/lib/chatbot/active';
+import { getTrainingGuard } from '@/lib/training/active';
+import { recordSupportNetworkError } from '@/lib/chatbot/active';
 
 // Empty base URL: requests use /api/v1/... and are proxied by Vite (dev) or nginx (Docker).
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
@@ -126,6 +127,9 @@ apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) =>
         new Error('Training mode is active — live stock changes are blocked. Exit training to continue.'),
       );
     }
+  }
+  if (getTrainingGuard().isTrainingMode()) {
+    config.headers['X-Training-Mode'] = 'true';
   }
   const warehouseId = useActiveWarehouseStore.getState().warehouseId;
   if (warehouseId) {

@@ -35,6 +35,10 @@ class SupportChatServiceMultimodalTest {
     @Mock SupportGraphRepository graphRepository;
     @Mock ObjectProvider<ChatClient.Builder> chatClientBuilder;
     @Mock SupportAgentTools agentTools;
+    @Mock SupportEscalationTools escalationTools;
+    @Mock SupportEscalationContext escalationContext;
+    @Mock ObjectProvider<org.springframework.ai.vectorstore.VectorStore> vectorStore;
+    @Mock ObjectProvider<org.springframework.ai.chat.memory.ChatMemory> chatMemory;
     @Mock SupportCopilotReadService readService;
     @Mock SupportBottleneckService bottleneckService;
     @Mock SupportActionDraftExecutor draftExecutor;
@@ -51,6 +55,9 @@ class SupportChatServiceMultimodalTest {
         properties.setTopK(6);
         lenient().when(chatClientBuilder.getIfAvailable()).thenReturn(null);
         lenient().when(readToolCallbacks.getIfAvailable()).thenReturn(List.of());
+        lenient().when(vectorStore.getIfAvailable()).thenReturn(null);
+        lenient().when(chatMemory.getIfAvailable()).thenReturn(null);
+        lenient().when(escalationContext.consumeCard()).thenReturn(java.util.Optional.empty());
         lenient().when(readService.formatLiveFactsForPrompt(anyString(), any())).thenReturn("");
         lenient().when(bottleneckService.detectProactiveInsight(anyString())).thenReturn(null);
         lenient().when(graphRepository.retrieveWithGraph(anyList(), anyInt()))
@@ -67,10 +74,14 @@ class SupportChatServiceMultimodalTest {
                 embeddingModel,
                 chatClientBuilder,
                 agentTools,
+                escalationTools,
+                escalationContext,
                 readService,
                 bottleneckService,
                 draftExecutor,
-                readToolCallbacks);
+                readToolCallbacks,
+                vectorStore,
+                chatMemory);
     }
 
     @Test

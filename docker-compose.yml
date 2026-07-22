@@ -260,6 +260,8 @@ services:
       REDIS_PORT: 6379
       REDIS_ENABLED: "true"
       INVSYS_CHATBOT_ENABLED: ${INVSYS_CHATBOT_ENABLED:-true}
+      # Support Co-Pilot / RAG — set GEMINI_API_KEY in .env for gemini-2.0-flash + text-embedding-004
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       COOKIE_SECURE: "false"
       COOKIE_SAME_SITE: Lax
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}

@@ -9,7 +9,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import com.invsys.modules.sales.domain.Invoice;
+
 
 /**
  * Ingests platform manuals / runbooks into pgvector on startup (idempotent upsert by slug).

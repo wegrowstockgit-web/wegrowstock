@@ -12,7 +12,8 @@ public record SupportStructuredReply(
         List<SupportActionProposal> actionChips,
         List<String> followUpQuestions,
         ActionDraft actionDraft,
-        String proactiveInsight
+        String proactiveInsight,
+        EscalationCard escalation
 ) {
     public SupportStructuredReply {
         replyMarkdown = replyMarkdown == null ? "" : replyMarkdown;
@@ -26,14 +27,24 @@ public record SupportStructuredReply(
             List<SupportActionProposal> actionChips,
             List<String> followUpQuestions
     ) {
-        return new SupportStructuredReply(replyMarkdown, actionChips, followUpQuestions, null, null);
+        return new SupportStructuredReply(replyMarkdown, actionChips, followUpQuestions, null, null, null);
     }
 
     public SupportStructuredReply withActionDraft(ActionDraft draft) {
-        return new SupportStructuredReply(replyMarkdown, actionChips, followUpQuestions, draft, proactiveInsight);
+        return new SupportStructuredReply(
+                replyMarkdown, actionChips, followUpQuestions, draft, proactiveInsight, escalation);
     }
 
     public SupportStructuredReply withProactiveInsight(String insight) {
-        return new SupportStructuredReply(replyMarkdown, actionChips, followUpQuestions, actionDraft, insight);
+        return new SupportStructuredReply(
+                replyMarkdown, actionChips, followUpQuestions, actionDraft, insight, escalation);
+    }
+
+    public SupportStructuredReply withEscalation(EscalationCard card) {
+        return new SupportStructuredReply(
+                replyMarkdown, actionChips, followUpQuestions, actionDraft, proactiveInsight, card);
+    }
+
+    public record EscalationCard(String ticketId, String status, String message) {
     }
 }

@@ -1,1 +1,2 @@
 com.invsys.chatbot.ChatbotAutoConfiguration
+com.invsys.chatbot.config.HashEmbeddingAutoConfiguration

@@ -55,6 +55,7 @@ export default defineConfig({
         'src/modules/chatbot/supportChatApi.ts',
         'src/modules/chatbot/SupportAssistantWidget.tsx',
         'src/modules/chatbot/trainingSandboxStore.ts',
+        'src/modules/training/trainingSandboxStore.ts',
         'src/modules/chatbot/supportSpotlight.ts',
         'src/components/ui/PageHelpOverlay.tsx',
       ],

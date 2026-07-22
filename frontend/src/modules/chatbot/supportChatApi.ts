@@ -43,6 +43,11 @@ export interface SupportChatDonePayload {
   actionChips?: SupportStreamAction[];
   actionDraft?: SupportActionDraft | null;
   proactiveInsight?: string | null;
+  escalation?: {
+    ticketId: string;
+    status: string;
+    message: string;
+  } | null;
 }
 
 export interface SupportChatStreamHandlers {
@@ -83,6 +88,8 @@ export type SupportChatRequestOptions = {
   /** Spec alias — sent alongside {@link imageBase64} for multimodal clients. */
   base64Image?: string | null;
   imageMimeType?: string | null;
+  /** Stable id for MessageChatMemoryAdvisor (defaults to a per-tab session). */
+  sessionId?: string | null;
 };
 
 function serializeComponent(component: RouteKnowledgeComponent): SupportPageContextComponent {
@@ -208,6 +215,11 @@ export async function streamSupportChat(
       pageState,
       recentBreadcrumbs,
       userRoles: [...userRoles],
+      sessionId:
+        options?.sessionId
+        ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `support-${Date.now()}`),
       ...(() => {
         const image =
           options?.imageBase64

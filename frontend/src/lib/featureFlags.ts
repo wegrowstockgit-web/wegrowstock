@@ -7,6 +7,9 @@
  */
 export const IS_CHATBOT_ENABLED = import.meta.env.VITE_ENABLE_CHATBOT !== 'false';
 
+/** Flight Simulator / training sandbox module. */
+export const IS_TRAINING_ENABLED = import.meta.env.VITE_ENABLE_TRAINING !== 'false';
+
 /**
  * Runtime gate used by {@code App.tsx}. Honors {@link IS_CHATBOT_ENABLED} and an optional
  * Playwright override {@code window.__INVSYS_CHATBOT__ = false}.
@@ -16,6 +19,16 @@ export function isChatbotEnabled(): boolean {
     return false;
   }
   if (typeof window !== 'undefined' && window.__INVSYS_CHATBOT__ === false) {
+    return false;
+  }
+  return true;
+}
+
+export function isTrainingEnabled(): boolean {
+  if (!IS_TRAINING_ENABLED) {
+    return false;
+  }
+  if (typeof window !== 'undefined' && window.__INVSYS_TRAINING__ === false) {
     return false;
   }
   return true;

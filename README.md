@@ -46,6 +46,15 @@ deploy.bat deploy --with-chatbot
 
 When disabled: backend omits the `invsys-chatbot` jar (`-P-with-chatbot`) and sets `INVSYS_CHATBOT_ENABLED=false`; frontend builds with `VITE_ENABLE_CHATBOT=false` and a stub UI bridge. Core inventory still runs.
 
+**Live Gemini (Support Co-Pilot + RAG embeddings):** only a Google AI Studio key is required — defaults use `gemini-2.0-flash` and `text-embedding-004`:
+
+```bash
+export GEMINI_API_KEY="your-actual-google-ai-studio-key"
+# Optional: SPRING_AI_GOOGLE_GENAI_CHAT_OPTIONS_MODEL=gemini-2.0-flash
+```
+
+Without a key, the chatbot module forces `spring.ai.model.*=none` and `SUPPORT_AI_LLM=heuristic` so Docker/CI stay headless-safe. Test profile uses the same safe defaults.
+
 | Service  | URL / endpoint |
 |----------|----------------|
 | Frontend | http://localhost:3000 |

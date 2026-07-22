@@ -20,7 +20,8 @@ class SupportChatRequestImageAliasTest {
                 List.of("PICKER"),
                 null,
                 "iVBORw0KGgo=",
-                "image/png");
+                "image/png",
+                null);
 
         assertThat(request.imageBase64()).isEqualTo("iVBORw0KGgo=");
         assertThat(request.base64Image()).isEqualTo("iVBORw0KGgo=");
@@ -38,7 +39,8 @@ class SupportChatRequestImageAliasTest {
                 List.of("PICKER"),
                 "primaryBytes",
                 "aliasBytes",
-                "image/jpeg");
+                "image/jpeg",
+                null);
 
         assertThat(request.imageBase64()).isEqualTo("primaryBytes");
     }

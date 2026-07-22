@@ -1,7 +1,8 @@
 import type { ReactElement, ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
-import { IS_CHATBOT_ENABLED, isChatbotEnabled } from '@/lib/featureFlags';
+import { IS_CHATBOT_ENABLED, isChatbotEnabled, IS_TRAINING_ENABLED, isTrainingEnabled } from '@/lib/featureFlags';
 import { ChatbotHost } from '@/lib/chatbot/active';
+import { TrainingHost } from '@/lib/training/active';
 import '@/lib/router/appModules';
 import {
   getEnabledFloorRoutes,
@@ -104,6 +105,7 @@ export function App() {
         <ErrorBoundary boundaryName="app-root">
           {/* Optional: stubbed when chatbot module disabled/absent (scripts/resolve-chatbot.mjs) */}
           {IS_CHATBOT_ENABLED && isChatbotEnabled() ? <ChatbotHost /> : null}
+          {IS_TRAINING_ENABLED && isTrainingEnabled() ? <TrainingHost /> : null}
           <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />

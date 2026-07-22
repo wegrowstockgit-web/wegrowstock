@@ -41,3 +41,7 @@ invsys:
     enabled: false
   observability:
     loki-url: ${LOKI_URL:http://localhost:3100/loki/api/v1/push}
+  support:
+    ai:
+      # Local dev: gemini when GEMINI_API_KEY is set; override with SUPPORT_AI_LLM=heuristic if not
+      llm: ${SUPPORT_AI_LLM:gemini}

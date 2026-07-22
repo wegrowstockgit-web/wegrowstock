@@ -24,7 +24,7 @@ import {
   TRAINING_SCENARIOS,
   useTrainingSandboxStore,
   type TrainingScenarioId,
-} from './trainingSandboxStore';
+} from '@/modules/training/trainingSandboxStore';
 
 const TOUR_IDS = new Set<TourId>(['office', 'floor', 'receiving-to-allocation']);
 
@@ -35,6 +35,7 @@ type TranscriptLine = {
   followUps?: string[];
   actionDraft?: SupportActionDraft | null;
   draftStatus?: 'pending' | 'approved' | 'cancelled' | 'failed';
+  escalation?: { ticketId: string; status: string; message: string } | null;
 };
 
 /**
@@ -162,6 +163,7 @@ export function SupportAssistantWidget() {
                 }
               }
               const actionDraft = payload.actionDraft ?? last.actionDraft ?? null;
+              const escalation = payload.escalation ?? last.escalation ?? null;
               if (payload.replyMarkdown && !last.text.trim()) {
                 copy[copy.length - 1] = {
                   ...last,
@@ -170,6 +172,7 @@ export function SupportAssistantWidget() {
                   followUps,
                   actionDraft,
                   draftStatus: actionDraft ? 'pending' : undefined,
+                  escalation,
                 };
               } else {
                 copy[copy.length - 1] = {
@@ -178,6 +181,7 @@ export function SupportAssistantWidget() {
                   followUps,
                   actionDraft,
                   draftStatus: actionDraft ? 'pending' : last.draftStatus,
+                  escalation,
                 };
               }
               return copy;
@@ -587,6 +591,19 @@ export function SupportAssistantWidget() {
                         </Button>
                       </div>
                     )}
+                  </div>
+                ) : null}
+
+                {line.escalation ? (
+                  <div
+                    className="ml-2 rounded-lg border border-success/40 bg-success/10 p-3"
+                    data-testid="support-escalation-card"
+                  >
+                    <p className="text-sm font-semibold text-text">Escalation Successful</p>
+                    <p className="mt-1 text-sm text-text-muted">{line.escalation.message}</p>
+                    <p className="mt-2 text-xs text-text-muted">
+                      Ticket {line.escalation.ticketId} · {line.escalation.status}
+                    </p>
                   </div>
                 ) : null}
 

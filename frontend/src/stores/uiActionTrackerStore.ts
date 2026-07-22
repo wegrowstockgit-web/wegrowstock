@@ -36,7 +36,7 @@ export const useUiActionTrackerStore = create<UiActionTrackerState>((set, get) =
       actions: [...state.actions, next].slice(-MAX_BUFFER),
     }));
     // Optional chatbot training sandbox (no-op when module stubbed).
-    void import('@/lib/chatbot/active')
+    void import('@/lib/training/active')
       .then(({ getTrainingGuard }) => {
         getTrainingGuard().onUiAction(next.elementLabel);
       })

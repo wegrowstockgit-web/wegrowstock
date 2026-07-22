@@ -36,8 +36,12 @@ const trainingGuard = {
 
 vi.mock('@/lib/chatbot/active', () => ({
   recordSupportNetworkError: vi.fn(),
-  getTrainingGuard: () => trainingGuard,
   ChatbotHost: () => null,
+}));
+
+vi.mock('@/lib/training/active', () => ({
+  getTrainingGuard: () => trainingGuard,
+  TrainingHost: () => null,
 }));
 
 import { apiClient } from '@/api/client';

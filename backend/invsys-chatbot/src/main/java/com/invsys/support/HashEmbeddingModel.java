@@ -5,7 +5,6 @@ import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
-import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -14,13 +13,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Deterministic local embeddings so RAG works in CI without an external API key.
- * Production can replace this bean with an OpenAI {@link EmbeddingModel} when configured.
+ * Deterministic local embeddings so RAG works without an external API key.
+ * Registered by {@link com.invsys.chatbot.config.HashEmbeddingAutoConfiguration}
+ * only when no other {@link EmbeddingModel} bean exists (e.g. Google GenAI).
  */
-@Component
 public class HashEmbeddingModel implements EmbeddingModel {
 
-    public static final int DIMENSIONS = 384;
+    public static final int DIMENSIONS = 768;
 
     @Override
     public EmbeddingResponse call(EmbeddingRequest request) {
