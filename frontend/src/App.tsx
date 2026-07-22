@@ -1,5 +1,13 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { IS_CHATBOT_ENABLED, isChatbotEnabled } from '@/lib/featureFlags';
+import { ChatbotHost } from '@/lib/chatbot/active';
+import '@/lib/router/appModules';
+import {
+  getEnabledFloorRoutes,
+  getEnabledOfficeRoutes,
+  getEnabledStandaloneRoutes,
+} from '@/lib/router/moduleRegistry';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { WarehouseFloorShell } from '@/components/layout/WarehouseFloorShell';
@@ -9,33 +17,21 @@ import { LoginPage } from '@/pages/LoginPage';
 import { SignupPage } from '@/pages/SignupPage';
 import { InvitePage } from '@/pages/InvitePage';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { ProductsPage } from '@/pages/ProductsPage';
-import { FulfillmentPage } from '@/pages/FulfillmentPage';
-import { ExceptionsPage } from '@/pages/ExceptionsPage';
 import { ImportPage } from '@/pages/ImportPage';
-import { CycleCountsPage } from '@/pages/CycleCountsPage';
 import { SupplierPortalPage } from '@/pages/SupplierPortalPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage';
 import { AddWarehousePage } from '@/pages/AddWarehousePage';
 import { BillingSettingsPage } from '@/pages/BillingSettingsPage';
-import { FintechSettingsPage } from '@/pages/FintechSettingsPage';
 import { IntegrationsHubPage } from '@/pages/IntegrationsHubPage';
 import { RtlsWorkspacePage } from '@/pages/RtlsWorkspacePage';
-import { PurchaseOrdersPage } from '@/pages/PurchaseOrdersPage';
-import { SalesOrdersPage } from '@/pages/SalesOrdersPage';
-import { InvoicesPage } from '@/pages/InvoicesPage';
-import { CustomersPage } from '@/pages/CustomersPage';
-import { SuppliersPage } from '@/pages/SuppliersPage';
 import { ManufacturingBomsPage } from '@/pages/ManufacturingBomsPage';
 import { ManufacturingOrdersPage } from '@/pages/ManufacturingOrdersPage';
 import { ProductionTerminalPage } from '@/pages/ProductionTerminalPage';
 import { ReturnsPage } from '@/pages/ReturnsPage';
 import { ReturnsReceivePage } from '@/pages/ReturnsReceivePage';
-import { InboundReceivePage } from '@/pages/InboundReceivePage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { IssueSuppliesPage } from '@/pages/IssueSuppliesPage';
-import { ReplenishmentsPage } from '@/pages/ReplenishmentsPage';
 import { LotTracePage } from '@/pages/LotTracePage';
 import { TechnicianTruckPage } from '@/pages/TechnicianTruckPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -46,9 +42,6 @@ import { ShowroomCheckoutPage } from '@/pages/showroom/ShowroomCheckoutPage';
 import { ShowroomBillingPage } from '@/pages/showroom/ShowroomBillingPage';
 import { ScannerSecurityGate } from '@/components/security/ScannerSecurityGate';
 import { useIsAuthenticated, useSessionRoles, isExclusiveRole } from '@/stores/session';
-import { OnboardingTourHost } from '@/features/support/OnboardingTourHost';
-import { SupportAssistantWidget } from '@/features/support/SupportAssistantWidget';
-import { TourOrchestrator } from '@/features/support/TourOrchestrator';
 
 /** Prompt alias: /invite/accept?token=… → /invite/:token */
 function InviteAcceptRedirect() {
@@ -84,14 +77,33 @@ function E2eCrashProbe(): ReactElement {
   return <div />;
 }
 
+function renderRoute(route: {
+  path?: string;
+  index?: boolean;
+  element?: ReactNode;
+  children?: unknown;
+}) {
+  return (
+    <Route
+      key={route.path ?? (route.index ? 'index' : 'route')}
+      path={route.path}
+      index={route.index}
+      element={route.element as ReactElement | undefined}
+    />
+  );
+}
+
 export function App() {
+  const officeFeatureRoutes = getEnabledOfficeRoutes();
+  const floorFeatureRoutes = getEnabledFloorRoutes();
+  const standaloneFeatureRoutes = getEnabledStandaloneRoutes();
+
   return (
     <BrowserRouter>
       <ScannerSecurityGate>
         <ErrorBoundary boundaryName="app-root">
-          <OnboardingTourHost />
-          <TourOrchestrator />
-          <SupportAssistantWidget />
+          {/* Optional: stubbed when chatbot module disabled/absent (scripts/resolve-chatbot.mjs) */}
+          {IS_CHATBOT_ENABLED && isChatbotEnabled() ? <ChatbotHost /> : null}
           <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
@@ -99,17 +111,7 @@ export function App() {
           <Route path="/invite/accept" element={<InviteAcceptRedirect />} />
           <Route path="/supplier-portal/po/:token" element={<SupplierPortalPage />} />
 
-          {/* Full-screen mobile inbound — outside AppShell / office chrome */}
-          <Route
-            path="/inbound/receive"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
-                <ErrorBoundary boundaryName="inbound-receive">
-                  <InboundReceivePage />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
+          {standaloneFeatureRoutes.map((route) => renderRoute(route))}
 
           {/* Floor ops — WarehouseFloorShell (no corporate Sidebar) */}
           <Route
@@ -119,12 +121,10 @@ export function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/fulfillment" element={<FulfillmentPage />} />
-            <Route path="/cycle-counts" element={<CycleCountsPage />} />
+            {floorFeatureRoutes.map((route) => renderRoute(route))}
             <Route path="/manufacturing/terminal" element={<ProductionTerminalPage />} />
             <Route path="/returns/receive" element={<ReturnsReceivePage />} />
             <Route path="/issue-supplies" element={<IssueSuppliesPage />} />
-            <Route path="/replenishments" element={<ReplenishmentsPage />} />
             <Route path="/field/truck" element={<TechnicianTruckPage />} />
           </Route>
 
@@ -156,15 +156,7 @@ export function App() {
           >
             <Route index element={<RootRedirect />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="products" element={<ProductsPage />} />
-            <Route
-              path="exceptions"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
-                  <ExceptionsPage />
-                </ProtectedRoute>
-              }
-            />
+            {officeFeatureRoutes.map((route) => renderRoute(route))}
             <Route
               path="import"
               element={
@@ -181,9 +173,6 @@ export function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
-            <Route path="sales-orders" element={<SalesOrdersPage />} />
-            <Route path="invoices" element={<InvoicesPage />} />
             <Route
               path="reports"
               element={
@@ -200,8 +189,6 @@ export function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="customers" element={<CustomersPage />} />
-            <Route path="suppliers" element={<SuppliersPage />} />
             <Route
               path="warehouses/add"
               element={
@@ -300,14 +287,6 @@ export function App() {
               element={
                 <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
                   <IntegrationsHubPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="settings/fintech"
-              element={
-                <ProtectedRoute roles={['OWNER']} officeOnly>
-                  <FintechSettingsPage />
                 </ProtectedRoute>
               }
             />

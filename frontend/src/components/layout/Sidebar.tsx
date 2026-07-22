@@ -19,6 +19,8 @@ import {
   type NavCategoryConfig,
   type NavLeafConfig,
 } from './navConfig';
+import '@/lib/router/appModules';
+import { isNavPathEnabled } from '@/lib/router/moduleRegistry';
 
 function leafVisible(
   item: NavLeafConfig,
@@ -26,6 +28,7 @@ function leafVisible(
   isPickerOnly: boolean,
   isViewerOnly: boolean,
 ): boolean {
+  if (!isNavPathEnabled(item.to)) return false;
   if (item.roles && !hasRole(...item.roles)) return false;
   if (isPickerOnly && item.hideForPicker) return false;
   if (isViewerOnly && item.hideForViewer) return false;

@@ -29,7 +29,7 @@ export default defineConfig({
   projects: [
     {
       name: 'Desktop-Admin',
-      testMatch: ['**/tests/e2e/admin.spec.ts'],
+      testMatch: ['**/tests/e2e/admin.spec.ts', '**/tests/e2e/decoupled-module.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1920, height: 1080 },
@@ -43,6 +43,7 @@ export default defineConfig({
         '**/tests/e2e/picker.spec.ts',
         '**/tests/e2e/offline.spec.ts',
         '**/tests/e2e/scanner-lock.spec.ts',
+        '**/tests/e2e/decoupled-module.spec.ts',
       ],
       use: {
         ...devices['Pixel 5'],

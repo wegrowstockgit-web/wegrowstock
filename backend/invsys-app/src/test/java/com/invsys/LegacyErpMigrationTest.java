@@ -1,0 +1,149 @@
+package com.invsys;
+
+import com.invsys.core.security.AuthService;
+import com.invsys.core.security.dto.SignupRequest;
+import com.invsys.core.security.dto.TokenResponse;
+import com.invsys.modules.inventory.domain.InventoryLedger;
+import com.invsys.modules.catalog.domain.Location;
+import com.invsys.modules.catalog.domain.Lot;
+import com.invsys.modules.catalog.domain.ProductVariant;
+import com.invsys.modules.inventory.repository.InventoryLedgerRepository;
+import com.invsys.modules.catalog.repository.LocationRepository;
+import com.invsys.modules.catalog.repository.LotRepository;
+import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import com.invsys.core.tenancy.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@AutoConfigureMockMvc
+class LegacyErpMigrationTest extends AbstractIntegrationTest {
+
+    @Autowired MockMvc mockMvc;
+    @Autowired AuthService authService;
+    @Autowired LocationRepository locationRepository;
+    @Autowired ProductVariantRepository variantRepository;
+    @Autowired InventoryLedgerRepository ledgerRepository;
+    @Autowired LotRepository lotRepository;
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
+    }
+
+    @Test
+    void legacyMigrationCreatesVariantsAndInitialMigrationReceivesAtomically() throws Exception {
+        String slug = "mig-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Mig Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = owner.tenantId();
+        TenantContext.setTenantId(tenantId);
+
+        Location wh = new Location();
+        wh.setTenantId(tenantId);
+        wh.setType("WAREHOUSE");
+        wh.setCode("WH-MIG");
+        wh.setName("Mig WH");
+        wh.setPath("/WH-MIG");
+        wh = locationRepository.save(wh);
+        TenantContext.clear();
+
+        String csv = "sku,name,barcode,qty,unitCost\nMIG-A,Widget A,111,5,3.00\nMIG-B,Widget B,222,2,4.50\n";
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "items.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+        String mapping = """
+                {"sku":"sku","name":"name","barcode":"barcode","qty":"qty","unitCost":"unitCost"}
+                """;
+
+        mockMvc.perform(multipart("/api/v1/ingestion/legacy-migration")
+                        .file(file)
+                        .param("columnsMapping", mapping)
+                        .param("locationId", wh.getId().toString())
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.MULTIPART_FORM_DATA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(2));
+
+        TenantContext.setTenantId(tenantId);
+        ProductVariant a = variantRepository.findByTenantIdAndSku(tenantId, "MIG-A").orElseThrow();
+        List<InventoryLedger> ledger = ledgerRepository.findByTenantIdAndVariantIdOrderByCreatedAtDesc(tenantId, a.getId());
+        assertThat(ledger).isNotEmpty();
+        assertThat(ledger.getFirst().getMovementType()).isEqualTo("RECEIVE");
+        assertThat(ledger.getFirst().getReasonCode()).isEqualTo("INITIAL_MIGRATION");
+    }
+
+    @Test
+    void legacyMigrationImportsEnterpriseProductSchemaFields() throws Exception {
+        String slug = "ent-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Ent Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = owner.tenantId();
+        TenantContext.setTenantId(tenantId);
+
+        Location wh = new Location();
+        wh.setTenantId(tenantId);
+        wh.setType("WAREHOUSE");
+        wh.setCode("WH-ENT");
+        wh.setName("Ent WH");
+        wh.setPath("/WH-ENT");
+        wh.setStorageTempZone("REFRIGERATED");
+        wh = locationRepository.save(wh);
+        TenantContext.clear();
+
+        String csv = """
+                sku,name,barcode,qty,unitCost,hsCode,lotNumber,expiry,palletTie,palletHigh,tempZone
+                ENT-COLD,Cold Pack,8901999000001,10,2.50,0409.00,LOT-77,2027-06-15,10,4,REFRIGERATED
+                """;
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "enterprise.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+        String mapping = """
+                {
+                  "sku":"sku","name":"name","barcode":"barcode","qty":"qty","unitCost":"unitCost",
+                  "hsCode":"hsCode","lotNumber":"lotNumber","expiry":"expiry",
+                  "palletTie":"palletTie","palletHigh":"palletHigh","tempZone":"tempZone"
+                }
+                """;
+
+        mockMvc.perform(multipart("/api/v1/ingestion/legacy-migration")
+                        .file(file)
+                        .param("columnsMapping", mapping)
+                        .param("locationId", wh.getId().toString())
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.MULTIPART_FORM_DATA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(1));
+
+        TenantContext.setTenantId(tenantId);
+        ProductVariant variant = variantRepository.findByTenantIdAndSku(tenantId, "ENT-COLD").orElseThrow();
+        assertThat(variant.getHsTariffCode()).isEqualTo("0409.00");
+        assertThat(variant.getPalletTie()).isEqualTo(10);
+        assertThat(variant.getPalletHigh()).isEqualTo(4);
+        assertThat(variant.getStorageTempZone()).isEqualTo("REFRIGERATED");
+        assertThat(variant.isLotTracked()).isTrue();
+
+        Lot lot = lotRepository.findByTenantIdAndVariantIdAndLotNumber(tenantId, variant.getId(), "LOT-77")
+                .orElseThrow();
+        assertThat(lot.getExpiresAt()).isEqualTo(
+                LocalDate.parse("2027-06-15").atStartOfDay(ZoneOffset.UTC).toInstant());
+
+        List<InventoryLedger> ledger = ledgerRepository
+                .findByTenantIdAndVariantIdOrderByCreatedAtDesc(tenantId, variant.getId());
+        assertThat(ledger.getFirst().getReasonCode()).isEqualTo("INITIAL_MIGRATION");
+        assertThat(ledger.getFirst().getLotId()).isEqualTo(lot.getId());
+    }
+}

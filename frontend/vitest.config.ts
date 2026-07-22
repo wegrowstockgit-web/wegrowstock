@@ -51,12 +51,14 @@ export default defineConfig({
         'src/features/offline/SyncConflictsPanel.tsx',
         'src/features/offline/conflictSummary.ts',
         'src/features/offline/SyncConflictAlertBanner.tsx',
-        'src/features/support/RouteKnowledgeRegistry.ts',
-        'src/features/support/supportChatApi.ts',
+        'src/lib/pageKnowledge/RouteKnowledgeRegistry.ts',
+        'src/modules/chatbot/supportChatApi.ts',
+        'src/modules/chatbot/SupportAssistantWidget.tsx',
+        'src/modules/chatbot/trainingSandboxStore.ts',
+        'src/modules/chatbot/supportSpotlight.ts',
         'src/components/ui/PageHelpOverlay.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
-      // Support assistant: Vitest + Playwright personas e2e (not in threshold set).
       // Scanner PIN overlays: covered by Mobile-Scanner Playwright + store/hook unit tests.
       thresholds: {
         lines: 85,

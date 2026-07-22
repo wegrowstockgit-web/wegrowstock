@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ScannerLockOverlay } from '@/components/security/ScannerLockOverlay';
 import { ScannerPinSetupOverlay } from '@/components/security/ScannerPinSetupOverlay';
-import { isFloorRoute } from '@/features/support/tourSteps';
+import { isFloorRoute } from '@/lib/floorRoutes';
 import { useScannerIdle } from '@/hooks/useScannerIdle';
 import { installMutationQueueTestHook } from '@/offline/mutationQueue';
 import {

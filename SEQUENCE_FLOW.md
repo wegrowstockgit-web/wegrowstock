@@ -1,7 +1,7 @@
 # InventorySystem — Sequence Flow Blueprint (by User / Role)
 
 > **Audience:** Developers, QA, and solution engineers who need to understand *who does what, in what order, and which backend classes fire* for every screen in the platform.
-> **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (class-level map), `DATABASE_GUIDE.md` (schema story), `USER_GUIDE.md` (operator onboarding).
+> **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (class-level map, multi-module backend), `DATABASE_GUIDE.md` (schema story), `USER_GUIDE.md` (operator onboarding).
 > **Diagram syntax:** Mermaid `sequenceDiagram` blocks (render in GitHub / VS Code / Cursor preview).
 
 ---
@@ -20,7 +20,7 @@
 10. [Module VI — Admin & intel](#10-module-vi--admin--intel)
 11. [Module VII — External portals (B2B & supplier)](#11-module-vii--external-portals)
 12. [Offline-first mutation queue & conflict parking](#12-offline-first-mutation-queue--conflict-parking)
-13. [Support copilot (RAG / GraphRAG)](#13-support-copilot-rag--graphrag)
+13. [Support copilot (optional module)](#13-support-copilot-optional-module)
 14. [End-to-end multi-page onboarding tour](#14-end-to-end-multi-page-onboarding-tour)
 15. [Role × flow coverage matrix](#15-role--flow-coverage-matrix)
 16. [High-level role journeys (at a glance)](#16-high-level-role-journeys-at-a-glance)
@@ -861,30 +861,50 @@ sequenceDiagram
 
 ---
 
-## 13. Support copilot (RAG / GraphRAG)
+## 13. Support copilot (optional module)
 
-Available on both surfaces via the floating `support-assistant-fab`. Answers are **role-aware**: a PICKER asking "how do I receive?" gets scanner-first steps, never desktop PO creation.
+Support Co-Pilot, training simulator, and onboarding-tour hosts are an **optional** product surface:
+
+| Layer | Gate |
+|-------|------|
+| Maven | `invsys-chatbot` on `invsys-app` via profile **`with-chatbot`** (active by default). Omit with `-P"!with-chatbot"`. |
+| Spring | `invsys.features.chatbot.enabled` (`INVSYS_CHATBOT_ENABLED`) — `matchIfMissing=true`. When `false`, `ChatbotAutoConfiguration` does not load; `/api/v1/support/**` returns **404** (still requires auth — no security bypass). |
+| React | Optional package at `frontend/src/modules/chatbot`. Core imports only `@/lib/chatbot/active` (real or stub via `npm run chatbot:enable|disable`). Also `VITE_ENABLE_CHATBOT` / `isChatbotEnabled()`. Deleting the module folder still compiles. |
+
+When enabled, the floating `support-assistant-fab` is available on both surfaces. Answers are **role-aware**: a PICKER asking "how do I receive?" gets scanner-first steps, never desktop PO creation. CQRS tools (`checkOrderStatus`, `getLedgerHistorySummary`, `checkAvailableToPromise`) read tenant id **only** from `TenantContext`.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as Any role
-    participant FAB as SupportAssistantWidget
-    participant Chat as SupportChatService
+    participant FAB as SupportAssistantWidget (lazy)
+    participant Chat as SupportChatService (invsys-chatbot)
+    participant Tools as SupportCopilotReadService
+    participant Ctx as TenantContext
     participant Vec as pgvector (support_knowledge_chunks, HNSW)
     participant Graph as GraphRAG (support_knowledge_nodes/edges)
 
+    Note over FAB: Mounted only if isChatbotEnabled()
     User->>FAB: ask question (current route + role attached)
     FAB->>Chat: POST /api/v1/support/chat (authenticated)
+    opt LLM tool call
+        Chat->>Tools: checkOrderStatus / ATP / ledger summary
+        Tools->>Ctx: requireTenantId() — never trust LLM tenant args
+        Tools-->>Chat: grounded facts
+    end
     Chat->>Vec: embed query → similarity search filtered by audience (role)
     Chat->>Graph: expand related nodes/edges for multi-hop context
-    Chat-->>FAB: grounded answer + suggested next actions
+    Chat-->>FAB: grounded answer + action chips / Action Draft / proactive insight
     Note over Vec,Graph: knowledge corpus is GLOBAL (no tenant RLS) —<br/>never store tenant ledger data or PII in it
 ```
+
+**Core-only regression:** `CoreModuleWithoutChatbotIT` boots with chatbot disabled and still completes receive → allocate → pick → ship. Playwright: `tests/e2e/decoupled-module.spec.ts`.
 
 ---
 
 ## 14. End-to-end multi-page onboarding tour
+
+> **Requires chatbot UI enabled.** `OnboardingTourHost` and `TourOrchestrator` mount only when `isChatbotEnabled()` is true (same flag as the Support FAB). With `VITE_ENABLE_CHATBOT=false` (or runtime `__INVSYS_CHATBOT__=false`), tours do not run; warehouse flows are unaffected.
 
 The `receiving-to-allocation` tour (`frontend/src/features/support/tourSteps.ts`) is a **6-step, 3-page** guided journey that mirrors the physical heartbeat of the warehouse: *Purchase Order → Bin → Sales Order*. It is driven by driver.js v1.8 plus a Zustand tour machine in `usePreferencesStore`:
 
@@ -994,7 +1014,7 @@ Quick index of which sections each role appears in:
 | `VIEWER` | Login §4.1 · Products (read) §7.1 · Lot trace §7.5 |
 | `B2B_CUSTOMER` | Showroom §11.1 |
 | `SUPPLIER` | Supplier portal §11.2 |
-| *All roles* | Request pipeline §3 · Copilot §13 · Onboarding tour §14 |
+| *All roles* | Request pipeline §3 · Copilot §13 *(when chatbot module enabled)* · Onboarding tour §14 *(same gate)* |
 
 ---
 

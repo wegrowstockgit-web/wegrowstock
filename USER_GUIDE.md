@@ -2,7 +2,7 @@
 
 This guide is for **business owners, warehouse managers, and office staff** who are new to the product or moving from spreadsheets / another ERP. It explains concepts in everyday language and walks through setup, migration, and daily work.
 
-Technical deep-dives live in `DATABASE_GUIDE.md` and `DEVELOPER_ARCHITECTURE.md`.
+Technical deep-dives live in `DATABASE_GUIDE.md`, `DEVELOPER_ARCHITECTURE.md`, and `SEQUENCE_FLOW.md`.
 
 ---
 
@@ -206,9 +206,16 @@ Pinned columns (usually **SKU** and **Name**) stay visible when you scroll sidew
 | **RTLS map** | Live tag map when enabled (**Admin**) |
 | **Organization / Settings** | Warehouses, inventory rules, users, integrations, documents, SSO |
 
-### Guided tour (optional)
+### Guided tour & support assistant (optional)
 
-New sessions may offer an interactive **onboarding tour**. The multi-page **receiving → allocation** path walks Purchase Orders → Inbound receive → Sales Orders so the digital loop matches the dock. You can dismiss it or choose not to show again. The blue **support assistant** button (bottom-right) answers role-aware “what next?” questions from the manuals.
+Some deployments include an interactive **onboarding tour** and a blue **support assistant** button (bottom-right). When present:
+
+- The multi-page **receiving → allocation** path walks Purchase Orders → Inbound receive → Sales Orders so the digital loop matches the dock. You can dismiss it or choose not to show again.
+- The assistant answers role-aware “what next?” questions from the product manuals (and may suggest safe next actions for managers to approve).
+
+The header **Page info** control (ℹ) always shows the playbook for the current screen — that help content stays available even when the chat assistant / training features are turned off.
+
+If your site was built **without** the support chat module (or an admin turned it off), you will not see the blue chat button or the guided tour. Receiving, picking, shipping, office screens, and the ℹ page-info panels still work the same — ask your implementer if you expected the assistant and it is missing.
 
 ---
 
@@ -279,9 +286,10 @@ Wholesale buyers invited as **B2B_CUSTOMER**:
 
 ## Where to get help next
 
-- In-app **support assistant** (chat FAB) — role-aware answers from product manuals  
+- In-app **support assistant** (chat FAB), when your deployment includes it — role-aware answers from product manuals  
+- Your **warehouse manager / admin** — if the chat button is missing, the optional support module may be turned off  
 - **README.md** — install, demo users, URLs  
 - **DATABASE_GUIDE.md** — why the ledger and tenancy work this way  
-- **DEVELOPER_ARCHITECTURE.md** — for IT / implementers integrating or extending the product  
+- **DEVELOPER_ARCHITECTURE.md** / **SEQUENCE_FLOW.md** — for IT / implementers integrating or extending the product  
 
 Welcome aboard — start with one warehouse, one SKU path (receive → allocate → pick → ship), then scale imports and channels once that loop feels solid.

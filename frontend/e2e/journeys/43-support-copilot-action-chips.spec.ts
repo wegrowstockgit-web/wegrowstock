@@ -25,7 +25,9 @@ test.describe('Support copilot actionable RAG', () => {
       await manager.page.getByTestId('support-assistant-send').click();
 
       const reply = manager.page.getByTestId('support-assistant-reply').last();
-      await expect(reply).toContainText(/Diagnosis|Action plan|Reversal/i, { timeout: 45_000 });
+      await expect(reply).toContainText(/Diagnosis|Action [Pp]lan|Reversal|Ledger Safety/i, {
+        timeout: 45_000,
+      });
 
       const chip = manager.page.getByTestId('support-action-chip').first();
       await expect(chip).toBeVisible({ timeout: 15_000 });
@@ -42,6 +44,39 @@ test.describe('Support copilot actionable RAG', () => {
           timeout: 15_000,
         });
       }
+    } finally {
+      await manager.close();
+    }
+  });
+
+  test('manager can start receiving-to-allocation walkthrough from chip', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      await manager.page.goto('/dashboard');
+      await completeScannerPin(manager.page);
+      await dismissOnboardingTourIfPresent(manager.page);
+
+      await manager.page.getByTestId('support-assistant-fab').click();
+      await manager.page
+        .getByTestId('support-assistant-input')
+        .fill('Train me end-to-end — start the receiving to allocation walkthrough');
+      await manager.page.getByTestId('support-assistant-send').click();
+
+      const reply = manager.page.getByTestId('support-assistant-reply').last();
+      await expect(reply).toContainText(/Diagnosis|Action plan|Ledger Safety|Reversal/i, {
+        timeout: 45_000,
+      });
+
+      const tourChip = manager.page.locator(
+        '[data-testid="support-action-chip"][data-action="START_TOUR"]',
+      );
+      await expect(tourChip.first()).toBeVisible({ timeout: 15_000 });
+      await expect(tourChip.first()).toHaveAttribute('data-target', 'receiving-to-allocation');
+      await tourChip.first().click();
+      await expect(manager.page.getByTestId('support-assistant-reply').last()).toContainText(
+        /walkthrough|receiving-to-allocation/i,
+        { timeout: 10_000 },
+      );
     } finally {
       await manager.close();
     }

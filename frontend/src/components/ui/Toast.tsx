@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { useUiActionTrackerStore } from '@/stores/uiActionTrackerStore';
 
 export type ToastTone = 'default' | 'success' | 'danger';
 
@@ -37,7 +38,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (message: string, opts?: { tone?: ToastTone; durationMs?: number }) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const durationMs = opts?.durationMs ?? 3500;
-      setItems((prev) => [...prev, { id, message, tone: opts?.tone ?? 'default', durationMs }]);
+      const tone = opts?.tone ?? 'default';
+      if (tone === 'danger') {
+        useUiActionTrackerStore.getState().trackAction({
+          actionType: 'TOAST_ERROR',
+          elementLabel: 'Error toast',
+          errorMessage: message,
+        });
+      }
+      setItems((prev) => [...prev, { id, message, tone, durationMs }]);
       window.setTimeout(() => dismiss(id), durationMs);
     },
     [dismiss]

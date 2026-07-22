@@ -3,7 +3,7 @@
 > **Audience:** Senior developers and architects joining the codebase.  
 > **Goal:** Understand structure, class roles, and end-to-end interaction flows quickly.  
 > **Diagrams:** ASCII only (no Mermaid).  
-> **Companion docs:** `DATABASE_GUIDE.md` (schema story), `USER_GUIDE.md` (operator onboarding), `README.md` (quick start), `PRODUCT.md` / `BUILD_PLAN.md` (product intent).
+> **Companion docs:** `DATABASE_GUIDE.md` (schema story), `USER_GUIDE.md` (operator onboarding), `SEQUENCE_FLOW.md` (role sequences), `README.md` (quick start), `PRODUCT.md` / `BUILD_PLAN.md` (product intent).
 
 ---
 
@@ -49,6 +49,7 @@
 | Edge | Nginx API gateway + frontend nginx |
 | Infra | Redis (PIN lockout / rate limits), MinIO/S3 media, pgvector for support RAG |
 | Auth | RS256 JWT in HttpOnly cookies (`invsys_access` / `invsys_refresh`) |
+| Optional AI | Spring AI (Google GenAI / Gemini) lives only in `invsys-chatbot` — core runs without it |
 
 **Two golden rules** (also in `DATABASE_GUIDE.md`):
 
@@ -61,48 +62,108 @@
 
 ## 2. Repository map
 
+Backend is a **Maven multi-module** build. Core inventory/fulfillment never depends on Spring AI; Support Co-Pilot is an optional module.
+
 ```
 InventorySystem/
-├── backend/                 Spring Boot API + Flyway migrations
-│   └── src/main/java/com/invsys/
-│       ├── api/             REST controllers + HTTP filters
-│       ├── auth/            JWT, cookies, SSO, terminal PIN
-│       ├── billing/         Stripe / capital gateways
-│       ├── common/          ApiException, filters, helpers
-│       ├── config/          Beans, Redis, OpenAPI, rate limit
-│       ├── dns/             Custom domain verification helpers
-│       ├── domain/          JPA entities
-│       ├── gateway/         CORS whitelist filter
-│       ├── integration/     Outbox, Shopify, EasyPost, accounting, alerts
-│       ├── media/           S3/MinIO upload + attachments
-│       ├── mesh/            Cross-tenant partner bridge
-│       ├── repository/      Spring Data JPA (+ a few jOOQ helpers)
-│       ├── rtls/            Real-time location services
-│       ├── service/         Business logic
-│       ├── support/         RAG / GraphRAG chat (`SupportChatService`)
-│       └── tenancy/         TenantContext, datasource binding
-├── frontend/                React SPA + Playwright e2e
+├── backend/                         Maven aggregator (`invsys-parent`, packaging pom)
+│   ├── pom.xml
+│   ├── Dockerfile                   Builds `-pl invsys-app -am` → fat jar
+│   ├── invsys-core/                 Library: domain, repos, services, tenancy, auth, API, Flyway
+│   │   └── src/main/java/com/invsys/
+│   │       ├── api/                 REST controllers (no SupportChat*)
+│   │       ├── auth/                JWT, cookies, SSO, terminal PIN (`SecurityConfig`)
+│   │       ├── billing/             Stripe / capital gateways
+│   │       ├── common/              ApiException, filters, helpers
+│   │       ├── config/              Beans, Redis, OpenAPI, rate limit
+│   │       ├── dns/                 Custom domain verification helpers
+│   │       ├── domain/              JPA entities
+│   │       ├── gateway/             CORS whitelist filter
+│   │       ├── integration/         Outbox, Shopify, EasyPost, accounting, alerts
+│   │       ├── media/               S3/MinIO upload + attachments
+│   │       ├── mesh/                Cross-tenant partner bridge
+│   │       ├── repository/          Spring Data JPA (+ a few jOOQ helpers)
+│   │       ├── rtls/                Real-time location services
+│   │       ├── service/             Business logic
+│   │       └── tenancy/             TenantContext, datasource binding
+│   ├── invsys-chatbot/              Optional: Spring AI + Support Co-Pilot
+│   │   └── src/main/java/com/invsys/
+│   │       ├── core/                Foundation (no feature imports): tenancy, security, common, integration
+│   │       ├── modules/             Vertical slices: catalog, inventory, purchasing, sales, fulfillment, fintech
+│   │       ├── domain/              Remaining shared / platform entities (legacy layer, shrinking)
+│   │       ├── api/ service/ …      Cross-cutting controllers/services not yet sliced
+│   │       └── …                    billing, media, mesh, rtls, config, …
+│   ├── invsys-chatbot/              Optional Support Co-Pilot (Spring AI)
+│   │   └── src/main/java/com/invsys/
+│   │       ├── chatbot/             `ChatbotAutoConfiguration` (conditional)
+│   │       ├── api/                 `SupportChatController` (`/api/v1/support/**`)
+│   │       └── support/             `SupportChatService`, tools, DTOs, RAG/GraphRAG
+│   └── invsys-app/                  Bootable runner (`InvSysApplication`, artifact `invsys-api`)
+│       ├── src/main/java/.../InvSysApplication.java
+│       └── src/test/java/...        Integration tests (`AbstractIntegrationTest`, …)
+├── frontend/                        React SPA + Playwright e2e
 │   └── src/
-│       ├── api/             Axios client + DTOs
-│       ├── components/      Shells + UI + layout (`navConfig.ts`, `Sidebar.tsx`)
-│       ├── features/        Domain UI (`support/` tours + copilot, fulfillment, …)
-│       ├── hooks/           Scanner, density, media query, concurrent search
-│       ├── offline/         IDB mutation queue + PIN vault + query persist
-│       ├── pages/           Route screens (`products/ProductMobileCards`)
-│       ├── stores/          Zustand (session, grid, prefs/tour, scanner lock, …)
-│       └── styles/          Design tokens
+│       ├── api/                     Axios client + DTOs
+│       ├── components/              Shells + UI + layout (`navConfig.ts`, `Sidebar.tsx`)
+│       ├── features/                Feature-sliced UI (products, purchasing, sales, fulfillment, fintech, …)
+│       ├── lib/router/              `moduleRegistry.ts` + `appModules.tsx` (pluggable routes/nav)
+│       ├── modules/chatbot/         Optional Support Co-Pilot + training (omit safely)
+│       ├── lib/chatbot/             Stub + generated `active.ts` bridge
+│       ├── lib/featureFlags.ts      Chatbot + `VITE_ENABLE_*` feature module flags
+│       ├── lib/floorRoutes.ts       Surface B path detection (core; not chatbot)
+│       ├── hooks/                   Scanner, density, media query, concurrent search
+│       ├── offline/                 IDB mutation queue + PIN vault + query persist
+│       ├── pages/                   Platform routes + thin re-exports into `features/*`
+│       ├── stores/                  Zustand (session, grid, prefs/tour, scanner lock, …)
+│       └── styles/                  Design tokens
 ├── ops/
-│   ├── api-gateway/nginx.conf   Edge rate limits + proxy
-│   ├── jwt/                     Dev RS256 PEMs
-│   ├── postgres/init/           app_owner / app_user roles + vector ext
-│   ├── terraform/               Infra workspaces (test/prod)
-│   └── demo_seed.sql            Demo Corp + Acme skeleton data
-├── docker-compose.yml           db, pgbouncer, redis, minio, api, gateway, web, LGTM
-├── deploy.bat                   Windows deploy / seed / status
-├── DATABASE_GUIDE.md            Schema narrative (RLS, partitions, archival, RAG)
-├── USER_GUIDE.md                 Operator / migration guide
-└── DEVELOPER_ARCHITECTURE.md    (this file)
+│   ├── api-gateway/nginx.conf       Edge rate limits + proxy
+│   ├── jwt/                         Dev RS256 PEMs
+│   ├── postgres/init/               app_owner / app_user roles + vector ext
+│   ├── terraform/                   Infra workspaces (test/prod)
+│   └── demo_seed.sql                Demo Corp + Acme skeleton data
+├── docker-compose.yml               db, pgbouncer, redis, minio, api, gateway, web, LGTM
+├── deploy.bat                       Windows deploy / seed / status
+├── DATABASE_GUIDE.md                Schema narrative (RLS, partitions, archival, RAG)
+├── USER_GUIDE.md                    Operator / migration guide
+├── SEQUENCE_FLOW.md                 Role × screen sequence diagrams
+└── DEVELOPER_ARCHITECTURE.md        (this file)
 ```
+
+| Module | Packaging | Depends on | Notes |
+|--------|-----------|------------|-------|
+| `invsys-core` | jar | Spring Boot web/security/JPA/Flyway — **no** `spring-ai-*` | Always required |
+| `invsys-chatbot` | jar | `invsys-core` + Spring AI (Google GenAI) | Omitted via Maven profile |
+| `invsys-app` | boot jar (`invsys-api`) | `invsys-core`; `invsys-chatbot` via **`with-chatbot`** (default on) | Main entrypoint |
+
+```
+# Default (core + chatbot)
+cd backend && mvn -DskipTests package -pl invsys-app -am
+
+# Core-only artifact (no chatbot on classpath)
+cd backend && mvn -DskipTests package -pl invsys-app -am -P"!with-chatbot"
+```
+
+Runtime toggle (chatbot still on classpath): `invsys.features.chatbot.enabled=false` / `INVSYS_CHATBOT_ENABLED=false`.
+
+### 2.1 Package-by-feature (modular monolith)
+
+Inside `invsys-core`, business code is organized as vertical slices under `com.invsys.modules.*`. Shared infrastructure lives in `com.invsys.core` and **must not** import feature modules (enforced by `ModularMonolithBoundaryTest`).
+
+| Package | Owns |
+|---------|------|
+| `com.invsys.core.tenancy` | `TenantContext`, RLS filters, DataSource |
+| `com.invsys.core.security` | JWT filter, `SecurityConfig`, auth services |
+| `com.invsys.core.common` | `ApiException`, MDC, `BaseEntity` / `TenantScopedEntity` |
+| `com.invsys.core.integration` | Outbox + credential vault |
+| `com.invsys.modules.catalog` | Product / variant / lot / location |
+| `com.invsys.modules.inventory` | Ledger, levels, LPN, cycle count |
+| `com.invsys.modules.purchasing` | PO, supplier, AP OCR ingestion |
+| `com.invsys.modules.sales` | SO, customer, invoicing |
+| `com.invsys.modules.fulfillment` | Allocation, picking, shipment |
+| `com.invsys.modules.fintech` | Factoring / credit underwriting |
+
+Frontend mirrors this with `src/features/{products,purchasing,sales,fulfillment,fintech}` registered via `src/lib/router/moduleRegistry.ts`. Disable a slice with `VITE_ENABLE_<MODULE>=false` to drop its routes and sidebar items without runtime crashes.
 
 ---
 
@@ -533,16 +594,23 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 
 **jOOQ is used when:** scan matching, cross-dock demand SQL, put-away suggestions, replenishment, genealogy, serial scan, heavy reports — not for ordinary CRUD.
 
-### 7.10 `support` — in-app copilot (RAG + GraphRAG)
+### 7.10 `support` / `invsys-chatbot` — optional in-app copilot (RAG + GraphRAG)
+
+Support Co-Pilot, CQRS tool-calling, Action Drafts, and training-simulator backends live in **`invsys-chatbot`**, not `invsys-core`.
 
 | Piece | Role |
 |-------|------|
-| `SupportChatService` | Role-aware chat; retrieves chunks by embedding + audience |
+| `ChatbotAutoConfiguration` | `@ConditionalOnProperty(invsys.features.chatbot.enabled=true, matchIfMissing=true)` + `@ComponentScan(com.invsys.support)` |
+| `SupportChatService` | Role-aware chat; heuristic or Gemini; retrieves chunks by embedding + audience |
+| `SupportCopilotToolsConfig` / `SupportCopilotReadService` | CQRS tools — tenant **only** from `TenantContext` (never LLM/client tenant args) |
 | Knowledge repos | Back `support_knowledge_chunks` / `_nodes` / `_edges` (V089–V090) |
-| API | `POST /api/v1/support/chat` (authenticated) |
-| Frontend | `SupportAssistantWidget` FAB (`support-assistant-fab`) + `TourOrchestrator` |
+| API | `SupportChatController` → `POST /api/v1/support/chat` (SSE), `/actions/*` |
+| Security (core) | `requestMatchers("/api/v1/support/**").authenticated()` — if module/beans absent → **HTTP 404** (no bypass) |
+| Frontend | Lazy `SupportAssistantWidget` FAB + tours — gated by `VITE_ENABLE_CHATBOT` / `isChatbotEnabled()` |
 
 Chunks are **global** (no tenant RLS). Never store customer PII or tenant ledger data in the knowledge base.
+
+**Core without chatbot:** build with `-P"!with-chatbot"` or set `invsys.features.chatbot.enabled=false`. Guardrail IT: `CoreModuleWithoutChatbotIT` (receive → allocate → pick → ship; no `SupportChatService` bean).
 
 ---
 
@@ -558,6 +626,22 @@ main.tsx
   ├─ ToastProvider
   ├─ startMutationQueueReplay()  (IDB → API when online)
   └─ <App /> BrowserRouter
+        │
+        ├─ if isChatbotEnabled(): <ChatbotHost />  (@/lib/chatbot/active → module or stub)
+        └─ Routes (office / floor / showroom / public)
+```
+
+`src/lib/featureFlags.ts`: `IS_CHATBOT_ENABLED = import.meta.env.VITE_ENABLE_CHATBOT !== 'false'`.  
+
+**Optional frontend module:** `src/modules/chatbot/` (Support FAB, tours, training only). Core never imports it directly — only `@/lib/chatbot/active`, which `scripts/resolve-chatbot.mjs` points at the real module or `src/lib/chatbot/stub`.
+
+**Page Info ("i")** always uses `@/lib/pageKnowledge` (route playbooks). Disabling the chatbot does **not** remove help overlay content.
+
+```
+npm run chatbot:enable    # use module (default when folder present)
+npm run chatbot:disable   # stub + .chatbot-disabled marker
+npm run build:no-chatbot  # production build without chatbot UI
+# Or delete src/modules/chatbot — resolve script auto-stubs; tsc + vite still succeed
 ```
 
 ### 8.2 Routing mental model
@@ -663,10 +747,8 @@ PIN material: `offline/pinVault` + IndexedDB verifier. E2E hook: `window.__INVSY
 | `offline/SyncConflictsPanel` | Office conflict resolution |
 | `ingestion/ImportWizard` | Import UX (Products dialog + `/import`) |
 | `compliance/LotTraceView` | Genealogy UI |
-| `support/TourOrchestrator` | Cross-route driver.js resume |
-| `support/tourSteps` | `office` / `floor` / `receiving-to-allocation` |
-| `support/OnboardingTourHost` | Post-login prompt |
-| `support/SupportAssistantWidget` | Copilot FAB |
+| `modules/chatbot` (optional) | `ChatbotHost`, tours, FAB, training sandbox, route knowledge |
+| `lib/chatbot/active` | Generated bridge — stub when module disabled/absent |
 | `settings/*` | Integrations, carriers, accounting, warehouse map |
 
 ### 8.7 Design system & products grid
@@ -921,7 +1003,7 @@ Alternate: multipart `MediaUploadService`.
 
 ### 11.1 Migration convention
 
-Files: `backend/src/main/resources/db/migration/Vnnn__description.sql`  
+Files: `backend/invsys-core/src/main/resources/db/migration/Vnnn__description.sql`  
 JPA: `ddl-auto: validate` (schema owned by Flyway).
 
 | Theme | Versions (approx.) |
@@ -1034,10 +1116,11 @@ Playwright specs under `frontend/e2e/journeys/`. Helpers: `helpers.ts` (`context
 | 23 | `23-digital-twin-astar.spec.ts` | Coordinates, heatmap, A* wayfinding, mini-map |
 | 24 | `24-cqrs-sse-gs1-path.spec.ts` | CQRS stats, SSE stream, client GS1 reject, hierarchical path |
 
-Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + MinIO), clustered under `backend/src/test/java/com/invsys`. High-signal coverage for this pillar:
+Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + MinIO), under `backend/invsys-app/src/test/java/com/invsys`. High-signal coverage for this pillar:
 
 | Test | Covers |
 |------|--------|
+| `CoreModuleWithoutChatbotIT` | `invsys.features.chatbot.enabled=false` — no `SupportChatService`; receive→allocate→pick→ship; `/api/v1/support/**` → 404 |
 | `LpnMoveHttpTest` | Bulk LPN move + ledger lines |
 | `LpnPalletizationHttpTest` | Mint → pack → ship → `DISPATCHED` |
 | `TaskInterleavingHttpTest` | `GET /tasks/next-best-action` closest COUNT |
@@ -1054,6 +1137,8 @@ Frontend grid/scroll journeys: `18-grid-customization`, `37-column-visibility-me
 
 Tour / nav personas: `support-multipage-tour.spec.ts` (receiving-to-allocation step counters), `tests/e2e/admin.spec.ts` / `picker.spec.ts` (grouped rail expand), `e2e/fixtures/nav.ts`.
 
+Decoupled module: `tests/e2e/decoupled-module.spec.ts` — Test A (FAB + tool-calling) / Test B (`VITE_ENABLE_CHATBOT=false` / `__INVSYS_CHATBOT__=false`: no FAB; picker inbound + fulfillment; zero console errors).
+
 ---
 
 ## 14. Local ops cheat sheet
@@ -1069,10 +1154,31 @@ Frontend: http://localhost:3000
 API edge: http://localhost:8080
 Swagger:  http://localhost:8080/swagger-ui.html
 MinIO:    http://localhost:9001
+
+# Backend (from backend/)
+mvn -DskipTests package -pl invsys-app -am
+mvn spring-boot:run -pl invsys-app -Dspring-boot.run.profiles=dev
+mvn -Dtest=CoreModuleWithoutChatbotIT -Dsurefire.failIfNoSpecifiedTests=false test -pl invsys-app -am
+# Omit chatbot from the fat jar:
+mvn -DskipTests package -pl invsys-app -am -P"!with-chatbot"
+
+# Frontend — optional Support Co-Pilot / training
+cd frontend
+npm run chatbot:enable          # include src/modules/chatbot
+npm run chatbot:disable         # stub bridge (safe to delete modules/chatbot)
+npm run build                   # respects enable/disable + folder presence
+npm run build:no-chatbot        # force stubbed production build
+
+# Docker deploy — backend + frontend together
+deploy.bat chatbot-enable       # persist preference
+deploy.bat chatbot-disable
+deploy.bat deploy               # respects preference
+deploy.bat deploy --no-chatbot  # one-shot disable both images
+deploy.bat deploy --with-chatbot
 ```
 
 JWT PEMs: `ops/jwt/dev-*.pem` (generated by deploy if missing).  
-Env template: `.env.example`.
+Env template: `.env.example`. Runtime chatbot off (beans): `INVSYS_CHATBOT_ENABLED=false`.
 
 ---
 
@@ -1119,7 +1225,9 @@ Env template: `.env.example`.
 - Growing pinned identifier columns to fill the viewport (creates a sticky “canyon”; grow non-sticky cols only)  
 - Putting Import back on the office rail (it lives on Products / `/import`)  
 - Storing tenant secrets in `support_knowledge_*` (global, no RLS)  
-- Ad-hoc `DELETE FROM audit_log` (use archival worker + security-definer purge)
+- Ad-hoc `DELETE FROM audit_log` (use archival worker + security-definer purge)  
+- Adding Spring AI / Support Co-Pilot code to `invsys-core` (keep it in `invsys-chatbot`)  
+- Trusting `tenantId` from LLM tool arguments (always use `TenantContext`)
 
 ---
 

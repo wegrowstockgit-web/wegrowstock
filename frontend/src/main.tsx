@@ -7,9 +7,11 @@ import { ToastProvider } from './components/ui/Toast';
 import { startMutationQueueReplay } from './offline/mutationQueue';
 import { installGlobalErrorTelemetry } from './lib/errorTelemetry';
 import { registerServiceWorker } from './lib/registerServiceWorker';
+import { installUiActionTracker } from './stores/uiActionTrackerStore';
 import './styles/index.css';
 
 installGlobalErrorTelemetry();
+installUiActionTracker();
 startMutationQueueReplay();
 registerServiceWorker();
 

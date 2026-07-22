@@ -1,0 +1,63 @@
+spring:
+  ai:
+    model:
+      chat: none
+      embedding:
+        text: none
+        multimodal: none
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            model: gemini-2.0-flash
+            temperature: 0.2
+  flyway:
+    enabled: true
+    user: app_owner
+    password: app_owner_secret
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        type:
+          preferred_uuid_jdbc_type: UUID
+  task:
+    scheduling:
+      enabled: false
+
+invsys:
+  jwt:
+    access-token-minutes: 15
+    terminal-switch-token-minutes: 5
+    refresh-token-days: 7
+  media:
+    provider: MINIO
+    bucket: invsys-media-test
+    region: us-east-1
+    path-style-access: true
+    create-bucket-if-missing: true
+    max-bytes: 15728640
+    avatar-max-bytes: 2097152
+    evidence-max-bytes: 10485760
+  webhooks:
+    accounting-secret: accounting_mock_secret
+  integration:
+    accounting:
+      mock: true
+    outbox:
+      dispatcher-enabled: false
+  observability:
+    alert-scan-interval-ms: 3600000
+  security:
+    public-signup-enabled: true
+    cors-allowed-origins: http://localhost:5173,http://localhost:3000
+    cors-include-verified-domains: true
+    cors-cache-seconds: 5
+    cookie-secure: false
+    cookie-same-site: Lax
+  redis:
+    enabled: false
+  actuator:
+    scrape-allowed-cidrs: 127.0.0.1/32,::1/128

@@ -44,6 +44,10 @@ describe('PageHelpOverlay', () => {
     expect(screen.getByTestId('page-help-panel').parentElement?.parentElement).toBe(document.body);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Confirm customer demand/i);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Un-allocate/i);
+    expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Step-by-step/i);
+    expect(screen.getByTestId('page-help-body')).toHaveTextContent(/How to undo a mistake/i);
+    expect(screen.getByTestId('page-help-roles')).toHaveTextContent(/Warehouse Managers/i);
+    expect(screen.getByTestId('page-help-data-origin')).toHaveTextContent(/Where this comes from/i);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Who else this affects/i);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Components, columns & statuses/i);
     expect(screen.getByTestId('page-help-statuses')).toHaveTextContent(/ALLOCATED/i);
@@ -73,7 +77,7 @@ describe('PageHelpOverlay', () => {
     await user.click(screen.getByTestId('page-help-trigger'));
     await waitFor(() => expect(screen.getByTestId('page-help-fallback')).toBeInTheDocument());
     expect(screen.getByTestId('page-help-fallback')).toHaveTextContent(/totally-unknown-route/);
-    expect(screen.getByTestId('page-help-fallback')).toHaveTextContent(/ERROR_CORRECTION/i);
+    expect(screen.getByTestId('page-help-fallback')).toHaveTextContent(/never erase inventory history/i);
   });
 
   it('closes via Escape and the X control', async () => {

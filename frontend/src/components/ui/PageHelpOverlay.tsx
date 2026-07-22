@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Info, Layers, Undo2, Users, Workflow, X } from 'lucide-react';
+import { BookOpen, Info, Layers, Undo2, Users, Workflow, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { DENSITY_STYLES } from '@/stores/preferencesStore';
 import { cn } from '@/lib/utils';
 import {
   knowledgeContextKey,
+  normalizeColumns,
   resolveKnowledgeContext,
-  type RouteKnowledge,
+  type ResolvedRouteKnowledge,
   type RouteKnowledgeComponent,
-} from '@/features/support/RouteKnowledgeRegistry';
+} from '@/lib/pageKnowledge';
 
 const density = DENSITY_STYLES.spacious;
 
@@ -35,6 +36,7 @@ function StatusBadges({ statuses }: { statuses: Record<string, string> }) {
 }
 
 function ComponentCard({ component }: { component: RouteKnowledgeComponent }) {
+  const columns = normalizeColumns(component.columns);
   return (
     <div
       className={cn('rounded-md border border-border/70 bg-surface', density.cell)}
@@ -43,16 +45,19 @@ function ComponentCard({ component }: { component: RouteKnowledgeComponent }) {
       <p className="font-medium text-text">{component.name}</p>
       <p className="mt-1 text-text-muted">{component.description}</p>
       <p className="mt-2 text-xs text-text-muted">
-        <span className="font-semibold text-text">Data origin:</span> {component.dataOrigin}
+        <span className="font-semibold text-text">Where this comes from:</span>{' '}
+        {component.dataOrigin}
       </p>
 
-      {component.columns && component.columns.length > 0 ? (
+      {columns.length > 0 ? (
         <div className="mt-3 border-t border-border/60 pt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Columns</p>
-          <ul className="mt-2 space-y-1.5 pl-3">
-            {component.columns.map((col) => (
+          <ul className="mt-2 space-y-1.5 pl-3" data-testid="page-help-columns">
+            {columns.map((col) => (
               <li key={col.name} className="text-sm">
-                <span className="font-medium text-text">{col.name}</span>
+                <span className="inline-flex rounded-md bg-muted/50 px-1.5 py-0.5 font-medium text-text">
+                  {col.name}
+                </span>
                 <span className="text-text-muted"> — {col.purpose}</span>
               </li>
             ))}
@@ -70,21 +75,38 @@ function ComponentCard({ component }: { component: RouteKnowledgeComponent }) {
   );
 }
 
-function KnowledgeBody({ knowledge }: { knowledge: RouteKnowledge }) {
+function KnowledgeBody({ knowledge }: { knowledge: ResolvedRouteKnowledge }) {
+  const glossaryEntries = knowledge.glossary ? Object.entries(knowledge.glossary) : [];
   return (
     <div className={cn('space-y-6 text-text', density.typography)} data-testid="page-help-body">
       <section>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Purpose</h3>
         <p className={cn('mt-2 leading-relaxed', density.typography)}>{knowledge.purpose}</p>
+        <p className="mt-2 text-sm text-text-muted" data-testid="page-help-data-origin">
+          <span className="font-semibold text-text">Where this comes from:</span>{' '}
+          {knowledge.dataOrigin}
+        </p>
+        {knowledge.whoCanUse.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5" data-testid="page-help-roles">
+            {knowledge.whoCanUse.map((role) => (
+              <span
+                key={role}
+                className="inline-flex rounded-md bg-muted/50 px-2 py-0.5 text-xs font-semibold text-text"
+              >
+                {role}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section>
         <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
           <Workflow className="h-3.5 w-3.5" aria-hidden />
-          How to use this page
+          Step-by-step
         </h3>
         <ol className={cn('mt-2 list-decimal space-y-2 pl-5 leading-relaxed', density.typography)}>
-          {knowledge.flow.map((step) => (
+          {knowledge.stepByStepFlow.map((step) => (
             <li key={step}>{step}</li>
           ))}
         </ol>
@@ -93,10 +115,10 @@ function KnowledgeBody({ knowledge }: { knowledge: RouteKnowledge }) {
       <section>
         <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
           <Undo2 className="h-3.5 w-3.5" aria-hidden />
-          Reversals & undo
+          How to undo a mistake
         </h3>
         <ul className={cn('mt-2 list-disc space-y-2 pl-5 leading-relaxed', density.typography)}>
-          {knowledge.reversals.map((item) => (
+          {knowledge.howToUndo.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
@@ -125,6 +147,25 @@ function KnowledgeBody({ knowledge }: { knowledge: RouteKnowledge }) {
           ))}
         </div>
       </section>
+
+      {glossaryEntries.length > 0 ? (
+        <section data-testid="page-help-glossary">
+          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <BookOpen className="h-3.5 w-3.5" aria-hidden />
+            Glossary
+          </h3>
+          <ul className="mt-2 space-y-1.5">
+            {glossaryEntries.map(([term, meaning]) => (
+              <li key={term} className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+                <span className="inline-flex w-fit shrink-0 rounded-md bg-muted/50 px-2 py-0.5 font-mono text-xs font-semibold text-text">
+                  {term}
+                </span>
+                <span className="text-sm text-text-muted">{meaning}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -137,8 +178,7 @@ function FallbackBody({ routeKey }: { routeKey: string }) {
         yet.
       </p>
       <p className="text-text-muted">
-        Ask the support copilot for help, and prefer reversals that append compensating ledger rows
-        (ERROR_CORRECTION / OFFLINE_CONFLICT_OVERRIDE) instead of deleting history.
+        Prefer on-screen Undo, Cancel, or Un-allocate actions — never erase inventory history.
       </p>
     </div>
   );

@@ -22,8 +22,7 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+.invsys-chatbot-disabled
 
 # Test
 playwright-report/

@@ -18,6 +18,11 @@ if /i "%CMD%"=="status" goto :status
 if /i "%CMD%"=="clean-frontend" goto :clean_frontend
 if /i "%CMD%"=="clean" goto :clean_frontend
 if /i "%CMD%"=="seed" goto :seed
+if /i "%CMD%"=="chatbot-enable" goto :chatbot_enable
+if /i "%CMD%"=="chatbot-disable" goto :chatbot_disable
+if /i "%CMD%"=="chatbot-status" goto :chatbot_status
+if /i "%CMD%"=="enable-chatbot" goto :chatbot_enable
+if /i "%CMD%"=="disable-chatbot" goto :chatbot_disable
 goto :help
 
 :: ---------------------------------------------------------------------------
@@ -92,7 +97,7 @@ if exist "ops\jwt\dev-private.pem" if exist "ops\jwt\dev-public.pem" (
 call :step "Generating persistent dev JWT keys"
 if not exist "ops\jwt" mkdir "ops\jwt"
 pushd backend
-call mvn -q -Dtest=JwtKeyExportTest test >> "%DEPLOY_LOG%" 2>&1
+call mvn -q -Dtest=JwtKeyExportTest -Dsurefire.failIfNoSpecifiedTests=false test -pl invsys-app -am >> "%DEPLOY_LOG%" 2>&1
 set "KEYGEN_ERR=!errorlevel!"
 popd
 if !KEYGEN_ERR! neq 0 (
@@ -102,20 +107,137 @@ if !KEYGEN_ERR! neq 0 (
 call :ok "JWT keys written to ops\jwt\"
 exit /b 0
 
+:: ---------------------------------------------------------------------------
+:: Chatbot (backend + frontend together)
+:: Marker: .invsys-chatbot-disabled at repo root
+:: ---------------------------------------------------------------------------
+:chatbot_marker
+set "CHATBOT_MARKER=%~dp0.invsys-chatbot-disabled"
+exit /b 0
+
+:apply_chatbot_env
+:: Sets INVSYS_WITH_CHATBOT / INVSYS_CHATBOT_ENABLED / VITE_ENABLE_CHATBOT for compose build.
+:: Optional override: --no-chatbot | --with-chatbot on the deploy command line.
+call :chatbot_marker
+set "CHATBOT_MODE=enabled"
+if exist "%CHATBOT_MARKER%" set "CHATBOT_MODE=disabled"
+
+set "ARG2=%~2"
+set "ARG3=%~3"
+if /i "!ARG2!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
+if /i "!ARG2!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
+if /i "!ARG3!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
+if /i "!ARG3!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
+if /i "!ARG2!"=="--clean-frontend" (
+    if /i "!ARG3!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
+    if /i "!ARG3!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
+)
+
+if /i "!CHATBOT_MODE!"=="disabled" (
+    set "INVSYS_WITH_CHATBOT=false"
+    set "INVSYS_CHATBOT_ENABLED=false"
+    set "VITE_ENABLE_CHATBOT=false"
+) else (
+    set "INVSYS_WITH_CHATBOT=true"
+    set "INVSYS_CHATBOT_ENABLED=true"
+    set "VITE_ENABLE_CHATBOT=true"
+)
+exit /b 0
+
+:sync_frontend_chatbot_bridge
+:: Keep local frontend resolve script in sync with the deploy toggle.
+if not exist "frontend\scripts\resolve-chatbot.mjs" exit /b 0
+pushd frontend
+if /i "%VITE_ENABLE_CHATBOT%"=="false" (
+    call node scripts\resolve-chatbot.mjs --disable >> "%DEPLOY_LOG%" 2>&1
+) else (
+    call node scripts\resolve-chatbot.mjs --enable >> "%DEPLOY_LOG%" 2>&1
+)
+popd
+exit /b 0
+
+:chatbot_enable
+call :banner "Enable Support Co-Pilot / chatbot"
+call :chatbot_marker
+if exist "%CHATBOT_MARKER%" del /f /q "%CHATBOT_MARKER%" >nul 2>&1
+set "INVSYS_WITH_CHATBOT=true"
+set "INVSYS_CHATBOT_ENABLED=true"
+set "VITE_ENABLE_CHATBOT=true"
+set "DEPLOY_LOG=%~dp0.deploy-last.log"
+(
+    echo ===== chatbot-enable %DATE% %TIME% =====
+) >> "%DEPLOY_LOG%"
+call :sync_frontend_chatbot_bridge
+call :ok "Chatbot ENABLED for backend + frontend"
+call :info "Marker cleared: .invsys-chatbot-disabled"
+call :info "Redeploy to apply:  deploy.bat deploy"
+echo.
+exit /b 0
+
+:chatbot_disable
+call :banner "Disable Support Co-Pilot / chatbot"
+call :chatbot_marker
+(
+    echo Chatbot/training disabled for InventorySystem deploy.
+    echo Backend: Maven -P-with-chatbot + INVSYS_CHATBOT_ENABLED=false
+    echo Frontend: VITE_ENABLE_CHATBOT=false + stub bridge
+) > "%CHATBOT_MARKER%"
+set "INVSYS_WITH_CHATBOT=false"
+set "INVSYS_CHATBOT_ENABLED=false"
+set "VITE_ENABLE_CHATBOT=false"
+set "DEPLOY_LOG=%~dp0.deploy-last.log"
+(
+    echo ===== chatbot-disable %DATE% %TIME% =====
+) >> "%DEPLOY_LOG%"
+call :sync_frontend_chatbot_bridge
+call :ok "Chatbot DISABLED for backend + frontend"
+call :info "Marker written: .invsys-chatbot-disabled"
+call :info "Redeploy to apply:  deploy.bat deploy"
+echo.
+exit /b 0
+
+:chatbot_status
+call :banner "Chatbot status"
+call :chatbot_marker
+if exist "%CHATBOT_MARKER%" (
+    call :info "Preference: DISABLED  [.invsys-chatbot-disabled present]"
+) else (
+    call :info "Preference: ENABLED   [default - no disable marker]"
+)
+call :info "Affects next deploy.bat deploy for BOTH api + web images."
+echo.
+exit /b 0
+
 :deploy
 call :banner "InventorySystem deploy"
 call :require_docker
 if errorlevel 1 exit /b 1
 call :ok "Docker is available"
 
+call :apply_chatbot_env %*
+if /i "!CHATBOT_MODE!"=="disabled" (
+    call :info "Chatbot: DISABLED ^(backend module omitted + frontend stub^)"
+) else (
+    call :info "Chatbot: ENABLED ^(backend with-chatbot + frontend Co-Pilot^)"
+)
+
 if /i "%~2"=="--clean-frontend" (
+    call :clean_frontend
+    if errorlevel 1 exit /b 1
+)
+if /i "%~3"=="--clean-frontend" (
     call :clean_frontend
     if errorlevel 1 exit /b 1
 )
 
 (
     echo ===== deploy %DATE% %TIME% =====
+    echo chatbot_mode=!CHATBOT_MODE!
+    echo INVSYS_WITH_CHATBOT=!INVSYS_WITH_CHATBOT!
+    echo VITE_ENABLE_CHATBOT=!VITE_ENABLE_CHATBOT!
 ) > "%DEPLOY_LOG%"
+
+call :sync_frontend_chatbot_bridge
 
 call :ensure_jwt_keys
 if errorlevel 1 exit /b 1
@@ -160,12 +282,18 @@ goto :wait_health
 
 :deploy_summary
 call :banner "Deploy complete"
+if /i "!CHATBOT_MODE!"=="disabled" (
+    call :info "Chatbot: DISABLED on this stack"
+) else (
+    call :info "Chatbot: ENABLED on this stack"
+)
 call :print_endpoints
 echo.
 call :print_status_table
 echo.
 call :info "Next:  deploy.bat seed     ^(demo users / password123^)"
 call :info "       deploy.bat status"
+call :info "Chatbot: deploy.bat chatbot-enable ^| chatbot-disable"
 echo.
 exit /b 0
 
@@ -301,19 +429,32 @@ echo.
 echo Commands:
 echo   deploy                     Rebuild and start the stack ^(quiet console^)
 echo   deploy --clean-frontend    Clean frontend artifacts, then deploy
+echo   deploy --no-chatbot        Deploy without Support Co-Pilot ^(api + web^)
+echo   deploy --with-chatbot      Deploy with Support Co-Pilot ^(overrides marker^)
 echo   down                       Stop and remove containers ^(keeps DB volume^)
 echo   undeploy                   Alias for down
 echo   status                     Compact container status + URLs
 echo   clean-frontend             Remove frontend node_modules / dist / cache
 echo   clean                      Alias for clean-frontend
 echo   seed                       Load demo SQL ^(quiet; errors show log tail^)
+echo   chatbot-enable             Persistently ENABLE chatbot for next deploys
+echo   chatbot-disable            Persistently DISABLE chatbot for next deploys
+echo   chatbot-status             Show whether chatbot is enabled or disabled
 echo   help                       Show this help
+echo.
+echo Chatbot toggle applies to BACKEND and FRONTEND together:
+echo   - Backend: omit invsys-chatbot jar ^(+ INVSYS_CHATBOT_ENABLED^)
+echo   - Frontend: VITE_ENABLE_CHATBOT + stub bridge
+echo   Preference file: .invsys-chatbot-disabled ^(repo root^)
 echo.
 echo On failure, the last 40 lines of .deploy-last.log are printed.
 echo.
 echo Examples:
 echo   deploy.bat
 echo   deploy.bat deploy --clean-frontend
+echo   deploy.bat chatbot-disable
+echo   deploy.bat deploy
+echo   deploy.bat deploy --with-chatbot
 echo   deploy.bat seed
 echo.
 exit /b 0

@@ -19,7 +19,9 @@ test.describe('Reactive page help + granular components', () => {
       await expect(owner.page.getByTestId('page-help-panel')).toBeVisible({ timeout: 15_000 });
       await expect(owner.page.getByTestId('page-help-title')).toContainText(/Users/i);
       await expect(owner.page.getByTestId('page-help-route')).toHaveText('/settings?tab=users');
-      await expect(owner.page.getByTestId('page-help-body')).toContainText(/OWNER|PICKER|LBAC/i);
+      await expect(owner.page.getByTestId('page-help-body')).toContainText(
+        /Owner|Admin|Picker|warehouse|WAREHOUSE_MANAGER/i,
+      );
 
       const settingsNav = owner.page.getByTestId('settings-nav');
       await settingsNav.getByRole('button', { name: 'Operations', exact: true }).click();
@@ -37,7 +39,7 @@ test.describe('Reactive page help + granular components', () => {
         timeout: 10_000,
       });
       await expect(owner.page.getByTestId('page-help-body')).toContainText(
-        /webhook|Shopify|Xero|accounting|E-commerce/i,
+        /Shopify|Xero|accounting|E-commerce|storefront/i,
       );
     } finally {
       await owner.close();
@@ -56,7 +58,7 @@ test.describe('Reactive page help + granular components', () => {
       await expect(manager.page.getByTestId('page-help-body')).toBeVisible({ timeout: 15_000 });
       await expect(manager.page.getByTestId('page-help-statuses').first()).toBeVisible();
       await expect(manager.page.getByTestId('page-help-body')).toContainText(/ALLOCATED/i);
-      await expect(manager.page.getByTestId('page-help-body')).toContainText(/Data origin/i);
+      await expect(manager.page.getByTestId('page-help-body')).toContainText(/Where this comes from/i);
       await expect(manager.page.getByTestId('page-help-component').first()).toBeVisible();
     } finally {
       await manager.close();
@@ -72,7 +74,10 @@ test.describe('Reactive page help + granular components', () => {
 
       await owner.page.getByTestId('page-help-trigger').click();
       await expect(owner.page.getByTestId('page-help-body')).toContainText(/Stock Value|Low Stock|Open Orders/i);
-      await expect(owner.page.getByTestId('page-help-body')).toContainText(/DashboardKpiSnapshot|CQRS/i);
+      await expect(owner.page.getByTestId('page-help-body')).toContainText(
+        /Where this comes from|floor and office activity|Live warehouse totals/i,
+      );
+      await expect(owner.page.getByTestId('page-help-body')).not.toContainText(/CQRS|DashboardKpiSnapshot|\/api\//i);
       await expect(owner.page.getByTestId('page-help-body')).toContainText(/Needs Allocation|Ready to Invoice/i);
     } finally {
       await owner.close();

@@ -28,6 +28,18 @@ vi.mock('@/offline/queryPersistence', () => ({
   queryClient: { clear: vi.fn() },
 }));
 
+const trainingGuard = {
+  isTrainingMode: () => false,
+  recordBlockedMutation: vi.fn(),
+  onUiAction: vi.fn(),
+};
+
+vi.mock('@/lib/chatbot/active', () => ({
+  recordSupportNetworkError: vi.fn(),
+  getTrainingGuard: () => trainingGuard,
+  ChatbotHost: () => null,
+}));
+
 import { apiClient } from '@/api/client';
 
 describe('apiClient warehouse header', () => {
@@ -35,6 +47,8 @@ describe('apiClient warehouse header', () => {
     sessionState.authenticated = true;
     warehouseState.warehouseId = 'wh-uuid-1';
     sessionState.setLastRequestId.mockReset();
+    trainingGuard.isTrainingMode = () => false;
+    trainingGuard.recordBlockedMutation.mockReset();
   });
 
   it('attaches X-Warehouse-Id and uses credentials (no Bearer token)', async () => {
@@ -86,5 +100,41 @@ describe('apiClient warehouse header', () => {
     } as InternalAxiosRequestConfig);
 
     expect(headers.set).toHaveBeenCalledWith('Content-Type', false);
+  });
+
+  it('blocks mutating inventory calls while training mode is active', async () => {
+    trainingGuard.isTrainingMode = () => true;
+    const handlers = (apiClient.interceptors.request as unknown as {
+      handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }>;
+    }).handlers;
+    const requestInterceptor = handlers.find((h) => h.fulfilled)?.fulfilled;
+
+    await expect(
+      requestInterceptor!({
+        headers: {} as InternalAxiosRequestConfig['headers'],
+        method: 'post',
+        url: '/api/v1/inventory/adjust',
+      } as InternalAxiosRequestConfig),
+    ).rejects.toThrow(/Training mode is active/i);
+    expect(trainingGuard.recordBlockedMutation).toHaveBeenCalledWith(
+      'post',
+      '/api/v1/inventory/adjust',
+    );
+  });
+
+  it('allows support chat mutations during training mode', async () => {
+    trainingGuard.isTrainingMode = () => true;
+    const handlers = (apiClient.interceptors.request as unknown as {
+      handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }>;
+    }).handlers;
+    const requestInterceptor = handlers.find((h) => h.fulfilled)?.fulfilled;
+
+    const config = await requestInterceptor!({
+      headers: {} as InternalAxiosRequestConfig['headers'],
+      method: 'post',
+      url: '/api/v1/support/chat',
+    } as InternalAxiosRequestConfig);
+
+    expect(config.url).toContain('/support/chat');
   });
 });

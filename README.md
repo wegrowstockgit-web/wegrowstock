@@ -10,16 +10,41 @@ Multi-tenant Inventory / WMS / Supply-Chain B2B SaaS with append-only inventory 
 - Java 25 (LTS) + Maven (for local backend dev)
 - Node.js 24+ (Active LTS; for local frontend / Playwright)
 
-### Run everything with Docker
+### Run everything with Docker (`deploy.bat`)
 
-```bash
-# From repo root
-docker compose up --build -d
+On Windows, prefer the repo helper from the project root (quiet console; full log in `.deploy-last.log`):
 
-# Wait for backend healthy, then load demo data (base + multi-tenant expansion):
-docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed.sql
-docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_extra.sql
+```bat
+deploy.bat deploy              Rem build images, start stack, wait for API health
+deploy.bat seed                Rem load demo users / catalog (password123)
+deploy.bat status              Rem container status + URLs
+deploy.bat down                Rem stop containers (keeps DB volume)
 ```
+
+| Command | What it does |
+|---------|----------------|
+| `deploy.bat` / `deploy.bat deploy` | Rebuild and start the full stack |
+| `deploy.bat deploy --clean-frontend` | Wipe frontend `node_modules`/`dist` first, then deploy |
+| `deploy.bat seed` | Apply `ops/demo_seed.sql` (+ extra tenants if present) |
+| `deploy.bat status` | Compact `docker compose ps` + endpoint list |
+| `deploy.bat down` | Stop/remove containers; Postgres volume kept |
+| `deploy.bat clean-frontend` | Remove frontend build artifacts only |
+| `deploy.bat help` | Print usage |
+
+**Support Co-Pilot / chatbot** (optional module — backend + frontend together):
+
+```bat
+deploy.bat chatbot-status      Rem show current preference
+deploy.bat chatbot-disable     Rem persist OFF (.invsys-chatbot-disabled)
+deploy.bat chatbot-enable      Rem persist ON (default)
+deploy.bat deploy              Rem rebuild both api + web with that preference
+
+Rem One-shot overrides (do not change the saved preference):
+deploy.bat deploy --no-chatbot
+deploy.bat deploy --with-chatbot
+```
+
+When disabled: backend omits the `invsys-chatbot` jar (`-P-with-chatbot`) and sets `INVSYS_CHATBOT_ENABLED=false`; frontend builds with `VITE_ENABLE_CHATBOT=false` and a stub UI bridge. Core inventory still runs.
 
 | Service  | URL / endpoint |
 |----------|----------------|
@@ -27,11 +52,31 @@ docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_ex
 | API      | http://localhost:8080 |
 | Swagger  | http://localhost:8080/swagger-ui.html |
 | Health   | http://localhost:8080/actuator/health |
+| Grafana  | http://localhost:3001 (admin / admin) |
 | Postgres | `localhost:5432` — app runtime user `app_user` / Flyway owner `app_owner` |
 
 Containers: `invsys-web` (nginx SPA), `invsys-api` (Spring Boot), `invsys-db` (Postgres 16).
 
-Copy `.env.example` → `.env` when overriding JWT keys, webhook secrets, or DB credentials. Dev JWT PEMs live under `ops/jwt/`.
+Copy `.env.example` → `.env` when overriding JWT keys, webhook secrets, or DB credentials. Dev JWT PEMs live under `ops/jwt/` (generated automatically on first `deploy.bat deploy` if missing).
+
+#### Manual `docker compose` (any OS)
+
+```bash
+# From repo root
+docker compose up --build -d
+
+# Wait for backend healthy, then load demo data (or use: deploy.bat seed):
+docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed.sql
+docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_extra.sql
+```
+
+To toggle chatbot without `deploy.bat`, set compose build/runtime env before build:
+
+```bash
+# Disable both sides for this build
+export INVSYS_WITH_CHATBOT=false INVSYS_CHATBOT_ENABLED=false VITE_ENABLE_CHATBOT=false
+docker compose build backend frontend && docker compose up -d
+```
 
 ### Demo credentials
 

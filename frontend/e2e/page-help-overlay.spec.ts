@@ -117,7 +117,7 @@ test.describe('Page help overlay', () => {
       await dismissOnboardingTourIfPresent(picker.page);
       await picker.page.getByTestId('page-help-trigger').click();
       await expect(picker.page.getByTestId('page-help-body')).toBeVisible({ timeout: 15_000 });
-      await expect(picker.page.getByText(/Skip & Flag|ERROR_CORRECTION|ledger/i).first()).toBeVisible();
+      await expect(picker.page.getByText(/Skip & Flag|stock correction|undo|mistake/i).first()).toBeVisible();
     } finally {
       await picker.close();
     }
