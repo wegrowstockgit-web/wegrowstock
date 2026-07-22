@@ -59,6 +59,9 @@ public class AdminChatbotIngestController {
         out.put("chunkCount", result.chunkCount());
         out.put("audienceRoles", result.audienceRoles());
         out.put("routeHints", result.routeHints());
+        if (result.contextSummary() != null) {
+            out.put("contextSummary", result.contextSummary());
+        }
         return out;
     }
 }

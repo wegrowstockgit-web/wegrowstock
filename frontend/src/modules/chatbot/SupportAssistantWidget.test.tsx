@@ -80,6 +80,9 @@ describe('SupportAssistantWidget', () => {
     await waitFor(() => {
       expect(screen.getByTestId('support-assistant-reply')).toHaveTextContent(/Scan the PO barcode/i);
     });
+    expect(screen.getByTestId('support-chat-user-icon')).toBeInTheDocument();
+    expect(screen.getAllByTestId('support-chat-bot-icon').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId('support-chat-user-bubble')).toHaveTextContent(/How do I process inbound/i);
   });
 
   it('shows proactive insight pill when insights API returns a bottleneck', async () => {

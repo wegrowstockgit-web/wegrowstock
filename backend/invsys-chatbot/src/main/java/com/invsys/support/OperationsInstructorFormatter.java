@@ -11,9 +11,25 @@ import com.invsys.modules.fulfillment.domain.Allocation;
  * Diagnosis → numbered Action Plan → Ledger Safety & Reversal → Downstream Ripple,
  * plus NAVIGATE/SPOTLIGHT/START_TOUR chips and Socratic follow-ups.
  */
-final class OperationsInstructorFormatter {
+public final class OperationsInstructorFormatter {
 
     private OperationsInstructorFormatter() {
+    }
+
+    /**
+     * Reformats free-form model output into the mandatory Operations Instructor sections.
+     */
+    public static String enrich(
+            String answer,
+            String question,
+            List<String> roles,
+            String route,
+            Map<String, Object> pageState
+    ) {
+        String q = question == null ? "" : question.toLowerCase(Locale.ROOT);
+        boolean pickerOnly = roles != null && roles.size() == 1 && roles.contains("PICKER");
+        boolean b2b = roles != null && roles.contains("B2B_CUSTOMER");
+        return ensureInstructorShape(answer, q, pickerOnly, b2b, route);
     }
 
     static HeuristicSupportResult enrich(

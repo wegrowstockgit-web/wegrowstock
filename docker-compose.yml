@@ -263,6 +263,9 @@ services:
       # Support Co-Pilot / RAG — set GEMINI_API_KEY in .env for gemini-2.5-flash + text-embedding-004
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SUPPORT_AI_LLM: ${SUPPORT_AI_LLM:-gemini}
+      SUPPORT_AI_TOP_K: ${SUPPORT_AI_TOP_K:-4}
+      SUPPORT_AI_HYDE_ENABLED: ${SUPPORT_AI_HYDE_ENABLED:-false}
+      SPRING_AI_RETRY_MAX_ATTEMPTS: ${SPRING_AI_RETRY_MAX_ATTEMPTS:-1}
       SPRING_AI_GOOGLE_GENAI_CHAT_OPTIONS_MODEL: ${SPRING_AI_GOOGLE_GENAI_CHAT_OPTIONS_MODEL:-gemini-2.5-flash}
       COOKIE_SECURE: "false"
       COOKIE_SAME_SITE: Lax
@@ -298,7 +301,8 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 18
+      start_period: 90s
 
   api-gateway:
     image: nginx:1.27-alpine

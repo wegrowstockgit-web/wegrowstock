@@ -6,6 +6,8 @@ import { usePageStateSnapshot } from './usePageStateSnapshot';
 import { useSessionStore } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useNetworkSyncStore } from '@/stores/networkSyncStore';
+import { useScannerLockStore } from '@/stores/scannerLockStore';
+import { useOfflineStore } from '@/stores/offlineStore';
 import {
   resetUiActionTrackerForTests,
   useUiActionTrackerStore,
@@ -68,6 +70,46 @@ describe('usePageStateSnapshot', () => {
     expect(result.current.networkState).toBe('online');
     expect(result.current.trace_id).toBeNull();
     expect(result.current.lastHttpErrorStatus).toBeNull();
+    expect(result.current.lockReason).toBeNull();
+    expect(result.current.quarantinedMutationsCount).toBe(0);
+    expect(result.current.isDeviceLocked).toBe(false);
+  });
+
+  it('surfaces scanner lock and quarantined mutation telemetry', () => {
+    useActiveWarehouseStore.setState({
+      warehouseId: 'wh-1',
+      warehouse: { id: 'wh-1', name: 'Main DC', code: 'MAIN' },
+      contextLocked: true,
+      lockReason: 'JWT_SINGLE',
+    });
+    useOfflineStore.setState({
+      quarantinedMutations: [
+        {
+          id: 'q1',
+          idempotencyKey: 'ik-1',
+          method: 'POST',
+          url: '/api/v1/x',
+          body: {},
+          status: 409,
+          title: 'conflict',
+          detail: 'stock short',
+          failedAt: Date.now(),
+        },
+      ],
+    });
+    useScannerLockStore.setState({ isLocked: true });
+
+    const { result } = renderHook(() => usePageStateSnapshot(), {
+      wrapper: wrapper('/fulfillment'),
+    });
+
+    expect(result.current.lockReason).toBe('JWT_SINGLE');
+    expect(result.current.quarantinedMutationsCount).toBe(1);
+    expect(result.current.quarantineCount).toBe(1);
+    expect(result.current.isDeviceLocked).toBe(true);
+
+    useScannerLockStore.setState({ isLocked: false });
+    useOfflineStore.setState({ quarantinedMutations: [] });
   });
 
   it('includes fresh HTTP error status and trace_id for copilot grounding', () => {

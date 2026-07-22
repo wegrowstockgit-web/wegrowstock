@@ -124,7 +124,77 @@ describe('streamSupportChat', () => {
     expect(payload.pageState.activeFilter).toBe('status=BACKORDERED');
     expect(payload.pageState.selectedEntity).toBe('SO-1');
     expect(payload.pageState.networkState).toBe('online');
+    expect(
+      (payload.pageState as { isDeviceLocked?: boolean; quarantinedMutationsCount?: number })
+        .isDeviceLocked,
+    ).toBe(false);
+    expect(
+      (payload.pageState as { quarantinedMutationsCount?: number }).quarantinedMutationsCount,
+    ).toBe(0);
 
+    vi.unstubAllGlobals();
+  });
+
+  it('injects live Zustand scanner telemetry into pageState', async () => {
+    const { useActiveWarehouseStore } = await import('@/stores/activeWarehouse');
+    const { useOfflineStore } = await import('@/stores/offlineStore');
+    const { useScannerLockStore } = await import('@/stores/scannerLockStore');
+
+    useActiveWarehouseStore.setState({
+      warehouseId: 'wh-telemetry',
+      warehouse: { id: 'wh-telemetry', name: 'Telemetry DC', code: 'TEL' },
+      contextLocked: true,
+      lockReason: 'HARDWARE_SSID',
+    });
+    useOfflineStore.setState({
+      quarantinedMutations: [
+        {
+          id: 'q1',
+          idempotencyKey: 'ik-1',
+          method: 'POST',
+          url: '/api/v1/x',
+          body: {},
+          status: 409,
+          title: 'conflict',
+          detail: 'stock short',
+          failedAt: Date.now(),
+        },
+      ],
+    });
+    useScannerLockStore.setState({ isLocked: true });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event:done\ndata: {"ok":true}\n\n'));
+            controller.close();
+          },
+        }),
+        text: async () => '',
+      }),
+    );
+
+    await streamSupportChat('x', ['PICKER'], '/fulfillment', { onToken: () => {} });
+
+    const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string };
+    const payload = JSON.parse(init.body) as {
+      pageState: {
+        activeWarehouseId: string;
+        lockReason: string;
+        quarantinedMutationsCount: number;
+        isDeviceLocked: boolean;
+      };
+    };
+    expect(payload.pageState.activeWarehouseId).toBe('wh-telemetry');
+    expect(payload.pageState.lockReason).toBe('HARDWARE_SSID');
+    expect(payload.pageState.quarantinedMutationsCount).toBe(1);
+    expect(payload.pageState.isDeviceLocked).toBe(true);
+
+    useScannerLockStore.setState({ isLocked: false });
+    useOfflineStore.setState({ quarantinedMutations: [] });
     vi.unstubAllGlobals();
   });
 

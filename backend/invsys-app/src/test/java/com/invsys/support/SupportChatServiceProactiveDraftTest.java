@@ -1,5 +1,7 @@
 package com.invsys.support;
 
+import com.invsys.chatbot.service.QueryRewriterService;
+
 import com.invsys.support.dto.ActionDraft;
 import com.invsys.support.tools.SupportCopilotReadService;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +44,7 @@ class SupportChatServiceProactiveDraftTest {
     @Mock SupportBottleneckService bottleneckService;
     @Mock SupportActionDraftExecutor draftExecutor;
     @Mock ObjectProvider<List<ToolCallback>> readToolCallbacks;
+    @Mock ObjectProvider<QueryRewriterService> queryRewriter;
 
     HashEmbeddingModel embeddingModel = new HashEmbeddingModel();
     SupportAiProperties properties = new SupportAiProperties();
@@ -57,11 +60,12 @@ class SupportChatServiceProactiveDraftTest {
         lenient().when(readToolCallbacks.getIfAvailable()).thenReturn(List.of());
         lenient().when(vectorStore.getIfAvailable()).thenReturn(null);
         lenient().when(chatMemory.getIfAvailable()).thenReturn(null);
+        lenient().when(queryRewriter.getIfAvailable()).thenReturn(null);
         lenient().when(escalationContext.consumeCard()).thenReturn(java.util.Optional.empty());
         lenient().when(readService.formatLiveFactsForPrompt(anyString(), any())).thenReturn("");
         lenient().when(graphRepository.retrieveWithGraph(anyList(), anyInt()))
                 .thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        lenient().when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of());
         service = new SupportChatService(
                 properties,
@@ -78,7 +82,8 @@ class SupportChatServiceProactiveDraftTest {
                 draftExecutor,
                 readToolCallbacks,
                 vectorStore,
-                chatMemory);
+                chatMemory,
+                queryRewriter);
     }
 
     @Test

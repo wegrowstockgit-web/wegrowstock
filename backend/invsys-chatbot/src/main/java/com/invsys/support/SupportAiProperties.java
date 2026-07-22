@@ -16,7 +16,20 @@ public class SupportAiProperties {
      */
     private String llm = "gemini";
 
-    private int topK = 6;
+    /** Keep prompts lean — hybrid GraphRAG already expands seeds. */
+    private int topK = 4;
+
+    /**
+     * HyDE burns an extra Gemini call before retrieval. Off by default to preserve quota;
+     * enable when embeddings are real (not hash) and queries are ambiguous.
+     */
+    private boolean hydeEnabled = false;
+
+    /**
+     * Spring AI {@code QuestionAnswerAdvisor} runs a second vector search on top of hybrid RAG.
+     * Off by default — duplicates tokens and latency.
+     */
+    private boolean questionAnswerAdvisorEnabled = false;
 
     public boolean isEnabled() {
         return enabled;
@@ -40,5 +53,21 @@ public class SupportAiProperties {
 
     public void setTopK(int topK) {
         this.topK = topK;
+    }
+
+    public boolean isHydeEnabled() {
+        return hydeEnabled;
+    }
+
+    public void setHydeEnabled(boolean hydeEnabled) {
+        this.hydeEnabled = hydeEnabled;
+    }
+
+    public boolean isQuestionAnswerAdvisorEnabled() {
+        return questionAnswerAdvisorEnabled;
+    }
+
+    public void setQuestionAnswerAdvisorEnabled(boolean questionAnswerAdvisorEnabled) {
+        this.questionAnswerAdvisorEnabled = questionAnswerAdvisorEnabled;
     }
 }

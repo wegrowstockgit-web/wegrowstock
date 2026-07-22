@@ -1,5 +1,7 @@
 package com.invsys.support;
 
+import com.invsys.chatbot.service.QueryRewriterService;
+import com.invsys.support.advisor.OperationalInstructorValidationAdvisor;
 import com.invsys.support.dto.ActionDraft;
 import com.invsys.support.dto.SupportChatResponse;
 import com.invsys.support.tools.SupportCopilotReadService;
@@ -7,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.ToolCallAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -56,6 +59,7 @@ public class SupportChatService {
     private final List<ToolCallback> readToolCallbacks;
     private final ObjectProvider<VectorStore> vectorStore;
     private final ObjectProvider<ChatMemory> chatMemory;
+    private final ObjectProvider<QueryRewriterService> queryRewriter;
 
     public SupportChatService(
             SupportAiProperties properties,
@@ -72,7 +76,8 @@ public class SupportChatService {
             SupportActionDraftExecutor draftExecutor,
             @Qualifier("supportCopilotReadToolCallbacks") ObjectProvider<List<ToolCallback>> readToolCallbacks,
             ObjectProvider<VectorStore> vectorStore,
-            ObjectProvider<ChatMemory> chatMemory
+            ObjectProvider<ChatMemory> chatMemory,
+            ObjectProvider<QueryRewriterService> queryRewriter
     ) {
         this.properties = properties;
         this.repository = repository;
@@ -90,6 +95,7 @@ public class SupportChatService {
         this.readToolCallbacks = callbacks == null ? List.of() : List.copyOf(callbacks);
         this.vectorStore = vectorStore;
         this.chatMemory = chatMemory;
+        this.queryRewriter = queryRewriter;
     }
 
     public void streamAnswer(
@@ -204,10 +210,12 @@ public class SupportChatService {
         String primaryRole = normalizedRoles.isEmpty() ? "" : normalizedRoles.getFirst();
         escalationContext.begin(conversationId, route, primaryRole);
 
-        String embedText = extractUserQueryTail(question);
+        String userQuery = extractUserQueryTail(question);
+        String embedText = rewriteQueryForRetrieval(userQuery);
         float[] embedding = embeddingModel.embed(embedText);
-        List<SupportKnowledgeChunk> seeds = repository.searchSimilar(
-                embedding, normalizedRoles, route, properties.getTopK());
+        // Hybrid dense + tsvector sparse search fused with RRF (k=60); sparse uses raw user query.
+        List<SupportKnowledgeChunk> seeds = repository.searchHybrid(
+                embedding, userQuery, normalizedRoles, route, properties.getTopK());
         List<SupportKnowledgeChunk> retrieved = graphRepository.retrieveWithGraph(seeds, 2);
         Map<String, Object> safePageContext = pageContext == null ? Map.of() : pageContext;
         Map<String, Object> safePageState = pageState == null ? Map.of() : pageState;
@@ -227,7 +235,7 @@ public class SupportChatService {
         String warehouseHint = stringVal(safePageState.get("activeWarehouseId"));
         String liveFacts = "";
         try {
-            liveFacts = readService.formatLiveFactsForPrompt(embedText, warehouseHint);
+            liveFacts = readService.formatLiveFactsForPrompt(userQuery, warehouseHint);
         } catch (RuntimeException ignored) {
             // Tenant missing or lookup failure — continue with playbook-only guidance.
         }
@@ -292,10 +300,15 @@ public class SupportChatService {
             }
             VectorStore store = vectorStore.getIfAvailable();
             ChatMemory memory = chatMemory.getIfAvailable();
-            if (store != null) {
+            // Recursive tool-call loop, then memory / RAG, then instructor-shape validation.
+            builder = builder.defaultAdvisors(
+                    ToolCallAdvisor.builder().conversationHistoryEnabled(true).build(),
+                    new OperationalInstructorValidationAdvisor());
+            // Optional second vector search — off by default; hybrid GraphRAG already populated the system prompt.
+            if (properties.isQuestionAnswerAdvisorEnabled() && store != null) {
                 builder = builder.defaultAdvisors(
                         QuestionAnswerAdvisor.builder(store)
-                                .searchRequest(SearchRequest.builder().topK(4).build())
+                                .searchRequest(SearchRequest.builder().topK(Math.min(4, properties.getTopK())).build())
                                 .build());
             }
             if (memory != null) {
@@ -321,25 +334,38 @@ public class SupportChatService {
                             && !structured.replyMarkdown().isBlank();
                 }
             } catch (RuntimeException entityFailed) {
-                log.warn(
-                        "Support chat Gemini structured call failed; retrying plain content: {}",
-                        summarizeAiError(entityFailed));
-                try {
-                    if (hasImage) {
-                        content = callWithImage(client, question, imageBase64, imageMimeType, conversationId);
-                    } else {
-                        content = withDiagnosticTools(client.prompt()
-                                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
-                                .user(question))
-                                .call()
-                                .content();
-                    }
-                    usedGeminiText = content != null && !content.isBlank();
-                } catch (RuntimeException contentFailed) {
+                if (SupportAiErrorClassifier.isQuotaOrRateLimit(entityFailed)) {
+                    // Do not burn a second Gemini call (or wait through more retries) on free-tier 429s.
                     log.warn(
-                            "Support chat Gemini content call failed; falling back to heuristic: {}",
-                            summarizeAiError(contentFailed));
-                    content = null;
+                            "Support chat Gemini quota/rate-limit; failing fast to heuristic: {}",
+                            summarizeAiError(entityFailed));
+                } else {
+                    log.warn(
+                            "Support chat Gemini structured call failed; retrying plain content: {}",
+                            summarizeAiError(entityFailed));
+                    try {
+                        if (hasImage) {
+                            content = callWithImage(client, question, imageBase64, imageMimeType, conversationId);
+                        } else {
+                            content = withDiagnosticTools(client.prompt()
+                                    .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                                    .user(question))
+                                    .call()
+                                    .content();
+                        }
+                        usedGeminiText = content != null && !content.isBlank();
+                    } catch (RuntimeException contentFailed) {
+                        if (SupportAiErrorClassifier.isQuotaOrRateLimit(contentFailed)) {
+                            log.warn(
+                                    "Support chat Gemini quota/rate-limit on content retry; heuristic fallback: {}",
+                                    summarizeAiError(contentFailed));
+                        } else {
+                            log.warn(
+                                    "Support chat Gemini content call failed; falling back to heuristic: {}",
+                                    summarizeAiError(contentFailed));
+                        }
+                        content = null;
+                    }
                 }
             }
 
@@ -657,6 +683,30 @@ public class SupportChatService {
 
     private static String stringVal(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    /**
+     * HyDE: embed a hypothetical SOP answer when enabled and {@link QueryRewriterService} is available.
+     */
+    public String rewriteQueryForRetrieval(String userQuery) {
+        if (!properties.isHydeEnabled()) {
+            return userQuery;
+        }
+        QueryRewriterService rewriter = queryRewriter == null ? null : queryRewriter.getIfAvailable();
+        if (rewriter == null) {
+            return userQuery;
+        }
+        try {
+            String rewritten = rewriter.rewriteForRetrieval(userQuery);
+            return rewritten == null || rewritten.isBlank() ? userQuery : rewritten;
+        } catch (RuntimeException ex) {
+            if (SupportAiErrorClassifier.isQuotaOrRateLimit(ex)) {
+                log.warn("HyDE skipped due to quota/rate-limit; using raw query: {}", summarizeAiError(ex));
+            } else {
+                log.debug("HyDE rewrite skipped: {}", ex.toString());
+            }
+            return userQuery;
+        }
     }
 
     static String extractUserQueryTail(String message) {

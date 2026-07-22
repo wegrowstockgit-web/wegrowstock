@@ -23,6 +23,10 @@ spring:
     chat:
       client:
         enabled: true
+    # Fail fast on free-tier 429s — default Spring AI retries (10× exponential) stall the copilot for ~40–80s.
+    retry:
+      max-attempts: ${SPRING_AI_RETRY_MAX_ATTEMPTS:1}
+      exclude-on-http-codes: ${SPRING_AI_RETRY_EXCLUDE_ON_HTTP_CODES:429}
     model:
       chat: ${SPRING_AI_MODEL_CHAT:google-genai}
       embedding:
@@ -214,7 +218,15 @@ invsys:
       enabled: ${SUPPORT_AI_ENABLED:true}
       # gemini (default) | heuristic | openai — tests override to heuristic
       llm: ${SUPPORT_AI_LLM:gemini}
-      top-k: ${SUPPORT_AI_TOP_K:6}
+      top-k: ${SUPPORT_AI_TOP_K:4}
+      # Extra Gemini call before embed — keep off unless embeddings are real + queries are hard
+      hyde-enabled: ${SUPPORT_AI_HYDE_ENABLED:false}
+      # Second vector search on top of hybrid GraphRAG — keep off to save tokens/latency
+      question-answer-advisor-enabled: ${SUPPORT_AI_QA_ADVISOR_ENABLED:false}
+    sop:
+      directory-ingestion:
+        # Auto-scan docs/sops/*.md (or classpath:docs/sops) on startup via SopDirectoryIngestionRunner.
+        enabled: ${INVSYS_SOP_DIRECTORY_INGESTION_ENABLED:true}
 
 springdoc:
   api-docs:

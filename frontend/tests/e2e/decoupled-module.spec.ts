@@ -148,4 +148,57 @@ test.describe('Decoupled chatbot module', () => {
       await picker.close();
     }
   });
+
+  test('Test C — interactive Action Draft card Approve & Execute', async ({ browser }, testInfo) => {
+    test.skip(
+      testInfo.project.name === 'Mobile-Scanner',
+      'Desktop Support Co-Pilot generative UI',
+    );
+
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      let draftExecuteHits = 0;
+      await manager.page.route('**/api/v1/support/chat', async (route) => {
+        const body = [
+          'event:token',
+          'data: I can start that cycle count.',
+          '',
+          'event:done',
+          'data: {"ok":true,"actionDraft":{"title":"Generate cycle count for Aisle-4","description":"Creates a count worksheet for Aisle-4.","targetEndpoint":"/api/v1/cycle-counts","httpMethod":"POST","payload":{"supportAction":"generateCycleCount","zoneId":"Aisle-4"}}}',
+          '',
+        ].join('\n');
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body,
+        });
+      });
+      await manager.page.route('**/api/v1/support/actions/draft-execute', async (route) => {
+        draftExecuteHits += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, cycleCountId: 'cc-e2e-1', message: 'Cycle count ready' }),
+        });
+      });
+
+      await manager.page.goto('/cycle-counts');
+      await completeScannerPin(manager.page);
+      await dismissOnboardingTourIfPresent(manager.page);
+
+      await manager.page.getByTestId('support-assistant-fab').click();
+      await expect(manager.page.getByTestId('support-assistant-panel')).toBeVisible();
+      await manager.page.getByTestId('support-assistant-input').fill('Generate cycle count for zone Aisle-4');
+      await manager.page.getByTestId('support-assistant-send').click();
+
+      const draft = manager.page.getByTestId('support-action-draft');
+      await expect(draft).toBeVisible({ timeout: 20_000 });
+      await expect(draft).toContainText(/Aisle-4/i);
+      await manager.page.getByTestId('support-draft-approve').click();
+      await expect(manager.page.getByTestId('support-draft-approved')).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() => draftExecuteHits).toBeGreaterThan(0);
+    } finally {
+      await manager.close();
+    }
+  });
 });

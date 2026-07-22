@@ -40,9 +40,12 @@ public final class SupportSystemPromptBuilder {
                 ? "AUTHENTICATED"
                 : roles.stream().map(r -> r.toUpperCase(Locale.ROOT)).collect(Collectors.joining(", "));
         String routeLabel = route == null || route.isBlank() ? "/" : route;
-        String fragments = retrieved.stream()
-                .map(c -> "### " + c.title() + "\n" + c.body())
-                .collect(Collectors.joining("\n\n"));
+        String fragments = retrieved == null
+                ? ""
+                : retrieved.stream()
+                        // Prefer full parent_content over truncated child fragments for generation.
+                        .map(c -> "### " + c.title() + "\n" + c.promptBody())
+                        .collect(Collectors.joining("\n\n"));
 
         StringBuilder roleRules = new StringBuilder();
         if (has(roles, "PICKER") && exclusivePicker(roles)) {

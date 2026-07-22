@@ -1,5 +1,7 @@
 package com.invsys.support;
 
+import com.invsys.chatbot.service.QueryRewriterService;
+
 import com.invsys.support.tools.SupportCopilotReadService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,7 @@ class SupportChatServiceMultimodalTest {
     @Mock SupportBottleneckService bottleneckService;
     @Mock SupportActionDraftExecutor draftExecutor;
     @Mock ObjectProvider<List<ToolCallback>> readToolCallbacks;
+    @Mock ObjectProvider<QueryRewriterService> queryRewriter;
 
     HashEmbeddingModel embeddingModel = new HashEmbeddingModel();
     SupportAiProperties properties = new SupportAiProperties();
@@ -60,12 +63,13 @@ class SupportChatServiceMultimodalTest {
         lenient().when(readToolCallbacks.getIfAvailable()).thenReturn(List.of());
         lenient().when(vectorStore.getIfAvailable()).thenReturn(null);
         lenient().when(chatMemory.getIfAvailable()).thenReturn(null);
+        lenient().when(queryRewriter.getIfAvailable()).thenReturn(null);
         lenient().when(escalationContext.consumeCard()).thenReturn(java.util.Optional.empty());
         lenient().when(readService.formatLiveFactsForPrompt(anyString(), any())).thenReturn("");
         lenient().when(bottleneckService.detectProactiveInsight(anyString())).thenReturn(null);
         lenient().when(graphRepository.retrieveWithGraph(anyList(), anyInt()))
                 .thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        lenient().when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "damage-label",
                         "Damaged label",
@@ -85,7 +89,8 @@ class SupportChatServiceMultimodalTest {
                 draftExecutor,
                 readToolCallbacks,
                 vectorStore,
-                chatMemory);
+                chatMemory,
+                queryRewriter);
     }
 
     @Test

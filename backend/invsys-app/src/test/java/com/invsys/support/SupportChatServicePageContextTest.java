@@ -1,5 +1,7 @@
 package com.invsys.support;
 
+import com.invsys.chatbot.service.QueryRewriterService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +41,7 @@ class SupportChatServicePageContextTest {
     @Mock SupportBottleneckService bottleneckService;
     @Mock SupportActionDraftExecutor draftExecutor;
     @Mock ObjectProvider<List<ToolCallback>> readToolCallbacks;
+    @Mock ObjectProvider<QueryRewriterService> queryRewriter;
 
     HashEmbeddingModel embeddingModel = new HashEmbeddingModel();
     SupportAiProperties properties = new SupportAiProperties();
@@ -54,6 +57,7 @@ class SupportChatServicePageContextTest {
         lenient().when(readToolCallbacks.getIfAvailable()).thenReturn(List.of());
         lenient().when(vectorStore.getIfAvailable()).thenReturn(null);
         lenient().when(chatMemory.getIfAvailable()).thenReturn(null);
+        lenient().when(queryRewriter.getIfAvailable()).thenReturn(null);
         lenient().when(escalationContext.consumeCard()).thenReturn(java.util.Optional.empty());
         lenient().when(readService.formatLiveFactsForPrompt(anyString(), any())).thenReturn("");
         lenient().when(bottleneckService.detectProactiveInsight(anyString())).thenReturn(null);
@@ -74,7 +78,8 @@ class SupportChatServicePageContextTest {
                 draftExecutor,
                 readToolCallbacks,
                 vectorStore,
-                chatMemory);
+                chatMemory,
+                queryRewriter);
     }
 
     @Test
@@ -88,7 +93,7 @@ class SupportChatServicePageContextTest {
 
     @Test
     void pageContextGroundsReversalAnswer() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt())).thenReturn(List.of());
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt())).thenReturn(List.of());
 
         String message = """
                 System Context: The user is currently on the Sales Orders page. \

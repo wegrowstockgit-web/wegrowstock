@@ -1,5 +1,7 @@
 package com.invsys.support;
 
+import com.invsys.chatbot.service.QueryRewriterService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +45,7 @@ class SupportChatServiceTest {
     @Mock SupportBottleneckService bottleneckService;
     @Mock SupportActionDraftExecutor draftExecutor;
     @Mock ObjectProvider<List<ToolCallback>> readToolCallbacks;
+    @Mock ObjectProvider<QueryRewriterService> queryRewriter;
 
     HashEmbeddingModel embeddingModel = new HashEmbeddingModel();
     SupportAiProperties properties = new SupportAiProperties();
@@ -58,6 +61,7 @@ class SupportChatServiceTest {
         lenient().when(readToolCallbacks.getIfAvailable()).thenReturn(List.of());
         lenient().when(vectorStore.getIfAvailable()).thenReturn(null);
         lenient().when(chatMemory.getIfAvailable()).thenReturn(null);
+        lenient().when(queryRewriter.getIfAvailable()).thenReturn(null);
         lenient().when(escalationContext.consumeCard()).thenReturn(java.util.Optional.empty());
         lenient().when(readService.formatLiveFactsForPrompt(anyString(), any())).thenReturn("");
         lenient().when(bottleneckService.detectProactiveInsight(anyString())).thenReturn(null);
@@ -78,12 +82,13 @@ class SupportChatServiceTest {
                 draftExecutor,
                 readToolCallbacks,
                 vectorStore,
-                chatMemory);
+                chatMemory,
+                queryRewriter);
     }
 
     @Test
     void pickerInboundOmitsDesktopPoCreation() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "picker-inbound-receive",
                         "Inbound receive on the scanner",
@@ -100,7 +105,7 @@ class SupportChatServiceTest {
 
     @Test
     void b2bCustomerCannotSeeInternalAllocations() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "b2b-showroom-orders",
                         "B2B showroom",
@@ -118,7 +123,7 @@ class SupportChatServiceTest {
 
     @Test
     void warehouseManagerDamagedItemMentionsExceptionAndAdjust() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "manager-damaged-exception",
                         "Damaged item",
@@ -135,7 +140,7 @@ class SupportChatServiceTest {
 
     @Test
     void managerCycleCountEmitsActionButton() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt())).thenReturn(List.of());
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt())).thenReturn(List.of());
 
         List<SupportActionProposal> actions = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
@@ -163,7 +168,7 @@ class SupportChatServiceTest {
                 "office-allocate-wave",
                 "Allocate",
                 "Allocate sales orders then release the wave.");
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt())).thenReturn(List.of(seed));
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt())).thenReturn(List.of(seed));
         when(graphRepository.retrieveWithGraph(anyList(), anyInt())).thenReturn(List.of(seed, neighbor));
 
         String answer = ask(
@@ -186,7 +191,7 @@ class SupportChatServiceTest {
 
     @Test
     void liveCqrsFactsAreInjectedIntoHeuristicAnswers() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt())).thenReturn(List.of());
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt())).thenReturn(List.of());
         when(readService.formatLiveFactsForPrompt(anyString(), any()))
                 .thenReturn("Live ATP for SKU WIDGET-A: on-hand=12, reserved=2, available-to-promise=10");
 
@@ -202,7 +207,7 @@ class SupportChatServiceTest {
 
     @Test
     void offlineConflictMentionsParkingSpace() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "ops-offline-mutation-parking",
                         "Offline scans that need manager review",
@@ -220,7 +225,7 @@ class SupportChatServiceTest {
 
     @Test
     void skipAndFlagMentionsExceptionService() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "ops-skip-and-flag-exceptions",
                         "Skip & Flag",
@@ -238,7 +243,7 @@ class SupportChatServiceTest {
 
     @Test
     void crossDockMentionsStagingDivert() {
-        when(repository.searchSimilar(any(), anyList(), anyString(), anyInt()))
+        when(repository.searchHybrid(any(), any(), anyList(), anyString(), anyInt()))
                 .thenReturn(List.of(chunk(
                         "ops-cross-dock-intercept",
                         "Cross-dock",
@@ -251,6 +256,30 @@ class SupportChatServiceTest {
 
         assertThat(answer).containsIgnoringCase("staging");
         assertThat(answer).doesNotContain("CrossDockService");
+    }
+
+    @Test
+    void rewriteQueryForRetrievalSkipsHydeWhenDisabledEvenIfBeanPresent() {
+        properties.setHydeEnabled(false);
+        QueryRewriterService rewriter = org.mockito.Mockito.mock(QueryRewriterService.class);
+        // Provider must not be consulted when the feature flag is off.
+        lenient().when(queryRewriter.getIfAvailable()).thenReturn(rewriter);
+
+        assertThat(service.rewriteQueryForRetrieval("How do I resolve these holds?"))
+                .isEqualTo("How do I resolve these holds?");
+        org.mockito.Mockito.verify(queryRewriter, org.mockito.Mockito.never()).getIfAvailable();
+        org.mockito.Mockito.verifyNoInteractions(rewriter);
+    }
+
+    @Test
+    void rewriteQueryForRetrievalUsesHydeWhenEnabled() {
+        properties.setHydeEnabled(true);
+        QueryRewriterService rewriter = org.mockito.Mockito.mock(QueryRewriterService.class);
+        when(queryRewriter.getIfAvailable()).thenReturn(rewriter);
+        when(rewriter.rewriteForRetrieval("holds?")).thenReturn("Release credit hold then unallocate.");
+
+        assertThat(service.rewriteQueryForRetrieval("holds?"))
+                .isEqualTo("Release credit hold then unallocate.");
     }
 
     @Test

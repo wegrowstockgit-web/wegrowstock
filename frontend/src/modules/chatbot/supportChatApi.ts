@@ -7,7 +7,33 @@ import {
   type RouteKnowledge,
   type RouteKnowledgeComponent,
 } from '@/lib/pageKnowledge';
+import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { useOfflineStore } from '@/stores/offlineStore';
+import { useScannerLockStore } from '@/stores/scannerLockStore';
 import type { PageStateSnapshot } from './usePageStateSnapshot';
+
+/** Live Zustand telemetry injected into every support chat request. */
+export function injectZustandTelemetry(
+  pageState: Record<string, unknown>,
+): Record<string, unknown> {
+  const warehouse = useActiveWarehouseStore.getState();
+  const offline = useOfflineStore.getState();
+  const scanner = useScannerLockStore.getState();
+  const quarantinedMutationsCount = offline.quarantinedMutations?.length ?? 0;
+  return {
+    ...pageState,
+    activeWarehouseId: pageState.activeWarehouseId ?? warehouse.warehouseId ?? null,
+    activeWarehouseName:
+      pageState.activeWarehouseName
+      ?? warehouse.warehouse?.name
+      ?? null,
+    lockReason: pageState.lockReason ?? warehouse.lockReason ?? null,
+    quarantinedMutationsCount:
+      pageState.quarantinedMutationsCount ?? quarantinedMutationsCount,
+    quarantineCount: pageState.quarantineCount ?? quarantinedMutationsCount,
+    isDeviceLocked: pageState.isDeviceLocked ?? scanner.isLocked ?? false,
+  };
+}
 
 export interface SupportActionButton {
   type: 'action_button';
@@ -190,8 +216,11 @@ export async function streamSupportChat(
         userRoles: [...userRoles],
       };
   // Drop null/undefined so Jackson → Map.copyOf on the API never NPEs.
+  // Deep-inject live warehouse / offline / scanner lock telemetry for zero-click awareness.
   const pageState = Object.fromEntries(
-    Object.entries(rawPageState).filter(([, v]) => v !== null && v !== undefined),
+    Object.entries(injectZustandTelemetry(rawPageState as Record<string, unknown>)).filter(
+      ([, v]) => v !== null && v !== undefined,
+    ),
   );
   const recentBreadcrumbs = Array.isArray(
     (rawPageState as { recentBreadcrumbs?: unknown }).recentBreadcrumbs,

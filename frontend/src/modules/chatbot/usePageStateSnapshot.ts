@@ -4,6 +4,7 @@ import { useSessionRoles, useSessionStore } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useOfflineStore } from '@/stores/offlineStore';
 import { useNetworkSyncStore } from '@/stores/networkSyncStore';
+import { useScannerLockStore } from '@/stores/scannerLockStore';
 import { getFreshSupportNetworkError } from './supportNetworkTelemetry';
 import { useUiActionTrackerStore, type UiActionBreadcrumb } from '@/stores/uiActionTrackerStore';
 
@@ -19,6 +20,8 @@ export type PageStateSnapshot = {
   userRoles: string[];
   activeWarehouseId: string | null;
   activeWarehouseName: string | null;
+  /** Why the warehouse context is locked (JWT single / hardware). */
+  lockReason: string | null;
   activeFilter: string | null;
   activeTab: string | null;
   /** Network status from the sync store. */
@@ -26,6 +29,10 @@ export type PageStateSnapshot = {
   /** @deprecated alias of networkPhase */
   networkState: 'offline' | 'syncing' | 'online';
   quarantineCount: number;
+  /** Alias used by Co-Pilot telemetry injection. */
+  quarantinedMutationsCount: number;
+  /** Scanner PIN / idle lock gate. */
+  isDeviceLocked: boolean;
   /** W3C / request trace id from the last failed API call (or session request id). */
   trace_id: string | null;
   lastHttpErrorStatus: number | null;
@@ -52,7 +59,9 @@ export function usePageStateSnapshot(): PageStateSnapshot {
   const userRoles = useSessionRoles();
   const warehouseId = useActiveWarehouseStore((s) => s.warehouseId);
   const warehouseName = useActiveWarehouseStore((s) => s.warehouse?.name ?? null);
+  const lockReason = useActiveWarehouseStore((s) => s.lockReason);
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
+  const isDeviceLocked = useScannerLockStore((s) => s.isLocked);
   const lastRequestId = useSessionStore((s) => s.lastRequestId);
   const online = useNetworkSyncStore((s) => s.online);
   const syncing = useNetworkSyncStore((s) => s.syncing);
@@ -93,11 +102,14 @@ export function usePageStateSnapshot(): PageStateSnapshot {
       userRoles: [...userRoles],
       activeWarehouseId: warehouseId,
       activeWarehouseName: warehouseName,
+      lockReason,
       activeFilter: filterParts.length > 0 ? filterParts.join('&') : null,
       activeTab: tab,
       networkPhase,
       networkState: networkPhase,
       quarantineCount,
+      quarantinedMutationsCount: quarantineCount,
+      isDeviceLocked,
       trace_id,
       lastHttpErrorStatus: networkError?.status ?? null,
       lastHttpErrorMessage: networkError?.message ?? null,
@@ -109,7 +121,9 @@ export function usePageStateSnapshot(): PageStateSnapshot {
     userRoles,
     warehouseId,
     warehouseName,
+    lockReason,
     quarantineCount,
+    isDeviceLocked,
     online,
     syncing,
     pendingCount,

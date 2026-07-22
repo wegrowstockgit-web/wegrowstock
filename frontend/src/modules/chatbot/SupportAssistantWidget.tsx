@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Camera, MessageCircle, Send, X } from 'lucide-react';
+import { Bot, Camera, MessageCircle, Mic, MicOff, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useSessionStore, useSessionRoles } from '@/stores/session';
@@ -16,6 +16,9 @@ import {
   type SupportActionDraft,
   type SupportStreamAction,
 } from './supportChatApi';
+import { ActionDraftCard } from './components/ActionDraftCard';
+import { ChatMessageBubble } from './components/ChatMessageBubble';
+import { useVoiceAssistant } from './hooks/useVoiceAssistant';
 import { SupportMarkdown } from './supportMarkdown';
 import { usePageStateSnapshot } from './usePageStateSnapshot';
 import { expandSidebarForPath, spotlightSelector } from './supportSpotlight';
@@ -68,10 +71,38 @@ export function SupportAssistantWidget() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pttRef = useRef<HTMLButtonElement>(null);
 
+  const onVoiceTranscript = useCallback((text: string) => {
+    setInput(text);
+  }, []);
+  const { supported: voiceSupported, listening, toggleListening, speak, bindPushToTalk } =
+    useVoiceAssistant({
+      onTranscript: onVoiceTranscript,
+      onFinalTranscript: (text) => setInput(text),
+    });
+
+  useEffect(() => bindPushToTalk(pttRef.current), [bindPushToTalk]);
+
+  const lastSpokenIdxRef = useRef(-1);
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
-  }, [transcript, open]);
+    const lastIdx = transcript.length - 1;
+    const last = transcript[lastIdx];
+    if (
+      last?.role === 'assistant'
+      && lastIdx !== lastSpokenIdxRef.current
+      && (last.actionDraft || (last.actions && last.actions.length > 0))
+      && last.text
+      && voiceSupported
+    ) {
+      lastSpokenIdxRef.current = lastIdx;
+      speak(last.text.replace(/\*\*/g, '').slice(0, 280));
+      document
+        .querySelector('[data-testid="support-action-draft"], [data-testid="support-action-chip"]')
+        ?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [transcript, open, speak, voiceSupported]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -445,7 +476,7 @@ export function SupportAssistantWidget() {
             'fixed z-[70] flex flex-col overflow-hidden border border-border bg-surface-raised shadow-elevated',
             'inset-x-0 bottom-0 max-h-[min(70dvh,32rem)] rounded-t-2xl',
             'sm:inset-auto sm:bottom-[max(1.25rem,env(safe-area-inset-bottom))] sm:right-[max(1.25rem,env(safe-area-inset-right))]',
-            'sm:h-[28rem] sm:w-[22rem] sm:max-h-none sm:rounded-2xl',
+            'sm:h-[32rem] sm:w-[24rem] sm:max-h-none sm:rounded-2xl',
           )}
           data-testid="support-assistant-panel"
           role="dialog"
@@ -468,12 +499,20 @@ export function SupportAssistantWidget() {
           ) : null}
 
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-text">Operations copilot</p>
-              <p className="text-xs text-text-muted">
-                {roles.join(', ') || 'Signed in'} · {location.pathname}
-                {pageState.networkPhase !== 'online' ? ` · ${pageState.networkPhase}` : ''}
-              </p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-accent/10 text-accent"
+                aria-hidden
+              >
+                <Bot className="h-4 w-4" strokeWidth={2.25} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-text">Operations copilot</p>
+                <p className="truncate text-xs text-text-muted">
+                  {roles.join(', ') || 'Signed in'} · {location.pathname}
+                  {pageState.networkPhase !== 'online' ? ` · ${pageState.networkPhase}` : ''}
+                </p>
+              </div>
             </div>
             <Button
               type="button"
@@ -487,14 +526,18 @@ export function SupportAssistantWidget() {
             </Button>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-background/40 px-3 py-3 sm:px-4">
             {transcript.length === 0 && (
-              <div className="space-y-2 text-sm text-text-muted">
-                <p>
-                  Ask how to receive, allocate, handle damage, or reverse a mistake. Attach a photo
-                  of a label or damaged item for visual help.
-                </p>
-                <div className="flex flex-wrap gap-2">
+              <div className="space-y-3">
+                <ChatMessageBubble role="assistant">
+                  <SupportMarkdown
+                    text={
+                      'Ask how to **receive**, **allocate**, handle damage, or reverse a mistake.\n\n'
+                      + 'Attach a photo of a label or damaged item for visual help.'
+                    }
+                  />
+                </ChatMessageBubble>
+                <div className="flex flex-wrap gap-2 pl-10">
                   {(Object.keys(TRAINING_SCENARIOS) as TrainingScenarioId[]).map((id) => (
                     <Button
                       key={id}
@@ -522,81 +565,46 @@ export function SupportAssistantWidget() {
             )}
             {transcript.map((line, i) => (
               <div key={`${line.role}-${i}`} className="space-y-2">
-                <div
-                  className={cn(
-                    'rounded-lg px-3 py-2',
-                    line.role === 'user'
-                      ? 'ml-6 bg-accent/15 text-text text-sm whitespace-pre-wrap'
-                      : 'mr-4 bg-surface-overlay text-text',
-                  )}
-                  data-testid={line.role === 'assistant' ? 'support-assistant-reply' : undefined}
+                <ChatMessageBubble
+                  role={line.role}
+                  streaming={
+                    line.role === 'assistant'
+                    && !line.text
+                    && busy
+                    && i === transcript.length - 1
+                  }
                 >
                   {line.role === 'assistant' ? (
-                    line.text ? (
-                      <SupportMarkdown text={line.text} />
-                    ) : busy && i === transcript.length - 1 ? (
-                      <span className="text-sm text-text-muted">…</span>
-                    ) : null
+                    line.text ? <SupportMarkdown text={line.text} /> : null
                   ) : (
                     line.text
                   )}
-                </div>
+                </ChatMessageBubble>
 
                 {line.actionDraft && line.draftStatus !== 'cancelled' ? (
-                  <div
-                    className={cn(
-                      'ml-2 rounded-lg border border-accent/30 bg-accent/10 p-3',
-                      line.draftStatus === 'approved' && 'border-success/40 bg-success/10',
-                    )}
-                    data-testid="support-action-draft"
-                  >
-                    <p className="text-sm font-semibold text-text">{line.actionDraft.title}</p>
-                    <p className="mt-1 text-sm text-text-muted">{line.actionDraft.description}</p>
-                    {line.draftStatus === 'approved' ? (
-                      <p className="mt-2 text-xs font-semibold text-success" data-testid="support-draft-approved">
-                        ✓ Executed
-                      </p>
-                    ) : line.draftStatus === 'failed' ? (
-                      <p className="mt-2 text-xs font-semibold text-danger" data-testid="support-draft-failed">
-                        Could not execute — check the zone or try the on-screen button.
-                      </p>
-                    ) : (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          data-testid="support-draft-approve"
-                          disabled={executing != null}
-                          onClick={() => void approveDraft(i, line.actionDraft!)}
-                        >
-                          {executing === `draft:${i}` ? 'Working…' : 'Approve & Execute'}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          data-testid="support-draft-cancel"
-                          onClick={() =>
-                            setTranscript((t) => {
-                              const copy = [...t];
-                              const cur = copy[i];
-                              if (cur?.role === 'assistant') {
-                                copy[i] = { ...cur, draftStatus: 'cancelled', actionDraft: null };
-                              }
-                              return copy;
-                            })
+                  <div className="pl-10">
+                    <ActionDraftCard
+                      draft={line.actionDraft}
+                      status={line.draftStatus ?? 'pending'}
+                      busy={executing === `draft:${i}`}
+                      onApprove={(draft) => void approveDraft(i, draft)}
+                      onCancel={() =>
+                        setTranscript((t) => {
+                          const copy = [...t];
+                          const cur = copy[i];
+                          if (cur?.role === 'assistant') {
+                            copy[i] = { ...cur, draftStatus: 'cancelled', actionDraft: null };
                           }
-                        >
-                          Dismiss
-                        </Button>
-                      </div>
-                    )}
+                          return copy;
+                        })
+                      }
+                    />
                   </div>
                 ) : null}
 
                 {line.escalation ? (
                   <div
-                    className="ml-2 rounded-lg border border-success/40 bg-success/10 p-3"
+                    className="ml-10 rounded-lg border border-success/40 bg-success/10 p-3"
                     data-testid="support-escalation-card"
                   >
                     <p className="text-sm font-semibold text-text">Escalation Successful</p>
@@ -609,46 +617,50 @@ export function SupportAssistantWidget() {
 
                 {line.role === 'assistant' && line.text.startsWith('✓ Executed') ? (
                   <span
-                    className="ml-2 inline-flex rounded-full border border-success/40 bg-success/15 px-2.5 py-1 text-xs font-semibold text-success"
+                    className="ml-10 inline-flex rounded-full border border-success/40 bg-success/15 px-2.5 py-1 text-xs font-semibold text-success"
                     data-testid="support-draft-executed-badge"
                   >
                     ✓ Executed
                   </span>
                 ) : null}
 
-                {line.actions?.map((action) =>
-                  action.type === 'action_chip' ? (
-                    <Button
-                      key={`${i}-chip-${action.action}-${action.label}`}
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="ml-2 min-h-11 rounded-full px-4 touch-manipulation"
-                      data-testid="support-action-chip"
-                      data-action={action.action}
-                      data-target={action.target}
-                      disabled={busy}
-                      onClick={() => runChip(action)}
-                    >
-                      {action.label}
-                    </Button>
-                  ) : (
-                    <Button
-                      key={`${i}-${action.action}-${action.label}`}
-                      type="button"
-                      size="sm"
-                      className="ml-2 min-h-11 touch-manipulation"
-                      data-testid="support-action-button"
-                      data-action={action.action}
-                      disabled={executing != null}
-                      onClick={() => void runPlatformAction(action, i)}
-                    >
-                      {executing === `${i}:${action.action}` ? 'Running…' : action.label}
-                    </Button>
-                  ),
-                )}
+                {(line.actions?.length ?? 0) > 0 ? (
+                  <div className="flex flex-wrap gap-2 pl-10">
+                    {line.actions?.map((action) =>
+                      action.type === 'action_chip' ? (
+                        <Button
+                          key={`${i}-chip-${action.action}-${action.label}`}
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="min-h-11 rounded-full px-4 touch-manipulation"
+                          data-testid="support-action-chip"
+                          data-action={action.action}
+                          data-target={action.target}
+                          disabled={busy}
+                          onClick={() => runChip(action)}
+                        >
+                          {action.label}
+                        </Button>
+                      ) : (
+                        <Button
+                          key={`${i}-${action.action}-${action.label}`}
+                          type="button"
+                          size="sm"
+                          className="min-h-11 touch-manipulation"
+                          data-testid="support-action-button"
+                          data-action={action.action}
+                          disabled={executing != null}
+                          onClick={() => void runPlatformAction(action, i)}
+                        >
+                          {executing === `${i}:${action.action}` ? 'Running…' : action.label}
+                        </Button>
+                      ),
+                    )}
+                  </div>
+                ) : null}
                 {line.followUps && line.followUps.length > 0 && (
-                  <div className="ml-2 flex flex-wrap gap-2" data-testid="support-follow-ups">
+                  <div className="flex flex-wrap gap-2 pl-10" data-testid="support-follow-ups">
                     {line.followUps.map((q) => (
                       <button
                         key={q}
@@ -742,10 +754,25 @@ export function SupportAssistantWidget() {
             >
               <Camera className="h-4 w-4" />
             </Button>
+            {voiceSupported ? (
+              <Button
+                ref={pttRef}
+                type="button"
+                variant="secondary"
+                className={cn('min-h-12 min-w-12', listening && 'border-accent bg-accent/15')}
+                aria-label={listening ? 'Stop voice input' : 'Push to talk'}
+                aria-pressed={listening}
+                data-testid="support-voice-toggle"
+                disabled={busy}
+                onClick={toggleListening}
+              >
+                {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
+            ) : null}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question…"
+              placeholder={listening ? 'Listening…' : 'Ask a question…'}
               data-testid="support-assistant-input"
               className="min-h-12 flex-1 rounded-md border border-border bg-background px-3 text-base text-text sm:text-sm"
               enterKeyHint="send"

@@ -36,6 +36,10 @@ invsys:
   support:
     ai:
       llm: ${SUPPORT_AI_LLM:heuristic}
+    sop:
+      directory-ingestion:
+        # Hierarchical SOP ingest is expensive; enable only in dedicated ITs.
+        enabled: false
   jwt:
     access-token-minutes: 15
     terminal-switch-token-minutes: 5
