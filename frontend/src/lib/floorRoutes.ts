@@ -10,6 +10,8 @@ export function isFloorRoute(pathname: string): boolean {
     pathname.startsWith('/returns/receive') ||
     pathname.startsWith('/issue-supplies') ||
     pathname.startsWith('/replenishments') ||
+    pathname.startsWith('/cluster-pick') ||
+    pathname.startsWith('/pallet-manifests') ||
     pathname.startsWith('/field')
   );
 }

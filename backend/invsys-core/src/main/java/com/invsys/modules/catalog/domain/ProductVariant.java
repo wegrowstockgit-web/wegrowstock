@@ -41,6 +41,9 @@ public class ProductVariant extends TenantScopedEntity {
     @Column(name = "reorder_qty", nullable = false)
     private BigDecimal reorderQty = BigDecimal.ZERO;
 
+    @Column(name = "safety_stock", nullable = false)
+    private BigDecimal safetyStock = BigDecimal.ZERO;
+
     @Column(name = "avg_cost", nullable = false)
     private BigDecimal avgCost = BigDecimal.ZERO;
 
@@ -189,6 +192,14 @@ public class ProductVariant extends TenantScopedEntity {
 
     public void setReorderQty(BigDecimal reorderQty) {
         this.reorderQty = reorderQty;
+    }
+
+    public BigDecimal getSafetyStock() {
+        return safetyStock;
+    }
+
+    public void setSafetyStock(BigDecimal safetyStock) {
+        this.safetyStock = safetyStock != null ? safetyStock : BigDecimal.ZERO;
     }
 
     public BigDecimal getAvgCost() {

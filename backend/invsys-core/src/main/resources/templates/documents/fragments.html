@@ -1,0 +1,109 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<style th:fragment="styles" type="text/css">
+        @page {
+            size: letter;
+            margin: 1.2cm 1.4cm 1.8cm 1.4cm;
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-family: Helvetica, Arial, sans-serif;
+                font-size: 8pt;
+                color: #64748b;
+            }
+        }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 10pt;
+            color: #0f172a;
+            line-height: 1.35;
+        }
+        .header {
+            border-bottom: 2px solid #1d70cb;
+            padding-bottom: 10px;
+            margin-bottom: 18px;
+        }
+        .brand {
+            font-size: 16pt;
+            font-weight: bold;
+            color: #1d70cb;
+        }
+        .muted { color: #64748b; font-size: 9pt; }
+        .doc-title {
+            font-size: 18pt;
+            font-weight: bold;
+            margin: 0 0 6px 0;
+        }
+        table.lines {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+        }
+        table.lines th {
+            background-color: #1d70cb;
+            color: #ffffff;
+            text-align: left;
+            padding: 6px 8px;
+            font-size: 9pt;
+        }
+        table.lines td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 6px 8px;
+            font-size: 9pt;
+        }
+        .right { text-align: right; }
+        .totals {
+            margin-top: 12px;
+            width: 45%;
+            float: right;
+        }
+        .totals td { padding: 3px 0; }
+        .totals .grand {
+            font-weight: bold;
+            font-size: 11pt;
+            border-top: 1px solid #cbd5e1;
+        }
+        .footer-note {
+            clear: both;
+            margin-top: 28px;
+            padding-top: 8px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 8pt;
+            color: #64748b;
+        }
+        .meta-table td { padding: 2px 12px 2px 0; vertical-align: top; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: #dbeafe;
+            color: #1d70cb;
+            font-size: 8pt;
+            font-weight: bold;
+        }
+</style>
+</head>
+<body>
+<div th:fragment="header" class="header">
+    <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td width="55%" valign="top">
+                <div class="brand" th:text="${tenantName}">weGrowStock</div>
+                <div class="muted" th:utext="${tenantAddressHtml}">Address</div>
+            </td>
+            <td width="45%" valign="top" align="right">
+                <div class="doc-title" th:text="${documentTitle}">Document</div>
+                <div class="muted" th:text="${documentNumber}">DOC-0001</div>
+                <div class="badge" th:if="${status}" th:text="${status}">OPEN</div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div th:fragment="footer" class="footer-note"
+     th:text="${legalDisclaimer}">
+    Confidential business document. Ledger history is append-only.
+</div>
+</body>
+</html>

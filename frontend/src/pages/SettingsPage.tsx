@@ -41,6 +41,7 @@ import { AccountingSync } from '@/features/settings/AccountingSync';
 import { Integrations } from '@/features/settings/Integrations';
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { ActivityTimeline } from '@/features/audit/ActivityTimeline';
+import { RolePermissionsMatrix } from '@/features/settings/RolePermissionsMatrix';
 import { AuditLogTable } from '@/features/audit/AuditLogTable';
 import { HistoricalArchivesPanel } from '@/features/audit/HistoricalArchivesPanel';
 import { useToast } from '@/components/ui/Toast';
@@ -692,6 +693,12 @@ function UsersTab() {
               })}
             </TableBody>
           </Table>
+
+          {canManageOrg && (
+            <div className="pt-2">
+              <RolePermissionsMatrix />
+            </div>
+          )}
         </div>
       )}
       <InviteUserModal open={inviteOpen} onClose={() => setInviteOpen(false)} />

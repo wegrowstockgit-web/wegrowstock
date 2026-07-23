@@ -847,7 +847,9 @@ export interface Invoice {
   salesOrderId?: string;
 }
 
-export interface InvoiceDetail extends Invoice {}
+export interface InvoiceDetail extends Invoice {
+  documentUrl?: string | null;
+}
 
 export interface Customer {
   id: string;
@@ -1214,4 +1216,90 @@ export interface VanStockLevel {
   onHand: number;
   allocated: number;
   available: number;
+}
+
+export interface ThermalPrinter {
+  id: string;
+  name: string;
+  printerType: 'PRINTNODE' | 'DIRECT_SOCKET';
+  isDefault: boolean;
+  locationId?: string | null;
+}
+
+export interface ClusterPickStep {
+  sequenceOrder: number;
+  sku: string;
+  qty: number;
+  slotIndex: number;
+  toteBarcode: string;
+  locationPath: string;
+  instruction: string;
+}
+
+export interface MrpSuggestionLine {
+  variantId: string;
+  sku: string;
+  openSalesQty: number;
+  safetyStock: number;
+  onHand: number;
+  allocated: number;
+  inboundOpenPoQty: number;
+  netRequirement: number;
+  suggestedOrderQty: number;
+  defaultSupplierId: string | null;
+  defaultSupplierName: string | null;
+  leadTimeDays: number;
+  unitCost: number;
+  capitalEstimate: number;
+}
+
+export interface MrpCalculateResult {
+  createdPurchaseOrders: Array<{ id: string; number: string; supplierId: string }>;
+  suggestions: MrpSuggestionLine[];
+}
+
+export interface PalletManifest {
+  id: string;
+  sscc18?: string | null;
+  status: 'BUILDING' | 'SEALED' | 'DISPATCHED';
+  bolNumber?: string | null;
+  carrierName?: string | null;
+  warehouseId?: string | null;
+  items?: Array<{ id: string; lpnBarcode?: string | null; lpnId?: string | null }>;
+}
+
+export interface PalletManifestSealResult {
+  id: string;
+  sscc18: string;
+  bolNumber: string;
+  status: 'SEALED' | 'DISPATCHED';
+}
+
+export type RmaQcGrade = 'GRADE_A_NEW' | 'GRADE_B_OPEN_BOX' | 'GRADE_C_DAMAGED';
+export type RmaQcDisposition = 'RESTOCK' | 'SCRAP' | 'REPAIR' | 'REFURBISH';
+
+export interface RmaQcInspection {
+  id: string;
+  returnLineId: string;
+  grade: RmaQcGrade;
+  dispositionAction: RmaQcDisposition;
+  inspectionNotes?: string | null;
+  photoAttachmentIds: string[];
+}
+
+export interface RoleDefinition {
+  id: string;
+  name: string;
+}
+
+export interface RolePermissionGrant {
+  roleId: string;
+  permissionKey: string;
+  granted: boolean;
+}
+
+export interface RolePermissionsMatrixResponse {
+  roles: RoleDefinition[];
+  permissionKeys: string[];
+  grants: RolePermissionGrant[];
 }

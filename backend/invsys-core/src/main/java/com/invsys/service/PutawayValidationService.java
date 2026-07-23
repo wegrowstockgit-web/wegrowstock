@@ -12,6 +12,7 @@ import com.invsys.core.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -39,15 +40,22 @@ public class PutawayValidationService {
     private final LocationRepository locationRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final BinCapacityValidationService binCapacityValidationService;
 
     public PutawayValidationService(ProductVariantRepository variantRepository,
                                     LocationRepository locationRepository,
                                     UserRepository userRepository,
-                                    AuditService auditService) {
+                                    AuditService auditService,
+                                    BinCapacityValidationService binCapacityValidationService) {
         this.variantRepository = variantRepository;
         this.locationRepository = locationRepository;
         this.userRepository = userRepository;
         this.auditService = auditService;
+        this.binCapacityValidationService = binCapacityValidationService;
+    }
+
+    public void validatePutaway(UUID variantId, UUID locationId, String managerOverridePin) {
+        validatePutaway(variantId, locationId, null, managerOverridePin);
     }
 
     /**
@@ -55,7 +63,7 @@ public class PutawayValidationService {
      * FATAL → ApiException 422. WARNING without PIN → ApiException 409 MANAGER_OVERRIDE_REQUIRED.
      * Successful PIN override is written to {@code audit_log}.
      */
-    public void validatePutaway(UUID variantId, UUID locationId, String managerOverridePin) {
+    public void validatePutaway(UUID variantId, UUID locationId, BigDecimal quantity, String managerOverridePin) {
         UUID tenantId = TenantContext.requireTenantId();
         ProductVariant variant = variantRepository.findById(variantId)
                 .filter(v -> tenantId.equals(v.getTenantId()))
@@ -67,6 +75,10 @@ public class PutawayValidationService {
         Finding fatal = fatalFinding(variant, location);
         if (fatal != null) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, fatal.code(), fatal.detail());
+        }
+
+        if (quantity != null) {
+            binCapacityValidationService.assertFits(locationId, variantId, quantity);
         }
 
         Finding warning = warningFinding(variant, location);

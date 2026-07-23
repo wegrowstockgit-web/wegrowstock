@@ -144,8 +144,15 @@ public class ShipmentService {
         }
 
         updateOrderStatus(order);
-        outboxService.append("SHIPMENT", shipment.getId(), "SHIPMENT_CREATED",
-                Map.of("shipmentId", shipment.getId(), "salesOrderId", salesOrderId));
+        Map<String, Object> shipmentPayload = Map.of(
+                "shipmentId", shipment.getId(),
+                "salesOrderId", salesOrderId,
+                "carrier", carrier == null ? "" : carrier,
+                "trackingNumber", trackingNumber == null ? "" : trackingNumber);
+        outboxService.append("SHIPMENT", shipment.getId(), "SHIPMENT_CREATED", shipmentPayload);
+        if ("SHIPPED".equals(shipment.getStatus())) {
+            outboxService.append("SHIPMENT", shipment.getId(), "SHIPMENT_SHIPPED", shipmentPayload);
+        }
         if ("SHIPPED".equals(order.getStatus())) {
             outboxService.append("SALES_ORDER", salesOrderId, "SALES_ORDER_SHIPPED", Map.of(
                     "salesOrderId", salesOrderId,

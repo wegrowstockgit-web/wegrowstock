@@ -1,0 +1,53 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title th:text="${documentTitle}">Packing Slip</title>
+    <style th:replace="~{documents/fragments :: styles}" type="text/css"></style>
+</head>
+<body>
+<div th:replace="~{documents/fragments :: header}"></div>
+
+<table class="meta-table" cellpadding="0" cellspacing="0">
+    <tr>
+        <td>
+            <strong>Ship to</strong><br/>
+            <span th:text="${customerName}">Customer</span><br/>
+            <span class="muted" th:utext="${customerAddressHtml}">Address</span>
+        </td>
+        <td>
+            <strong>Ship date</strong><br/>
+            <span th:text="${shipDate}">2026-07-22</span><br/><br/>
+            <strong>Carrier</strong><br/>
+            <span th:text="${carrier}">Carrier</span><br/><br/>
+            <strong th:if="${trackingNumber}">Tracking</strong><br th:if="${trackingNumber}"/>
+            <span th:if="${trackingNumber}" th:text="${trackingNumber}">1Z</span><br th:if="${salesOrderNumber}"/>
+            <strong th:if="${salesOrderNumber}">Sales order</strong><br th:if="${salesOrderNumber}"/>
+            <span th:if="${salesOrderNumber}" th:text="${salesOrderNumber}">SO-1</span>
+        </td>
+    </tr>
+</table>
+
+<table class="lines">
+    <thead>
+    <tr>
+        <th>SKU / Description</th>
+        <th class="right">Qty shipped</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="line : ${lines}">
+        <td th:text="${line.description}">SKU</td>
+        <td class="right" th:text="${line.qty}">1</td>
+    </tr>
+    </tbody>
+</table>
+
+<p class="muted" style="margin-top: 16px;">
+    Prices intentionally omitted. Verify carton contents against this slip before seal.
+</p>
+
+<div th:replace="~{documents/fragments :: footer}"></div>
+</body>
+</html>

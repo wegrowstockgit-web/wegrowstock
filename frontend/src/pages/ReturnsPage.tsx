@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Plus, RotateCcw } from 'lucide-react';
+import { ClipboardCheck, Download, Plus, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
 import type { Return, ReturnLine, SalesOrder, SalesOrderDetail } from '@/api/types';
@@ -23,6 +23,7 @@ import { DensityToggle } from '@/components/ui/DensityToggle';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
+import { RmaInspectionDrawer } from '@/features/returns/RmaInspectionDrawer';
 
 const STATUSES = [
   'ALL',
@@ -311,7 +312,15 @@ function DispositionSelect({
   );
 }
 
-function ReturnLinesTable({ lines, returnId }: { lines: ReturnLine[]; returnId: string }) {
+function ReturnLinesTable({
+  lines,
+  returnId,
+  onInspect,
+}: {
+  lines: ReturnLine[];
+  returnId: string;
+  onInspect: (line: ReturnLine) => void;
+}) {
   const { sort, toggle, sorted } = useClientSort(
     lines,
     {
@@ -339,6 +348,7 @@ function ReturnLinesTable({ lines, returnId }: { lines: ReturnLine[]; returnId: 
           <TableHead sortable sortKey="disposition" sort={sort} onSort={toggle}>
             Disposition
           </TableHead>
+          <TableHead align="right">QC</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -349,6 +359,18 @@ function ReturnLinesTable({ lines, returnId }: { lines: ReturnLine[]; returnId: 
             <TableCell mono>{line.quantityReceived}</TableCell>
             <TableCell>
               <DispositionSelect line={line} returnId={returnId} />
+            </TableCell>
+            <TableCell align="right">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                data-testid={`inspect-line-${line.id}`}
+                onClick={() => onInspect(line)}
+              >
+                <ClipboardCheck className="h-4 w-4" />
+                Inspect
+              </Button>
             </TableCell>
           </TableRow>
         ))}
@@ -363,6 +385,8 @@ export function ReturnsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inspectLine, setInspectLine] = useState<ReturnLine | null>(null);
+  const [inspectReturnId, setInspectReturnId] = useState<string | null>(null);
 
   const url =
     statusFilter === 'ALL'
@@ -475,7 +499,14 @@ export function ReturnsPage() {
                 {expandedId === rma.id && (rma.lines?.length ?? 0) > 0 && (
                   <div className="border-t border-border p-4">
                     <CardHeader title="Line items" description="Set disposition per line" />
-                    <ReturnLinesTable lines={rma.lines ?? []} returnId={rma.id} />
+                    <ReturnLinesTable
+                      lines={rma.lines ?? []}
+                      returnId={rma.id}
+                      onInspect={(line) => {
+                        setInspectReturnId(rma.id);
+                        setInspectLine(line);
+                      }}
+                    />
                   </div>
                 )}
               </Card>
@@ -484,6 +515,15 @@ export function ReturnsPage() {
         )}
       </ListPageState>
       <ReturnsCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <RmaInspectionDrawer
+        open={inspectLine != null && inspectReturnId != null}
+        onClose={() => {
+          setInspectLine(null);
+          setInspectReturnId(null);
+        }}
+        returnId={inspectReturnId ?? ''}
+        line={inspectLine}
+      />
     </div>
   );
 }

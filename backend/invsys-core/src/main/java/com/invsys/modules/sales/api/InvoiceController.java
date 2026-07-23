@@ -73,7 +73,8 @@ public class InvoiceController {
                 invoice.getTotal(),
                 invoice.getCurrency(),
                 invoice.getDueAt(),
-                invoice.getSalesOrderId());
+                invoice.getSalesOrderId(),
+                invoice.getDocumentUrl());
     }
 
     @PostMapping("/from-sales-order/{salesOrderId}")
@@ -102,7 +103,8 @@ public class InvoiceController {
             BigDecimal total,
             String currency,
             Instant dueAt,
-            UUID salesOrderId
+            UUID salesOrderId,
+            String documentUrl
     ) {
     }
 

@@ -29,7 +29,12 @@ public class EdiOutboxHandler implements com.invsys.core.integration.OutboxEvent
 
     @Override
     public List<String> eventTypes() {
-        return List.of("SALES_ORDER_CONFIRMED", "SHIPMENT_CREATED", "INVOICE_OPEN");
+        return List.of(
+                "SALES_ORDER_CONFIRMED",
+                "SHIPMENT_CREATED",
+                "SHIPMENT_SHIPPED",
+                "INVOICE_OPEN",
+                "INVOICE_PAID");
     }
 
     @Override
@@ -38,8 +43,8 @@ public class EdiOutboxHandler implements com.invsys.core.integration.OutboxEvent
         try {
             String ediType = switch (eventType) {
                 case "SALES_ORDER_CONFIRMED" -> "855";
-                case "SHIPMENT_CREATED" -> "856";
-                case "INVOICE_OPEN" -> "810";
+                case "SHIPMENT_CREATED", "SHIPMENT_SHIPPED" -> "856";
+                case "INVOICE_OPEN", "INVOICE_PAID" -> "810";
                 default -> null;
             };
             if (ediType == null) {
@@ -50,9 +55,33 @@ public class EdiOutboxHandler implements com.invsys.core.integration.OutboxEvent
                 return;
             }
             EdiTradingPartner partner = partners.get(0);
-            ediTranslationEngine.translateOutbound(partner.getId(), ediType, aggregateId, payload);
+            UUID docAggregateId = resolveAggregateId(eventType, aggregateId, payload);
+            ediTranslationEngine.translateOutbound(partner.getId(), ediType, docAggregateId, payload);
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    private static UUID resolveAggregateId(String eventType, UUID aggregateId, Map<String, Object> payload) {
+        if (payload == null) {
+            return aggregateId;
+        }
+        return switch (eventType) {
+            case "INVOICE_OPEN", "INVOICE_PAID" -> uuidFromPayload(payload, "invoiceId", aggregateId);
+            case "SHIPMENT_CREATED", "SHIPMENT_SHIPPED" -> uuidFromPayload(payload, "shipmentId", aggregateId);
+            default -> aggregateId;
+        };
+    }
+
+    private static UUID uuidFromPayload(Map<String, Object> payload, String key, UUID fallback) {
+        Object value = payload.get(key);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return UUID.fromString(String.valueOf(value));
+        } catch (IllegalArgumentException ex) {
+            return fallback;
         }
     }
 }

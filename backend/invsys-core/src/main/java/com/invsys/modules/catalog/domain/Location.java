@@ -90,6 +90,12 @@ public class Location extends TenantScopedEntity {
     @Column(name = "max_pallet_positions")
     private Integer maxPalletPositions;
 
+    @Column(name = "max_cubic_cm", precision = 19, scale = 4)
+    private BigDecimal maxCubicCm;
+
+    @Column(name = "max_weight_kg", precision = 19, scale = 4)
+    private BigDecimal maxWeightKg;
+
     public UUID getParentLocationId() {
         return parentLocationId;
     }
@@ -270,5 +276,21 @@ public class Location extends TenantScopedEntity {
 
     public void setMaxPalletPositions(Integer maxPalletPositions) {
         this.maxPalletPositions = maxPalletPositions;
+    }
+
+    public BigDecimal getMaxCubicCm() {
+        return maxCubicCm;
+    }
+
+    public void setMaxCubicCm(BigDecimal maxCubicCm) {
+        this.maxCubicCm = maxCubicCm;
+    }
+
+    public BigDecimal getMaxWeightKg() {
+        return maxWeightKg;
+    }
+
+    public void setMaxWeightKg(BigDecimal maxWeightKg) {
+        this.maxWeightKg = maxWeightKg;
     }
 }

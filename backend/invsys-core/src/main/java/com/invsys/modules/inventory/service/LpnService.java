@@ -12,6 +12,7 @@ import com.invsys.modules.inventory.repository.InventoryLevelRepository;
 import com.invsys.modules.inventory.repository.LicensePlateRepository;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import com.invsys.core.integration.OutboxService;
 import com.invsys.core.tenancy.TenantContext;
 import jakarta.persistence.EntityManager;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -39,6 +41,7 @@ public class LpnService {
     private final InventoryService inventoryService;
     private final InventoryLevelDeltaFlushRepository deltaFlushRepository;
     private final EntityManager entityManager;
+    private final OutboxService outboxService;
 
     public LpnService(LicensePlateRepository licensePlateRepository,
                       InventoryLevelRepository levelRepository,
@@ -47,7 +50,8 @@ public class LpnService {
                       AllocationRepository allocationRepository,
                       InventoryService inventoryService,
                       InventoryLevelDeltaFlushRepository deltaFlushRepository,
-                      EntityManager entityManager) {
+                      EntityManager entityManager,
+                      OutboxService outboxService) {
         this.licensePlateRepository = licensePlateRepository;
         this.levelRepository = levelRepository;
         this.locationRepository = locationRepository;
@@ -56,6 +60,7 @@ public class LpnService {
         this.inventoryService = inventoryService;
         this.deltaFlushRepository = deltaFlushRepository;
         this.entityManager = entityManager;
+        this.outboxService = outboxService;
     }
 
     /**
@@ -84,6 +89,10 @@ public class LpnService {
             lpn.setLocationId(resolvedLocationId);
             lpn.setStatus("OPEN");
             LicensePlate saved = licensePlateRepository.save(lpn);
+            outboxService.append("LICENSE_PLATE", saved.getId(), "LPN_MINTED", Map.of(
+                    "lpnId", saved.getId(),
+                    "lpnBarcode", saved.getLpnBarcode(),
+                    "locationId", saved.getLocationId() != null ? saved.getLocationId() : ""));
             return new MintedLpn(saved.getId(), saved.getLpnBarcode(), saved.getLocationId(),
                     saved.getStatus(), buildLpnZpl(saved.getLpnBarcode()));
         }

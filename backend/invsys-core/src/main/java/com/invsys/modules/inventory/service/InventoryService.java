@@ -185,7 +185,7 @@ public class InventoryService {
     public InventoryLedger receive(UUID variantId, UUID locationId, UUID lotId, String lotNumber,
                                    BigDecimal quantity, String reasonCode, String referenceType, UUID referenceId,
                                    BigDecimal unitCost, String serialCode, Map<String, Object> metadata) {
-        putawayValidationService.validatePutaway(variantId, locationId, extractManagerOverridePin(metadata));
+        putawayValidationService.validatePutaway(variantId, locationId, quantity, extractManagerOverridePin(metadata));
         ProductVariant variant = serialNumberService.requireVariant(variantId);
         serialNumberService.validateSerializedQuantity(variant, quantity);
         UUID serialId = null;
@@ -356,7 +356,7 @@ public class InventoryService {
     @Transactional
     public UUID transfer(UUID variantId, UUID fromLocationId, UUID toLocationId, UUID lotId, BigDecimal quantity,
                          String managerOverridePin) {
-        putawayValidationService.validatePutaway(variantId, toLocationId, managerOverridePin);
+        putawayValidationService.validatePutaway(variantId, toLocationId, quantity, managerOverridePin);
         validateNegative(quantity.negate(), variantId, fromLocationId, lotId);
         UUID groupId = UUID.randomUUID();
         appendMovement("TRANSFER_OUT", variantId, fromLocationId, lotId, null, quantity.negate(),
@@ -432,7 +432,7 @@ public class InventoryService {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "LPN_NO_LOCATION",
                     "License plate has no location");
         }
-        putawayValidationService.validatePutaway(variantId, lpn.getLocationId(), managerOverridePin);
+        putawayValidationService.validatePutaway(variantId, lpn.getLocationId(), quantity, managerOverridePin);
         serialNumberService.requireVariant(variantId);
         return appendMovement("RECEIVE", variantId, lpn.getLocationId(), null, lpn.getId(),
                 quantity.abs(), "LPN_RECEIVE", null, null, null, null, null, null);

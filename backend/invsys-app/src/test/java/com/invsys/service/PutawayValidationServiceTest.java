@@ -39,6 +39,7 @@ class PutawayValidationServiceTest {
     @Mock LocationRepository locationRepository;
     @Mock UserRepository userRepository;
     @Mock AuditService auditService;
+    @Mock BinCapacityValidationService binCapacityValidationService;
 
     private PutawayValidationService service;
 
@@ -46,7 +47,7 @@ class PutawayValidationServiceTest {
     void setUp() {
         TenantContext.setTenantId(TENANT);
         service = new PutawayValidationService(
-                variantRepository, locationRepository, userRepository, auditService);
+                variantRepository, locationRepository, userRepository, auditService, binCapacityValidationService);
     }
 
     @AfterEach

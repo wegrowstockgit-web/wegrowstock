@@ -1,0 +1,67 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title th:text="${documentTitle}">Invoice</title>
+    <style th:replace="~{documents/fragments :: styles}" type="text/css"></style>
+</head>
+<body>
+<div th:replace="~{documents/fragments :: header}"></div>
+
+<table class="meta-table" cellpadding="0" cellspacing="0">
+    <tr>
+        <td>
+            <strong>Bill to</strong><br/>
+            <span th:text="${customerName}">Customer</span><br/>
+            <span class="muted" th:utext="${customerAddressHtml}">Address</span><br/>
+            <span class="muted" th:if="${customerEmail}" th:text="${customerEmail}">email</span>
+        </td>
+        <td>
+            <strong>Invoice date</strong><br/>
+            <span th:text="${invoiceDate}">2026-07-22</span><br/><br/>
+            <strong>Due date</strong><br/>
+            <span th:text="${dueDate}">2026-08-21</span><br/><br/>
+            <strong th:if="${salesOrderNumber}">Sales order</strong><br th:if="${salesOrderNumber}"/>
+            <span th:if="${salesOrderNumber}" th:text="${salesOrderNumber}">SO-1</span>
+        </td>
+    </tr>
+</table>
+
+<table class="lines">
+    <thead>
+    <tr>
+        <th>Description</th>
+        <th class="right">Qty</th>
+        <th class="right">Unit price</th>
+        <th class="right">Amount</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="line : ${lines}">
+        <td th:text="${line.description}">Item</td>
+        <td class="right" th:text="${line.qty}">1</td>
+        <td class="right" th:text="${line.unitPrice}">0.00</td>
+        <td class="right" th:text="${line.amount}">0.00</td>
+    </tr>
+    </tbody>
+</table>
+
+<table class="totals" cellpadding="0" cellspacing="0">
+    <tr>
+        <td>Subtotal</td>
+        <td class="right" th:text="${subtotal}">0.00</td>
+    </tr>
+    <tr>
+        <td>Tax</td>
+        <td class="right" th:text="${tax}">0.00</td>
+    </tr>
+    <tr class="grand">
+        <td th:text="'Total (' + ${currency} + ')'">Total</td>
+        <td class="right" th:text="${total}">0.00</td>
+    </tr>
+</table>
+
+<div th:replace="~{documents/fragments :: footer}"></div>
+</body>
+</html>

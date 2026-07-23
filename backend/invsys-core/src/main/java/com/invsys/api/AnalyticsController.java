@@ -1,5 +1,7 @@
 package com.invsys.api;
 
+import com.invsys.core.security.PermissionKeys;
+import com.invsys.core.security.RequirePermission;
 import com.invsys.repository.AnalyticsRepository;
 import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.core.tenancy.TenantContext;
@@ -32,6 +34,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/valuation")
+    @RequirePermission(PermissionKeys.INVENTORY_COST_VIEW)
     public ValuationResponse valuation(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant asOfDate) {
         AnalyticsRepository.ValuationSnapshot snap = analyticsRepository.valuationAsOf(asOfDate);
@@ -39,6 +42,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/valuation/history")
+    @RequirePermission(PermissionKeys.INVENTORY_COST_VIEW)
     public ValuationHistoryResponse valuationHistory(
             @RequestParam(defaultValue = "90") int days,
             @RequestParam(defaultValue = "30") int points) {

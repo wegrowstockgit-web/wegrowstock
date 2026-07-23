@@ -49,6 +49,10 @@ public class Invoice extends TenantScopedEntity {
     @Column(name = "shipment_id")
     private UUID shipmentId;
 
+    /** Immutable archived PDF location (s3://bucket/tenant/invoices/{id}.pdf). */
+    @Column(name = "document_url")
+    private String documentUrl;
+
     public UUID getSalesOrderId() {
         return salesOrderId;
     }
@@ -135,5 +139,13 @@ public class Invoice extends TenantScopedEntity {
 
     public void setShipmentId(UUID shipmentId) {
         this.shipmentId = shipmentId;
+    }
+
+    public String getDocumentUrl() {
+        return documentUrl;
+    }
+
+    public void setDocumentUrl(String documentUrl) {
+        this.documentUrl = documentUrl;
     }
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Plus } from 'lucide-react';
+import { Download, FileText, Mail, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { Invoice, InvoiceDetail, SalesOrder } from '@/api/types';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
+import { useToast } from '@/components/ui/Toast';
 import {
   Table,
   TableBody,
@@ -177,6 +178,8 @@ function CreateInvoiceModal({ open, onClose }: { open: boolean; onClose: () => v
 export function InvoicesPage() {
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN');
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [peekInvoiceId, setPeekInvoiceId] = useState<string | null>(null);
@@ -190,6 +193,38 @@ export function InvoicesPage() {
       (await apiClient.get<InvoiceDetail>(`/api/v1/invoices/${peekInvoiceId}`)).data,
     enabled: !!peekInvoiceId,
   });
+
+  const emailMutation = useMutation({
+    mutationFn: async (invoiceId: string) =>
+      (await apiClient.post<{ sent: boolean; to: string }>(
+        `/api/v1/documents/invoice/${invoiceId}/email`,
+      )).data,
+    onSuccess: (result) => {
+      toast(`Invoice emailed to ${result.to}`, { tone: 'success' });
+      void queryClient.invalidateQueries({ queryKey: ['invoices', peekInvoiceId] });
+    },
+    onError: (err: Error) => {
+      toast(err.message || 'Could not email invoice', { tone: 'danger' });
+    },
+  });
+
+  const downloadPdf = async (invoiceId: string, number: string) => {
+    try {
+      const res = await apiClient.get(`/api/v1/documents/invoice/${invoiceId}/pdf`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${number || 'invoice'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      void queryClient.invalidateQueries({ queryKey: ['invoices', invoiceId] });
+    } catch (err) {
+      toast((err as Error).message || 'Could not download PDF', { tone: 'danger' });
+    }
+  };
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -263,22 +298,56 @@ export function InvoicesPage() {
         description={peekInvoice ? `${peekInvoice.customerName} · ${peekInvoice.status.replaceAll('_', ' ')}` : undefined}
       >
         {peekInvoice ? (
-          <dl className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-text-muted">Total</dt>
-              <dd className="font-mono font-semibold">{formatCurrency(peekInvoice.total, peekInvoice.currency)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-text-muted">Due</dt>
-              <dd>{peekInvoice.dueAt ? new Date(peekInvoice.dueAt).toLocaleDateString() : '—'}</dd>
-            </div>
-            {peekInvoice.salesOrderId && (
+          <div className="space-y-4">
+            <dl className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <dt className="text-text-muted">Sales order</dt>
-                <dd className="font-mono text-xs">{peekInvoice.salesOrderId.slice(0, 8)}…</dd>
+                <dt className="text-text-muted">Total</dt>
+                <dd className="font-mono font-semibold">{formatCurrency(peekInvoice.total, peekInvoice.currency)}</dd>
               </div>
-            )}
-          </dl>
+              <div className="flex justify-between">
+                <dt className="text-text-muted">Due</dt>
+                <dd>{peekInvoice.dueAt ? new Date(peekInvoice.dueAt).toLocaleDateString() : '—'}</dd>
+              </div>
+              {peekInvoice.salesOrderId && (
+                <div className="flex justify-between">
+                  <dt className="text-text-muted">Sales order</dt>
+                  <dd className="font-mono text-xs">{peekInvoice.salesOrderId.slice(0, 8)}…</dd>
+                </div>
+              )}
+              {peekInvoice.documentUrl ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-text-muted">Archived PDF</dt>
+                  <dd className="truncate font-mono text-xs text-text-muted" title={peekInvoice.documentUrl}>
+                    {peekInvoice.documentUrl}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            {canCreate ? (
+              <div className="flex flex-col gap-2 border-t border-border pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  data-testid="invoice-download-pdf"
+                  onClick={() => void downloadPdf(peekInvoice.id, peekInvoice.number)}
+                >
+                  <Download className="h-4 w-4" />
+                  Download PDF
+                </Button>
+                <Button
+                  type="button"
+                  className="w-full"
+                  data-testid="invoice-email-pdf"
+                  loading={emailMutation.isPending}
+                  onClick={() => emailMutation.mutate(peekInvoice.id)}
+                >
+                  <Mail className="h-4 w-4" />
+                  Email invoice
+                </Button>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <p className="text-sm text-text-muted">Loading…</p>
         )}

@@ -36,12 +36,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.invsys.documents.DocumentArchivalService;
 import com.invsys.modules.fintech.service.FintechUnderwritingService;
 import com.invsys.service.CreditService;
 import com.invsys.service.DocumentSequenceService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 
 @Service
 public class InvoicingService {
+
+    private static final Logger log = LoggerFactory.getLogger(InvoicingService.class);
 
     private final InvoiceRepository invoiceRepository;
     private final InvoiceLineRepository invoiceLineRepository;
@@ -59,6 +65,7 @@ public class InvoicingService {
     private final ShipmentRepository shipmentRepository;
     private final ShipmentLineRepository shipmentLineRepository;
     private final FintechUnderwritingService fintechUnderwritingService;
+    private final ObjectProvider<DocumentArchivalService> documentArchivalService;
 
     public InvoicingService(InvoiceRepository invoiceRepository,
                             InvoiceLineRepository invoiceLineRepository,
@@ -75,7 +82,8 @@ public class InvoicingService {
                             CreditService creditService,
                             ShipmentRepository shipmentRepository,
                             ShipmentLineRepository shipmentLineRepository,
-                            FintechUnderwritingService fintechUnderwritingService) {
+                            FintechUnderwritingService fintechUnderwritingService,
+                            ObjectProvider<DocumentArchivalService> documentArchivalService) {
         this.invoiceRepository = invoiceRepository;
         this.invoiceLineRepository = invoiceLineRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -92,6 +100,7 @@ public class InvoicingService {
         this.shipmentRepository = shipmentRepository;
         this.shipmentLineRepository = shipmentLineRepository;
         this.fintechUnderwritingService = fintechUnderwritingService;
+        this.documentArchivalService = documentArchivalService;
     }
 
     @Transactional
@@ -199,7 +208,20 @@ public class InvoicingService {
         invoice.setTotal(subtotal);
         invoice = invoiceRepository.save(invoice);
         outboxService.append("INVOICE", invoice.getId(), "INVOICE_OPEN", Map.of("invoiceId", invoice.getId()));
+        archiveOpenInvoicePdf(invoice.getId());
         return invoice;
+    }
+
+    private void archiveOpenInvoicePdf(UUID invoiceId) {
+        DocumentArchivalService archival = documentArchivalService.getIfAvailable();
+        if (archival == null) {
+            return;
+        }
+        try {
+            archival.archiveInvoicePdf(invoiceId);
+        } catch (RuntimeException ex) {
+            log.warn("Invoice PDF archival deferred invoiceId={}: {}", invoiceId, ex.toString());
+        }
     }
 
     /**
