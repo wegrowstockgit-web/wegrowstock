@@ -38,7 +38,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC → Test role)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
           aws-region: ${{ env.AWS_REGION }}
