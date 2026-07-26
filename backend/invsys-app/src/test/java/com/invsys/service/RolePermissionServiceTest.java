@@ -4,6 +4,7 @@ import com.invsys.domain.Role;
 import com.invsys.domain.RolePermission;
 import com.invsys.repository.RolePermissionRepository;
 import com.invsys.repository.RoleRepository;
+import com.invsys.core.security.PermissionKeys;
 import com.invsys.core.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,14 +18,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RolePermissionServiceTest {
 
     private static final UUID TENANT = UUID.fromString("e0000000-0000-4000-8000-000000000001");
-    private static final UUID ROLE_ID = UUID.fromString("e0000000-0000-4000-8000-000000000010");
+    private static final UUID PICKER_ID = UUID.fromString("e0000000-0000-4000-8000-000000000010");
+    private static final UUID MANAGER_ID = UUID.fromString("e0000000-0000-4000-8000-000000000011");
 
     @Mock RolePermissionRepository rolePermissionRepository;
     @Mock RoleRepository roleRepository;
@@ -43,42 +44,66 @@ class RolePermissionServiceTest {
     }
 
     @Test
-    void defaultOpenWhenNoRowsConfigured() {
-        when(rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKey(
-                TENANT, List.of(ROLE_ID), "inventory:cost:view")).thenReturn(false);
-
-        assertThat(service.isGrantedForRoles(List.of(ROLE_ID), "inventory:cost:view")).isTrue();
+    void emptyRolesDeny() {
+        assertThat(service.isGrantedForRoles(List.of(), PermissionKeys.INVENTORY_COST_VIEW)).isFalse();
     }
 
     @Test
     void explicitGrantAllowsAccess() {
-        when(rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKey(
-                TENANT, List.of(ROLE_ID), "inventory:cost:view")).thenReturn(true);
         when(rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKeyAndGrantedTrue(
-                TENANT, List.of(ROLE_ID), "inventory:cost:view")).thenReturn(true);
+                TENANT, List.of(MANAGER_ID), PermissionKeys.INVENTORY_COST_VIEW)).thenReturn(true);
 
-        assertThat(service.isGrantedForRoles(List.of(ROLE_ID), "inventory:cost:view")).isTrue();
+        assertThat(service.isGrantedForRoles(List.of(MANAGER_ID), PermissionKeys.INVENTORY_COST_VIEW)).isTrue();
     }
 
     @Test
     void explicitDenyBlocksAccess() {
-        when(rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKey(
-                TENANT, List.of(ROLE_ID), "inventory:cost:view")).thenReturn(true);
         when(rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKeyAndGrantedTrue(
-                TENANT, List.of(ROLE_ID), "inventory:cost:view")).thenReturn(false);
+                TENANT, List.of(PICKER_ID), PermissionKeys.INVENTORY_COST_VIEW)).thenReturn(false);
 
-        assertThat(service.isGrantedForRoles(List.of(ROLE_ID), "inventory:cost:view")).isFalse();
+        assertThat(service.isGrantedForRoles(List.of(PICKER_ID), PermissionKeys.INVENTORY_COST_VIEW)).isFalse();
+    }
+
+    @Test
+    void multiRoleUnionTrueWhenAnyRoleGrants() {
+        when(rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKeyAndGrantedTrue(
+                TENANT, List.of(PICKER_ID, MANAGER_ID), PermissionKeys.INVENTORY_COST_VIEW))
+                .thenReturn(true);
+
+        assertThat(service.isGrantedForRoles(
+                List.of(PICKER_ID, MANAGER_ID), PermissionKeys.INVENTORY_COST_VIEW)).isTrue();
+    }
+
+    @Test
+    void resolveGrantedPermissionsUnionsAcrossRoles() {
+        when(roleRepository.findByTenantIdAndCode(TENANT, "PICKER"))
+                .thenReturn(Optional.of(role("PICKER", PICKER_ID)));
+        when(roleRepository.findByTenantIdAndCode(TENANT, "WAREHOUSE_MANAGER"))
+                .thenReturn(Optional.of(role("WAREHOUSE_MANAGER", MANAGER_ID)));
+
+        RolePermission pickerThermal = permission(PICKER_ID, PermissionKeys.PRINTING_THERMAL, true);
+        RolePermission pickerCost = permission(PICKER_ID, PermissionKeys.INVENTORY_COST_VIEW, false);
+        RolePermission managerCost = permission(MANAGER_ID, PermissionKeys.INVENTORY_COST_VIEW, true);
+
+        when(rolePermissionRepository.findByTenantIdAndRoleId(TENANT, PICKER_ID))
+                .thenReturn(List.of(pickerThermal, pickerCost));
+        when(rolePermissionRepository.findByTenantIdAndRoleId(TENANT, MANAGER_ID))
+                .thenReturn(List.of(managerCost));
+
+        List<String> granted = service.resolveGrantedPermissions(
+                TENANT, List.of("PICKER", "WAREHOUSE_MANAGER"));
+
+        assertThat(granted).containsExactlyInAnyOrder(
+                PermissionKeys.PRINTING_THERMAL,
+                PermissionKeys.INVENTORY_COST_VIEW);
     }
 
     @Test
     void upsertPersistsGrantFlag() {
-        Role role = new Role();
-        role.setId(ROLE_ID);
-        role.setTenantId(TENANT);
-        role.setCode("VIEWER");
-        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(role));
+        Role role = role("VIEWER", PICKER_ID);
+        when(roleRepository.findById(PICKER_ID)).thenReturn(Optional.of(role));
         when(rolePermissionRepository.findByTenantIdAndRoleIdAndPermissionKey(
-                TENANT, ROLE_ID, "inventory:adjust")).thenReturn(Optional.empty());
+                TENANT, PICKER_ID, "inventory:adjust")).thenReturn(Optional.empty());
         when(rolePermissionRepository.save(org.mockito.ArgumentMatchers.any(RolePermission.class)))
                 .thenAnswer(inv -> {
                     RolePermission saved = inv.getArgument(0);
@@ -87,11 +112,28 @@ class RolePermissionServiceTest {
                 });
 
         RolePermissionService.RolePermissionRow row = service.upsert(
-                new RolePermissionService.UpsertRequest(ROLE_ID, "inventory:adjust", false));
+                new RolePermissionService.UpsertRequest(PICKER_ID, "inventory:adjust", false));
 
-        assertThat(row.roleId()).isEqualTo(ROLE_ID);
+        assertThat(row.roleId()).isEqualTo(PICKER_ID);
         assertThat(row.permissionKey()).isEqualTo("inventory:adjust");
         assertThat(row.granted()).isFalse();
         assertThat(row.roleCode()).isEqualTo("VIEWER");
+    }
+
+    private static Role role(String code, UUID id) {
+        Role role = new Role();
+        role.setId(id);
+        role.setTenantId(TENANT);
+        role.setCode(code);
+        return role;
+    }
+
+    private static RolePermission permission(UUID roleId, String key, boolean granted) {
+        RolePermission row = new RolePermission();
+        row.setTenantId(TENANT);
+        row.setRoleId(roleId);
+        row.setPermissionKey(key);
+        row.setGranted(granted);
+        return row;
     }
 }

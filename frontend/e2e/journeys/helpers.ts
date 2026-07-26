@@ -86,6 +86,8 @@ export async function contextForRole(
         displayName: string;
         roles: string[];
         warehouseIds?: string[];
+        grantedPermissions?: string[];
+        avatarUrl?: string | null;
       })
     : null;
 
@@ -125,7 +127,9 @@ export async function contextForRole(
         email: me?.email ?? ROLE_EMAIL[role],
         displayName: me?.displayName ?? role,
         roles: me?.roles ?? session.roles ?? [],
+        grantedPermissions: me?.grantedPermissions ?? [],
         warehouseIds: me?.warehouseIds ?? session.warehouseIds ?? [],
+        avatarUrl: me?.avatarUrl ?? null,
         tenantId: me?.tenantId ?? session.tenantId,
       },
     },

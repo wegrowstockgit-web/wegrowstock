@@ -75,6 +75,8 @@ public class SettingsService {
         Map<String, Object> map = new java.util.HashMap<>(settings.getSettings());
         map.put("blind_cycle_counts", settings.isBlindCycleCounts());
         map.put("max_auto_adjust_value", settings.getMaxAutoAdjustValue());
+        map.put("rma_auto_approve_max_value", settings.getRmaAutoApproveMaxValue());
+        map.put("predictive_replenishment_enabled", settings.isPredictiveReplenishmentEnabled());
         return map;
     }
 
@@ -87,6 +89,16 @@ public class SettingsService {
             if (raw != null) {
                 settings.setMaxAutoAdjustValue(new java.math.BigDecimal(String.valueOf(raw)));
             }
+        }
+        if (patch.containsKey("rma_auto_approve_max_value")) {
+            Object raw = patch.get("rma_auto_approve_max_value");
+            if (raw != null) {
+                settings.setRmaAutoApproveMaxValue(new java.math.BigDecimal(String.valueOf(raw)));
+            }
+        }
+        if (patch.containsKey("predictive_replenishment_enabled")) {
+            settings.setPredictiveReplenishmentEnabled(
+                    Boolean.parseBoolean(String.valueOf(patch.get("predictive_replenishment_enabled"))));
         }
     }
 

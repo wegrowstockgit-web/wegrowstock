@@ -12,7 +12,8 @@ public record SessionResponse(
         UUID userId,
         List<String> roles,
         List<UUID> warehouseIds,
-        String avatarUrl
+        String avatarUrl,
+        List<String> grantedPermissions
 ) {
     public static SessionResponse from(TokenResponse tokens) {
         return new SessionResponse(
@@ -20,6 +21,7 @@ public record SessionResponse(
                 tokens.userId(),
                 tokens.roles(),
                 tokens.warehouseIds() != null ? tokens.warehouseIds() : List.of(),
-                tokens.avatarUrl());
+                tokens.avatarUrl(),
+                tokens.grantedPermissions() != null ? tokens.grantedPermissions() : List.of());
     }
 }

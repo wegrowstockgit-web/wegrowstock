@@ -318,6 +318,39 @@ public class UserManagementService {
         auditService.record("USER_ORG_UPDATE", "USER", user.getId(), diff);
     }
 
+    /**
+     * Appends a role to the user's role set without removing existing roles (multi-role RBAC).
+     */
+    @Transactional
+    @Auditable(action = "UPDATE_USER", entityType = "USER")
+    public List<String> addRole(UUID userId, String roleCode) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        if (!user.getTenantId().equals(TenantContext.requireTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found");
+        }
+        String code = roleCode.trim().toUpperCase(Locale.ROOT);
+        List<String> before = userRoleRepository.findRoleCodesByUserId(userId);
+        if (before.contains(code)) {
+            return before;
+        }
+        Role role = roleRepository.findByTenantIdAndCode(user.getTenantId(), code)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ROLE", "Unknown role: " + code));
+        UserRole userRole = new UserRole();
+        userRole.setTenantId(user.getTenantId());
+        userRole.setUserId(userId);
+        userRole.setRoleId(role.getId());
+        userRoleRepository.save(userRole);
+        List<String> after = userRoleRepository.findRoleCodesByUserId(userId);
+        Map<String, Object> diff = new LinkedHashMap<>();
+        diff.put("field", "roles");
+        diff.put("from", String.join(",", before));
+        diff.put("to", String.join(",", after));
+        diff.put("summary", "Added role " + code);
+        auditService.record("USER_ORG_UPDATE", "USER", user.getId(), diff);
+        return after;
+    }
+
     @Transactional
     @Auditable(action = "UPDATE_USER", entityType = "USER")
     public OrgScopeResult updateOrgScope(UUID userId, OrgScopeUpdate update) {
@@ -479,6 +512,9 @@ public class UserManagementService {
             }
         }
         userRoleRepository.deleteByUserId(userId);
+        // Flush so re-inserting a previously held role does not hit the unique constraint
+        // before the deletes are visible to PostgreSQL (multi-role → single-role restore).
+        userRoleRepository.flush();
         UserRole userRole = new UserRole();
         userRole.setTenantId(TenantContext.requireTenantId());
         userRole.setUserId(userId);

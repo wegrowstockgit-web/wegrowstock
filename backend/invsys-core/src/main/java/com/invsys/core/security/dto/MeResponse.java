@@ -28,6 +28,8 @@ public record MeResponse(
         String addressRegion,
         String addressPostalCode,
         String addressCountry,
-        String uiDensityPreference
+        String uiDensityPreference,
+        /** Union of granted permission keys across all assigned roles. */
+        List<String> grantedPermissions
 ) {
 }

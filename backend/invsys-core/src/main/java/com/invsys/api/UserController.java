@@ -86,6 +86,15 @@ public class UserController {
     }
 
     /**
+     * Append a role onto the user (multi-role). Does not remove existing roles.
+     */
+    @PostMapping("/{id}/roles")
+    public Map<String, Object> addRole(@PathVariable UUID id, @Valid @RequestBody ChangeRoleRequest request) {
+        List<String> roles = userManagementService.addRole(id, request.role());
+        return Map.of("userId", id, "roles", roles);
+    }
+
+    /**
      * Admin-only organizational scope: role, warehouse LBAC, timezone, locale, department, shift.
      */
     @PatchMapping("/{id}/org-scope")

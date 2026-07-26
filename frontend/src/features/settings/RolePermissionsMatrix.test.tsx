@@ -8,6 +8,7 @@ import { apiClient } from '@/api/client';
 vi.mock('@/api/client', () => ({
   apiClient: {
     get: vi.fn(),
+    patch: vi.fn(),
     put: vi.fn(),
   },
 }));
@@ -22,41 +23,42 @@ function wrap(ui: ReactNode) {
 describe('RolePermissionsMatrix', () => {
   beforeEach(() => {
     vi.mocked(apiClient.get).mockReset();
-    vi.mocked(apiClient.put).mockReset();
+    vi.mocked(apiClient.patch).mockReset();
   });
 
-  it('renders role x permission grid and toggles a grant', async () => {
+  it('renders role x permission grid and toggles a grant via PATCH', async () => {
     vi.mocked(apiClient.get).mockResolvedValue({
       data: {
         roles: [
           { id: 'r-admin', name: 'ADMIN' },
           { id: 'r-picker', name: 'PICKER' },
         ],
-        permissionKeys: ['inventory.adjust', 'sales.refund'],
+        permissionKeys: ['inventory:cost:view', 'so:discount:override'],
         grants: [
-          { roleId: 'r-admin', permissionKey: 'inventory.adjust', granted: true },
-          { roleId: 'r-picker', permissionKey: 'inventory.adjust', granted: false },
-          { roleId: 'r-admin', permissionKey: 'sales.refund', granted: false },
-          { roleId: 'r-picker', permissionKey: 'sales.refund', granted: false },
+          { roleId: 'r-admin', permissionKey: 'inventory:cost:view', granted: true },
+          { roleId: 'r-picker', permissionKey: 'inventory:cost:view', granted: false },
+          { roleId: 'r-admin', permissionKey: 'so:discount:override', granted: false },
+          { roleId: 'r-picker', permissionKey: 'so:discount:override', granted: false },
         ],
       },
     } as never);
-    vi.mocked(apiClient.put).mockResolvedValue({ data: {} } as never);
+    vi.mocked(apiClient.patch).mockResolvedValue({ data: {} } as never);
 
     wrap(<RolePermissionsMatrix />);
 
     expect(await screen.findByTestId('role-permissions-matrix')).toBeInTheDocument();
-    expect(screen.getByText('ADMIN')).toBeInTheDocument();
-    expect(screen.getByText('PICKER')).toBeInTheDocument();
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(screen.getByText('Picker')).toBeInTheDocument();
+    expect(screen.getByText('View Unit Costs')).toBeInTheDocument();
 
-    const toggle = screen.getByTestId('perm-PICKER-inventory.adjust');
+    const toggle = screen.getByTestId('perm-PICKER-inventory:cost:view');
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(toggle);
 
     await waitFor(() => {
-      expect(apiClient.put).toHaveBeenCalledWith('/api/v1/settings/role-permissions', {
+      expect(apiClient.patch).toHaveBeenCalledWith('/api/v1/settings/permissions', {
         roleId: 'r-picker',
-        permissionKey: 'inventory.adjust',
+        permissionKey: 'inventory:cost:view',
         granted: true,
       });
     });

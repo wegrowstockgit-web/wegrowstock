@@ -4,10 +4,12 @@ import com.invsys.domain.BinReplenishmentRule;
 import com.invsys.domain.DemandForecast;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.domain.WaveReplenishmentTrigger;
+import com.invsys.domain.TenantSettings;
 import com.invsys.repository.BinReplenishmentRuleRepository;
 import com.invsys.repository.DemandForecastRepository;
 import com.invsys.modules.inventory.repository.InventoryLevelRepository;
 import com.invsys.repository.TenantRepository;
+import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.repository.WaveReplenishmentTriggerRepository;
 import com.invsys.core.tenancy.TenantContext;
 import org.slf4j.Logger;
@@ -39,6 +41,7 @@ public class PredictiveReplenishmentWorker {
     private static final BigDecimal TWO_DAYS = new BigDecimal("2");
 
     private final TenantRepository tenantRepository;
+    private final TenantSettingsRepository tenantSettingsRepository;
     private final BinReplenishmentRuleRepository ruleRepository;
     private final DemandForecastRepository forecastRepository;
     private final InventoryLevelRepository levelRepository;
@@ -47,12 +50,14 @@ public class PredictiveReplenishmentWorker {
 
     public PredictiveReplenishmentWorker(
             TenantRepository tenantRepository,
+            TenantSettingsRepository tenantSettingsRepository,
             BinReplenishmentRuleRepository ruleRepository,
             DemandForecastRepository forecastRepository,
             InventoryLevelRepository levelRepository,
             WaveReplenishmentTriggerRepository triggerRepository,
             @Qualifier("virtualThreadExecutor") ExecutorService virtualThreadExecutor) {
         this.tenantRepository = tenantRepository;
+        this.tenantSettingsRepository = tenantSettingsRepository;
         this.ruleRepository = ruleRepository;
         this.forecastRepository = forecastRepository;
         this.levelRepository = levelRepository;
@@ -80,6 +85,12 @@ public class PredictiveReplenishmentWorker {
         Optional<UUID> previous = TenantContext.getTenantId();
         TenantContext.setTenantId(tenantId);
         try {
+            boolean enabled = tenantSettingsRepository.findByTenantId(tenantId)
+                    .map(TenantSettings::isPredictiveReplenishmentEnabled)
+                    .orElse(true);
+            if (!enabled) {
+                return 0;
+            }
             int created = 0;
             List<BinReplenishmentRule> rules = ruleRepository.findByTenantId(tenantId);
             for (BinReplenishmentRule rule : rules) {

@@ -17,6 +17,7 @@ interface MeResponse {
   roles: string[];
   warehouseIds?: string[];
   avatarUrl?: string | null;
+  grantedPermissions?: string[];
 }
 
 export function LoginPage() {

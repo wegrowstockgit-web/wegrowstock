@@ -36,6 +36,7 @@ import type {
   ProductVariant,
 } from '@/api/types';
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
+import { LaborAnalyticsDashboard } from '@/features/dashboard/LaborAnalyticsDashboard';
 import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
 import { RecentLedgerActivity } from '@/features/inventory/RecentLedgerActivity';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
@@ -568,9 +569,10 @@ export function DashboardPage() {
         {canManageOrders && (
           <div className="col-span-12 grid grid-cols-12 gap-4 sm:gap-6">
             <div className="col-span-12 lg:col-span-6">
-              <LaborVelocityLeaderboard mode="summary" />
+              <LaborAnalyticsDashboard mode="summary" />
             </div>
-            <div className="col-span-12 lg:col-span-6">
+            <div className="col-span-12 lg:col-span-6 space-y-4">
+              <LaborVelocityLeaderboard mode="summary" />
               <RecentLedgerActivity />
             </div>
           </div>

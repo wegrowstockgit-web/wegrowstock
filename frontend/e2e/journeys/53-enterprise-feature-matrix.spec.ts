@@ -72,7 +72,7 @@ test.describe('Enterprise feature matrix', () => {
       expect(sealed.status).toBe('SEALED');
       expect(sealed.bolNumber).toBeTruthy();
 
-      const perms = await page.request.get('/api/v1/settings/role-permissions');
+      const perms = await page.request.get('/api/v1/settings/permissions');
       expect(perms.ok(), await perms.text()).toBeTruthy();
       const matrix = (await perms.json()) as {
         roles: unknown[];
@@ -81,7 +81,7 @@ test.describe('Enterprise feature matrix', () => {
       expect(matrix.roles?.length).toBeGreaterThan(0);
       expect(matrix.permissionKeys).toContain('inventory:cost:view');
 
-      const catalog = await page.request.get('/api/v1/settings/role-permissions/catalog');
+      const catalog = await page.request.get('/api/v1/settings/permissions/catalog');
       expect(catalog.ok()).toBeTruthy();
 
       await page.goto('/mrp');

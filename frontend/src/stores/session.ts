@@ -5,6 +5,7 @@ import type { User, SessionResponse } from '@/api/types';
 
 const EMPTY_ROLES: readonly string[] = Object.freeze([]);
 const EMPTY_WAREHOUSES: readonly string[] = Object.freeze([]);
+const EMPTY_PERMISSIONS: readonly string[] = Object.freeze([]);
 
 interface PrimarySessionSnapshot {
   user: Readonly<User>;
@@ -15,6 +16,7 @@ interface TerminalSwitchPayload {
   userId: string;
   roles: string[];
   warehouseIds?: string[];
+  grantedPermissions?: string[];
 }
 
 interface SessionState {
@@ -34,6 +36,7 @@ interface SessionState {
     warehouseIds?: string[];
     avatarUrl?: string | null;
     tenantId?: string;
+    grantedPermissions?: string[];
   }) => void;
   applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
   restorePrimarySession: () => void;
@@ -42,6 +45,7 @@ interface SessionState {
   clearSession: () => void;
   isAuthenticated: () => boolean;
   hasRole: (...roles: string[]) => boolean;
+  hasPermission: (key: string) => boolean;
   isB2bCustomerOnly: () => boolean;
   isPickerOnly: () => boolean;
   isViewerOnly: () => boolean;
@@ -55,6 +59,7 @@ export function freezeUser(user: User): Readonly<User> {
     email: user.email,
     displayName: user.displayName,
     roles: Object.freeze([...(user.roles ?? [])]) as string[],
+    grantedPermissions: Object.freeze([...(user.grantedPermissions ?? [])]) as string[],
     warehouseIds: Object.freeze([...(user.warehouseIds ?? [])]) as string[],
     avatarUrl: user.avatarUrl ?? null,
     tenantId: user.tenantId,
@@ -67,6 +72,15 @@ export function rolesInclude(
 ): boolean {
   const list = roles ?? EMPTY_ROLES;
   return needed.some((role) => list.includes(role));
+}
+
+export function permissionsInclude(
+  permissions: readonly string[] | undefined | null,
+  key: string,
+): boolean {
+  if (!key) return false;
+  const list = permissions ?? EMPTY_PERMISSIONS;
+  return list.includes(key);
 }
 
 export function isExclusiveRole(
@@ -98,6 +112,7 @@ export const useSessionStore = create<SessionState>()(
             email,
             displayName: displayName ?? email.split('@')[0],
             roles: session.roles,
+            grantedPermissions: session.grantedPermissions ?? [],
             warehouseIds: session.warehouseIds ?? [],
             avatarUrl: session.avatarUrl ?? null,
             tenantId: session.tenantId,
@@ -125,6 +140,8 @@ export const useSessionStore = create<SessionState>()(
             email: profile.email,
             displayName: profile.displayName,
             roles: profile.roles,
+            grantedPermissions:
+              profile.grantedPermissions ?? state.user?.grantedPermissions ?? [],
             warehouseIds: profile.warehouseIds ?? [],
             avatarUrl: profile.avatarUrl ?? null,
             tenantId: profile.tenantId ?? state.user?.tenantId,
@@ -154,6 +171,7 @@ export const useSessionStore = create<SessionState>()(
             email: emailHint ?? state.user.email,
             displayName: emailHint?.split('@')[0] ?? 'Operator',
             roles: token.roles,
+            grantedPermissions: token.grantedPermissions ?? [],
             warehouseIds: token.warehouseIds ?? [],
             avatarUrl: state.primarySession?.user.avatarUrl ?? state.user.avatarUrl ?? null,
             tenantId: token.tenantId ?? state.user.tenantId,
@@ -185,6 +203,11 @@ export const useSessionStore = create<SessionState>()(
       isAuthenticated: () => get().authenticated && !!get().user,
 
       hasRole: (...roles) => rolesInclude(get().user?.roles, ...roles),
+
+      hasPermission: (key) => {
+        if (rolesInclude(get().user?.roles, 'OWNER')) return true;
+        return permissionsInclude(get().user?.grantedPermissions, key);
+      },
 
       isB2bCustomerOnly: () => isExclusiveRole(get().user?.roles, 'B2B_CUSTOMER'),
 
@@ -223,6 +246,14 @@ export function useSessionRoles(): readonly string[] {
 
 export function useSessionWarehouseIds(): readonly string[] {
   return useSessionStore((s) => s.user?.warehouseIds ?? EMPTY_WAREHOUSES);
+}
+
+/** Reactive check against the union of granted permissions across the user's roles. */
+export function useHasPermission(key: string): boolean {
+  const roles = useSessionStore((s) => s.user?.roles ?? EMPTY_ROLES);
+  const permissions = useSessionStore((s) => s.user?.grantedPermissions ?? EMPTY_PERMISSIONS);
+  if (rolesInclude(roles, 'OWNER')) return true;
+  return permissionsInclude(permissions, key);
 }
 
 export function useIsAuthenticated(): boolean {

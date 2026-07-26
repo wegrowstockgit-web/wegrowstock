@@ -6,12 +6,32 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
 
+const PERMISSION_LABELS: Record<string, string> = {
+  'inventory:cost:view': 'View Unit Costs',
+  'inventory:adjust': 'Adjust Inventory',
+  'purchasing:po:approve': 'Approve Purchase Orders',
+  'sales:invoice:void': 'Void Invoices',
+  'settings:users:manage': 'Manage Users',
+  'fulfillment:override': 'Fulfillment Override',
+  'returns:qc:process': 'Process RMA QC',
+  'mrp:run': 'Run MRP Reorder',
+  'printing:thermal': 'Thermal Printing',
+  'edi:outbound': 'EDI Outbound',
+  'so:discount:override': 'Override Pricing',
+};
+
 function formatPermissionLabel(key: string): string {
-  return key
-    .split(/[._-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
+  return (
+    PERMISSION_LABELS[key] ??
+    key
+      .split(/[._-]/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ')
+  );
 }
+
+/** System roles shown as matrix columns (excludes portal-only roles). */
+const MATRIX_ROLE_ORDER = ['ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER', 'OWNER'];
 
 export function RolePermissionsMatrix() {
   const queryClient = useQueryClient();
@@ -19,10 +39,18 @@ export function RolePermissionsMatrix() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['role-permissions'],
     queryFn: async () =>
-      (await apiClient.get<RolePermissionsMatrixResponse>('/api/v1/settings/role-permissions'))
-        .data,
+      (await apiClient.get<RolePermissionsMatrixResponse>('/api/v1/settings/permissions')).data,
     retry: false,
   });
+
+  const roles = useMemo(() => {
+    const list = data?.roles ?? [];
+    return [...list].sort((a, b) => {
+      const ai = MATRIX_ROLE_ORDER.indexOf(a.name);
+      const bi = MATRIX_ROLE_ORDER.indexOf(b.name);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+  }, [data?.roles]);
 
   const grantMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -42,7 +70,7 @@ export function RolePermissionsMatrix() {
       permissionKey: string;
       granted: boolean;
     }) => {
-      await apiClient.put('/api/v1/settings/role-permissions', {
+      await apiClient.patch('/api/v1/settings/permissions', {
         roleId,
         permissionKey,
         granted,
@@ -68,13 +96,13 @@ export function RolePermissionsMatrix() {
     );
   }
 
-  const { roles, permissionKeys } = data;
+  const { permissionKeys } = data;
 
   return (
     <Card data-testid="role-permissions-matrix">
       <CardHeader
         title="Role permissions"
-        description="Toggle granular permissions per role. Changes apply on next session refresh."
+        description="Granular toggles per role. Users with multiple roles receive the union of granted permissions."
       />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[32rem] border-collapse text-sm">
@@ -88,7 +116,7 @@ export function RolePermissionsMatrix() {
                   key={role.id}
                   className="px-3 py-2 text-center font-semibold text-text whitespace-nowrap"
                 >
-                  {role.name}
+                  {role.name === 'WAREHOUSE_MANAGER' ? 'Manager' : role.name.charAt(0) + role.name.slice(1).toLowerCase()}
                 </th>
               ))}
             </tr>

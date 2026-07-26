@@ -10,14 +10,20 @@ public record TokenResponse(
         UUID userId,
         List<String> roles,
         List<UUID> warehouseIds,
-        String avatarUrl
+        String avatarUrl,
+        List<String> grantedPermissions
 ) {
     public TokenResponse(String accessToken, String refreshToken, UUID tenantId, UUID userId, List<String> roles) {
-        this(accessToken, refreshToken, tenantId, userId, roles, List.of(), null);
+        this(accessToken, refreshToken, tenantId, userId, roles, List.of(), null, List.of());
     }
 
     public TokenResponse(String accessToken, String refreshToken, UUID tenantId, UUID userId,
                          List<String> roles, List<UUID> warehouseIds) {
-        this(accessToken, refreshToken, tenantId, userId, roles, warehouseIds, null);
+        this(accessToken, refreshToken, tenantId, userId, roles, warehouseIds, null, List.of());
+    }
+
+    public TokenResponse(String accessToken, String refreshToken, UUID tenantId, UUID userId,
+                         List<String> roles, List<UUID> warehouseIds, String avatarUrl) {
+        this(accessToken, refreshToken, tenantId, userId, roles, warehouseIds, avatarUrl, List.of());
     }
 }

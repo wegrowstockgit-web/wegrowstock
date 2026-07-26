@@ -1,5 +1,6 @@
 package com.invsys.core.security;
 
+import com.invsys.core.common.ApiException;
 import com.invsys.domain.Role;
 import com.invsys.repository.RoleRepository;
 import com.invsys.service.RolePermissionService;
@@ -7,7 +8,7 @@ import com.invsys.core.tenancy.TenantContext;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
-import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,6 +18,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Enforces {@link RequirePermission} via the UNION of {@code granted=true} rows
+ * across all of the authenticated user's roles.
+ */
 @Aspect
 @Component
 public class SecurityPermissionAspect {
@@ -36,7 +41,8 @@ public class SecurityPermissionAspect {
         String permissionKey = requirePermission.value();
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getAuthorities() == null) {
-            throw new AccessDeniedException("Authentication required");
+            throw new ApiException(HttpStatus.FORBIDDEN, "MISSING_PERMISSION",
+                    "You lack the required permission");
         }
 
         List<String> roleCodes = auth.getAuthorities().stream()
@@ -45,6 +51,7 @@ public class SecurityPermissionAspect {
                 .map(a -> a.substring("ROLE_".length()))
                 .toList();
 
+        // OWNER always has the full matrix (union of all keys).
         if (roleCodes.contains("OWNER")) {
             return joinPoint.proceed();
         }
@@ -61,6 +68,7 @@ public class SecurityPermissionAspect {
             return joinPoint.proceed();
         }
 
-        throw new AccessDeniedException("Missing permission: " + permissionKey);
+        throw new ApiException(HttpStatus.FORBIDDEN, "MISSING_PERMISSION",
+                "You lack the required permission");
     }
 }

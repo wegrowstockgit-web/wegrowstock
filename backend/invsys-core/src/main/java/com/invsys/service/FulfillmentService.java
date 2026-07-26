@@ -14,6 +14,7 @@ import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.core.tenancy.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ public class FulfillmentService {
     private final CrossDockService crossDockService;
     private final MeterRegistry meterRegistry;
     private final WmsMetrics wmsMetrics;
+    private final ObjectProvider<LaborClockService> laborClockService;
 
     public FulfillmentService(ProductVariantRepository variantRepository,
                               ProductRepository productRepository,
@@ -50,7 +52,8 @@ public class FulfillmentService {
                               AllocationService allocationService,
                               CrossDockService crossDockService,
                               MeterRegistry meterRegistry,
-                              WmsMetrics wmsMetrics) {
+                              WmsMetrics wmsMetrics,
+                              ObjectProvider<LaborClockService> laborClockService) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
@@ -60,6 +63,7 @@ public class FulfillmentService {
         this.crossDockService = crossDockService;
         this.meterRegistry = Objects.requireNonNull(meterRegistry, "meterRegistry");
         this.wmsMetrics = wmsMetrics;
+        this.laborClockService = laborClockService;
     }
 
     @Transactional
@@ -177,6 +181,7 @@ public class FulfillmentService {
             } catch (com.invsys.core.common.exception.InsufficientStockException ex) {
                 throw new com.invsys.core.common.exception.InsufficientStockException("Insufficient stock");
             }
+            recordPickUnit();
             String message = request.serialNumber() != null
                     ? "Picked serial " + request.serialNumber()
                     : "Picked " + qty.stripTrailingZeros().toPlainString() + " unit(s)";
@@ -185,6 +190,15 @@ public class FulfillmentService {
                     false, null, null, null, null);
         } finally {
             wmsMetrics.stopAllocation(sample);
+        }
+    }
+
+    private void recordPickUnit() {
+        try {
+            TenantContext.getUserId().ifPresent(userId ->
+                    laborClockService.ifAvailable(service -> service.recordActivityUnit(userId, 1)));
+        } catch (RuntimeException ignored) {
+            // Pick must succeed even when labor clock is unavailable.
         }
     }
 

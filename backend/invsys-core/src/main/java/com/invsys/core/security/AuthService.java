@@ -19,6 +19,7 @@ import com.invsys.repository.TenantRepository;
 import com.invsys.repository.UserRepository;
 import com.invsys.repository.UserRoleRepository;
 import com.invsys.repository.VehicleAssignmentRepository;
+import com.invsys.service.RolePermissionService;
 import com.invsys.service.TenantOnboardingService;
 import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
@@ -52,6 +53,7 @@ public class AuthService {
     private final MediaUrlValidator mediaUrlValidator;
     private final TenantSsoResolver tenantSsoResolver;
     private final TerminalPinBruteForceGuard terminalPinBruteForceGuard;
+    private final RolePermissionService rolePermissionService;
     private final AuthService self;
 
     public AuthService(TenantOnboardingService onboardingService,
@@ -67,6 +69,7 @@ public class AuthService {
                        MediaUrlValidator mediaUrlValidator,
                        TenantSsoResolver tenantSsoResolver,
                        TerminalPinBruteForceGuard terminalPinBruteForceGuard,
+                       RolePermissionService rolePermissionService,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
@@ -81,6 +84,7 @@ public class AuthService {
         this.tenantSsoResolver = tenantSsoResolver;
         this.mediaUrlValidator = mediaUrlValidator;
         this.terminalPinBruteForceGuard = terminalPinBruteForceGuard;
+        this.rolePermissionService = rolePermissionService;
         this.self = self;
     }
 
@@ -173,7 +177,8 @@ public class AuthService {
             tokenEntity.setReplacedBy(replacement.getId());
             refreshTokenRepository.save(tokenEntity);
             return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
-                    user.getAvatarUrl());
+                    user.getAvatarUrl(),
+                    rolePermissionService.resolveGrantedPermissions(user.getTenantId(), roles));
         } finally {
             TenantContext.clear();
         }
@@ -331,6 +336,8 @@ public class AuthService {
 
     private TokenResponse issueTokens(User user, List<String> roles) {
         List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+        List<String> grantedPermissions = rolePermissionService.resolveGrantedPermissions(
+                user.getTenantId(), roles);
         String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
         String refresh = UUID.randomUUID().toString();
         RefreshToken entity = new RefreshToken();
@@ -340,7 +347,7 @@ public class AuthService {
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
         refreshTokenRepository.save(entity);
         return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
-                user.getAvatarUrl());
+                user.getAvatarUrl(), grantedPermissions);
     }
 
     @Transactional(readOnly = true)
@@ -351,6 +358,8 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
         List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
         List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+        List<String> grantedPermissions = rolePermissionService.resolveGrantedPermissions(
+                user.getTenantId(), roles);
         return new MeResponse(
                 user.getId(),
                 user.getTenantId(),
@@ -374,7 +383,8 @@ public class AuthService {
                 user.getAddressRegion(),
                 user.getAddressPostalCode(),
                 user.getAddressCountry(),
-                user.getUiDensityPreference());
+                user.getUiDensityPreference(),
+                grantedPermissions);
     }
 
     /**

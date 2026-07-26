@@ -41,6 +41,7 @@ import { AccountingSync } from '@/features/settings/AccountingSync';
 import { Integrations } from '@/features/settings/Integrations';
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { ActivityTimeline } from '@/features/audit/ActivityTimeline';
+import { AutomationSettings } from '@/features/settings/AutomationSettings';
 import { RolePermissionsMatrix } from '@/features/settings/RolePermissionsMatrix';
 import { AuditLogTable } from '@/features/audit/AuditLogTable';
 import { HistoricalArchivesPanel } from '@/features/audit/HistoricalArchivesPanel';
@@ -58,6 +59,7 @@ const TABS = [
   { id: 'integrations', label: 'Integrations' },
   { id: 'mesh', label: 'Partner Catalog' },
   { id: 'operations', label: 'Operations' },
+  { id: 'automations', label: 'Automations & Thresholds' },
   { id: 'syncConflicts', label: 'Sync Conflicts' },
   { id: 'costCenters', label: 'Cost Centers & Requisitions' },
 ] as const;
@@ -2282,6 +2284,7 @@ export function SettingsPage() {
             {activeTab === 'integrations' && <Integrations />}
             {activeTab === 'mesh' && <PartnerCatalogMappingPanel />}
             {activeTab === 'operations' && <OperationsConsoleTab />}
+            {activeTab === 'automations' && <AutomationSettings />}
             {activeTab === 'syncConflicts' && <SyncConflictsPanel />}
             {activeTab === 'costCenters' && <CostCentersRequisitionsTab />}
           </ScrollFadePort>

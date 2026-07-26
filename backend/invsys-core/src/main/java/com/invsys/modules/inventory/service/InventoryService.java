@@ -477,6 +477,21 @@ public class InventoryService {
     }
 
     /**
+     * Return-to-vendor outbound: append-only SHIP against on-hand (no sales allocation).
+     */
+    @Transactional
+    public InventoryLedger shipVendorReturn(UUID variantId, UUID locationId, UUID lotId,
+                                            BigDecimal quantity, UUID rtvOrderId) {
+        BigDecimal qty = quantity.abs();
+        validateOnHand(qty.negate(), variantId, locationId, lotId);
+        BigDecimal unitCost = costingService.snapshotShipCost(variantId);
+        InventoryLedger entry = appendMovement("SHIP", variantId, locationId, lotId, null,
+                qty.negate(), "RTV", "RTV_ORDER", rtvOrderId, null, unitCost, null, null);
+        emitIntegrationEvents(entry, variantId);
+        return entry;
+    }
+
+    /**
      * Bulk-move every inventory level tied to an LPN to {@code destinationLocationId}
      * in one transaction (TRANSFER_OUT / TRANSFER_IN per SKU line + LPN header update).
      */

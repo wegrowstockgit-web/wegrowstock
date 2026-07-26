@@ -3,6 +3,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { InboundReceivePage } from '@/features/purchasing/InboundReceivePage';
 import { MrpReorderWorkspace } from '@/features/purchasing/MrpReorderWorkspace';
 import { PurchaseOrdersPage } from '@/features/purchasing/PurchaseOrdersPage';
+import { RtvWorkspace } from '@/features/purchasing/RtvWorkspace';
 import { SuppliersPage } from '@/features/purchasing/SuppliersPage';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
 
@@ -17,6 +18,14 @@ export const purchasingModule = defineModule({
       element: (
         <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
           <MrpReorderWorkspace />
+        </ProtectedRoute>
+      ),
+    },
+    {
+      path: 'purchasing/rtv',
+      element: (
+        <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
+          <RtvWorkspace />
         </ProtectedRoute>
       ),
     },
@@ -37,5 +46,6 @@ export const purchasingModule = defineModule({
     { to: '/purchase-orders', label: 'Purchase Orders', moduleId: 'purchasing' },
     { to: '/suppliers', label: 'Suppliers', moduleId: 'purchasing' },
     { to: '/mrp', label: 'MRP reorder', moduleId: 'purchasing' },
+    { to: '/purchasing/rtv', label: 'RTV / Chargebacks', moduleId: 'purchasing' },
   ],
 });

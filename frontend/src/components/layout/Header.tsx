@@ -5,6 +5,7 @@ import { Avatar, initialsFromName } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { PageHelpOverlay } from '@/components/ui/PageHelpOverlay';
 import { ProfileSettingsDialog } from '@/components/layout/ProfileSettingsDialog';
+import { FloorPunchClock } from '@/components/layout/FloorPunchClock';
 import { TerminalPinPad } from '@/components/layout/TerminalPinPad';
 import { useSessionStore } from '@/stores/session';
 import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
@@ -157,6 +158,7 @@ export function Header({
               {quarantineCount} quarantine
             </button>
           )}
+          {isWarehouseView && <FloorPunchClock warehouseSized />}
           {isWarehouseView && <TerminalPinPad warehouseSized />}
           <div
             className={cn('relative', menuOpen && 'z-[60]')}

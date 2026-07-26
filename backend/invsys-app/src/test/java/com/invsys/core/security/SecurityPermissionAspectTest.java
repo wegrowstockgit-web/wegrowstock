@@ -1,5 +1,6 @@
 package com.invsys.core.security;
 
+import com.invsys.core.common.ApiException;
 import com.invsys.domain.Role;
 import com.invsys.repository.RoleRepository;
 import com.invsys.service.RolePermissionService;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,6 +34,8 @@ class SecurityPermissionAspectTest {
 
     private static final UUID TENANT = UUID.fromString("c0000000-0000-4000-8000-000000000001");
     private static final UUID VIEWER_ROLE_ID = UUID.fromString("c0000000-0000-4000-8000-000000000010");
+    private static final UUID PICKER_ROLE_ID = UUID.fromString("c0000000-0000-4000-8000-000000000011");
+    private static final UUID MANAGER_ROLE_ID = UUID.fromString("c0000000-0000-4000-8000-000000000012");
 
     @Mock RoleRepository roleRepository;
     @Mock RolePermissionService rolePermissionService;
@@ -65,11 +68,14 @@ class SecurityPermissionAspectTest {
     }
 
     @Test
-    void allowsWhenNoMatrixRowsExist() throws Throwable {
-        setAuth("VIEWER");
-        Role role = role("VIEWER", VIEWER_ROLE_ID);
-        when(roleRepository.findByTenantIdAndCode(TENANT, "VIEWER")).thenReturn(Optional.of(role));
-        when(rolePermissionService.isGrantedForRoles(List.of(VIEWER_ROLE_ID), PermissionKeys.INVENTORY_COST_VIEW))
+    void multiRoleUnionAllowsWhenManagerGrantsAndPickerDenies() throws Throwable {
+        setAuth("PICKER", "WAREHOUSE_MANAGER");
+        when(roleRepository.findByTenantIdAndCode(TENANT, "PICKER"))
+                .thenReturn(Optional.of(role("PICKER", PICKER_ROLE_ID)));
+        when(roleRepository.findByTenantIdAndCode(TENANT, "WAREHOUSE_MANAGER"))
+                .thenReturn(Optional.of(role("WAREHOUSE_MANAGER", MANAGER_ROLE_ID)));
+        when(rolePermissionService.isGrantedForRoles(
+                List.of(PICKER_ROLE_ID, MANAGER_ROLE_ID), PermissionKeys.INVENTORY_COST_VIEW))
                 .thenReturn(true);
         RequirePermission annotation = sampleMethod().getAnnotation(RequirePermission.class);
         when(joinPoint.proceed()).thenReturn("allowed");
@@ -80,7 +86,7 @@ class SecurityPermissionAspectTest {
     }
 
     @Test
-    void deniesWhenExplicitlyRevoked() throws Throwable {
+    void deniesWithMissingPermissionWhenNoRoleGrants() throws Throwable {
         setAuth("VIEWER");
         Role role = role("VIEWER", VIEWER_ROLE_ID);
         when(roleRepository.findByTenantIdAndCode(TENANT, "VIEWER")).thenReturn(Optional.of(role));
@@ -89,25 +95,38 @@ class SecurityPermissionAspectTest {
         RequirePermission annotation = sampleMethod().getAnnotation(RequirePermission.class);
 
         assertThatThrownBy(() -> aspect.enforcePermission(joinPoint, annotation))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining(PermissionKeys.INVENTORY_COST_VIEW);
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(api.getCode()).isEqualTo("MISSING_PERMISSION");
+                });
     }
 
     @Test
-    void requiresAuthentication() throws Throwable {
+    void requiresAuthentication() {
         SecurityContextHolder.clearContext();
-        RequirePermission annotation = sampleMethod().getAnnotation(RequirePermission.class);
+        RequirePermission annotation;
+        try {
+            annotation = sampleMethod().getAnnotation(RequirePermission.class);
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError(e);
+        }
 
         assertThatThrownBy(() -> aspect.enforcePermission(joinPoint, annotation))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("Authentication required");
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(api.getCode()).isEqualTo("MISSING_PERMISSION");
+                });
     }
 
-    private void setAuth(String roleCode) {
-        var auth = new UsernamePasswordAuthenticationToken(
-                UUID.randomUUID(),
-                null,
-                List.of(new SimpleGrantedAuthority("ROLE_" + roleCode)));
+    private void setAuth(String... roleCodes) {
+        var authorities = java.util.Arrays.stream(roleCodes)
+                .map(code -> new SimpleGrantedAuthority("ROLE_" + code))
+                .toList();
+        var auth = new UsernamePasswordAuthenticationToken(UUID.randomUUID(), null, authorities);
         SecurityContextHolder.getContext().setAuthentication(auth);
     }
 

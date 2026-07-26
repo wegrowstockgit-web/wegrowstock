@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,8 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Granular RBAC matrix admin API.
+ * Canonical path: {@code /api/v1/settings/permissions}.
+ * Legacy alias: {@code /api/v1/settings/role-permissions}.
+ */
 @RestController
-@RequestMapping("/api/v1/settings/role-permissions")
+@RequestMapping({"/api/v1/settings/permissions", "/api/v1/settings/role-permissions"})
 @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
 public class RolePermissionController {
 
@@ -44,10 +50,16 @@ public class RolePermissionController {
         return new MatrixResponse(roles, PermissionKeys.CATALOG, grants);
     }
 
-    @PutMapping
-    public RolePermissionService.RolePermissionRow upsert(@Valid @RequestBody UpsertBody body) {
+    @PatchMapping
+    public RolePermissionService.RolePermissionRow patch(@Valid @RequestBody UpsertBody body) {
         return rolePermissionService.upsert(new RolePermissionService.UpsertRequest(
                 body.roleId(), body.permissionKey(), body.granted()));
+    }
+
+    /** @deprecated prefer {@link #patch(UpsertBody)} */
+    @PutMapping
+    public RolePermissionService.RolePermissionRow upsert(@Valid @RequestBody UpsertBody body) {
+        return patch(body);
     }
 
     @GetMapping("/catalog")

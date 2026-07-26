@@ -20,6 +20,7 @@ interface MeResponse {
   roles: string[];
   warehouseIds?: string[];
   avatarUrl?: string | null;
+  grantedPermissions?: string[];
 }
 
 /**
@@ -67,6 +68,7 @@ export function WarehouseFloorShell() {
         warehouseIds: data.warehouseIds,
         avatarUrl: data.avatarUrl,
         tenantId: data.tenantId,
+        grantedPermissions: data.grantedPermissions,
       });
       return data;
     },

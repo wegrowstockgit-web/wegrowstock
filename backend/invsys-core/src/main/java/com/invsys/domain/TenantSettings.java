@@ -37,6 +37,9 @@ public class TenantSettings extends TenantScopedEntity {
     @Column(name = "max_auto_adjust_value", nullable = false)
     private BigDecimal maxAutoAdjustValue = new BigDecimal("100.00");
 
+    @Column(name = "predictive_replenishment_enabled", nullable = false)
+    private boolean predictiveReplenishmentEnabled = true;
+
     public Map<String, Object> getSettings() {
         return settings;
     }
@@ -87,6 +90,14 @@ public class TenantSettings extends TenantScopedEntity {
         this.maxAutoAdjustValue = maxAutoAdjustValue != null
                 ? maxAutoAdjustValue
                 : new BigDecimal("100.00");
+    }
+
+    public boolean isPredictiveReplenishmentEnabled() {
+        return predictiveReplenishmentEnabled;
+    }
+
+    public void setPredictiveReplenishmentEnabled(boolean predictiveReplenishmentEnabled) {
+        this.predictiveReplenishmentEnabled = predictiveReplenishmentEnabled;
     }
 
     public static TenantSettings withDefaults(UUID tenantId) {

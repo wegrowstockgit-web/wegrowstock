@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   freezeUser,
   isExclusiveRole,
+  permissionsInclude,
   rolesInclude,
   useSessionStore,
 } from './session';
@@ -24,17 +25,34 @@ describe('session integrity', () => {
       roles: ['PICKER'],
       warehouseIds: ['wh-1'],
       tenantId: 't1',
+      grantedPermissions: ['printing:thermal'],
     });
 
     const user = useSessionStore.getState().user!;
     expect(Object.isFrozen(user)).toBe(true);
     expect(Object.isFrozen(user.roles)).toBe(true);
+    expect(Object.isFrozen(user.grantedPermissions)).toBe(true);
     expect(() => {
       (user.roles as string[]).push('OWNER');
     }).toThrow();
     expect(user.roles).toEqual(['PICKER']);
     expect(isExclusiveRole(user.roles, 'PICKER')).toBe(true);
     expect(rolesInclude(user.roles, 'OWNER')).toBe(false);
+    expect(useSessionStore.getState().hasPermission('printing:thermal')).toBe(true);
+    expect(useSessionStore.getState().hasPermission('inventory:cost:view')).toBe(false);
+  });
+
+  it('multi-role union grants permission when any role contributes it', () => {
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u2',
+      email: 'hybrid@demo.test',
+      displayName: 'Hybrid',
+      roles: ['PICKER', 'WAREHOUSE_MANAGER'],
+      grantedPermissions: ['printing:thermal', 'inventory:cost:view'],
+      tenantId: 't1',
+    });
+    expect(useSessionStore.getState().hasPermission('inventory:cost:view')).toBe(true);
+    expect(permissionsInclude(['printing:thermal'], 'inventory:cost:view')).toBe(false);
   });
 
   it('freezeUser deep-freezes nested arrays', () => {
@@ -43,6 +61,7 @@ describe('session integrity', () => {
       email: 'a@b.c',
       displayName: 'A',
       roles: ['VIEWER'],
+      grantedPermissions: [],
       warehouseIds: ['w'],
       avatarUrl: null,
       tenantId: 't',

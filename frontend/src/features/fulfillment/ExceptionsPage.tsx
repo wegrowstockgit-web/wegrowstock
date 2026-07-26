@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { FulfillmentException } from '@/api/types';
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/Table';
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 
@@ -33,6 +34,7 @@ function ExceptionsTable({
   lotById,
   setLotById,
   resolveMutation,
+  initiateRtv,
 }: {
   items: FulfillmentException[];
   lotById: Record<string, string>;
@@ -40,6 +42,10 @@ function ExceptionsTable({
   resolveMutation: {
     isPending: boolean;
     mutate: (vars: { id: string; action: string; lotNumber?: string }) => void;
+  };
+  initiateRtv: {
+    isPending: boolean;
+    mutate: (id: string) => void;
   };
 }) {
   const { sort, toggle, sorted } = useClientSort(
@@ -134,6 +140,15 @@ function ExceptionsTable({
                   >
                     Discard
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    data-testid={`initiate-rtv-${ex.id}`}
+                    loading={initiateRtv.isPending}
+                    onClick={() => initiateRtv.mutate(ex.id)}
+                  >
+                    Initiate RTV
+                  </Button>
                 </div>
               ) : (
                 <span className="text-xs text-text-muted">—</span>
@@ -148,6 +163,7 @@ function ExceptionsTable({
 
 export function ExceptionsPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const activeTab: ActionTab = tabParam === 'sync' ? 'sync' : 'holds';
@@ -174,14 +190,48 @@ export function ExceptionsPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['office', 'exceptions'] }),
   });
 
+  const initiateRtv = useMutation({
+    mutationFn: async (exceptionId: string) => {
+      const suppliers = (
+        await apiClient.get<Array<{ id: string }>>('/api/v1/suppliers')
+      ).data;
+      const supplierId = suppliers[0]?.id;
+      if (!supplierId) {
+        throw new Error('No suppliers');
+      }
+      await apiClient.post('/api/v1/rtv/from-exception', {
+        exceptionId,
+        reasonCode: 'DEFECTIVE',
+        qty: 1,
+        supplierId,
+      });
+    },
+    onSuccess: () => {
+      toast('RTV draft created', { tone: 'success' });
+      void queryClient.invalidateQueries({ queryKey: ['rtv-orders'] });
+    },
+    onError: () => toast('Could not initiate RTV — ensure a supplier exists', { tone: 'danger' }),
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="action-required-hub">
       <div className="flex shrink-0 flex-col gap-4 border-b border-border/60 px-4 py-4 sm:px-6">
         <div>
-          <h1 className="text-2xl font-bold text-text">Action required</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Fulfillment holds and offline sync conflicts that need a manager decision
-          </p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-text">Action required</h1>
+              <p className="mt-1 text-sm text-text-muted">
+                Fulfillment holds and offline sync conflicts that need a manager decision
+              </p>
+            </div>
+            <Link
+              to="/purchasing/rtv"
+              className="text-sm font-medium text-accent hover:underline"
+              data-testid="exceptions-rtv-link"
+            >
+              RTV workspace →
+            </Link>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Action required tabs">
           <Button
@@ -233,6 +283,7 @@ export function ExceptionsPage() {
                   lotById={lotById}
                   setLotById={setLotById}
                   resolveMutation={resolveMutation}
+                  initiateRtv={initiateRtv}
                 />
               )}
             </ListPageState>

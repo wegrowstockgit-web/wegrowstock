@@ -14,6 +14,7 @@ public final class PermissionKeys {
     public static final String MRP_RUN = "mrp:run";
     public static final String PRINTING_THERMAL = "printing:thermal";
     public static final String EDI_OUTBOUND = "edi:outbound";
+    public static final String SO_DISCOUNT_OVERRIDE = "so:discount:override";
 
     public static final List<String> CATALOG = List.of(
             INVENTORY_COST_VIEW,
@@ -25,7 +26,8 @@ public final class PermissionKeys {
             RETURNS_QC_PROCESS,
             MRP_RUN,
             PRINTING_THERMAL,
-            EDI_OUTBOUND
+            EDI_OUTBOUND,
+            SO_DISCOUNT_OVERRIDE
     );
 
     private PermissionKeys() {

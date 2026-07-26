@@ -1,6 +1,7 @@
 package com.invsys.service;
 
 import com.invsys.core.common.ApiException;
+import com.invsys.core.security.PermissionKeys;
 import com.invsys.domain.Role;
 import com.invsys.domain.RolePermission;
 import com.invsys.repository.RolePermissionRepository;
@@ -10,7 +11,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -55,17 +59,94 @@ public class RolePermissionService {
         return toRow(permission);
     }
 
+    /**
+     * Union evaluation: {@code true} if ANY of the given roles has {@code granted=true}
+     * for the permission key.
+     */
     public boolean isGrantedForRoles(List<UUID> roleIds, String permissionKey) {
-        if (roleIds.isEmpty()) {
-            return true;
+        if (roleIds == null || roleIds.isEmpty() || permissionKey == null || permissionKey.isBlank()) {
+            return false;
         }
         UUID tenantId = TenantContext.requireTenantId();
-        if (!rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKey(
-                tenantId, roleIds, permissionKey)) {
-            return true;
-        }
         return rolePermissionRepository.existsByTenantIdAndRoleIdInAndPermissionKeyAndGrantedTrue(
                 tenantId, roleIds, permissionKey);
+    }
+
+    /**
+     * Union of all {@code granted=true} permission keys across the given role codes.
+     * OWNER receives the full catalog.
+     */
+    @Transactional(readOnly = true)
+    public List<String> resolveGrantedPermissions(UUID tenantId, List<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return List.of();
+        }
+        if (roleCodes.contains("OWNER")) {
+            return List.copyOf(PermissionKeys.CATALOG);
+        }
+        List<UUID> roleIds = new ArrayList<>();
+        for (String code : roleCodes) {
+            roleRepository.findByTenantIdAndCode(tenantId, code)
+                    .map(Role::getId)
+                    .ifPresent(roleIds::add);
+        }
+        if (roleIds.isEmpty()) {
+            return List.of();
+        }
+        Set<String> granted = new LinkedHashSet<>();
+        for (UUID roleId : roleIds) {
+            for (RolePermission row : rolePermissionRepository.findByTenantIdAndRoleId(tenantId, roleId)) {
+                if (row.isGranted()) {
+                    granted.add(row.getPermissionKey());
+                }
+            }
+        }
+        return List.copyOf(granted);
+    }
+
+    /**
+     * Seeds the baseline matrix for a newly provisioned tenant (idempotent).
+     */
+    @Transactional
+    public void seedBaselineForTenant(UUID tenantId, List<Role> roles) {
+        for (Role role : roles) {
+            for (String key : PermissionKeys.CATALOG) {
+                boolean granted = baselineGranted(role.getCode(), key);
+                RolePermission existing = rolePermissionRepository
+                        .findByTenantIdAndRoleIdAndPermissionKey(tenantId, role.getId(), key)
+                        .orElse(null);
+                if (existing != null) {
+                    continue;
+                }
+                RolePermission created = new RolePermission();
+                created.setTenantId(tenantId);
+                created.setRoleId(role.getId());
+                created.setPermissionKey(key);
+                created.setGranted(granted);
+                rolePermissionRepository.save(created);
+            }
+        }
+    }
+
+    static boolean baselineGranted(String roleCode, String permissionKey) {
+        if ("OWNER".equals(roleCode) || "ADMIN".equals(roleCode)) {
+            return true;
+        }
+        if ("WAREHOUSE_MANAGER".equals(roleCode)) {
+            return Set.of(
+                    PermissionKeys.INVENTORY_COST_VIEW,
+                    PermissionKeys.INVENTORY_ADJUST,
+                    PermissionKeys.FULFILLMENT_OVERRIDE,
+                    PermissionKeys.RETURNS_QC_PROCESS,
+                    PermissionKeys.MRP_RUN,
+                    PermissionKeys.PRINTING_THERMAL,
+                    PermissionKeys.PURCHASING_PO_APPROVE
+            ).contains(permissionKey);
+        }
+        if ("PICKER".equals(roleCode)) {
+            return PermissionKeys.PRINTING_THERMAL.equals(permissionKey);
+        }
+        return false;
     }
 
     private RolePermissionRow toRow(RolePermission permission) {

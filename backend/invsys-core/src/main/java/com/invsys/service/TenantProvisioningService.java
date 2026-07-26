@@ -36,6 +36,7 @@ public class TenantProvisioningService {
     private final UserRoleRepository userRoleRepository;
     private final LocationRepository locationRepository;
     private final PasswordEncoder passwordEncoder;
+    private final RolePermissionService rolePermissionService;
 
     public TenantProvisioningService(TenantRepository tenantRepository,
                                        TenantSettingsRepository tenantSettingsRepository,
@@ -43,7 +44,8 @@ public class TenantProvisioningService {
                                        RoleRepository roleRepository,
                                        UserRoleRepository userRoleRepository,
                                        LocationRepository locationRepository,
-                                       PasswordEncoder passwordEncoder) {
+                                       PasswordEncoder passwordEncoder,
+                                       RolePermissionService rolePermissionService) {
         this.tenantRepository = tenantRepository;
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.userRepository = userRepository;
@@ -51,6 +53,7 @@ public class TenantProvisioningService {
         this.userRoleRepository = userRoleRepository;
         this.locationRepository = locationRepository;
         this.passwordEncoder = passwordEncoder;
+        this.rolePermissionService = rolePermissionService;
     }
 
     @Transactional
@@ -71,6 +74,7 @@ public class TenantProvisioningService {
             role.setCode(code);
             roles.add(roleRepository.save(role));
         }
+        rolePermissionService.seedBaselineForTenant(tenantId, roles);
 
         User owner = new User();
         owner.setTenantId(tenantId);

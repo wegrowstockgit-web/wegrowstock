@@ -3,6 +3,8 @@ export interface User {
   email: string;
   displayName: string;
   roles: string[];
+  /** Union of granted permission keys across all assigned roles. */
+  grantedPermissions?: string[];
   warehouseIds?: string[];
   avatarUrl?: string | null;
   tenantId?: string;
@@ -31,6 +33,7 @@ export interface SessionResponse {
   roles: string[];
   warehouseIds?: string[];
   avatarUrl?: string | null;
+  grantedPermissions?: string[];
 }
 
 /** @deprecated use SessionResponse */

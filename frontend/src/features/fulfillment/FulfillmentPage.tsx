@@ -52,6 +52,7 @@ import {
 } from '@/features/fulfillment/PalletBuilder';
 import { WayfindingMiniMap } from '@/features/fulfillment/WayfindingMiniMap';
 import { QuarantineReview } from '@/features/fulfillment/QuarantineReview';
+import { RateShoppingWidget } from '@/features/fulfillment/RateShoppingWidget';
 import {
   ReplenishmentBadge,
   ReplenishmentQueue,
@@ -1172,6 +1173,22 @@ export function FulfillmentPage() {
                     <p className="text-sm text-danger">
                       Could not cartonize this order — check variant dimensions and carton masters.
                     </p>
+                  )}
+                  {packSalesOrderId && cartonPreview && (
+                    <div className="mt-3">
+                      <RateShoppingWidget
+                        salesOrderId={packSalesOrderId}
+                        cartonId={cartonPreview.cartonId}
+                        onLabelPurchased={(tracking) => {
+                          setLabelMessage(
+                            tracking
+                              ? `Label purchased via rate shop · ${tracking}`
+                              : 'Label purchased via rate shop',
+                          );
+                          void queryClient.invalidateQueries({ queryKey: ['shipments'] });
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               )}
