@@ -25,7 +25,7 @@ public abstract class AbstractIntegrationTest {
 
     @SuppressWarnings("resource")
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
-            DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
+            DockerImageName.parse("pgvector/pgvector:0.8.1-pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("invsys")
             .withUsername("app_owner")
             .withPassword("app_owner_secret")

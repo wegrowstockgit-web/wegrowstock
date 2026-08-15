@@ -37,7 +37,7 @@ GLOBAL ARCHITECTURAL LAWS & POLICIES (NON-NEGOTIABLE)
 - Frontend components must use React 19 primitives, TanStack Query for server state,
   and Tailwind variables defined in `tokens.css`.
 - Backend API responses must be typed Java records (DTOs), never `Map.of(...)`.
-  Every DTO field name must match the TypeScript interface in `frontend/src/api/types.ts`
+  Every DTO field name must match the TypeScript interface in `frontends/apps/frontend_wms/src/api/types.ts`
   exactly (see Mistake M2 below).
 
 -----------------------------------------------------------------------------------------

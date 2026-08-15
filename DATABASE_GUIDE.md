@@ -6,7 +6,7 @@ A plain-language map of how InventorySystem stores warehouse data in PostgreSQL 
 
 **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (how the app uses this schema), `USER_GUIDE.md` (day-to-day product use), `README.md` (run the stack).
 
-Schema is owned by Flyway (`backend/src/main/resources/db/migration/`). Current head includes **V090**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
+Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V108**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
 
 ---
 
@@ -77,15 +77,18 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 
 | Table | Purpose |
 |-------|---------|
-| `tenants` | Company workspace |
+| `tenants` | Company workspace (`status` includes `ACTIVE` / `SUSPENDED`) |
 | `tenant_settings` | Currency, negative-stock rules, barcode masks, density prefs, … |
+| `tenant_subscriptions` | Commercial **tier** + `enabled_modules` JSON (**V104** / **V105**) — control-plane writable via `app_owner` |
 | `tenant_domains` | Verified domains (CORS / email) |
 | `tenant_sso_configurations` | SAML / OIDC enterprise login |
-| `users` | People (email, password hash, profile fields) |
+| `users` | Tenant people (email, password hash, profile fields) — **not** Super Admins |
+| `platform_admins` | Control-plane Super Admin identities (**V106**, no tenant RLS) |
+| `platform_admin_refresh_tokens` | Admin session refresh (**V106**) |
 | `roles` / `user_roles` | `OWNER`, `ADMIN`, `WAREHOUSE_MANAGER`, `PICKER`, `VIEWER`, `B2B_CUSTOMER`, … |
 | `user_warehouses` | **LBAC** — which warehouses a user may operate |
 | `invitations` | Time-limited invite hashes |
-| `refresh_tokens` | Rotating session refresh |
+| `refresh_tokens` | Rotating WMS session refresh |
 | `magic_login_tokens` | Passwordless / supplier-portal magic links |
 
 ### 2. Catalog
@@ -196,11 +199,27 @@ These power the in-app support copilot (`/api/v1/support/chat`). They deliberate
 
 | Table | Flyway | Purpose |
 |-------|--------|---------|
-| `support_knowledge_chunks` | **V089** | Embedded doc chunks: `slug`, `title`, `body`, `audience_roles[]`, `route_hints[]`, `embedding vector(384)` with **HNSW** cosine index (`pgvector`) |
+| `support_knowledge_chunks` | **V089** / **V092** | Embedded doc chunks: `slug`, `title`, `body`, `audience_roles[]`, `route_hints[]`, `embedding vector(768)` with **HNSW** cosine index (`pgvector`) |
 | `support_knowledge_nodes` | **V090** | GraphRAG nodes (`ZONE`, `FLOW`, `DOC`, `ENTITY`, `ROLE`) optionally linked to a chunk slug |
 | `support_knowledge_edges` | **V090** | Typed relationships (`from_slug` → `to_slug`, e.g. Procurement → Fulfillment) |
+| `platform_knowledge_documents` | **V107** | Super Admin–ingested SOP markdown (source of additional chunks) |
 
 Extension `vector` is created in Postgres init (`ops/postgres/init`), not by `app_owner` migrations.
+
+### 13. Control-plane governance (**global** — Super Admin / `app_owner`)
+
+These tables back `invsys-admin-api`. Tenant users must not treat them as WMS CRUD.
+
+| Table | Flyway | Purpose |
+|-------|--------|---------|
+| `tenant_subscriptions` | **V104** | `BASIC` / `INTERMEDIATE` / `ENTERPRISE` + `enabled_modules` |
+| `platform_admins` | **V106** | Super Admin login (same email as a WMS user is a different row) |
+| `tenant_shard_routing` | **V107** | Tenant → shard / Aurora / region dictionary |
+| `tenant_integration_controls` | **V107** | Outbox **kill-switch** (`sync_paused`) |
+| `tenant_rate_limit_overrides` | **V107** | Capacity multiplier + per-path limits |
+| `platform_compliance_broadcasts` | **V107** | Global tax / hazmat / regulatory fan-out |
+| `platform_sandbox_credentials` | **V107** | One-time API key for cloned UAT tenants |
+| `platform_audit_logs` | **V108** | Append-only Super Admin mutation trail (`action`, `diff_json`, IP) |
 
 ---
 
@@ -247,7 +266,7 @@ Property: `invsys.integration.vault-provider`.
 
 ---
 
-## Recent Flyway head (V080–V090)
+## Recent Flyway head (V080–V108)
 
 | Version | Purpose |
 |---------|---------|
@@ -260,14 +279,30 @@ Property: `invsys.integration.vault-provider`.
 | **V086** | `archive_purge_audit_logs` SECURITY DEFINER |
 | **V087** | RANGE partition `inventory_ledger` + `audit_log` |
 | **V088** | Ensure ~12 months back + 6 months forward partitions |
-| **V089** | `support_knowledge_chunks` + HNSW (pgvector 384-d) |
+| **V089** | `support_knowledge_chunks` + HNSW (pgvector; later 768-d in **V092**) |
 | **V090** | `support_knowledge_nodes` / `support_knowledge_edges` (GraphRAG) |
+| **V091** | Offline sync conflict metadata |
+| **V092** | Support RAG 768-d embeddings + tickets |
+| **V093** | Training sandbox bindings |
+| **V094**–**V095** | Hybrid FTS + hierarchical RAG metadata |
+| **V096** | Invoice document URL |
+| **V097** | Enterprise feature matrix |
+| **V098**–**V099** | RBAC permission matrix + seed |
+| **V100** | Tenant business automations |
+| **V101** | RTV + supplier chargebacks |
+| **V102** | Dock-door scheduling |
+| **V103** | Floor labor time tracking |
+| **V104** | `tenant_subscriptions` (commercial entitlements) |
+| **V105** | AppModule catalog expand |
+| **V106** | `platform_admins` (Super Admin off `users`) |
+| **V107** | Shard routing, kill-switch, rate overrides, compliance, knowledge docs, sandbox creds |
+| **V108** | `platform_audit_logs` |
 
 ---
 
 ## Summary for developers
 
-1. New **tenant** business tables need `tenant_id` + FORCE RLS policies (copy a recent migration such as V083/V084). Global platform tables (`currency_rates`, `support_knowledge_*`) are the rare exception — document why they skip RLS.
+1. New **tenant** business tables need `tenant_id` + FORCE RLS policies (copy a recent migration such as V083/V084). Global platform tables (`currency_rates`, `support_knowledge_*`, `platform_admins`, `platform_audit_logs`) are the rare exception — document why they skip RLS.
 2. Never treat `inventory_levels` as writable truth — append to `inventory_ledger`.
 3. External side effects belong in `outbox_events`, not in the request transaction.
 4. Do not DELETE from `audit_log` by hand — use the archival worker + `archive_purge_audit_logs`.
@@ -279,6 +314,6 @@ Property: `invsys.integration.vault-provider`.
 
 ## Schema dictionary (quick index)
 
-Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_chunks`, `support_knowledge_nodes`, `support_knowledge_edges`. Almost everything else is tenant-scoped.
+Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_*`, `platform_admins`, `platform_admin_refresh_tokens`, `platform_audit_logs`, `platform_compliance_broadcasts`, `platform_knowledge_documents`. Almost everything else is tenant-scoped.
 
-See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V090`) or the matching JPA entity under `backend/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).
+See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V108`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).

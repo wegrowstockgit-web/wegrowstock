@@ -1,5 +1,7 @@
 package com.invsys.core.security.dto;
 
+import com.invsys.domain.subscription.AppModule;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -30,6 +32,10 @@ public record MeResponse(
         String addressCountry,
         String uiDensityPreference,
         /** Union of granted permission keys across all assigned roles. */
-        List<String> grantedPermissions
+        List<String> grantedPermissions,
+        /** Always false — platform admins live in {@code platform_admins}, not tenant users. */
+        boolean isSuperAdmin,
+        /** Commercial modules enabled for this tenant. */
+        List<AppModule> enabledModules
 ) {
 }

@@ -29,7 +29,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         basePackages = "com.invsys",
         excludeFilters = {
                 @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.invsys\\.support\\..*"),
-                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.invsys\\.api\\.SupportChatController")
+                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.invsys\\.api\\.SupportChatController"),
+                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.invsys\\.admin\\..*")
         }
 )
 @EnableAsync

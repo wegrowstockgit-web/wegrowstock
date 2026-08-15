@@ -1,0 +1,93 @@
+# CI — frontend_wms (data plane) + frontend_admin (control plane)
+name: CI Frontends
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "frontends/**"
+      - ".github/workflows/ci-frontends.yml"
+  push:
+    branches: [develop, main]
+    paths:
+      - "frontends/**"
+      - ".github/workflows/ci-frontends.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-frontends-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-wms:
+    name: frontend_wms build + unit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontends
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontends/pnpm-lock.yaml
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        run: pnpm --filter frontend_wms test
+
+      - name: Production build
+        run: pnpm --filter frontend_wms build
+
+      - name: Assert no control-plane leakage in WMS bundle
+        run: |
+          set -euo pipefail
+          if grep -R -E "TenantEntitlementsDrawer|ControlPlaneTenantController|/control-plane" apps/frontend_wms/dist; then
+            echo "::error::Control-plane strings found in frontend_wms production bundle"
+            exit 1
+          fi
+          echo "NO_CONTROL_PLANE_IN_BUNDLE"
+
+  frontend-admin:
+    name: frontend_admin build + unit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontends
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontends/pnpm-lock.yaml
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        run: pnpm --filter frontend_admin test
+
+      - name: Production build
+        run: pnpm --filter frontend_admin build

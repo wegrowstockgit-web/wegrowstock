@@ -48,16 +48,16 @@ Thumbs.db
 # Generated Spring metadata spilled outside Maven modules
 /backend/META-INF/
 
-# Frontend tooling caches
-frontend/.vite/
+# Frontend tooling caches / Playwright (pnpm workspace apps)
+frontends/**/.vite/
+frontends/**/playwright-report/
+frontends/**/test-results/
+frontends/**/playwright/.auth/
 **/.turbo/
 
 # Test reports / artifacts
 playwright-report/
 test-results/
-frontend/playwright-report/
-frontend/test-results/
-frontend/playwright/.auth/
 **/surefire-reports/
 **/failsafe-reports/
 

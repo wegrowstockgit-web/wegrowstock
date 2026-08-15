@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -47,20 +47,79 @@ public class DistributedRateLimiter {
     private final StringRedisTemplate redis;
     private final DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA, Long.class);
     private final ConcurrentHashMap<String, LocalWindow> local = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Double> tenantMultipliers = new ConcurrentHashMap<>();
 
     public DistributedRateLimiter(ObjectProvider<StringRedisTemplate> redisProvider) {
         this.redis = redisProvider.getIfAvailable();
     }
 
     public void tryAcquire(String key, int capacity, int tokens, Duration window) {
+        int effectiveCapacity = applyOverride(key, capacity);
         boolean allowed = redis != null
-                ? tryRedis(key, capacity, tokens, window)
-                : tryLocal(key, capacity, tokens, window);
+                ? tryRedis(key, effectiveCapacity, tokens, window)
+                : tryLocal(key, effectiveCapacity, tokens, window);
         if (!allowed) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
                     "Rate limit exceeded")
                     .withProperty("type", "about:blank")
                     .withProperty("retryAfterSeconds", window.toSeconds());
+        }
+    }
+
+    /**
+     * Live token-bucket capacity override for a tenant (noisy-neighbor control).
+     * Multiplier is applied to base capacities for keys matching {@code rate:{tenantId}:*}.
+     */
+    public void setTenantCapacityMultiplier(UUID tenantId, double multiplier) {
+        if (tenantId == null || multiplier <= 0) {
+            return;
+        }
+        tenantMultipliers.put(tenantId.toString(), multiplier);
+        if (redis != null) {
+            try {
+                redis.opsForValue().set("invsys:rate-multiplier:" + tenantId, String.valueOf(multiplier));
+            } catch (RuntimeException ignored) {
+                // local map remains authoritative for this process
+            }
+        }
+    }
+
+    public double getTenantCapacityMultiplier(UUID tenantId) {
+        if (tenantId == null) {
+            return 1.0;
+        }
+        Double cached = tenantMultipliers.get(tenantId.toString());
+        if (cached != null) {
+            return cached;
+        }
+        if (redis != null) {
+            try {
+                String raw = redis.opsForValue().get("invsys:rate-multiplier:" + tenantId);
+                if (raw != null) {
+                    double parsed = Double.parseDouble(raw);
+                    tenantMultipliers.put(tenantId.toString(), parsed);
+                    return parsed;
+                }
+            } catch (RuntimeException ignored) {
+                // fall through
+            }
+        }
+        return 1.0;
+    }
+
+    private int applyOverride(String key, int capacity) {
+        if (key == null || !key.startsWith("rate:") || key.startsWith("rate:ip:")) {
+            return capacity;
+        }
+        String[] parts = key.split(":", 3);
+        if (parts.length < 3) {
+            return capacity;
+        }
+        try {
+            double mult = getTenantCapacityMultiplier(UUID.fromString(parts[1]));
+            return Math.max(1, (int) Math.round(capacity * mult));
+        } catch (IllegalArgumentException ex) {
+            return capacity;
         }
     }
 
@@ -103,6 +162,7 @@ public class DistributedRateLimiter {
     /** Test helper. */
     public void resetLocal() {
         local.clear();
+        tenantMultipliers.clear();
     }
 
     private record LocalWindow(long startedAtMs, AtomicInteger tokens) {

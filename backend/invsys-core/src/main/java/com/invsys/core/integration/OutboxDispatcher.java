@@ -4,6 +4,7 @@ import com.invsys.core.common.MdcSupport;
 import com.invsys.config.IntegrationProperties;
 import com.invsys.core.integration.OutboxEventRepository;
 import com.invsys.core.integration.OutboxEventRepositoryCustom.ClaimedOutboxEvent;
+import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,13 +35,15 @@ public class OutboxDispatcher {
     private final Map<String, OutboxEventHandler> handlers;
     private final ExecutorService virtualThreadExecutor;
     private final ApplicationEventPublisher eventPublisher;
+    private final BootstrapJdbc bootstrapJdbc;
 
     public OutboxDispatcher(
             OutboxEventRepository outboxEventRepository,
             IntegrationProperties integrationProperties,
             List<OutboxEventHandler> handlerList,
             @Qualifier("virtualThreadExecutor") ExecutorService virtualThreadExecutor,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            BootstrapJdbc bootstrapJdbc) {
         this.outboxEventRepository = outboxEventRepository;
         this.integrationProperties = integrationProperties;
         this.handlers = handlerList.stream()
@@ -48,6 +51,7 @@ public class OutboxDispatcher {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
         this.virtualThreadExecutor = virtualThreadExecutor;
         this.eventPublisher = eventPublisher;
+        this.bootstrapJdbc = bootstrapJdbc;
     }
 
     public void dispatch() {
@@ -76,6 +80,12 @@ public class OutboxDispatcher {
     private boolean processClaimed(ClaimedOutboxEvent event) {
         TenantContext.setTenantId(event.tenantId());
         try {
+            if (bootstrapJdbc.isIntegrationSyncPaused(event.tenantId())) {
+                log.warn("Outbox skipped — integration kill-switch active tenant={} id={}",
+                        event.tenantId(), event.id());
+                handleFailure(event, new IllegalStateException("INTEGRATION_KILL_SWITCH"));
+                return true;
+            }
             OutboxEventHandler handler = handlers.get(event.eventType());
             if (handler == null) {
                 log.warn("No handler for outbox event type={} id={}", event.eventType(), event.id());

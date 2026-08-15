@@ -21,6 +21,9 @@ import com.invsys.core.security.JwtAuthFilter;
  * unhandled runtime exceptions, short-circuit responses, and transaction rollbacks —
  * so no historical tenant identity can contaminate the next request on the same carrier.
  * <p>
+ * Suspended tenants are rejected with HTTP 403 by {@link SuspendedTenantAccessFilter}
+ * (registered after JWT bind) so dunning / control-plane suspend takes effect immediately.
+ * <p>
  * Async/SSE kickoff is special: the filter chain returns while the response stays open.
  * Clearing here on that path wiped auth/tenant for the later timeout dispatch. Cleanup
  * is deferred until the async dispatch completes (or the request never went async).

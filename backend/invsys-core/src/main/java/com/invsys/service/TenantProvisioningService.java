@@ -37,6 +37,7 @@ public class TenantProvisioningService {
     private final LocationRepository locationRepository;
     private final PasswordEncoder passwordEncoder;
     private final RolePermissionService rolePermissionService;
+    private final TenantSubscriptionService tenantSubscriptionService;
 
     public TenantProvisioningService(TenantRepository tenantRepository,
                                        TenantSettingsRepository tenantSettingsRepository,
@@ -45,7 +46,8 @@ public class TenantProvisioningService {
                                        UserRoleRepository userRoleRepository,
                                        LocationRepository locationRepository,
                                        PasswordEncoder passwordEncoder,
-                                       RolePermissionService rolePermissionService) {
+                                       RolePermissionService rolePermissionService,
+                                       TenantSubscriptionService tenantSubscriptionService) {
         this.tenantRepository = tenantRepository;
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.userRepository = userRepository;
@@ -54,6 +56,7 @@ public class TenantProvisioningService {
         this.locationRepository = locationRepository;
         this.passwordEncoder = passwordEncoder;
         this.rolePermissionService = rolePermissionService;
+        this.tenantSubscriptionService = tenantSubscriptionService;
     }
 
     @Transactional
@@ -66,6 +69,7 @@ public class TenantProvisioningService {
         tenantRepository.save(tenant);
 
         tenantSettingsRepository.save(TenantSettings.withDefaults(tenantId));
+        tenantSubscriptionService.insertDefaults(tenantId);
 
         List<Role> roles = new ArrayList<>();
         for (String code : DEFAULT_ROLES) {
@@ -111,6 +115,7 @@ public class TenantProvisioningService {
         tenant.setSlug(slug);
         tenant.setStatus("ACTIVE");
         tenantRepository.saveAndFlush(tenant);
+        tenantSubscriptionService.insertDefaults(tenantId);
         return tenantId;
     }
 }

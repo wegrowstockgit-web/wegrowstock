@@ -81,39 +81,29 @@
 
 ```
 InventorySystem/
-├── BUILD_PLAN.md
-├── docker-compose.yml
-├── backend/                      # Spring Boot 3.x, Java 21, Maven
+├── BUILD_PLAN.md                 # Original phased MVP plan (this file)
+├── docker-compose.yml            # db, both APIs, both UIs, gateway, LGTM
+├── deploy.bat                    # Windows deploy / seed / status (both planes)
+├── backend/                      # Maven aggregator — Java 25, Spring Boot 4.1
 │   ├── pom.xml
-│   ├── Dockerfile                # multi-stage: maven build → JRE 21 runtime
-│   └── src/main/java/com/invsys/
-│       ├── config/               # VirtualThreads, Jackson, OpenAPI, CORS
-│       ├── tenancy/              # TenantContext, RLS connection customizer, filter
-│       ├── auth/                 # JWT issuance/validation, refresh tokens, JWKS
-│       ├── catalog/              # products, variants, lots, locations
-│       ├── inventory/            # ledger, allocations, levels, cycle counts
-│       ├── purchasing/           # suppliers, POs, receiving
-│       ├── orders/               # sales orders, shipments
-│       ├── billing/              # invoices, payments, Stripe Connect (mocked)
-│       ├── integration/          # webhook inbox, outbox, external refs, idempotency
-│       └── common/               # Money, errors (RFC 7807), pagination, sequences
-│   └── src/main/resources/db/migration/   # Flyway V001__...V0NN
-│   └── src/test/java/            # Testcontainers integration tests
-├── frontend/                     # Vite + React 19 + TS
-│   ├── Dockerfile                # multi-stage: node build → nginx
-│   └── src/
-│       ├── api/                  # axios instance, generated types from OpenAPI
-│       ├── stores/               # zustand: session, activeWarehouse, scanBuffer
-│       ├── hooks/                # useBarcodeScanner, useHaptics, useOnline
-│       ├── scanner/              # camera component + decode.worker.ts
-│       ├── offline/              # query persistence, mutation queue
-│       ├── features/products/    # virtualized Product Master grid
-│       ├── features/fulfillment/ # mobile-first scanner view
-│       └── ui/                   # warehouse-grade primitives (BigButton, etc.)
+│   ├── Dockerfile                # -pl invsys-app -am → WMS fat jar (:8080)
+│   ├── Dockerfile.admin          # -pl invsys-admin-api -am → Admin fat jar (:8081)
+│   ├── invsys-core/              # Domain, repos, services, Flyway (head V108)
+│   ├── invsys-app/               # Data-plane runner (artifact invsys-api)
+│   ├── invsys-admin-api/         # Control-plane runner
+│   ├── invsys-chatbot/           # Optional Support Co-Pilot
+│   └── invsys-training/          # Optional Flight Simulator
+├── frontends/                    # pnpm workspace
+│   ├── apps/frontend_wms/        # Tenant WMS — Vite + React 19 + Playwright
+│   ├── apps/frontend_admin/      # Super Admin control plane
+│   └── packages/                 # shared-types, shared-ui
 └── ops/
+    ├── api-gateway/nginx.conf    # :8080 blocks CP; :8081 is admin
+    ├── jwt/                      # Dev RS256 PEMs (shared by both APIs)
     └── postgres/init/            # role bootstrap (app_owner / app_user)
 ```
 
+Historical phases below still use the original Java 21 / Spring Boot 3 wording — that was the MVP target. The shipped stack is Java 25 / Spring Boot 4.1 with a **dual-plane** split (WMS vs Super Admin). See `DEVELOPER_ARCHITECTURE.md` for the living map.
 ### 2.2 Tenancy enforcement chain (every request)
 
 1. `JwtAuthFilter` validates RS256 token → extracts `tenant_id`, `user_id`, roles → stores in `TenantContext` (ThreadLocal; safe with virtual threads since each request = one thread).
@@ -306,7 +296,7 @@ Rule for the executing agent: complete a phase, run its acceptance checks, then 
 ### Phase 6 — REST API Surface
 - Controllers for all domains under `/api/v1`; springdoc OpenAPI with full schemas; RFC 7807 problem-detail errors; cursor-based pagination (`?cursor=&limit=`) on list endpoints; `Idempotency-Key` header honored on all POSTs (replay returns stored response).
 - Barcode lookup hot path: `GET /api/v1/scan/{barcode}` → variant + levels at active warehouse, single jOOQ query, target p95 < 30 ms.
-- Export OpenAPI JSON to `frontend/openapi.json` for type generation.
+- Export OpenAPI JSON to `frontends/apps/frontend_wms/openapi.json` for type generation.
 - **Accept:** OpenAPI validates; duplicate `Idempotency-Key` POST returns identical response without double side effects; scan endpoint returns levels.
 
 ### Phase 7 — Frontend Infrastructure
@@ -421,3 +411,17 @@ Lint → backend unit → backend integration (Testcontainers) → frontend unit
 7. A new business can self-serve everything: sign up on the login page, configure its own settings, invite and manage its own users with roles — no operator involvement, ever.
 8. The full test pyramid (Part 6) is green: JUnit unit + Testcontainers integration, Vitest frontend, and all Playwright E2E journeys against the containerized stack with seeded demo data (`owner@demo.test`).
 9. Every screen looks intentionally designed (§2.6): consistent tokens, real empty/loading/error states, no raw unstyled views anywhere.
+
+---
+
+## Part 8 — Shipped evolution (post-MVP, not a rewrite of Phases 0–11)
+
+The numbered phases above delivered the tenant WMS. What shipped after that, and must stay accurate in docs/`deploy.bat`:
+
+| Track | What it is |
+|-------|------------|
+| Dual plane | `invsys-app` + `frontend_wms` (`:8080` / `:3000`) vs `invsys-admin-api` + `frontend_admin` (`:8081` / `:3002`) |
+| Super Admin identity | `platform_admins` (V106) — not `users.is_super_admin` |
+| Entitlements | `tenant_subscriptions` (V104/V105) + `@RequireModule` on WMS APIs |
+| Control-plane Day-2 | Impersonation (15-min WMS JWT), suspend, billing estimates, RAG ingest, integration kill-switch, `platform_audit_logs`, shard routing, DLQ retry, rate-limit multipliers, sandbox clone, compliance broadcasts (V107–V108) |
+| Deploy | `deploy.bat` starts **both** planes; `--no-chatbot` / `--with-chatbot` / `--clean-frontend` are valid as the first argument |

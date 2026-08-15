@@ -60,6 +60,10 @@ invsys:
   security:
     cookie-secure: ${COOKIE_SECURE:false}
     cookie-same-site: ${COOKIE_SAME_SITE:Lax}
+    # Keep alongside cookie overrides — some Boot versions replace nested maps per document.
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
+    cors-include-verified-domains: ${CORS_INCLUDE_VERIFIED_DOMAINS:true}
+    public-signup-enabled: ${PUBLIC_SIGNUP_ENABLED:true}
   jwt:
     private-key-file: ${JWT_PRIVATE_KEY_FILE:/run/jwt/dev-private.pem}
     public-key-file: ${JWT_PUBLIC_KEY_FILE:/run/jwt/dev-public.pem}

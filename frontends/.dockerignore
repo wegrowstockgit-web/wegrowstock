@@ -1,0 +1,15 @@
+# Build context is frontends/ (see docker-compose frontend-admin).
+# Exclude host node_modules — pnpm workspace junctions break Docker on Windows
+# ("invalid file request .../node_modules/@invsys/shared-types").
+**/node_modules
+**/dist
+**/.vite
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+**/.pnpm-store
+**/tsconfig.tsbuildinfo
+**/tsconfig.*.tsbuildinfo
+**/.DS_Store
+**/Thumbs.db

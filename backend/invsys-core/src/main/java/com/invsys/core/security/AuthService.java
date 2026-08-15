@@ -21,6 +21,7 @@ import com.invsys.repository.UserRoleRepository;
 import com.invsys.repository.VehicleAssignmentRepository;
 import com.invsys.service.RolePermissionService;
 import com.invsys.service.TenantOnboardingService;
+import com.invsys.service.TenantSubscriptionService;
 import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.context.annotation.Lazy;
@@ -54,6 +55,7 @@ public class AuthService {
     private final TenantSsoResolver tenantSsoResolver;
     private final TerminalPinBruteForceGuard terminalPinBruteForceGuard;
     private final RolePermissionService rolePermissionService;
+    private final TenantSubscriptionService tenantSubscriptionService;
     private final AuthService self;
 
     public AuthService(TenantOnboardingService onboardingService,
@@ -70,6 +72,7 @@ public class AuthService {
                        TenantSsoResolver tenantSsoResolver,
                        TerminalPinBruteForceGuard terminalPinBruteForceGuard,
                        RolePermissionService rolePermissionService,
+                       TenantSubscriptionService tenantSubscriptionService,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
@@ -85,6 +88,7 @@ public class AuthService {
         this.mediaUrlValidator = mediaUrlValidator;
         this.terminalPinBruteForceGuard = terminalPinBruteForceGuard;
         this.rolePermissionService = rolePermissionService;
+        this.tenantSubscriptionService = tenantSubscriptionService;
         this.self = self;
     }
 
@@ -140,6 +144,32 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
         List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
         return issueTokens(user, roles);
+    }
+
+    /**
+     * Exchanges a control-plane impersonation JWT for a normal WMS session (cookies).
+     */
+    @Transactional
+    public TokenResponse acceptImpersonation(String impersonationToken) {
+        if (impersonationToken == null || impersonationToken.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "impersonation token required");
+        }
+        var claims = jwtService.validateAndParse(impersonationToken);
+        Object type = claims.getClaim(JwtService.CLAIM_TOKEN_TYPE);
+        if (!JwtService.TOKEN_TYPE_IMPERSONATION.equals(type)) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Not an impersonation token");
+        }
+        UUID userId = UUID.fromString(claims.getSubject());
+        UUID tenantId = UUID.fromString((String) claims.getClaim(JwtService.CLAIM_TENANT_ID));
+        if (bootstrapJdbc.isTenantSuspended(tenantId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "TENANT_SUSPENDED", "Tenant is suspended");
+        }
+        TenantContext.setTenantId(tenantId);
+        try {
+            return self.completeLogin(userId);
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @Transactional
@@ -335,10 +365,11 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user, List<String> roles) {
-        List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
+        List<String> roleList = roles == null ? List.of() : List.copyOf(roles);
+        List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roleList);
         List<String> grantedPermissions = rolePermissionService.resolveGrantedPermissions(
                 user.getTenantId(), roles);
-        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
+        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roleList, warehouseIds);
         String refresh = UUID.randomUUID().toString();
         RefreshToken entity = new RefreshToken();
         entity.setTenantId(user.getTenantId());
@@ -346,7 +377,7 @@ public class AuthService {
         entity.setTokenHash(hashToken(refresh));
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
         refreshTokenRepository.save(entity);
-        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roles, warehouseIds,
+        return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roleList, warehouseIds,
                 user.getAvatarUrl(), grantedPermissions);
     }
 
@@ -356,10 +387,10 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
-        List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
+        List<String> roles = List.copyOf(userRoleRepository.findRoleCodesByUserId(userId));
         List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
         List<String> grantedPermissions = rolePermissionService.resolveGrantedPermissions(
-                user.getTenantId(), roles);
+                user.getTenantId(), userRoleRepository.findRoleCodesByUserId(userId));
         return new MeResponse(
                 user.getId(),
                 user.getTenantId(),
@@ -384,7 +415,9 @@ public class AuthService {
                 user.getAddressPostalCode(),
                 user.getAddressCountry(),
                 user.getUiDensityPreference(),
-                grantedPermissions);
+                grantedPermissions,
+                false,
+                tenantSubscriptionService.getEnabledModules(user.getTenantId()));
     }
 
     /**

@@ -1,0 +1,2 @@
+# Shell scripts must use LF so Alpine Docker ENTRYPOINTs can exec.
+*.sh text eol=lf

@@ -1,5 +1,7 @@
 package com.invsys.modules.fintech.api;
 
+import com.invsys.core.security.RequireModule;
+import com.invsys.domain.subscription.AppModule;
 import com.invsys.modules.fintech.domain.CapitalCreditLine;
 import com.invsys.modules.fintech.domain.FactoredInvoice;
 import com.invsys.modules.fintech.service.FintechUnderwritingService;
@@ -27,6 +29,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/fintech")
 @PreAuthorize("hasRole('OWNER')")
+@RequireModule(AppModule.FINTECH)
 public class FintechController {
 
     private final FintechUnderwritingService fintechService;

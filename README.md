@@ -24,11 +24,12 @@ deploy.bat down                Rem stop containers (keeps DB volume)
 | Command | What it does |
 |---------|----------------|
 | `deploy.bat` / `deploy.bat deploy` | Rebuild and start the full stack |
-| `deploy.bat deploy --clean-frontend` | Wipe frontend `node_modules`/`dist` first, then deploy |
+| `deploy.bat --no-chatbot` | Same as `deploy --no-chatbot` (flag-only first arg is valid) |
+| `deploy.bat deploy --clean-frontend` | Wipe `frontends/` app `node_modules`/`dist` first, then deploy |
 | `deploy.bat seed` | Apply `ops/demo_seed.sql` (+ extra tenants if present) |
 | `deploy.bat status` | Compact `docker compose ps` + endpoint list |
 | `deploy.bat down` | Stop/remove containers; Postgres volume kept |
-| `deploy.bat clean-frontend` | Remove frontend build artifacts only |
+| `deploy.bat clean-frontend` | Remove `frontend_wms` / `frontend_admin` build artifacts |
 | `deploy.bat help` | Print usage |
 
 **Support Co-Pilot / chatbot** (optional module — backend + frontend together):
@@ -55,16 +56,18 @@ export GEMINI_API_KEY="your-actual-google-ai-studio-key"
 
 Without a key, the chatbot module forces `spring.ai.model.*=none` and `SUPPORT_AI_LLM=heuristic` so Docker/CI stay headless-safe. Test profile uses the same safe defaults.
 
-| Service  | URL / endpoint |
-|----------|----------------|
-| Frontend | http://localhost:3000 |
-| API      | http://localhost:8080 |
-| Swagger  | http://localhost:8080/swagger-ui.html |
-| Health   | http://localhost:8080/actuator/health |
-| Grafana  | http://localhost:3001 (admin / admin) |
-| Postgres | `localhost:5432` — app runtime user `app_user` / Flyway owner `app_owner` |
+| Plane | Service | URL / endpoint |
+|-------|---------|----------------|
+| **Data plane** (tenant WMS) | UI | http://localhost:3000 |
+| | API gateway | http://localhost:8080 |
+| | Swagger | http://localhost:8080/swagger-ui.html |
+| | Health | http://localhost:8080/actuator/health |
+| **Control plane** (Super Admin) | UI | http://localhost:3002 |
+| | Admin API gateway | http://localhost:8081 (`Host: admin.invsys.com`) |
+| Observability | Grafana | http://localhost:3001 (admin / admin) |
+| Data | Postgres | `localhost:5432` — runtime `app_user` / Flyway `app_owner` |
 
-Containers: `invsys-web` (nginx SPA), `invsys-api` (Spring Boot), `invsys-db` (Postgres 16).
+Containers: `invsys-web` (WMS SPA), `invsys-admin-web` (admin SPA), `invsys-api` (WMS Spring Boot), `invsys-admin-api` (control-plane Spring Boot :8081), `invsys-api-gateway`, `invsys-db` (Postgres 16).
 
 Copy `.env.example` → `.env` when overriding JWT keys, webhook secrets, or DB credentials. Dev JWT PEMs live under `ops/jwt/` (generated automatically on first `deploy.bat deploy` if missing).
 
@@ -84,10 +87,10 @@ To toggle chatbot without `deploy.bat`, set compose build/runtime env before bui
 ```bash
 # Disable both sides for this build
 export INVSYS_WITH_CHATBOT=false INVSYS_CHATBOT_ENABLED=false VITE_ENABLE_CHATBOT=false
-docker compose build backend frontend && docker compose up -d
+docker compose build backend frontend backend-admin frontend-admin && docker compose up -d
 ```
 
-### Demo credentials
+### Demo credentials & tiers
 
 Login requires **email** and **password** only — the tenant is resolved from the globally unique email. Load both seed files after the API is healthy:
 
@@ -97,6 +100,23 @@ docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_ex
 ```
 
 Password for every account below: **password123**.
+
+**Super Admin (Control Plane)** — identity lives in `platform_admins` (not `users.is_super_admin`):
+
+| Portal | URL | Email | Password |
+|--------|-----|-------|----------|
+| Super Admin UI | http://localhost:3002 (`admin.invsys.com`) | **owner@demo.test** | **password123** |
+| Admin API | http://localhost:8081 | same | same |
+
+**Commercial tier demo tenants** (for entitlement testing in the admin portal):
+
+| Tenant | Slug | Tier | Enabled modules |
+|--------|------|------|-----------------|
+| Demo Corp | `demo-corp` | **ENTERPRISE** | CORE, B2B_SHOWROOM, FINTECH, AI_COPILOT |
+| Acme Wholesale | `acme-wholesale` | **BASIC** | CORE |
+| Northwind Logistics | `northwind-logistics` | **INTERMEDIATE** | CORE, SHOPIFY, ADVANCED_FULFILLMENT |
+
+WMS office login for Demo Corp owner remains **owner@demo.test** / **password123** on http://localhost:3000 — that is a *tenant* user row, separate from the platform admin row with the same email.
 
 **Shift PIN (floor / scanners only):** on the first visit to a Surface B route, set a **4-digit shift PIN**. Demo / E2E convention: **1234**. The PIN is stored in the browser (IndexedDB) for that device profile — it is not a server password and is **not** shown on office login (`/dashboard`, settings, reports, showroom).
 
@@ -156,6 +176,7 @@ Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cyc
 | b2b@pacific.test | B2B_CUSTOMER | Showroom | No |
 
 Quick login (office, no PIN): http://localhost:3000 — **owner@demo.test** / **password123**.  
+Super Admin portal: http://localhost:3002 (`admin.invsys.com`) — **owner@demo.test** / **password123** via `platform_admins` (control-plane cookies).  
 Floor smoke (PIN **1234** after first open): same password, then open **Fulfillment** or sign in as **picker@demo.test**.
 
 ## Local Development (without Docker for app code)
@@ -168,34 +189,43 @@ docker compose up db -d
 docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed.sql
 docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_extra.sql
 
-# Backend
+# Data-plane API (WMS)
 cd backend
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+mvn spring-boot:run -pl invsys-app -Dspring-boot.run.profiles=dev
 
-# Frontend
-cd frontend
-npm install
-npm run dev   # http://localhost:5173 (proxies /api → :8080)
+# Control-plane API (Super Admin) — separate process on :8081
+mvn spring-boot:run -pl invsys-admin-api -Dspring-boot.run.profiles=dev
+
+# Frontends (pnpm workspace)
+cd frontends
+pnpm install
+pnpm --filter frontend_wms dev      # http://localhost:5173 → WMS API :8080
+pnpm --filter frontend_admin dev    # http://localhost:5174 → Admin API :8081
 ```
 
-Useful frontend scripts: `npm run build`, `npm test` (Vitest), `npm run test:e2e` (Playwright against http://localhost:3000 by default).
+Useful scripts: `pnpm --filter frontend_wms build|test|test:e2e`, `pnpm --filter frontend_admin build|test`.
 
 ## Architecture
 
-- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V075+`), RS256 JWT, virtual threads, Actuator/Prometheus
-- **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels` (optional `lpn_id` for palletized stock)
+InventorySystem is split into two independently deployable planes:
+
+| Plane | Purpose | Backend | Frontend | Edge |
+|-------|---------|---------|----------|------|
+| **Data plane** | Tenant WMS / warehouse ops | `invsys-app` (:8080) | `frontends/apps/frontend_wms` | `app.invsys.com` / `:8080` — **blocks** `/api/v1/control-plane/**` |
+| **Control plane** | Super Admin ops: entitlements, billing, impersonation, RAG, kill-switch, audit, shards, DLQ, telemetry, compliance | `invsys-admin-api` (:8081) | `frontends/apps/frontend_admin` | `admin.invsys.com` / `:8081` — admin JWT cookies (`invsys_admin_*`, SameSite=Strict) |
+
+Shared engine: `invsys-core` (entities, Flyway through `V108`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
+
+- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V108`), RS256 JWT, virtual threads, Actuator/Prometheus
+- **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels` (optional `lpn_id` for palletized stock); control-plane writes use `app_owner` / BootstrapJdbc
+- **Commercial entitlements:** `tenant_subscriptions` + `@RequireModule` (e.g. FINTECH → 402 `MODULE_LOCKED`)
+- **Tenant suspend:** `tenants.status = SUSPENDED` → WMS `SuspendedTenantAccessFilter` returns **403** immediately
 - **CQRS dashboard:** `dashboard_kpi_snapshots` read model; refreshed from outbox (`STOCK_LEVEL_CHANGED`, `ORDER_ALLOCATED`, `INVOICE_PAID`, …)
 - **Realtime:** SSE `GET /api/v1/dashboard/stream` + `useDashboardStream` (replaces office polling intervals)
-- **Frontend:** React 19.2 (latest stable), TypeScript, Vite, Tailwind design tokens (Surface A office / Surface B warehouse), TanStack Query + persist, Zustand, Lucide
-- **Surfaces:** Office shell (expandable icon rail + ⌘K palette), warehouse floor ops (HID scan, waves, LPN move / Build Pallet, A* mini-map, cycle counts, issue supplies, van truck), B2B showroom (`/showroom`)
-- **Digital Twin:** `locations.coord_x/y/z` + `walkable_edges` power A* wayfinding; pick waves sort hierarchically by location path
-- **LPNs / MIB:** Mint/pack/move license plates; wave `tote_identifier`; ship-by-LPN; task interleaving (`/tasks/next-best-action`)
-- **GS1:** Client-side `validatePickScan` blocks wrong SKU/qty before HTTP 409s
-- **Pillars:** Stockroom internal consumption (`INTERNAL_CONSUMPTION`), lot genealogy `/compliance/lot-trace`, field van-stock (`locations.type=VEHICLE`)
-- **Offline:** IndexedDB mutation outbox + service-worker-friendly scan queue; JWT refresh only when access token is near expiry; 403 is RBAC (does not sign out)
-- **Tenancy:** Slugless login resolves `tenant_id` from globally unique email via `BootstrapJdbc`; RLS uses `set_config('app.current_tenant', ...)` per transaction (fail-closed)
-- **LBAC:** `user_warehouses` + JWT `warehouse_ids` (includes active van location for technicians) + `X-Warehouse-Id` enforced by `WarehouseAccessFilter`
-- **Integrations:** Stripe / Shopify / EasyPost webhook stubs, channel + EDI hooks, AP invoice ingestion, supplier portal tokens
+- **Frontend (WMS):** React 19.2, TypeScript, Vite, Tailwind (Surface A office / Surface B warehouse), TanStack Query + persist, Zustand, Lucide — **no** control-plane UI (login accepts `?impersonateToken=` only)
+- **Frontend (Admin):** Login, tenants (impersonate / suspend / sandbox), billing, Copilot knowledge, integrations kill-switch, audit trail, shards, DLQ, concurrency throttling, global compliance, commercial + health reports
+- **Surfaces (WMS):** Office shell, warehouse floor ops, B2B showroom (`/showroom`)
+- **Digital Twin / LPNs / GS1 / Offline / Tenancy / LBAC / Integrations:** unchanged data-plane capabilities (see `DEVELOPER_ARCHITECTURE.md`)
 
 ## Demo Seed Data
 
@@ -218,22 +248,25 @@ cd backend && mvn -q verify   # includes jacoco:check
 # Focused warehouse / dashboard pillar coverage
 cd backend && mvn -q "-Dtest=LpnMoveHttpTest,LpnPalletizationHttpTest,TaskInterleavingHttpTest,PickingWaveToteHttpTest,AStarPathfindingTest,SpatialMapHttpTest,PathOptimizationHeuristicTest,PickingServiceTest,PickingWaveServiceTest,DashboardKpiCqrsHttpTest,DashboardStreamHttpTest" test
 
-# Frontend unit
-cd frontend && npm test
+# Control-plane API ITs (JaCoCo gate 85% on com.invsys.admin)
+cd backend && mvn -q "-Dsurefire.failIfNoSpecifiedTests=false" -pl invsys-admin-api -am verify
 
-# Frontend production build
-cd frontend && npm run build
+# Frontend unit + build (pnpm workspace)
+cd frontends && pnpm --filter frontend_wms test && pnpm --filter frontend_wms build
+cd frontends && pnpm --filter frontend_admin test && pnpm --filter frontend_admin build
 
 # E2E (requires docker stack + demo seed on :3000)
-cd frontend && npm run test:e2e
+cd frontends/apps/frontend_wms && pnpm test:e2e
 
 # Warehouse pillar journeys only
-cd frontend && npx playwright test e2e/journeys/21-lpn-tote-interleave.spec.ts e2e/journeys/22-pallet-builder.spec.ts e2e/journeys/23-digital-twin-astar.spec.ts e2e/journeys/24-cqrs-sse-gs1-path.spec.ts
+cd frontends/apps/frontend_wms && pnpm exec playwright test e2e/journeys/21-lpn-tote-interleave.spec.ts e2e/journeys/22-pallet-builder.spec.ts e2e/journeys/23-digital-twin-astar.spec.ts e2e/journeys/24-cqrs-sse-gs1-path.spec.ts
 ```
+
+CI: `.github/workflows/ci-backend.yml`, `ci-frontends.yml` (WMS bundle must contain zero control-plane strings).
 
 Playwright notes:
 
-- `e2e/global.setup.ts` logs in all six demo roles and caches storage under `frontend/playwright/.auth/` (gitignored)
+- `e2e/global.setup.ts` logs in all six demo roles and caches storage under `frontends/apps/frontend_wms/playwright/.auth/` (gitignored)
 - Role fixtures: `ownerPage`, `adminPage`, `managerPage`, `pickerPage`, `viewerPage`, `b2bPage`
 - Journey helpers: `e2e/journeys/helpers.ts` (`contextForRole`, `hidScan`, `apiJson`)
 - Suites include RBAC/LBAC, B2B fulfill cycle, offline picker, cross-dock, blind counts, internal lot mint, **LPN/tote/interleave**, **pallet builder**, **Digital Twin / A\***, **CQRS/SSE/GS1/path**
@@ -242,22 +275,32 @@ Playwright notes:
 
 ```
 InventorySystem/
-├── backend/                 # Spring Boot API (controllers, domain, Flyway V001–V074+)
-├── frontend/
-│   ├── src/                 # React app (pages, layout, offline queue, stores)
-│   ├── e2e/                 # Playwright specs + role fixtures + journeys/
-│   └── playwright/          # Cached auth states (local only)
+├── backend/                      # Maven multi-module
+│   ├── invsys-core/              # Shared domain, Flyway, tenancy, WMS APIs
+│   ├── invsys-chatbot/           # Optional Support Co-Pilot
+│   ├── invsys-training/          # Optional Flight Simulator
+│   ├── invsys-app/               # Data-plane bootable runner (:8080)
+│   ├── invsys-admin-api/         # Control-plane bootable runner (:8081)
+│   ├── Dockerfile                # WMS image
+│   └── Dockerfile.admin          # Admin API image
+├── frontends/                    # pnpm workspace
+│   ├── apps/frontend_wms/        # Tenant WMS SPA + Playwright e2e
+│   ├── apps/frontend_admin/      # Super Admin SPA (tenants, billing, ops, reports)
+│   ├── packages/shared-types/    # AppModule, CommercialTier, …
+│   └── packages/shared-ui/       # Button, Table, Modal, Drawer, Input
 ├── ops/
-│   ├── demo_seed.sql        # Full multi-tenant demo data
-│   ├── fix_passwords.sql
-│   ├── jwt/                 # Dev RS256 keypair
-│   └── postgres/init/       # Bootstrap roles on first DB create
-├── DATABASE_GUIDE.md        # Human + dictionary schema guide
+│   ├── api-gateway/nginx.conf    # app.* vs admin.* routing
+│   ├── terraform/infra/          # Plane-routing SSM profile + cost/HA
+│   ├── demo_seed.sql
+│   ├── jwt/
+│   └── postgres/init/
+├── .github/workflows/            # ci-backend, ci-frontends, terraform-*
+├── docker-compose.yml            # db + both APIs + both UIs + gateway + LGTM
+├── deploy.bat
+├── DATABASE_GUIDE.md
 ├── DEVELOPER_ARCHITECTURE.md
-├── PRODUCT.md               # Product register / UX principles
-├── BUILD_PLAN.md            # Master build plan
-├── docker-compose.yml       # db + api + web (+ observability)
-└── .env.example
+├── PRODUCT.md
+└── BUILD_PLAN.md
 ```
 
 ## API Overview
@@ -266,6 +309,7 @@ Auth & tenancy:
 
 - `POST /api/v1/auth/signup` — Create tenant + owner
 - `POST /api/v1/auth/login` — Access + refresh JWT
+- `POST /api/v1/auth/impersonation/accept` — Exchange a 15-min control-plane impersonation JWT for WMS cookies
 - `POST /api/v1/auth/refresh` — Rotate refresh token (access may be unchanged within the same second)
 
 Core inventory & orders:
@@ -287,12 +331,29 @@ Warehouse & manufacturing:
 - `/api/v1/manufacturing/**` — BOMs, production orders, terminal
 - `/api/v1/reports/**` — COGS, profit, operational reports
 
-Portal, money & platform:
+Portal, money & platform (data plane):
 
 - `/api/v1/portal/**` — B2B showroom catalog & draft orders
-- `/api/v1/fintech/**` — Capital / underwriting cockpit (OWNER-gated draws)
+- `/api/v1/fintech/**` — Capital / underwriting cockpit (OWNER-gated; `@RequireModule(FINTECH)`)
 - `/api/v1/ap-ingestions/**` — Supplier invoice OCR/ingest
 - `/api/v1/webhooks/**` + public webhook receivers — Stripe, Shopify, EasyPost
 - `/api/v1/settings`, users, invitations, SSO, account mappings, tax rates, shipping credentials
 
-See Swagger UI for the complete OpenAPI surface.
+Control plane (admin API only — **not** on `:8080`):
+
+- `POST /api/v1/control-plane/auth/login|logout` — Super Admin session (`invsys_admin_*` cookies + CSRF)
+- `GET /api/v1/control-plane/auth/me` / `GET .../auth/csrf`
+- `GET|PATCH /api/v1/control-plane/tenants/**` — Tier, modules, **status** (`ACTIVE`/`SUSPENDED`)
+- `POST /api/v1/control-plane/tenants/{id}/impersonate` — 15-min WMS JWT (`expiresInSeconds=900`) + `loginUrl`
+- `POST /api/v1/control-plane/tenants/{id}/clone-sandbox` — Isolated UAT tenant + one-time API key
+- `GET /api/v1/control-plane/billing/overview` — Estimated MRR, card/dunning status, usage
+- `POST|GET|DELETE /api/v1/control-plane/knowledge/**` — Markdown SOP ingest → PGVector chunks
+- `GET /api/v1/control-plane/integrations/traffic` + `POST .../kill-switch` — Pause tenant outbox sync
+- `GET /api/v1/control-plane/audit-logs` — SOC 2 Super Admin mutation trail (`platform_audit_logs`)
+- `GET|PUT /api/v1/control-plane/shards/**` — Tenant → DB shard / Aurora routing
+- `GET|POST /api/v1/control-plane/queues/dead-letters/**` — Cross-tenant failed `outbox_events` + retry
+- `GET|PUT /api/v1/control-plane/telemetry/**` — Per-tenant rate-limit multipliers
+- `GET|POST /api/v1/control-plane/compliance/broadcasts/**` — Global tax/hazmat fan-out
+- `GET /api/v1/control-plane/reports/commercial|health` — Platform GMV, adoption, webhooks, ledger growth
+
+See WMS Swagger UI (`:8080`) for the data-plane surface. Admin OpenAPI is disabled in Docker.

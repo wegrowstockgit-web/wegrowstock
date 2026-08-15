@@ -24,3 +24,23 @@ output "infra_profile_parameter_name" {
   description = "SSM parameter holding the serialized infra profile"
   value       = aws_ssm_parameter.infra_profile.name
 }
+
+output "plane_routing" {
+  description = "Data plane / control plane hostnames, ports, and service names"
+  value       = local.planes
+}
+
+output "plane_routing_parameter_name" {
+  description = "SSM parameter holding serialized plane routing"
+  value       = aws_ssm_parameter.plane_routing.name
+}
+
+output "data_plane_hostname" {
+  description = "Tenant WMS public hostname"
+  value       = var.data_plane_hostname
+}
+
+output "control_plane_hostname" {
+  description = "Super Admin portal public hostname"
+  value       = var.control_plane_hostname
+}

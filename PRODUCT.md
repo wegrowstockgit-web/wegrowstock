@@ -12,6 +12,8 @@ Two distinct user groups inside each tenant company:
 - **Warehouse operators (Surface B):** pickers and warehouse managers on the floor, often with a handheld scanner or tablet, in bright/variable warehouse lighting, sometimes wearing gloves. Their job: scan, pick, pack, receive, count — fast, with minimal reading.
 - **B2B customers (portal):** wholesale buyers invited by the tenant, browsing a showroom catalog and placing orders. They never see internal tooling.
 
+**Platform operators (outside any tenant UI):** Super Admins use a separate **Control Plane** app (`admin.invsys.com` / local `:3002`) for Day-2 SaaS operations — commercial tiers and module entitlements, platform billing/dunning, tenant suspend, support impersonation (15-minute WMS JWT), Copilot SOP ingest, integration kill-switch, SOC 2 audit trail, shard routing, dead-letter retry, noisy-neighbor throttling, UAT sandbox clone, and global compliance broadcasts. That surface is not part of the tenant WMS shell.
+
 ## Product Purpose
 
 Multi-tenant Inventory / WMS / Supply-Chain B2B SaaS. It exists so small-to-mid wholesale and light-manufacturing companies can run warehouse + office from one system instead of spreadsheets plus three disconnected tools. Success: inventory counts users trust (append-only ledger, no oversells), orders that move without babysitting, and payments/accounting that reconcile themselves.

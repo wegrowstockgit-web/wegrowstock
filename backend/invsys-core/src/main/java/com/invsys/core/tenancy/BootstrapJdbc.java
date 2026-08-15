@@ -42,6 +42,71 @@ public class BootstrapJdbc {
                 (rs, rowNum) -> UUID.fromString(rs.getString(1)));
     }
 
+    public boolean isTenantSuspended(UUID tenantId) {
+        Boolean suspended = jdbc.query(
+                "SELECT status = 'SUSPENDED' FROM tenants WHERE id = ?",
+                rs -> rs.next() && rs.getBoolean(1),
+                tenantId);
+        return Boolean.TRUE.equals(suspended);
+    }
+
+    public void updateTenantStatus(UUID tenantId, String status) {
+        jdbc.update("UPDATE tenants SET status = ?, updated_at = NOW() WHERE id = ?", status, tenantId);
+    }
+
+    /**
+     * Prefer OWNER, else first ACTIVE user — for support impersonation.
+     */
+    public Optional<ImpersonationUserRow> findImpersonationUser(UUID tenantId) {
+        return jdbc.query(
+                """
+                SELECT u.id, u.email,
+                       COALESCE(array_agg(DISTINCT r.code) FILTER (WHERE r.code IS NOT NULL), '{}') AS roles
+                  FROM users u
+                  LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+                  LEFT JOIN roles r ON r.id = ur.role_id
+                 WHERE u.tenant_id = ?
+                   AND u.status = 'ACTIVE'
+                 GROUP BY u.id, u.email
+                 ORDER BY CASE WHEN bool_or(r.code = 'OWNER') THEN 0
+                               WHEN bool_or(r.code = 'ADMIN') THEN 1
+                               ELSE 2 END,
+                          u.email
+                 LIMIT 1
+                """,
+                rs -> {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    java.sql.Array arr = rs.getArray("roles");
+                    String[] codes = arr == null ? new String[0] : (String[]) arr.getArray();
+                    return Optional.of(new ImpersonationUserRow(
+                            UUID.fromString(rs.getString("id")),
+                            rs.getString("email"),
+                            java.util.Arrays.asList(codes)));
+                },
+                tenantId);
+    }
+
+    public boolean isIntegrationSyncPaused(UUID tenantId) {
+        Boolean paused = jdbc.query(
+                "SELECT sync_paused FROM tenant_integration_controls WHERE tenant_id = ?",
+                rs -> rs.next() && rs.getBoolean(1),
+                tenantId);
+        return Boolean.TRUE.equals(paused);
+    }
+
+    public double findRateCapacityMultiplier(UUID tenantId) {
+        Double mult = jdbc.query(
+                "SELECT capacity_multiplier FROM tenant_rate_limit_overrides WHERE tenant_id = ?",
+                rs -> rs.next() ? rs.getDouble(1) : null,
+                tenantId);
+        return mult == null || mult <= 0 ? 1.0 : mult;
+    }
+
+    public record ImpersonationUserRow(UUID userId, String email, java.util.List<String> roles) {
+    }
+
     public Optional<UserAuthRow> findUserForAuth(UUID tenantId, String email) {
         return jdbc.query(
                 "SELECT id, password_hash, status FROM users WHERE tenant_id = ? AND lower(email) = lower(?)",
@@ -399,7 +464,11 @@ public class BootstrapJdbc {
 
     public record UserAuthRow(UUID id, String passwordHash, String status) {}
 
-    public record UserAuthWithTenantRow(UUID id, UUID tenantId, String passwordHash, String status) {}
+    public record UserAuthWithTenantRow(
+            UUID id,
+            UUID tenantId,
+            String passwordHash,
+            String status) {}
 
     public record RefreshTokenRow(UUID tenantId, UUID userId, java.time.Instant expiresAt, java.time.Instant revokedAt) {}
 
@@ -490,6 +559,120 @@ public class BootstrapJdbc {
                 SET accepted_at = NOW(), updated_at = NOW()
                 WHERE id = ?
                 """, invitationId);
+    }
+
+    public List<TenantWithSubscriptionRow> listTenantsWithSubscriptions() {
+        return jdbc.query(
+                """
+                SELECT t.id, t.name, t.slug, t.status,
+                       COALESCE(s.tier, 'BASIC') AS tier,
+                       COALESCE(s.enabled_modules::text, '["CORE"]') AS enabled_modules
+                FROM tenants t
+                LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
+                ORDER BY t.name
+                """,
+                (rs, rowNum) -> new TenantWithSubscriptionRow(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("name"),
+                        rs.getString("slug"),
+                        rs.getString("status"),
+                        rs.getString("tier"),
+                        rs.getString("enabled_modules")));
+    }
+
+    public Optional<TenantNameSlugStatusRow> findTenantNameSlugStatus(UUID tenantId) {
+        return jdbc.query(
+                "SELECT id, name, slug, status FROM tenants WHERE id = ?",
+                rs -> rs.next()
+                        ? Optional.of(new TenantNameSlugStatusRow(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("name"),
+                        rs.getString("slug"),
+                        rs.getString("status")))
+                        : Optional.empty(),
+                tenantId);
+    }
+
+    public Optional<TenantSubscriptionRow> findTenantSubscription(UUID tenantId) {
+        return jdbc.query(
+                """
+                SELECT t.id, t.name, t.slug, t.status,
+                       COALESCE(s.tier, 'BASIC') AS tier,
+                       COALESCE(s.enabled_modules::text, '["CORE"]') AS enabled_modules
+                FROM tenants t
+                LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
+                WHERE t.id = ?
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new TenantSubscriptionRow(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("name"),
+                        rs.getString("slug"),
+                        rs.getString("status"),
+                        rs.getString("tier"),
+                        rs.getString("enabled_modules")))
+                        : Optional.empty(),
+                tenantId);
+    }
+
+    public void insertTenantSubscription(UUID tenantId, String tier, String enabledModulesJson) {
+        jdbc.update("""
+                INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at)
+                VALUES (?, ?, CAST(? AS jsonb), NOW())
+                ON CONFLICT (tenant_id) DO NOTHING
+                """, tenantId, tier, enabledModulesJson);
+    }
+
+    public Optional<TenantSubscriptionRow> upsertTenantEnabledModules(UUID tenantId, String enabledModulesJson) {
+        jdbc.update("""
+                INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at)
+                VALUES (?, 'BASIC', CAST(? AS jsonb), NOW())
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET enabled_modules = EXCLUDED.enabled_modules,
+                    updated_at = NOW()
+                """, tenantId, enabledModulesJson);
+        return findTenantSubscription(tenantId);
+    }
+
+    public Optional<TenantSubscriptionRow> upsertTenantTierAndModules(
+            UUID tenantId, String tier, String enabledModulesJson) {
+        jdbc.update("""
+                INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at)
+                VALUES (?, ?, CAST(? AS jsonb), NOW())
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET tier = EXCLUDED.tier,
+                    enabled_modules = EXCLUDED.enabled_modules,
+                    updated_at = NOW()
+                """, tenantId, tier, enabledModulesJson);
+        return findTenantSubscription(tenantId);
+    }
+
+    public record TenantWithSubscriptionRow(
+            UUID tenantId,
+            String name,
+            String slug,
+            String status,
+            String tier,
+            String enabledModulesJson
+    ) {
+    }
+
+    public record TenantNameSlugStatusRow(
+            UUID tenantId,
+            String name,
+            String slug,
+            String status
+    ) {
+    }
+
+    public record TenantSubscriptionRow(
+            UUID tenantId,
+            String name,
+            String slug,
+            String status,
+            String tier,
+            String enabledModulesJson
+    ) {
     }
 
     public record InvitationBootstrapRow(

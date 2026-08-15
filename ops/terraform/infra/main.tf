@@ -15,6 +15,24 @@ locals {
     load_generator_tasks      = var.load_generator_tasks
   }
 
+  planes = {
+    data_plane = {
+      hostname         = var.data_plane_hostname
+      api_port         = var.data_plane_api_port
+      api_service      = var.wms_service_name
+      frontend_package = var.wms_frontend_package
+      # Control-plane API paths are blocked on this edge (see ops/api-gateway/nginx.conf).
+      block_control_plane_api = true
+    }
+    control_plane = {
+      hostname         = var.control_plane_hostname
+      api_port         = var.control_plane_api_port
+      api_service      = var.admin_service_name
+      frontend_package = var.admin_frontend_package
+      cidr_allowlist   = var.control_plane_cidr_allowlist
+    }
+  }
+
   name_prefix = "${var.project_name}-${var.environment}"
 }
 
@@ -38,5 +56,20 @@ resource "aws_ssm_parameter" "infra_profile" {
 
   tags = {
     Name = "${local.name_prefix}-infra-profile"
+  }
+}
+
+# Decoupled Control Plane / Data Plane routing contract for gateway, DNS, and
+# future ECS/ALB modules. Consumed by GitOps and ops runbooks.
+resource "aws_ssm_parameter" "plane_routing" {
+  name        = "/${local.name_prefix}/infra/plane-routing"
+  description = "InventorySystem data-plane vs control-plane hostnames, ports, and service names"
+  type        = "String"
+  overwrite   = true
+  value       = jsonencode(local.planes)
+
+  tags = {
+    Name  = "${local.name_prefix}-plane-routing"
+    Plane = "split"
   }
 }

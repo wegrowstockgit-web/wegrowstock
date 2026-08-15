@@ -41,6 +41,11 @@ public class JwtService {
     /** Bound session tenant for TERMINAL_SWITCH — must equal {@code tenant_id}. */
     public static final String CLAIM_BIND_TENANT_ID = "bind_tenant_id";
     public static final String TOKEN_TYPE_TERMINAL_SWITCH = "TERMINAL_SWITCH";
+    public static final String TOKEN_TYPE_PLATFORM_ADMIN = "PLATFORM_ADMIN";
+    /** Short-lived Data Plane JWT minted by control-plane Super Admins (support God Mode). */
+    public static final String TOKEN_TYPE_IMPERSONATION = "IMPERSONATION";
+    public static final String CLAIM_PLATFORM_ADMIN = "platform_admin";
+    public static final long IMPERSONATION_TTL_SECONDS = 15L * 60L;
 
     private final JwtProperties properties;
     private RSAPrivateKey privateKey;
@@ -92,6 +97,33 @@ public class JwtService {
     }
 
     /**
+     * Platform control-plane JWT: {@code SUPER_ADMIN} role, {@code platform_admin=true},
+     * {@code token_type=PLATFORM_ADMIN}. No tenant claim — platform admins transcend RLS.
+     * Issued only by {@code invsys-admin-api}.
+     */
+    public String generateAdminAccessToken(UUID platformAdminId) {
+        try {
+            Instant now = Instant.now();
+            long ttlSeconds = properties.getAccessTokenMinutes() * 60L;
+            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                    .subject(platformAdminId.toString())
+                    .claim("roles", List.of("SUPER_ADMIN"))
+                    .claim(CLAIM_PLATFORM_ADMIN, true)
+                    .claim(CLAIM_TOKEN_TYPE, TOKEN_TYPE_PLATFORM_ADMIN)
+                    .issueTime(Date.from(now))
+                    .expirationTime(Date.from(now.plusSeconds(ttlSeconds)))
+                    .build();
+            SignedJWT jwt = new SignedJWT(
+                    new JWSHeader.Builder(REQUIRED_ALG).type(com.nimbusds.jose.JOSEObjectType.JWT).build(),
+                    claims);
+            jwt.sign(new RSASSASigner(privateKey));
+            return jwt.serialize();
+        } catch (JOSEException e) {
+            throw new IllegalStateException("Failed to sign admin JWT", e);
+        }
+    }
+
+    /**
      * Short-lived RS256 JWT for shared-terminal PIN context swap. Bound to a single tenant
      * ({@code tenant_id} + {@code bind_tenant_id}) with a hard TTL from configuration
      * ({@code invsys.jwt.terminal-switch-token-minutes}, default 5).
@@ -105,6 +137,21 @@ public class JwtService {
                 warehouseIds,
                 properties.getTerminalSwitchTokenMinutes() * 60L,
                 TOKEN_TYPE_TERMINAL_SWITCH);
+    }
+
+    /**
+     * Control-plane support impersonation: 15-minute WMS JWT scoped to the target tenant.
+     * Consumed via {@code POST /api/v1/auth/impersonation/accept} on the Data Plane.
+     */
+    public String generateImpersonationAccessToken(UUID userId, UUID tenantId, List<String> roles, List<UUID> warehouseIds) {
+        Objects.requireNonNull(tenantId, "tenantId");
+        return generateAccessToken(
+                userId,
+                tenantId,
+                roles,
+                warehouseIds,
+                IMPERSONATION_TTL_SECONDS,
+                TOKEN_TYPE_IMPERSONATION);
     }
 
     private String generateAccessToken(UUID userId,

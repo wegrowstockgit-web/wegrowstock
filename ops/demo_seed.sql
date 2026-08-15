@@ -7,9 +7,13 @@
 --   docker compose exec db psql -U app_owner -d invsys -f /seed/demo_seed_tenants_extra.sql
 --
 -- Demo credentials (password for all users): password123
--- Tenants: Demo Corp, Acme Wholesale (+ full roles via extra seed),
---          Northwind Logistics, Pacific Parts Co (extra seed)
--- Primary: owner@demo.test | Acme: owner@acme.test | see README for full matrix
+-- Tenants (commercial tiers for control-plane testing):
+--   Demo Corp (ENTERPRISE): CORE + B2B_SHOWROOM + FINTECH + AI_COPILOT
+--   Acme Wholesale (BASIC): CORE
+--   Northwind Logistics (INTERMEDIATE): CORE + SHOPIFY + ADVANCED_FULFILLMENT
+--   Pacific Parts Co: seeded via demo_seed_tenants_extra.sql
+-- Super Admin (platform_admins): owner@demo.test / password123 via admin.invsys.com
+-- WMS Demo Owner (users): owner@demo.test / password123 via app.invsys.com (tenant user, not platform admin)
 -- Picker LBAC (Demo Corp): WH-01 Main Warehouse only (cannot select WH-02)
 -- =============================================================================
 
@@ -43,6 +47,22 @@ INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
     ('a0000000-0000-4000-8000-000000000010', 'a0000000-0000-4000-8000-000000000001',
      '{"company_name":"Demo Corp","currency":"USD","timezone":"America/New_York","allow_negative_inventory":false,"barcode_prefix":"","barcode_suffix":"","default_reorder_point":10,"default_reorder_qty":50,"invoice_number_format":"INV-{YYYY}-{seq:5}","platform_fee_percent":0.4,"payment_terms_days":30}'::jsonb)
 ON CONFLICT (tenant_id) DO NOTHING;
+
+INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at) VALUES
+    ('a0000000-0000-4000-8000-000000000001', 'ENTERPRISE',
+     '["CORE","B2B_SHOWROOM","FINTECH","AI_COPILOT"]'::jsonb, NOW())
+ON CONFLICT (tenant_id) DO UPDATE SET
+    tier = EXCLUDED.tier,
+    enabled_modules = EXCLUDED.enabled_modules,
+    updated_at = NOW();
+
+-- Platform Super Admin (control plane only — not a tenant user flag)
+INSERT INTO platform_admins (id, email, password_hash, active) VALUES
+    ('e0000000-0000-4000-8000-000000000001', 'owner@demo.test',
+     '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', true)
+ON CONFLICT (email) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    active = TRUE;
 
 INSERT INTO roles (id, tenant_id, code) VALUES
     ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000001', 'OWNER'),
@@ -447,6 +467,13 @@ INSERT INTO tenants (id, name, slug, status) VALUES
     ('b0000000-0000-4000-8000-000000000001', 'Acme Wholesale', 'acme-wholesale', 'ACTIVE')
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at) VALUES
+    ('b0000000-0000-4000-8000-000000000001', 'BASIC', '["CORE"]'::jsonb, NOW())
+ON CONFLICT (tenant_id) DO UPDATE SET
+    tier = EXCLUDED.tier,
+    enabled_modules = EXCLUDED.enabled_modules,
+    updated_at = NOW();
+
 INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
     ('b0000000-0000-4000-8000-000000000010', 'b0000000-0000-4000-8000-000000000001',
      '{"company_name":"Acme Wholesale","currency":"USD","timezone":"America/Chicago","allow_negative_inventory":false,"platform_fee_percent":0.4}'::jsonb)
@@ -682,7 +709,9 @@ INSERT INTO billing_accruals (id, tenant_id, customer_id, accrual_date, amount, 
      'a0000000-0000-4000-8000-000000001102', CURRENT_DATE - 1, 2.50, 'Daily storage accrual', 'UNBILLED'),
     ('a0000000-0000-4000-8000-000000004303', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000001101', CURRENT_DATE - 1, 1.15, 'Daily storage accrual', 'UNBILLED')
-ON CONFLICT (tenant_id, customer_id, accrual_date, description) DO NOTHING;
+-- Prefer PK: accrual_date uses CURRENT_DATE offsets, so the business unique key
+-- can miss on re-seed while fixed UUIDs still collide on id.
+ON CONFLICT (id) DO NOTHING;
 
 COMMIT;
 

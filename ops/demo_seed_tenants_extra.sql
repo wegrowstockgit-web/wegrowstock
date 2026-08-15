@@ -40,6 +40,13 @@ BEGIN;
 -- =========================================================================
 SELECT set_config('app.current_tenant', 'b0000000-0000-4000-8000-000000000001', true);
 
+INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at) VALUES
+    ('b0000000-0000-4000-8000-000000000001', 'BASIC', '["CORE"]'::jsonb, NOW())
+ON CONFLICT (tenant_id) DO UPDATE SET
+    tier = EXCLUDED.tier,
+    enabled_modules = EXCLUDED.enabled_modules,
+    updated_at = NOW();
+
 -- B2B role (roles 101-105 already seeded)
 INSERT INTO roles (id, tenant_id, code) VALUES
     ('b0000000-0000-4000-8000-000000000106', 'b0000000-0000-4000-8000-000000000001', 'B2B_CUSTOMER')
@@ -271,6 +278,14 @@ SELECT set_config('app.current_tenant', 'c0000000-0000-4000-8000-000000000001', 
 INSERT INTO tenants (id, name, slug, status) VALUES
     ('c0000000-0000-4000-8000-000000000001', 'Northwind Logistics', 'northwind-logistics', 'ACTIVE')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at) VALUES
+    ('c0000000-0000-4000-8000-000000000001', 'INTERMEDIATE',
+     '["CORE","SHOPIFY","ADVANCED_FULFILLMENT"]'::jsonb, NOW())
+ON CONFLICT (tenant_id) DO UPDATE SET
+    tier = EXCLUDED.tier,
+    enabled_modules = EXCLUDED.enabled_modules,
+    updated_at = NOW();
 
 INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
     ('c0000000-0000-4000-8000-000000000010', 'c0000000-0000-4000-8000-000000000001',

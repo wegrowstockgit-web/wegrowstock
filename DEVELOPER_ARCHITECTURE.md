@@ -46,9 +46,10 @@
 | API | Java 25, Spring Boot 4.1, JPA + selective jOOQ, Flyway |
 | DB | PostgreSQL 16, **FORCE RLS**, append-only `inventory_ledger` |
 | UI | React 19.2, Vite 7, TanStack Query, Zustand, Tailwind, TanStack Virtual, driver.js |
-| Edge | Nginx API gateway + frontend nginx |
+| Edge | Nginx gateway: data plane `:8080` + control plane `:8081` |
 | Infra | Redis (PIN lockout / rate limits), MinIO/S3 media, pgvector for support RAG |
-| Auth | RS256 JWT in HttpOnly cookies (`invsys_access` / `invsys_refresh`) |
+| Auth (WMS) | RS256 JWT in HttpOnly cookies (`invsys_access` / `invsys_refresh`) |
+| Auth (Admin) | Isolated admin cookies (`invsys_admin_access` / `invsys_admin_refresh`, SameSite=Strict) + `platform_admin` JWT claim |
 | Optional AI | Spring AI (Google GenAI / Gemini) lives only in `invsys-chatbot` — core runs without it |
 
 **Two golden rules** (also in `DATABASE_GUIDE.md`):
@@ -56,7 +57,7 @@
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
 2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
 
-**Scale notes (current head ~V090):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS).
+**Scale notes (current head V108):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108).
 
 ---
 
@@ -68,72 +69,65 @@ Backend is a **Maven multi-module** build. Core inventory/fulfillment never depe
 InventorySystem/
 ├── backend/                         Maven aggregator (`invsys-parent`, packaging pom)
 │   ├── pom.xml
-│   ├── Dockerfile                   Builds `-pl invsys-app -am` → fat jar
-│   ├── invsys-core/                 Library: domain, repos, services, tenancy, auth, API, Flyway
+│   ├── Dockerfile                   Builds `-pl invsys-app -am` → WMS fat jar (:8080)
+│   ├── Dockerfile.admin             Builds `-pl invsys-admin-api -am` → Admin fat jar (:8081)
+│   ├── invsys-core/                 Library: domain, repos, services, tenancy, auth, Flyway
 │   │   └── src/main/java/com/invsys/
-│   │       ├── api/                 REST controllers (no SupportChat*)
-│   │       ├── auth/                JWT, cookies, SSO, terminal PIN (`SecurityConfig`)
-│   │       ├── billing/             Stripe / capital gateways
-│   │       ├── common/              ApiException, filters, helpers
-│   │       ├── config/              Beans, Redis, OpenAPI, rate limit
-│   │       ├── dns/                 Custom domain verification helpers
-│   │       ├── domain/              JPA entities
-│   │       ├── gateway/             CORS whitelist filter
-│   │       ├── integration/         Outbox, Shopify, EasyPost, accounting, alerts
-│   │       ├── media/               S3/MinIO upload + attachments
-│   │       ├── mesh/                Cross-tenant partner bridge
-│   │       ├── repository/          Spring Data JPA (+ a few jOOQ helpers)
-│   │       ├── rtls/                Real-time location services
-│   │       ├── service/             Business logic
-│   │       └── tenancy/             TenantContext, datasource binding
-│   ├── invsys-chatbot/              Optional: Spring AI + Support Co-Pilot
-│   │   └── src/main/java/com/invsys/
-│   │       ├── core/                Foundation (no feature imports): tenancy, security, common, integration
-│   │       ├── modules/             Vertical slices: catalog, inventory, purchasing, sales, fulfillment, fintech
-│   │       ├── domain/              Remaining shared / platform entities (legacy layer, shrinking)
-│   │       ├── api/ service/ …      Cross-cutting controllers/services not yet sliced
-│   │       └── …                    billing, media, mesh, rtls, config, …
+│   │       ├── api/                 Data-plane REST controllers (no control-plane)
+│   │       ├── core/security/       WMS JWT cookies (`invsys_access`); denies `/api/v1/control-plane/**`
+│   │       ├── domain/subscription/ AppModule, CommercialTier, TenantSubscription
+│   │       ├── service/             Includes TenantSubscriptionService (+ cache eviction)
+│   │       └── …                    billing, media, mesh, rtls, modules/*, …
 │   ├── invsys-chatbot/              Optional Support Co-Pilot (Spring AI + PgVector RAG)
 │   ├── invsys-training/             Optional Flight Simulator (shadow tenant interceptor)
-│   └── invsys-app/                  Bootable runner (`InvSysApplication`, artifact `invsys-api`)
-│       ├── src/main/java/.../InvSysApplication.java
-│       └── src/test/java/...        Integration tests (`AbstractIntegrationTest`, …)
-├── frontend/                        React SPA + Playwright e2e
-│   └── src/
-│       ├── api/                     Axios client + DTOs
-│       ├── components/              Shells + UI + layout (`navConfig.ts`, `Sidebar.tsx`)
-│       ├── features/                Feature-sliced UI (products, purchasing, sales, fulfillment, fintech, …)
-│       ├── lib/router/              `moduleRegistry.ts` + `appModules.tsx` (pluggable routes/nav)
-│       ├── modules/chatbot/         Optional Support Co-Pilot (omit safely)
-│       ├── modules/training/        Optional Flight Simulator (omit safely)
-│       ├── lib/chatbot/             Stub + generated `active.ts` bridge
-│       ├── lib/training/            Stub + generated `active.ts` bridge
-│       ├── lib/featureFlags.ts      Chatbot / training / `VITE_ENABLE_*` flags
-│       ├── lib/floorRoutes.ts       Surface B path detection (core; not chatbot)
-│       ├── hooks/                   Scanner, density, media query, concurrent search
-│       ├── offline/                 IDB mutation queue + PIN vault + query persist
-│       ├── pages/                   Platform routes + thin re-exports into `features/*`
-│       ├── stores/                  Zustand (session, grid, prefs/tour, scanner lock, …)
-│       └── styles/                  Design tokens
+│   ├── invsys-app/                  Data-plane runner (`InvSysApplication`, artifact `invsys-api`)
+│   │   └── src/test/java/...        WMS integration tests
+│   └── invsys-admin-api/            Control-plane runner (`InvSysAdminApplication`)
+│       ├── api/                     Auth, tenants, billing, knowledge, integrations,
+│       │                            audit, shards, queues, telemetry, compliance, reports
+│       ├── audit/                   @PlatformAudit + PlatformAuditAspect
+│       ├── security/                AdminSecurityConfig + AdminJwtAuthFilter + admin cookies
+│       └── service/                 Impersonation, lifecycle, sandbox, billing, RAG ingest,
+│                                    kill-switch, shards, DLQ, telemetry, compliance, reports
+├── frontends/                       pnpm workspace (apps/* + packages/*)
+│   ├── apps/frontend_wms/           Tenant WMS SPA + Playwright e2e (NO control-plane routes)
+│   │   └── src/
+│   │       ├── api/                 Axios + DTOs
+│   │       ├── components/          Shells + layout (`navConfig.ts`, `Sidebar.tsx`)
+│   │       ├── features/            Feature-sliced UI (products, fulfillment, fintech, …)
+│   │       ├── lib/router/          `moduleRegistry.ts` (entitlement-aware)
+│   │       ├── modules/chatbot/     Optional Support Co-Pilot
+│   │       ├── modules/training/    Optional Flight Simulator
+│   │       ├── offline/             IDB mutation queue + PIN vault
+│   │       ├── pages/               Platform routes
+│   │       └── stores/              Zustand session (enabledModules, isSuperAdmin flag only)
+│   ├── apps/frontend_admin/         Super Admin SPA (admin.invsys.com)
+│   │   └── src/features/            auth, tenants, billing, copilot, integrations,
+│   │                                audit, infrastructure, operations, telemetry,
+│   │                                compliance, reports
+│   ├── packages/shared-types/       AppModule, CommercialTier, ControlPlaneTenant
+│   └── packages/shared-ui/          Button, Table, Modal, SlideOutDrawer, Input
 ├── ops/
-│   ├── api-gateway/nginx.conf       Edge rate limits + proxy
-│   ├── jwt/                         Dev RS256 PEMs
+│   ├── api-gateway/nginx.conf       Data plane :8080 (blocks CP) + control plane :8081
+│   ├── terraform/infra/             Plane-routing SSM + cost/HA profile
+│   ├── jwt/                         Dev RS256 PEMs (shared by both APIs)
 │   ├── postgres/init/               app_owner / app_user roles + vector ext
-│   ├── terraform/                   Infra workspaces (test/prod)
-│   └── demo_seed.sql                Demo Corp + Acme skeleton data
-├── docker-compose.yml               db, pgbouncer, redis, minio, api, gateway, web, LGTM
-├── deploy.bat                       Windows deploy / seed / status
-├── DATABASE_GUIDE.md                Schema narrative (RLS, partitions, archival, RAG)
-├── USER_GUIDE.md                    Operator / migration guide
-├── SEQUENCE_FLOW.md                 Role × screen sequence diagrams
+│   └── demo_seed.sql                Demo Corp + Acme; Super Admin in platform_admins (owner@demo.test)
+├── docker-compose.yml               db, both APIs, both UIs, gateway, LGTM
+├── deploy.bat                       Windows deploy / seed / status (both planes)
+├── .github/workflows/               ci-backend, ci-frontends, terraform-*
+├── DATABASE_GUIDE.md
+├── USER_GUIDE.md
+├── SEQUENCE_FLOW.md
 └── DEVELOPER_ARCHITECTURE.md        (this file)
 ```
 
 | Module | Packaging | Depends on | Notes |
 |--------|-----------|------------|-------|
-| `invsys-core` | jar | Spring Boot web/security/JPA/Flyway — **no** `spring-ai-*` | Always required |
-| `invsys-chatbot` | jar | `invsys-core` + Spring AI (Google GenAI) | Omitted via Maven profile |
-| `invsys-app` | boot jar (`invsys-api`) | `invsys-core`; `invsys-chatbot` via **`with-chatbot`** (default on) | Main entrypoint |
+| `invsys-core` | jar | Spring Boot web/security/JPA/Flyway — **no** `spring-ai-*` | Shared by both runners |
+| `invsys-chatbot` | jar | `invsys-core` + Spring AI | WMS optional via Maven profile |
+| `invsys-app` | boot jar (`invsys-api`) | `invsys-core`; chatbot via **`with-chatbot`** | Data plane — excludes `com.invsys.admin.*` |
+| `invsys-admin-api` | boot jar | `invsys-core` | Control plane only — excludes WMS `api.*` controllers |
 
 ```
 # Default (core + chatbot)
@@ -162,62 +156,56 @@ Inside `invsys-core`, business code is organized as vertical slices under `com.i
 | `com.invsys.modules.fulfillment` | Allocation, picking, shipment |
 | `com.invsys.modules.fintech` | Factoring / credit underwriting |
 
-Frontend mirrors this with `src/features/{products,purchasing,sales,fulfillment,fintech}` registered via `src/lib/router/moduleRegistry.ts`. Disable a slice with `VITE_ENABLE_<MODULE>=false` to drop its routes and sidebar items without runtime crashes.
+Frontend mirrors this with `frontends/apps/frontend_wms/src/features/{products,purchasing,sales,fulfillment,fintech}` registered via `src/lib/router/moduleRegistry.ts`. Disable a slice with `VITE_ENABLE_<MODULE>=false` to drop its routes and sidebar items without runtime crashes. Commercial module gates also honor `enabledModules` from `/me` (`@RequireModule` on the API).
 
 ---
 
 ## 3. Runtime topology
 
-### 3.1 Docker traffic (production-like local)
+### 3.1 Docker traffic (production-like local) — dual plane
 
 ```
-                         ┌─────────────────────────────────────┐
-                         │            Browser                  │
-                         └──────────────┬──────────────────────┘
-                                        │
-              ┌─────────────────────────┼─────────────────────────┐
-              │ :3000                   │                         │ :8080 (optional direct)
-              ▼                         │                         ▼
-     ┌─────────────────┐                │              ┌──────────────────┐
-     │  invsys-web     │                │              │ invsys-api-      │
-     │  (nginx SPA)    │                │              │ gateway (nginx)  │
-     │                 │── /api/* ──────┼─────────────►│                  │
-     └─────────────────┘                │              └────────┬─────────┘
-                                        │                       │ proxy_pass
-                                        │                       ▼
-                                        │              ┌──────────────────┐
-                                        │              │  invsys-api      │
-                                        │              │  Spring Boot     │
-                                        │              │  (NOT published  │
-                                        │              │   on host)       │
-                                        │              └───┬───┬───┬──────┘
-                                        │                  │   │   │
-                         ┌──────────────┘                  │   │   │
-                         ▼                                 ▼   ▼   ▼
-                  Vite dev (:5173)                   ┌─────┐ ┌───┐ ┌─────┐
-                  proxies /api → :8080               │ db  │ │rds│ │minio│
-                                                     │5432 │ │637│ │9000 │
-                                                     └─────┘ └───┘ └─────┘
+ Browser
+    │
+    ├── :3000 ──► invsys-web (frontend_wms SPA)
+    │                 │
+    │                 └── /api/v1/* ──► api-gateway :8080 ──► invsys-api :8080
+    │                                      │
+    │                                      └── /api/v1/control-plane/* ──► 404 (blocked)
+    │
+    ├── :3002 ──► invsys-admin-web (frontend_admin SPA)
+    │                 │
+    │                 └── /api/v1/control-plane/* ──► api-gateway :8081 ──► invsys-admin-api :8081
+    │
+    └── Vite data plane :5173 ── proxies /api → :8080
+        Vite admin     :5174 ── proxies /api → :8081
+
+ Shared: Postgres :5432, PgBouncer :6432, Redis, MinIO, Grafana :3001
 ```
 
 | Container | Role |
 |-----------|------|
-| `invsys-web` | Built SPA + proxies `/api` → gateway |
-| `invsys-api-gateway` | Sole public edge to Spring; forwards auth cookies, `X-Warehouse-Id`, `Idempotency-Key` |
-| `invsys-api` | Business API; JDBC as `app_user`; Flyway as `app_owner` |
+| `invsys-web` | Data-plane SPA (`frontend_wms`) |
+| `invsys-admin-web` | Control-plane SPA (`frontend_admin`) |
+| `invsys-api-gateway` | Dual listeners: `:8080` data plane (blocks CP), `:8081` control plane (+ CIDR allowlist hook) |
+| `invsys-api` | WMS business API; JDBC as `app_user`; Flyway as `app_owner` |
+| `invsys-admin-api` | Super Admin API; admin JWT (same PEMs as WMS); entitlements, billing, impersonation, RAG, kill-switch, audit, shards, DLQ, telemetry, compliance |
 | `invsys-db` | Postgres 16 + volumes |
-| `invsys-pgbouncer` | Transaction pooling to Postgres |
-| `invsys-redis` | PIN lockout / distributed rate limits |
-| `invsys-minio` | Media bucket `invsys-media` (+ archive / backup buckets) |
+| `invsys-pgbouncer` | Transaction pooling |
+| `invsys-redis` | PIN lockout / rate limits |
+| `invsys-minio` | Media + archives |
 | Observability | Prometheus / Loki / Tempo / Grafana (`:3001`) |
 
 ### 3.2 Dev vs Docker API path
 
 ```
-Docker UI:   Browser → :3000 nginx → api-gateway:8080 → backend:8080
-Vite UI:     Browser → :5173 Vite  → localhost:8080 (gateway) → backend
+Docker WMS:     Browser → :3000 → gateway:8080 → backend:8080
+Docker Admin:   Browser → :3002 → gateway:8081 → backend-admin:8081
+Vite WMS:       Browser → :5173 → localhost:8080
+Vite Admin:     Browser → :5174 → localhost:8081
 ```
 
+Terraform encodes the same contract in SSM `/…/infra/plane-routing` (`data_plane_hostname`, `control_plane_hostname`, ports, CIDR allowlist).
 ---
 
 ## 4. Layered architecture
@@ -264,7 +252,7 @@ Vite UI:     Browser → :5173 Vite  → localhost:8080 (gateway) → backend
 | Business rule / status machine | `service/*Service` |
 | New table / constraint | Flyway `V0xx__*.sql` + `domain/*` entity |
 | Hot read path / warehouse matching SQL | jOOQ in service (not N+1 JPA) |
-| Floor UX | `frontend/src/pages/FulfillmentPage.tsx` + `features/fulfillment/*` |
+| Floor UX | `frontends/apps/frontend_wms/src/pages/FulfillmentPage.tsx` + `features/fulfillment/*` |
 | Office list UX | `pages/*Page.tsx` + `components/layout/ListPageState.tsx` |
 
 ---
@@ -282,6 +270,9 @@ Vite UI:     Browser → :5173 Vite  → localhost:8080 (gateway) → backend
  JwtAuthFilter
    │  validate JWT → roles, tenant_id, warehouse_ids
    │  TenantContext.set(tenant, user, warehouses, …)
+   ▼
+ SuspendedTenantAccessFilter
+   │  tenants.status = SUSPENDED → HTTP 403 TENANT_SUSPENDED
    ▼
  WarehouseAccessFilter
    │  LBAC: requested warehouse must be in JWT claims / assignments
@@ -308,6 +299,7 @@ Vite UI:     Browser → :5173 Vite  → localhost:8080 (gateway) → backend
 | `VIEWER` | Read-mostly |
 | `B2B_CUSTOMER` | Showroom portal only |
 | `SUPPLIER` | Authenticated supplier portal |
+| `SUPER_ADMIN` | Control plane only (`platform_admins` + `token_type=PLATFORM_ADMIN`) — never a WMS role |
 
 Frontend mirrors this in `useSessionStore.hasRole`, `ProtectedRoute`, and nested `NAV_MATRIX` filters (`roles`, `hideForPicker`, `hideForViewer`) in `components/layout/navConfig.ts`.
 
@@ -444,7 +436,8 @@ Entities live in `com.invsys.domain`. Most extend `TenantScopedEntity` (`id`, ti
 
 | Class | Purpose |
 |-------|---------|
-| `InvSysApplication` | Spring Boot main |
+| `InvSysApplication` | Data-plane Spring Boot main (`invsys-app`) |
+| `InvSysAdminApplication` | Control-plane Spring Boot main (`invsys-admin-api`) |
 
 ### 7.2 `api` — HTTP surface
 
@@ -452,7 +445,7 @@ Controllers are thin: validate input, authorize, call services, return DTOs/enti
 
 | Controller | Base concern |
 |------------|--------------|
-| `AuthController` | Login, refresh, logout, magic, terminal switch, me |
+| `AuthController` | Login, refresh, logout, magic, terminal switch, impersonation accept, me |
 | `PurchaseOrderController` | Suppliers + PO lifecycle + receive |
 | `SalesOrderController` | Customers + SO confirm/allocate/cancel |
 | `InventoryController` | Levels, receive/adjust/transfer, ledger reverse |
@@ -491,6 +484,7 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 | `PredictiveReplenishmentWorker` | VT worker: 48h demand vs pick-face qty → `wave_replenishment_triggers` |
 | `TenantIsolationFilter` | Outermost absolute `try/finally` → `TenantContext.clear()` (worker-pool isolation) |
 | `JwtAuthFilter` | Bind tenant/user from RS256 JWT; `filterChain.doFilter` always in `try/finally` with `TenantContext.clear()` |
+| `SuspendedTenantAccessFilter` | After JWT bind: `tenants.status = SUSPENDED` → 403 (control-plane dunning) |
 | `MdcLoggingFilter` | Request-id MDC enrichment (clears MDC in `finally`) |
 | `SecurityConfig` | Filter chain, permitAll public routes |
 | `JwksController` | `/.well-known/jwks.json` |
@@ -603,7 +597,7 @@ Support Co-Pilot, CQRS tool-calling, Action Drafts, and training-simulator backe
 | `SupportChatService` | Role-aware chat; heuristic or Gemini (`invsys.support.ai.llm`); retrieves chunks by embedding + audience |
 | Spring AI config | `spring.ai.model.chat` / `embedding.text` default `google-genai`; chat model `gemini-2.5-flash`; embeddings `text-embedding-004` via `GEMINI_API_KEY`. Test profile forces `none` + `heuristic`. |
 | `SupportCopilotToolsConfig` / `SupportCopilotReadService` | CQRS tools — tenant **only** from `TenantContext` (never LLM/client tenant args) |
-| Knowledge repos | Back `support_knowledge_chunks` / `_nodes` / `_edges` (V089–V090) |
+| Knowledge repos | Back `support_knowledge_chunks` / `_nodes` / `_edges` (V089–V095; embeddings 768-d as of V092) |
 | API | `SupportChatController` → `POST /api/v1/support/chat` (SSE), `/actions/*` |
 | Security (core) | `requestMatchers("/api/v1/support/**").authenticated()` — if module/beans absent → **HTTP 404** (no bypass) |
 | Frontend | Lazy `SupportAssistantWidget` FAB + tours — gated by `VITE_ENABLE_CHATBOT` / `isChatbotEnabled()` |
@@ -662,7 +656,7 @@ Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders
 
 ### 8.3 Nested sidebar (`NAV_MATRIX`)
 
-Config: `frontend/src/components/layout/navConfig.ts`  
+Config: `frontends/apps/frontend_wms/src/components/layout/navConfig.ts`  
 UI: `Sidebar.tsx` (expand/collapse categories; mobile drawer ≤1023px).
 
 | Category | Parent icon | Leaf examples |
@@ -1046,6 +1040,22 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V088` | Ensure ~12 months back + 6 months forward partitions (idempotent) |
 | `V089` | `support_knowledge_chunks` + HNSW pgvector(384) — global RAG corpus |
 | `V090` | `support_knowledge_nodes` / `support_knowledge_edges` — GraphRAG |
+| `V091` | Offline sync conflict metadata |
+| `V092` | Support RAG embeddings → 768-d + support tickets |
+| `V093` | Training sandbox bindings |
+| `V094`–`V095` | Hybrid FTS + hierarchical RAG metadata |
+| `V096` | Invoice document URL |
+| `V097` | Enterprise feature matrix |
+| `V098`–`V099` | RBAC permission matrix + seed |
+| `V100` | Tenant business automations |
+| `V101` | RTV + supplier chargebacks |
+| `V102` | Dock-door scheduling |
+| `V103` | Floor labor time tracking |
+| `V104` | `tenant_subscriptions` (tier + enabled_modules) |
+| `V105` | AppModule catalog expand (SHOPIFY…AI_COPILOT) |
+| `V106` | `platform_admins` + `platform_admin_refresh_tokens` (Super Admin off `users`) |
+| `V107` | Shard routing, kill-switch, rate overrides, compliance broadcasts, knowledge docs, sandbox credentials |
+| `V108` | `platform_audit_logs` — append-only Super Admin mutation trail |
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 
@@ -1094,7 +1104,7 @@ Audit cold path: `AuditLogArchivalWorker` → gzip JSONL → object storage → 
 
 ## 13. E2E journey matrix
 
-Playwright specs under `frontend/e2e/journeys/`. Helpers: `helpers.ts` (`contextForRole`, `hidScan`, `apiJson`).
+Playwright specs under `frontends/apps/frontend_wms/e2e/journeys/`. Helpers: `helpers.ts` (`contextForRole`, `hidScan`, `apiJson`).
 
 | Track | Spec | Validates |
 |------:|------|-----------|
@@ -1144,40 +1154,44 @@ Decoupled module: `tests/e2e/decoupled-module.spec.ts` — Test A (FAB + tool-ca
 ## 14. Local ops cheat sheet
 
 ```
-deploy.bat deploy          Build & start full stack
+deploy.bat deploy          Build & start full stack (WMS + admin)
+deploy.bat --no-chatbot    Same as deploy --no-chatbot (flag-only first arg works)
 deploy.bat seed            Load demo_seed.sql
-deploy.bat status          Compose ps
+deploy.bat status          Compose ps + both plane URLs
 deploy.bat down            Stop (keeps pg volume)
 deploy.bat help            Usage
 
-Frontend: http://localhost:3000
-API edge: http://localhost:8080
-Swagger:  http://localhost:8080/swagger-ui.html
-MinIO:    http://localhost:9001
+WMS UI:    http://localhost:3000
+Admin UI:  http://localhost:3002
+WMS API:   http://localhost:8080   (control-plane paths blocked)
+Admin API: http://localhost:8081
+Swagger:   http://localhost:8080/swagger-ui.html
+MinIO:     http://localhost:9001
 
 # Backend (from backend/)
 mvn -DskipTests package -pl invsys-app -am
+mvn -DskipTests package -pl invsys-admin-api -am
 mvn spring-boot:run -pl invsys-app -Dspring-boot.run.profiles=dev
+mvn spring-boot:run -pl invsys-admin-api -Dspring-boot.run.profiles=dev
 mvn -Dtest=CoreModuleWithoutChatbotIT -Dsurefire.failIfNoSpecifiedTests=false test -pl invsys-app -am
-# Omit chatbot from the fat jar:
 mvn -DskipTests package -pl invsys-app -am -P"!with-chatbot"
 
-# Frontend — optional Support Co-Pilot / training
-cd frontend
-npm run chatbot:enable          # include src/modules/chatbot
-npm run chatbot:disable         # stub bridge (safe to delete modules/chatbot)
-npm run build                   # respects enable/disable + folder presence
-npm run build:no-chatbot        # force stubbed production build
+# Frontends (pnpm workspace)
+cd frontends
+pnpm install
+pnpm --filter frontend_wms chatbot:enable
+pnpm --filter frontend_wms build
+pnpm --filter frontend_admin build
 
-# Docker deploy — backend + frontend together
-deploy.bat chatbot-enable       # persist preference
+# Docker deploy — both planes; chatbot toggle affects WMS only
+deploy.bat chatbot-enable
 deploy.bat chatbot-disable
-deploy.bat deploy               # respects preference
-deploy.bat deploy --no-chatbot  # one-shot disable both images
+deploy.bat deploy
+deploy.bat deploy --no-chatbot
 deploy.bat deploy --with-chatbot
 ```
 
-JWT PEMs: `ops/jwt/dev-*.pem` (generated by deploy if missing).  
+JWT PEMs: `ops/jwt/dev-*.pem` (generated by deploy if missing; shared by both APIs).  
 Env template: `.env.example`. Runtime chatbot off (beans): `INVSYS_CHATBOT_ENABLED=false`.
 
 ---
@@ -1187,9 +1201,10 @@ Env template: `.env.example`. Runtime chatbot off (beans): `INVSYS_CHATBOT_ENABL
 **Day 0 — run it**
 
 1. `deploy.bat deploy` then `deploy.bat seed`  
-2. Login `owner@demo.test` / `password123`  
-3. Open Swagger; hit `GET /api/v1/auth/me`  
-4. Skim `DATABASE_GUIDE.md` § golden rules  
+2. Login WMS `owner@demo.test` / `password123` at `:3000`  
+3. Login Control Plane same email at `:3002` (row in `platform_admins`)  
+4. Open Swagger; hit `GET /api/v1/auth/me`  
+5. Skim `DATABASE_GUIDE.md` § golden rules  
 
 **Day 1 — follow one vertical**
 

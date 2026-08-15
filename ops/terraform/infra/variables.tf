@@ -52,3 +52,61 @@ variable "project_name" {
   description = "Short project prefix for naming"
   default     = "invsys"
 }
+
+# ---------------------------------------------------------------------------
+# Control plane / data plane routing (GitOps profile for gateway + DNS)
+# ---------------------------------------------------------------------------
+
+variable "data_plane_hostname" {
+  type        = string
+  description = "Public hostname for tenant WMS (data plane UI + API)"
+  default     = "app.invsys.com"
+}
+
+variable "control_plane_hostname" {
+  type        = string
+  description = "Public hostname for Super Admin portal (control plane)"
+  default     = "admin.invsys.com"
+}
+
+variable "data_plane_api_port" {
+  type        = number
+  description = "Edge port / listener for data-plane API gateway"
+  default     = 8080
+}
+
+variable "control_plane_api_port" {
+  type        = number
+  description = "Edge port / listener for control-plane API gateway"
+  default     = 8081
+}
+
+variable "control_plane_cidr_allowlist" {
+  type        = list(string)
+  description = "CIDRs allowed to reach the control-plane edge (empty = allow-all; tighten in prod)"
+  default     = []
+}
+
+variable "wms_service_name" {
+  type        = string
+  description = "Logical service name for the data-plane API runner"
+  default     = "invsys-app"
+}
+
+variable "admin_service_name" {
+  type        = string
+  description = "Logical service name for the control-plane API runner"
+  default     = "invsys-admin-api"
+}
+
+variable "wms_frontend_package" {
+  type        = string
+  description = "Monorepo package / image name for tenant WMS UI"
+  default     = "frontend_wms"
+}
+
+variable "admin_frontend_package" {
+  type        = string
+  description = "Monorepo package / image name for Super Admin UI"
+  default     = "frontend_admin"
+}

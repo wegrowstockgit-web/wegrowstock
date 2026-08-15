@@ -1,0 +1,70 @@
+spring:
+  ai:
+    model:
+      chat: none
+      embedding:
+        text: none
+        multimodal: none
+  flyway:
+    enabled: true
+    user: app_owner
+    password: app_owner_secret
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        type:
+          preferred_uuid_jdbc_type: UUID
+  task:
+    scheduling:
+      enabled: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
+    tracing:
+      export:
+        enabled: false
+
+invsys:
+  jwt:
+    access-token-minutes: 15
+    refresh-token-days: 7
+  media:
+    provider: MINIO
+    bucket: invsys-media-test
+    region: us-east-1
+    path-style-access: true
+    create-bucket-if-missing: true
+  webhooks:
+    accounting-secret: accounting_mock_secret
+    shopify-secret: shopify_mock_secret
+    stripe-secret: whsec_mock_secret
+    easypost-secret: easypost_mock_secret
+  stripe:
+    webhook-secret: whsec_mock_secret
+    platform-webhook-secret: whsec_mock_secret
+  integration:
+    accounting:
+      mock: true
+    outbox:
+      dispatcher-enabled: false
+  security:
+    public-signup-enabled: true
+    cookie-secure: false
+    cookie-same-site: Strict
+    cors-allowed-origins: http://localhost:5174,http://localhost:3002
+  redis:
+    enabled: false
+  actuator:
+    scrape-allowed-cidrs: 127.0.0.1/32,::1/128

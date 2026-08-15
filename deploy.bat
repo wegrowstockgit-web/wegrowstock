@@ -4,9 +4,15 @@ cd /d "%~dp0"
 
 set "CMD=%~1"
 if "%CMD%"=="" set "CMD=deploy"
+:: Flag-only invocations (deploy.bat --no-chatbot) are deploy, not help.
+if /i "%CMD%"=="--no-chatbot" set "CMD=deploy"
+if /i "%CMD%"=="--with-chatbot" set "CMD=deploy"
+if /i "%CMD%"=="--clean-frontend" set "CMD=deploy"
 set "DEPLOY_LOG=%~dp0.deploy-last.log"
 set "COMPOSE_ANSI=never"
 set "DOCKER_CLI_HINTS=false"
+set "WMS_FRONTEND=frontends\apps\frontend_wms"
+set "ADMIN_FRONTEND=frontends\apps\frontend_admin"
 
 if /i "%CMD%"=="help" goto :help
 if /i "%CMD%"=="--help" goto :help
@@ -78,7 +84,7 @@ exit /b 0
 :undeploy
 call :step "Stopping existing stack"
 >> "%DEPLOY_LOG%" echo ===== undeploy %DATE% %TIME% =====
-for %%c in (invsys-web invsys-api invsys-db invsys-minio invsys-minio-init) do (
+for %%c in (invsys-web invsys-admin-web invsys-api invsys-admin-api invsys-api-gateway invsys-db invsys-minio invsys-minio-init) do (
     docker inspect %%c >nul 2>&1
     if not errorlevel 1 (
         docker stop %%c >> "%DEPLOY_LOG%" 2>&1
@@ -108,7 +114,7 @@ call :ok "JWT keys written to ops\jwt\"
 exit /b 0
 
 :: ---------------------------------------------------------------------------
-:: Chatbot (backend + frontend together)
+:: Chatbot (WMS backend + frontend_wms together; admin portal is unaffected)
 :: Marker: .invsys-chatbot-disabled at repo root
 :: ---------------------------------------------------------------------------
 :chatbot_marker
@@ -122,12 +128,19 @@ call :chatbot_marker
 set "CHATBOT_MODE=enabled"
 if exist "%CHATBOT_MARKER%" set "CHATBOT_MODE=disabled"
 
+set "ARG1=%~1"
 set "ARG2=%~2"
 set "ARG3=%~3"
+if /i "!ARG1!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
+if /i "!ARG1!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
 if /i "!ARG2!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
 if /i "!ARG2!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
 if /i "!ARG3!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
 if /i "!ARG3!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
+if /i "!ARG1!"=="--clean-frontend" (
+    if /i "!ARG2!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
+    if /i "!ARG2!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
+)
 if /i "!ARG2!"=="--clean-frontend" (
     if /i "!ARG3!"=="--no-chatbot" set "CHATBOT_MODE=disabled"
     if /i "!ARG3!"=="--with-chatbot" set "CHATBOT_MODE=enabled"
@@ -144,16 +157,33 @@ if /i "!CHATBOT_MODE!"=="disabled" (
 )
 exit /b 0
 
-:sync_frontend_chatbot_bridge
-:: Keep local frontend resolve script in sync with the deploy toggle.
-if not exist "frontend\scripts\resolve-chatbot.mjs" exit /b 0
-pushd frontend
-if /i "%VITE_ENABLE_CHATBOT%"=="false" (
-    call node scripts\resolve-chatbot.mjs --disable >> "%DEPLOY_LOG%" 2>&1
-) else (
-    call node scripts\resolve-chatbot.mjs --enable >> "%DEPLOY_LOG%" 2>&1
+:sync_one_frontend_chatbot
+:: %~1 = frontend directory with scripts\resolve-chatbot.mjs or resolve-modules.mjs
+if not exist "%~1" exit /b 0
+if exist "%~1\scripts\resolve-chatbot.mjs" (
+    pushd "%~1"
+    if /i "%VITE_ENABLE_CHATBOT%"=="false" (
+        call node scripts\resolve-chatbot.mjs --disable >> "%DEPLOY_LOG%" 2>&1
+    ) else (
+        call node scripts\resolve-chatbot.mjs --enable >> "%DEPLOY_LOG%" 2>&1
+    )
+    popd
+    exit /b 0
 )
-popd
+if exist "%~1\scripts\resolve-modules.mjs" (
+    pushd "%~1"
+    if /i "%VITE_ENABLE_CHATBOT%"=="false" (
+        call node scripts\resolve-modules.mjs --disable-chatbot >> "%DEPLOY_LOG%" 2>&1
+    ) else (
+        call node scripts\resolve-modules.mjs --enable-chatbot >> "%DEPLOY_LOG%" 2>&1
+    )
+    popd
+)
+exit /b 0
+
+:sync_frontend_chatbot_bridge
+:: Sync chatbot resolve scripts for the WMS monorepo app.
+call :sync_one_frontend_chatbot "%WMS_FRONTEND%"
 exit /b 0
 
 :chatbot_enable
@@ -168,8 +198,9 @@ set "DEPLOY_LOG=%~dp0.deploy-last.log"
     echo ===== chatbot-enable %DATE% %TIME% =====
 ) >> "%DEPLOY_LOG%"
 call :sync_frontend_chatbot_bridge
-call :ok "Chatbot ENABLED for backend + frontend"
+call :ok "Chatbot ENABLED for WMS backend + frontend_wms"
 call :info "Marker cleared: .invsys-chatbot-disabled"
+call :info "Admin portal ^(frontend_admin^) is unaffected"
 call :info "Redeploy to apply:  deploy.bat deploy"
 echo.
 exit /b 0
@@ -180,7 +211,7 @@ call :chatbot_marker
 (
     echo Chatbot/training disabled for InventorySystem deploy.
     echo Backend: Maven -P-with-chatbot + INVSYS_CHATBOT_ENABLED=false
-    echo Frontend: VITE_ENABLE_CHATBOT=false + stub bridge
+    echo Frontend WMS: VITE_ENABLE_CHATBOT=false + stub bridge
 ) > "%CHATBOT_MARKER%"
 set "INVSYS_WITH_CHATBOT=false"
 set "INVSYS_CHATBOT_ENABLED=false"
@@ -190,7 +221,7 @@ set "DEPLOY_LOG=%~dp0.deploy-last.log"
     echo ===== chatbot-disable %DATE% %TIME% =====
 ) >> "%DEPLOY_LOG%"
 call :sync_frontend_chatbot_bridge
-call :ok "Chatbot DISABLED for backend + frontend"
+call :ok "Chatbot DISABLED for WMS backend + frontend_wms"
 call :info "Marker written: .invsys-chatbot-disabled"
 call :info "Redeploy to apply:  deploy.bat deploy"
 echo.
@@ -204,7 +235,8 @@ if exist "%CHATBOT_MARKER%" (
 ) else (
     call :info "Preference: ENABLED   [default - no disable marker]"
 )
-call :info "Affects next deploy.bat deploy for BOTH api + web images."
+call :info "Affects next deploy.bat deploy for WMS api + web images."
+call :info "Control plane ^(admin^) is independent of this toggle."
 echo.
 exit /b 0
 
@@ -216,11 +248,16 @@ call :ok "Docker is available"
 
 call :apply_chatbot_env %*
 if /i "!CHATBOT_MODE!"=="disabled" (
-    call :info "Chatbot: DISABLED ^(backend module omitted + frontend stub^)"
+    call :info "Chatbot: DISABLED ^(WMS backend module omitted + frontend_wms stub^)"
 ) else (
-    call :info "Chatbot: ENABLED ^(backend with-chatbot + frontend Co-Pilot^)"
+    call :info "Chatbot: ENABLED ^(WMS with-chatbot + frontend Co-Pilot^)"
 )
+call :info "Planes: data=app.invsys.com/:8080  control=admin.invsys.com/:8081"
 
+if /i "%~1"=="--clean-frontend" (
+    call :clean_frontend
+    if errorlevel 1 exit /b 1
+)
 if /i "%~2"=="--clean-frontend" (
     call :clean_frontend
     if errorlevel 1 exit /b 1
@@ -261,7 +298,7 @@ if errorlevel 1 (
 )
 call :ok "Containers started"
 
-call :step "Waiting for API health"
+call :step "Waiting for WMS API health"
 set /a RETRIES=36
 set "API_HEALTH=unknown"
 :wait_health
@@ -269,16 +306,36 @@ set "API_HEALTH=unknown"
 for /f "usebackq delims=" %%s in (`docker inspect --format="{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" invsys-api 2^>nul`) do set "API_HEALTH=%%s"
 if /i "!API_HEALTH!"=="healthy" (
     call :ok "invsys-api is healthy"
-    goto :deploy_summary
+    goto :wait_admin_health
 )
 echo     ... invsys-api: !API_HEALTH!  ^(!RETRIES! checks left^)
 set /a RETRIES-=1
 if !RETRIES! leq 0 (
-    call :warn "API health timed out — check: docker compose logs api --tail 80"
-    goto :deploy_summary
+    call :warn "WMS API health timed out — check: docker compose logs backend --tail 80"
+    goto :wait_admin_health
 )
 timeout /t 5 /nobreak >nul
 goto :wait_health
+
+:wait_admin_health
+call :step "Waiting for Admin API health"
+set /a RETRIES=24
+set "ADMIN_HEALTH=unknown"
+:wait_admin
+set "ADMIN_HEALTH=unknown"
+for /f "usebackq delims=" %%s in (`docker inspect --format="{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" invsys-admin-api 2^>nul`) do set "ADMIN_HEALTH=%%s"
+if /i "!ADMIN_HEALTH!"=="healthy" (
+    call :ok "invsys-admin-api is healthy"
+    goto :deploy_summary
+)
+echo     ... invsys-admin-api: !ADMIN_HEALTH!  ^(!RETRIES! checks left^)
+set /a RETRIES-=1
+if !RETRIES! leq 0 (
+    call :warn "Admin API health timed out — check: docker compose logs backend-admin --tail 80"
+    goto :deploy_summary
+)
+timeout /t 5 /nobreak >nul
+goto :wait_admin
 
 :deploy_summary
 call :banner "Deploy complete"
@@ -293,17 +350,23 @@ call :print_status_table
 echo.
 call :info "Next:  deploy.bat seed     ^(demo users / password123^)"
 call :info "       deploy.bat status"
-call :info "Chatbot: deploy.bat chatbot-enable ^| chatbot-disable"
+call :info "Chatbot: deploy.bat chatbot-enable / chatbot-disable"
 echo.
 exit /b 0
 
 :print_endpoints
-echo   Frontend  http://localhost:3000
-echo   API       http://localhost:8080
-echo   Swagger   http://localhost:8080/swagger-ui.html
-echo   Grafana   http://localhost:3001   ^(admin / admin^)
-echo   Postgres  localhost:5432
-echo   PgBouncer localhost:6432
+echo   Data plane ^(WMS^)
+echo     UI        http://localhost:3000
+echo     API       http://localhost:8080
+echo     Swagger   http://localhost:8080/swagger-ui.html
+echo   Control plane ^(Super Admin^)
+echo     UI        http://localhost:3002
+echo     API       http://localhost:8081
+echo     Host hint Host: admin.invsys.com on gateway :8081
+echo   Observability / data
+echo     Grafana   http://localhost:3001   ^(admin / admin^)
+echo     Postgres  localhost:5432
+echo     PgBouncer localhost:6432
 exit /b 0
 
 :print_status_table
@@ -343,40 +406,56 @@ call :print_endpoints
 echo.
 exit /b 0
 
-:clean_frontend
-call :step "Cleaning frontend artifacts"
-set "FRONTEND=frontend"
-if not exist "%FRONTEND%\package.json" (
-    call :err "frontend\package.json not found. Run from repo root."
-    exit /b 1
+:clean_one_frontend
+:: %~1 = frontend directory
+set "FE=%~1"
+if not exist "%FE%\package.json" (
+    call :info "Skip clean ^(missing^): %FE%"
+    exit /b 0
 )
-
-if exist "%FRONTEND%\node_modules" (
-    rmdir /s /q "%FRONTEND%\node_modules"
+call :step "Cleaning %FE%"
+if exist "%FE%\node_modules" (
+    rmdir /s /q "%FE%\node_modules"
     call :ok "Removed node_modules"
 )
-if exist "%FRONTEND%\dist" (
-    rmdir /s /q "%FRONTEND%\dist"
+if exist "%FE%\dist" (
+    rmdir /s /q "%FE%\dist"
     call :ok "Removed dist"
 )
-if exist "%FRONTEND%\.vite" (
-    rmdir /s /q "%FRONTEND%\.vite"
+if exist "%FE%\.vite" (
+    rmdir /s /q "%FE%\.vite"
     call :ok "Removed .vite cache"
 )
 for %%f in (tsconfig.tsbuildinfo tsconfig.app.tsbuildinfo tsconfig.node.tsbuildinfo) do (
-    if exist "%FRONTEND%\%%f" (
-        del /f /q "%FRONTEND%\%%f"
+    if exist "%FE%\%%f" (
+        del /f /q "%FE%\%%f"
         call :ok "Removed %%f"
     )
 )
-
-pushd "%FRONTEND%"
+pushd "%FE%"
 where npm >nul 2>&1
 if not errorlevel 1 (
     call npm run clean --if-present >nul 2>&1
 )
+where pnpm >nul 2>&1
+if not errorlevel 1 (
+    call pnpm run clean --if-present >nul 2>&1
+)
 popd
+exit /b 0
 
+:clean_frontend
+call :step "Cleaning frontend artifacts (WMS + admin monorepo)"
+if not exist "%WMS_FRONTEND%\package.json" if not exist "%ADMIN_FRONTEND%\package.json" (
+    call :err "No frontend package.json found under frontends\apps. Run from repo root."
+    exit /b 1
+)
+call :clean_one_frontend "%WMS_FRONTEND%"
+call :clean_one_frontend "%ADMIN_FRONTEND%"
+if exist "frontends\node_modules" (
+    rmdir /s /q "frontends\node_modules"
+    call :ok "Removed frontends\node_modules"
+)
 call :ok "Frontend clean complete"
 exit /b 0
 
@@ -414,8 +493,9 @@ if exist "ops\demo_seed_tenants_extra.sql" (
 
 echo.
 call :ok "Seed complete"
-call :info "Login: owner@demo.test / password123"
-call :info "Floor PIN (after opening Fulfillment): 1234"
+call :info "WMS login:   owner@demo.test / password123"
+call :info "Admin login: owner@demo.test / password123  ^(platform_admins; UI :3002^)"
+call :info "Floor PIN ^(after opening Fulfillment^): 1234"
 call :info "Picker: picker@demo.test / password123"
 echo.
 exit /b 0
@@ -429,12 +509,15 @@ echo.
 echo Commands:
 echo   deploy                     Rebuild and start the stack ^(quiet console^)
 echo   deploy --clean-frontend    Clean frontend artifacts, then deploy
-echo   deploy --no-chatbot        Deploy without Support Co-Pilot ^(api + web^)
+echo   deploy --no-chatbot        Deploy without Support Co-Pilot ^(WMS api + web^)
 echo   deploy --with-chatbot      Deploy with Support Co-Pilot ^(overrides marker^)
+echo   --no-chatbot               Shorthand for: deploy --no-chatbot
+echo   --with-chatbot             Shorthand for: deploy --with-chatbot
+echo   --clean-frontend           Shorthand for: deploy --clean-frontend
 echo   down                       Stop and remove containers ^(keeps DB volume^)
 echo   undeploy                   Alias for down
 echo   status                     Compact container status + URLs
-echo   clean-frontend             Remove frontend node_modules / dist / cache
+echo   clean-frontend             Remove frontend_wms / frontend_admin caches
 echo   clean                      Alias for clean-frontend
 echo   seed                       Load demo SQL ^(quiet; errors show log tail^)
 echo   chatbot-enable             Persistently ENABLE chatbot for next deploys
@@ -442,7 +525,13 @@ echo   chatbot-disable            Persistently DISABLE chatbot for next deploys
 echo   chatbot-status             Show whether chatbot is enabled or disabled
 echo   help                       Show this help
 echo.
-echo Chatbot toggle applies to BACKEND and FRONTEND together:
+echo Planes:
+echo   Data plane     frontend_wms + invsys-app via gateway :8080
+echo   Control plane  frontend_admin + invsys-admin-api via gateway :8081
+echo                  Tenants, billing, impersonation, RAG ingest, kill-switch,
+echo                  audit, shards, DLQ, telemetry, compliance, reports
+echo.
+echo Chatbot toggle applies to WMS BACKEND and frontend_wms together:
 echo   - Backend: omit invsys-chatbot jar ^(+ INVSYS_CHATBOT_ENABLED^)
 echo   - Frontend: VITE_ENABLE_CHATBOT + stub bridge
 echo   Preference file: .invsys-chatbot-disabled ^(repo root^)
@@ -451,6 +540,7 @@ echo On failure, the last 40 lines of .deploy-last.log are printed.
 echo.
 echo Examples:
 echo   deploy.bat
+echo   deploy.bat --no-chatbot
 echo   deploy.bat deploy --clean-frontend
 echo   deploy.bat chatbot-disable
 echo   deploy.bat deploy

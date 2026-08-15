@@ -11,7 +11,7 @@
 1. [Roles & personas](#1-roles--personas)
 2. [Sidebar option configuration & subroute matrix](#2-sidebar-option-configuration--subroute-matrix)
 3. [Cross-cutting request pipeline (every authenticated call)](#3-cross-cutting-request-pipeline)
-4. [Module 0 — Identity & session](#4-module-0--identity--session)
+4. [Module 0 — Identity & session](#4-module-0--identity--session) (includes Super Admin impersonation §4.1a)
 5. [Module I — Inbound operations](#5-module-i--inbound-operations)
 6. [Module II — Outbound operations](#6-module-ii--outbound-operations)
 7. [Module III — Inventory control](#7-module-iii--inventory-control)
@@ -40,6 +40,7 @@ Every flow below is anchored to a Spring `ROLE_*` and the physical surface where
 | `VIEWER` | Read-mostly analyst | Office (Surface A) | Dashboards, products, lot trace (read-only) |
 | `B2B_CUSTOMER` | Wholesale buyer | Showroom portal | Browse catalog, place portal orders |
 | `SUPPLIER` | Vendor contact | Public tokenized portal | View/acknowledge PO, update ship dates |
+| `SUPER_ADMIN` *(platform)* | InvSys operator | **Control plane** (`admin.invsys.com` / `:3002`) | Tiers, entitlements, billing, impersonate, suspend, RAG ingest, kill-switch, audit, shards, DLQ, telemetry, compliance — **not** in WMS nav |
 
 Frontend mirrors these with `useSessionStore.hasRole`, `ProtectedRoute`, and the `NAV_MATRIX` filters (`roles`, `hideForPicker`, `hideForViewer`). Exclusive `PICKER` users land on `/fulfillment` (floor shell) instead of the office dashboard.
 
@@ -47,7 +48,9 @@ Frontend mirrors these with `useSessionStore.hasRole`, `ProtectedRoute`, and the
 
 ## 2. Sidebar option configuration & subroute matrix
 
-The office rail (`frontend/src/components/layout/navConfig.ts` + `Sidebar.tsx`) is a **nested category matrix**: one solo item plus six collapsible parent groups. Every parent and leaf icon is unique (Lucide). Categories expand/collapse locally; on viewports ≤1023px the rail becomes a mobile drawer.
+The office rail (`frontends/apps/frontend_wms/src/components/layout/navConfig.ts` + `Sidebar.tsx`) is a **nested category matrix**: one solo item plus six collapsible parent groups. Every parent and leaf icon is unique (Lucide). Categories expand/collapse locally; on viewports ≤1023px the rail becomes a mobile drawer.
+
+> **Control plane:** Super Admin Day-2 ops live in `frontends/apps/frontend_admin` (not this sidebar) and talk to `invsys-admin-api` on `:8081`. WMS data-plane edge blocks `/api/v1/control-plane/**`. The only WMS touch is login `?impersonateToken=` → `POST /api/v1/auth/impersonation/accept`.
 
 | Group | Parent icon | Leaf (route) | Leaf icon | Visible to |
 |-------|-------------|--------------|-----------|------------|
@@ -94,6 +97,7 @@ sequenceDiagram
     participant Browser as SPA (React 19)
     participant Edge as nginx web + API gateway
     participant Jwt as JwtAuthFilter
+    participant Susp as SuspendedTenantAccessFilter
     participant Lbac as WarehouseAccessFilter
     participant Ctrl as Controller (@PreAuthorize)
     participant Tx as TenantAwareDataSource
@@ -103,7 +107,9 @@ sequenceDiagram
     Browser->>Edge: fetch /api/v1/... <br/>Cookie: invsys_access (RS256 JWT)<br/>Headers: X-Warehouse-Id, Idempotency-Key?
     Edge->>Jwt: proxy_pass (rate limits applied at edge)
     Jwt->>Jwt: validate JWT → roles, tenant_id, warehouse_ids<br/>TenantContext.set(...)
-    Jwt->>Lbac: continue chain
+    Jwt->>Susp: continue chain
+    Susp->>Susp: tenants.status = SUSPENDED → 403 TENANT_SUSPENDED
+    Susp->>Lbac: continue chain
     Lbac->>Lbac: requested warehouse ∈ JWT claims? else 403
     Lbac->>Ctrl: dispatch
     Ctrl->>Tx: service call inside @Transactional
@@ -152,6 +158,29 @@ sequenceDiagram
     Shell->>Auth: GET /api/v1/auth/me → applyMeProfile
     Shell->>Shell: load warehouses; WarehouseContextGate (SSID / geofence lock)
     Shell->>Shell: Sidebar renders NAV_MATRIX filtered by hasRole / hideForPicker / hideForViewer
+```
+
+### 4.1a Super Admin impersonation (God Mode)
+
+Platform operators never share a WMS password. Impersonation mints a 15-minute WMS JWT (`token_type=IMPERSONATION`) signed with the **same** RS256 PEMs as `invsys-app`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor SA as Super Admin
+    participant AdminUI as frontend_admin
+    participant AdminAPI as invsys-admin-api
+    participant WmsLogin as WMS LoginPage
+    participant Auth as AuthController / AuthService
+    participant Filter as SuspendedTenantAccessFilter
+
+    SA->>AdminUI: Tenants → Impersonate
+    AdminUI->>AdminAPI: POST /api/v1/control-plane/tenants/{id}/impersonate
+    AdminAPI-->>AdminUI: loginUrl + token (expiresInSeconds=900)
+    AdminUI->>WmsLogin: open VITE_WMS_APP_URL/login?impersonateToken=…
+    WmsLogin->>Auth: POST /api/v1/auth/impersonation/accept { token }
+    Auth-->>WmsLogin: Set-Cookie invsys_access / invsys_refresh
+    Note over Filter: If the tenant is later SUSPENDED,<br/>WMS APIs return 403 TENANT_SUSPENDED
 ```
 
 ### 4.2 Floor PIN lock (PICKER on shared scanner)
@@ -869,7 +898,7 @@ Support Co-Pilot, training simulator, and onboarding-tour hosts are an **optiona
 |-------|------|
 | Maven | `invsys-chatbot` on `invsys-app` via profile **`with-chatbot`** (active by default). Omit with `-P"!with-chatbot"`. |
 | Spring | `invsys.features.chatbot.enabled` (`INVSYS_CHATBOT_ENABLED`) — `matchIfMissing=true`. When `false`, `ChatbotAutoConfiguration` does not load; `/api/v1/support/**` returns **404** (still requires auth — no security bypass). |
-| React | Optional package at `frontend/src/modules/chatbot`. Core imports only `@/lib/chatbot/active` (real or stub via `npm run chatbot:enable|disable`). Also `VITE_ENABLE_CHATBOT` / `isChatbotEnabled()`. Deleting the module folder still compiles. |
+| React | Optional package at `frontends/apps/frontend_wms/src/modules/chatbot`. Core imports only `@/lib/chatbot/active` (real or stub via `npm run chatbot:enable|disable`). Also `VITE_ENABLE_CHATBOT` / `isChatbotEnabled()`. Deleting the module folder still compiles. |
 
 When enabled, the floating `support-assistant-fab` is available on both surfaces. Answers are **role-aware**: a PICKER asking "how do I receive?" gets scanner-first steps, never desktop PO creation. CQRS tools (`checkOrderStatus`, `getLedgerHistorySummary`, `checkAvailableToPromise`) read tenant id **only** from `TenantContext`.
 
@@ -906,7 +935,7 @@ sequenceDiagram
 
 > **Requires chatbot UI enabled.** `OnboardingTourHost` and `TourOrchestrator` mount only when `isChatbotEnabled()` is true (same flag as the Support FAB). With `VITE_ENABLE_CHATBOT=false` (or runtime `__INVSYS_CHATBOT__=false`), tours do not run; warehouse flows are unaffected.
 
-The `receiving-to-allocation` tour (`frontend/src/features/support/tourSteps.ts`) is a **6-step, 3-page** guided journey that mirrors the physical heartbeat of the warehouse: *Purchase Order → Bin → Sales Order*. It is driven by driver.js v1.8 plus a Zustand tour machine in `usePreferencesStore`:
+The `receiving-to-allocation` tour (`frontends/apps/frontend_wms/src/features/support/tourSteps.ts`) is a **6-step, 3-page** guided journey that mirrors the physical heartbeat of the warehouse: *Purchase Order → Bin → Sales Order*. It is driven by driver.js v1.8 plus a Zustand tour machine in `usePreferencesStore`:
 
 | Store field | Purpose |
 |-------------|---------|
@@ -1014,6 +1043,7 @@ Quick index of which sections each role appears in:
 | `VIEWER` | Login §4.1 · Products (read) §7.1 · Lot trace §7.5 |
 | `B2B_CUSTOMER` | Showroom §11.1 |
 | `SUPPLIER` | Supplier portal §11.2 |
+| `SUPER_ADMIN` | Control plane (separate app) · Impersonation §4.1a · Tenant suspend / billing / RAG / kill-switch / audit / shards / DLQ |
 | *All roles* | Request pipeline §3 · Copilot §13 *(when chatbot module enabled)* · Onboarding tour §14 *(same gate)* |
 
 ---
@@ -1221,6 +1251,29 @@ sequenceDiagram
     Clerk->>Owner: invoice issued (§6.4)
     Owner->>Owner: Stripe payment lands — dashboard SSE, books sync
     Note over Buyer,Owner: five roles, one ledger — every hop above is<br/>auditable in Lot Trace (§7.5)
+```
+
+### 16.9 SUPER_ADMIN — operate the platform (separate app)
+
+Activities happen in `frontend_admin` (`:3002`), never in the WMS sidebar. Correlated: tenant staff keep working until Suspend or a kill-switch lands.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor SA as Super Admin
+    participant CP as Control plane (:3002 / :8081)
+    actor Owner as Tenant OWNER
+    participant WMS as Data plane (:3000 / :8080)
+
+    SA->>CP: login as platform_admins (owner@demo.test)
+    SA->>CP: change tier / modules on a tenant
+    CP-->>WMS: TenantSubscription cache evict → @RequireModule gates
+    SA->>CP: Impersonate → 15-min WMS JWT (§4.1a)
+    SA->>WMS: support session as that tenant
+    SA->>CP: Suspend tenant
+    WMS-->>Owner: subsequent APIs 403 TENANT_SUSPENDED
+    SA->>CP: kill-switch / DLQ retry / rate-limit slider / compliance broadcast
+    Note over SA,WMS: Super Admin cookies are invsys_admin_*;<br/>WMS cookies stay invsys_access / invsys_refresh
 ```
 
 ---

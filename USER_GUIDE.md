@@ -17,8 +17,9 @@ You will use three kinds of screens:
 | **Office** | Owners, admins, managers, viewers | Laptop / desktop browser |
 | **Warehouse floor** | Pickers, warehouse managers on the dock | Phone, tablet, or rugged scanner |
 | **B2B showroom** | Your wholesale customers | Browser (catalog + checkout only) |
+| **Super Admin portal** | InvSys platform operators only | Laptop — `http://localhost:3002` (`admin.invsys.com`) |
 
-Pickers are steered to floor screens. Office users get the full desktop navigation. B2B logins only see the showroom.
+Pickers are steered to floor screens. Office users get the full desktop navigation. B2B logins only see the showroom. Tenant staff never see the Super Admin portal.
 
 ---
 
@@ -65,7 +66,7 @@ On phones/tablets, use **Open navigation** to show the same rail as a drawer.
 
 ### 1. Create the workspace
 
-1. Open the app (local demo: `http://localhost:3000`).
+1. Open the tenant WMS (local demo: `http://localhost:3000`). Super Admin portal is separate: `http://localhost:3002` (`owner@demo.test` / `password123` in `platform_admins`).
 2. Go to **Sign up** (`/signup`).
 3. Enter company name, workspace slug, your email, password, and display name.
 4. Choose **Create workspace**. You land on the **Dashboard** as **OWNER**.
@@ -245,6 +246,30 @@ Floor routes use a **warehouse shell** (large tap targets, high contrast) — no
 - **Replenishments** — move reserve stock to pick faces when triggered.
 
 Offline: if the handheld loses Wi‑Fi, scans can queue and sync later. Conflicts that cannot auto-apply appear for office review on the dashboard. The header **Connected** badge appears on warehouse/device views when the network is healthy.
+
+---
+
+## Super Admin portal (InvSys operators only)
+
+This is **not** a tenant screen. Platform operators sign in at `http://localhost:3002` (`admin.invsys.com`) with a `platform_admins` account (demo: `owner@demo.test` / `password123`).
+
+Typical jobs:
+
+| Job | Where |
+|-----|--------|
+| Change a tenant’s commercial tier or modules | **Tenants** drawer |
+| Open the tenant WMS as that company (support) | **Impersonate** — new tab, 15-minute session |
+| Stop a non-paying tenant immediately | **Suspend** — WMS APIs return 403 until reactivated |
+| Provision a scrubbed UAT copy | **Provision sandbox** |
+| Review MRR / card status | **Platform Billing** |
+| Upload Copilot SOP markdown | **Copilot Knowledge** |
+| Pause a noisy integration | **Webhooks & Integrations** kill-switch |
+| See who changed what | **Audit Trail** |
+| Retry failed outbound jobs | **Dead Letter Queue** |
+| Throttle a noisy tenant | **Concurrency** sliders |
+| Push tax / hazmat rule updates | **Global Compliance** |
+
+Tenant staff never see these menus. If your WMS login opened from Impersonate, you are in a short-lived support session — log out when finished.
 
 ---
 

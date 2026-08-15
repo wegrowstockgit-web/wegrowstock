@@ -1,0 +1,19 @@
+{
+  "name": "invsys-frontends",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:wms": "pnpm --filter frontend_wms dev",
+    "dev:admin": "pnpm --filter frontend_admin dev",
+    "build:wms": "pnpm --filter frontend_wms build",
+    "build:admin": "pnpm --filter frontend_admin build",
+    "build": "pnpm -r --filter \"./apps/*\" build",
+    "test:wms": "pnpm --filter frontend_wms test",
+    "test:admin": "pnpm --filter frontend_admin test"
+  },
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=9"
+  }
+}

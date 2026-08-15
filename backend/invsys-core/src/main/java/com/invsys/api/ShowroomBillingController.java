@@ -1,7 +1,9 @@
 package com.invsys.api;
 
+import com.invsys.core.security.RequireModule;
 import com.invsys.domain.BillingAccrual;
 import com.invsys.domain.BillingSla;
+import com.invsys.domain.subscription.AppModule;
 import com.invsys.service.BillingAccrualService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +18,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/showroom/billing")
 @PreAuthorize("hasRole('B2B_CUSTOMER')")
+@RequireModule(AppModule.B2B_SHOWROOM)
 public class ShowroomBillingController {
 
     private final BillingAccrualService billingAccrualService;

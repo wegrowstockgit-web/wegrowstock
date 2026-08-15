@@ -1,0 +1,33 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+  jpa:
+    open-in-view: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+invsys:
+  jwt:
+    private-key-file: ${JWT_PRIVATE_KEY_FILE:/run/jwt/dev-private.pem}
+    public-key-file: ${JWT_PUBLIC_KEY_FILE:/run/jwt/dev-public.pem}
+
+# Admin control-plane does not need Tempo export; silence OTLP 404 spam from core docker profile.
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  tracing:
+    export:
+      otlp:
+        enabled: false
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          enabled: false

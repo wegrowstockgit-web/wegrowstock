@@ -1,7 +1,8 @@
 services:
   db:
     # pgvector extension required for support RAG (Flyway V089+)
-    image: pgvector/pgvector:pg16
+    # PostgreSQL 16.12+ (CVE-2025-8713 RLS bypass patched; pg16.10 tag unavailable on Hub)
+    image: pgvector/pgvector:0.8.1-pg16
     container_name: invsys-db
     environment:
       POSTGRES_DB: invsys
@@ -304,14 +305,87 @@ services:
       retries: 18
       start_period: 90s
 
+  # Control Plane API — isolated runner (Super Admin only)
+  backend-admin:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.admin
+    container_name: invsys-admin-api
+    depends_on:
+      db:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SERVER_PORT: "8081"
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_NAME: invsys
+      DB_USER: app_user
+      DB_PASSWORD: app_user_secret
+      FLYWAY_USER: app_owner
+      FLYWAY_PASSWORD: app_owner_secret
+      # Admin writes use bootstrap/app_owner pool (core BootstrapJdbc)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_ENABLED: "true"
+      COOKIE_SECURE: "false"
+      COOKIE_SAME_SITE: Strict
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PRIVATE_KEY_FILE: /run/jwt/dev-private.pem
+      JWT_PUBLIC_KEY_FILE: /run/jwt/dev-public.pem
+      STRIPE_WEBHOOK_SECRET: whsec_mock_secret
+      SHOPIFY_WEBHOOK_SECRET: shopify_mock_secret
+      EASYPOST_WEBHOOK_SECRET: easypost_mock_secret
+      ACCOUNTING_WEBHOOK_SECRET: accounting_mock_secret
+      CORS_ALLOWED_ORIGINS: ${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://localhost:3002,http://127.0.0.1:5174,http://127.0.0.1:3002}
+      FRONTEND_URL: ${ADMIN_FRONTEND_URL:-http://localhost:3002}
+      PUBLIC_SIGNUP_ENABLED: "false"
+      MEDIA_PROVIDER: MINIO
+      MEDIA_ENDPOINT: http://minio:9000
+      MEDIA_PUBLIC_ENDPOINT: ${MEDIA_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MEDIA_BUCKET: invsys-media
+      MEDIA_REGION: us-east-1
+      MEDIA_ACCESS_KEY: ${MEDIA_ACCESS_KEY:-invsys}
+      MEDIA_SECRET_KEY: ${MEDIA_SECRET_KEY:-invsyssecret}
+      MEDIA_PATH_STYLE: "true"
+      MEDIA_CREATE_BUCKET: "true"
+      MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED: "false"
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENABLED: "false"
+      MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
+      LOKI_URL: http://loki:3100/loki/api/v1/push
+    expose:
+      - "8081"
+    volumes:
+      - ./ops/jwt:/run/jwt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 90s
+
   api-gateway:
     image: nginx:1.27-alpine
     container_name: invsys-api-gateway
     depends_on:
       backend:
         condition: service_healthy
+      backend-admin:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+      frontend-admin:
+        condition: service_started
     ports:
       - "8080:8080"
+      - "8081:8081"
     volumes:
       - ./ops/api-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     healthcheck:
@@ -323,16 +397,21 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./frontends/apps/frontend_wms
       dockerfile: Dockerfile
       args:
         VITE_ENABLE_CHATBOT: ${VITE_ENABLE_CHATBOT:-true}
     container_name: invsys-web
-    depends_on:
-      api-gateway:
-        condition: service_healthy
     ports:
       - "3000:80"
+
+  frontend-admin:
+    build:
+      context: ./frontends
+      dockerfile: apps/frontend_admin/Dockerfile
+    container_name: invsys-admin-web
+    ports:
+      - "3002:80"
 
 volumes:
   invsys_pgdata:

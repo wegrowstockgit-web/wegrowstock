@@ -1,0 +1,89 @@
+spring:
+  application:
+    name: invsys-admin-api
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:invsys}?prepareThreshold=0
+    username: ${DB_USER:app_user}
+    password: ${DB_PASSWORD:app_user_secret}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:invsys}?prepareThreshold=0
+    user: ${FLYWAY_USER:app_owner}
+    password: ${FLYWAY_PASSWORD:app_owner_secret}
+
+server:
+  port: 8081
+
+invsys:
+  jwt:
+    access-token-minutes: 15
+    refresh-token-days: 7
+    # Must stay aligned with WMS so impersonation JWTs verify on the Data Plane.
+    private-key-file: ${JWT_PRIVATE_KEY_FILE:/run/jwt/dev-private.pem}
+    public-key-file: ${JWT_PUBLIC_KEY_FILE:/run/jwt/dev-public.pem}
+    private-key-pem: ${JWT_PRIVATE_KEY:}
+    public-key-pem: ${JWT_PUBLIC_KEY:}
+  security:
+    public-signup-enabled: ${PUBLIC_SIGNUP_ENABLED:false}
+    # Must be explicit: admin application.yml overrides core invsys.security map.
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5174,http://localhost:3002,http://127.0.0.1:5174,http://127.0.0.1:3002}
+    cors-include-verified-domains: ${CORS_INCLUDE_VERIFIED_DOMAINS:false}
+    cors-cache-seconds: ${CORS_CACHE_SECONDS:30}
+    cookie-secure: ${COOKIE_SECURE:true}
+    cookie-same-site: ${COOKIE_SAME_SITE:Strict}
+  frontend-url: ${FRONTEND_URL:http://localhost:3002}
+  redis:
+    enabled: ${REDIS_ENABLED:false}
+  media:
+    provider: ${MEDIA_PROVIDER:MINIO}
+    bucket: ${MEDIA_BUCKET:invsys-media}
+    region: ${MEDIA_REGION:us-east-1}
+    endpoint: ${MEDIA_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MEDIA_PUBLIC_ENDPOINT:}
+    access-key: ${MEDIA_ACCESS_KEY:invsys}
+    secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
+    path-style-access: ${MEDIA_PATH_STYLE:true}
+    create-bucket-if-missing: ${MEDIA_CREATE_BUCKET:true}
+  webhooks:
+    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:shopify_mock_secret}
+    easypost-secret: ${EASYPOST_WEBHOOK_SECRET:easypost_mock_secret}
+    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET:accounting_mock_secret}
+    stripe-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
+  stripe:
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
+    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:whsec_mock_secret}
+  actuator:
+    scrape-allowed-cidrs: ${ACTUATOR_SCRAPE_ALLOWED_CIDRS:127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  otlp:
+    metrics:
+      export:
+        enabled: false
+    tracing:
+      export:
+        enabled: false

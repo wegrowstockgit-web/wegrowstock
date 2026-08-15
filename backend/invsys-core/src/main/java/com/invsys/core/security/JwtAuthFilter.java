@@ -156,7 +156,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.startsWith("/api/v1/auth/signup")
+        return path.startsWith("/api/v1/control-plane/")
+                || path.startsWith("/api/v1/auth/signup")
                 || path.startsWith("/api/v1/auth/login")
                 || path.startsWith("/api/v1/auth/warehouse/login")
                 || path.startsWith("/api/v1/auth/refresh")

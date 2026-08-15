@@ -34,6 +34,11 @@ public class IntegrationRateLimiter {
         var tenantId = TenantContext.requireTenantId();
         String key = "rate:" + tenantId + ":" + system.toUpperCase();
         int capacity = DEFAULT_CAPACITY.getOrDefault(system.toUpperCase(), 100);
-        distributedRateLimiter.tryAcquire(key, capacity, tokens, WINDOW);
+        double multiplier = distributedRateLimiter.getTenantCapacityMultiplier(tenantId);
+        if (multiplier <= 0) {
+            multiplier = 1.0;
+        }
+        int effective = Math.max(1, (int) Math.round(capacity * multiplier));
+        distributedRateLimiter.tryAcquire(key, effective, tokens, WINDOW);
     }
 }

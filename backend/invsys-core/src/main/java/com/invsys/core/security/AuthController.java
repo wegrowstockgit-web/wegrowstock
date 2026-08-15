@@ -74,6 +74,18 @@ public class AuthController {
     }
 
     /**
+     * Consumes a short-lived control-plane impersonation JWT and issues HttpOnly session cookies.
+     */
+    @PostMapping("/impersonation/accept")
+    public SessionResponse acceptImpersonation(@RequestBody Map<String, String> body, HttpServletResponse response) {
+        String token = body == null ? null : body.get("token");
+        if (token == null || token.isBlank()) {
+            token = body == null ? null : body.get("impersonateToken");
+        }
+        return issueSession(authService.acceptImpersonation(token), response);
+    }
+
+    /**
      * Surface B: email + PIN warehouse login. Issues HttpOnly session cookies.
      */
     @PostMapping("/warehouse/login")

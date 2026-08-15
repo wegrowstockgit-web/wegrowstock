@@ -6,6 +6,7 @@ on:
     branches: [develop, main]
     paths:
       - "ops/terraform/infra/**"
+      - "ops/api-gateway/**"
       - ".github/workflows/terraform-*.yml"
       - ".github/workflows/infra-stress-test-scale.yml"
 

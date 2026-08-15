@@ -2,6 +2,7 @@ package com.invsys.core.security;
 
 import com.invsys.core.security.oidc.OidcLoginSuccessHandler;
 import com.invsys.core.security.oidc.TenantClientRegistrationRepository;
+import com.invsys.core.tenancy.SuspendedTenantAccessFilter;
 import com.invsys.config.ActuatorScrapeAuthorizationManager;
 import com.invsys.idempotency.RedisIdempotencyFilter;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final SuspendedTenantAccessFilter suspendedTenantAccessFilter;
     private final WarehouseAccessFilter warehouseAccessFilter;
     private final RedisIdempotencyFilter redisIdempotencyFilter;
     private final UnauthorizedEntryPoint unauthorizedEntryPoint;
@@ -32,6 +34,7 @@ public class SecurityConfig {
     private final boolean publicSignupEnabled;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          SuspendedTenantAccessFilter suspendedTenantAccessFilter,
                           WarehouseAccessFilter warehouseAccessFilter,
                           RedisIdempotencyFilter redisIdempotencyFilter,
                           UnauthorizedEntryPoint unauthorizedEntryPoint,
@@ -41,6 +44,7 @@ public class SecurityConfig {
                           ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager,
                           @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.suspendedTenantAccessFilter = suspendedTenantAccessFilter;
         this.warehouseAccessFilter = warehouseAccessFilter;
         this.redisIdempotencyFilter = redisIdempotencyFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
@@ -71,6 +75,7 @@ public class SecurityConfig {
                     }
                     auth.requestMatchers("/api/v1/auth/login", "/api/v1/auth/warehouse/login",
                                     "/api/v1/auth/refresh",
+                                    "/api/v1/auth/impersonation/accept",
                                     "/api/v1/auth/magic-login", "/api/v1/auth/magic-login/consume",
                                     "/api/v1/auth/sso-discover",
                                     "/api/v1/auth/sso-providers").permitAll()
@@ -91,13 +96,15 @@ public class SecurityConfig {
                     // If invsys-chatbot is omitted / disabled, no controller is mapped and requests 404.
                     auth.requestMatchers("/api/v1/support/**").authenticated()
                             .requestMatchers("/actuator/**").hasAnyRole("OWNER", "ADMIN")
+                            .requestMatchers("/api/v1/control-plane/**").denyAll()
                             .anyRequest().authenticated();
                 })
                 .oauth2Login(oauth2 -> oauth2
                         .clientRegistrationRepository(tenantClientRegistrationRepository)
                         .successHandler(oidcLoginSuccessHandler))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(warehouseAccessFilter, JwtAuthFilter.class)
+                .addFilterAfter(suspendedTenantAccessFilter, JwtAuthFilter.class)
+                .addFilterAfter(warehouseAccessFilter, SuspendedTenantAccessFilter.class)
                 .addFilterAfter(redisIdempotencyFilter, WarehouseAccessFilter.class);
         return http.build();
     }
