@@ -15,7 +15,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import com.invsys.domain.Invitation;
 
 @ExtendWith(MockitoExtension.class)
 class InvitationEmailServiceTest {
@@ -71,5 +70,23 @@ class InvitationEmailServiceTest {
     void sendInvitationRejectsBlankTargets() {
         assertThat(service.sendInvitation(" ", "http://localhost:3000/invite/t")).isFalse();
         assertThat(service.sendInvitation("user@example.com", " ")).isFalse();
+    }
+
+    @Test
+    void magicAndWelcomeUrlsPointAtFrontend() {
+        assertThat(service.magicLoginUrl("tok-9")).isEqualTo("http://localhost:3000/login?magic=tok-9");
+        assertThat(service.wholesaleWelcomeUrl("tok-9"))
+                .isEqualTo("http://localhost:3000/showroom/login?magic=tok-9");
+    }
+
+    @Test
+    void sendWholesaleWelcomeWithoutSmtpSucceeds() {
+        when(mailSenderProvider.getIfAvailable()).thenReturn(null);
+        InvitationEmailService noSmtp = new InvitationEmailService(
+                mailSenderProvider, "noreply@invsys.local", "http://localhost:3000");
+        assertThat(noSmtp.sendWholesaleWelcome("buyer@example.com",
+                "http://localhost:3000/showroom/login?magic=abc")).isTrue();
+        assertThat(noSmtp.sendMagicLink("buyer@example.com",
+                "http://localhost:3000/login?magic=abc")).isTrue();
     }
 }

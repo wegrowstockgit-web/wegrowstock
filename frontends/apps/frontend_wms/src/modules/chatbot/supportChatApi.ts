@@ -7,7 +7,9 @@ import {
   type RouteKnowledge,
   type RouteKnowledgeComponent,
 } from '@/lib/pageKnowledge';
+import i18n from '@/lib/i18n';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useOfflineStore } from '@/stores/offlineStore';
 import { useScannerLockStore } from '@/stores/scannerLockStore';
 import type { PageStateSnapshot } from './usePageStateSnapshot';
@@ -217,8 +219,12 @@ export async function streamSupportChat(
       };
   // Drop null/undefined so Jackson → Map.copyOf on the API never NPEs.
   // Deep-inject live warehouse / offline / scanner lock telemetry for zero-click awareness.
+  const uiLanguage = usePreferencesStore.getState().language ?? i18n.language ?? 'en';
   const pageState = Object.fromEntries(
-    Object.entries(injectZustandTelemetry(rawPageState as Record<string, unknown>)).filter(
+    Object.entries(injectZustandTelemetry({
+      ...rawPageState as Record<string, unknown>,
+      uiLanguage,
+    })).filter(
       ([, v]) => v !== null && v !== undefined,
     ),
   );
@@ -234,6 +240,8 @@ export async function streamSupportChat(
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      'Accept-Language': uiLanguage,
+      'X-User-Language': uiLanguage,
       'X-User-Roles': roles.join(','),
       'X-Current-Route': route,
     },
@@ -397,12 +405,41 @@ function isSafeDraftEndpoint(endpoint: string): boolean {
   );
 }
 
+const AUTH_SHELL_PATHS = [/^\/login$/, /^\/signup$/, /^\/invite(\/|$)/, /^\/supplier-portal(\/|$)/];
+
+/** Insights are office/floor only — skip login and other unauthenticated shells. */
+export function isSupportInsightRoute(route: string): boolean {
+  const path = (route.split('?')[0] || '/').replace(/\/+$/, '') || '/';
+  return !AUTH_SHELL_PATHS.some((pattern) => pattern.test(path));
+}
+
+let insightsEndpointAvailable = true;
+
+/** Test seam — restore polling after a simulated 404. */
+export function resetSupportInsightAvailability(): void {
+  insightsEndpointAvailable = true;
+}
+
 export async function fetchSupportInsight(route: string): Promise<string | null> {
-  const { data } = await apiClient.get<{ proactiveInsight?: string | null }>(
-    '/api/v1/support/insights',
-    { params: { route } },
-  );
-  return data.proactiveInsight ?? null;
+  if (!insightsEndpointAvailable || !isSupportInsightRoute(route)) {
+    return null;
+  }
+  try {
+    const { data } = await apiClient.get<{ proactiveInsight?: string | null }>(
+      '/api/v1/support/insights',
+      { params: { route } },
+    );
+    return data.proactiveInsight ?? null;
+  } catch (err) {
+    const status =
+      typeof err === 'object' && err !== null && 'response' in err
+        ? Number((err as { response?: { status?: number } }).response?.status)
+        : 0;
+    if (status === 404 || status === 501 || status === 503) {
+      insightsEndpointAvailable = false;
+    }
+    return null;
+  }
 }
 
 function parseDonePayload(raw: string): SupportChatDonePayload | undefined {

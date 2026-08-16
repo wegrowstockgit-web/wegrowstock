@@ -154,4 +154,29 @@ public class InventoryLevelDeltaFlushRepositoryImpl implements InventoryLevelDel
                 lpnId);
         return sum != null ? sum : BigDecimal.ZERO;
     }
+
+    @Override
+    public void enqueueOnHandDelta(
+            UUID tenantId,
+            UUID variantId,
+            UUID locationId,
+            UUID lotId,
+            UUID lpnId,
+            BigDecimal onHandDelta,
+            UUID ownerCustomerId) {
+        tenantJdbc.update(
+                """
+                INSERT INTO inventory_level_deltas (
+                    tenant_id, variant_id, location_id, lot_id, lpn_id, on_hand_delta, owner_customer_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                tenantId,
+                variantId,
+                locationId,
+                lotId,
+                lpnId,
+                onHandDelta,
+                ownerCustomerId);
+    }
 }

@@ -2,8 +2,11 @@ package com.invsys.modules.sales.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 import com.invsys.core.common.TenantScopedEntity;
@@ -32,6 +35,19 @@ public class SalesOrder extends TenantScopedEntity {
 
     @Column(name = "requested_ship_date")
     private Instant requestedShipDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "allocation_policy", nullable = false)
+    private AllocationPolicy allocationPolicy = AllocationPolicy.ALLOW_PARTIAL;
+
+    @Column(name = "quote_expires_at")
+    private Instant quoteExpiresAt;
+
+    @Column(name = "manual_discount_total", nullable = false)
+    private BigDecimal manualDiscountTotal = BigDecimal.ZERO;
+
+    @Column(name = "quote_notes")
+    private String quoteNotes;
 
     public UUID getCustomerId() {
         return customerId;
@@ -87,5 +103,37 @@ public class SalesOrder extends TenantScopedEntity {
 
     public void setRequestedShipDate(Instant requestedShipDate) {
         this.requestedShipDate = requestedShipDate;
+    }
+
+    public AllocationPolicy getAllocationPolicy() {
+        return allocationPolicy;
+    }
+
+    public void setAllocationPolicy(AllocationPolicy allocationPolicy) {
+        this.allocationPolicy = allocationPolicy != null ? allocationPolicy : AllocationPolicy.ALLOW_PARTIAL;
+    }
+
+    public Instant getQuoteExpiresAt() {
+        return quoteExpiresAt;
+    }
+
+    public void setQuoteExpiresAt(Instant quoteExpiresAt) {
+        this.quoteExpiresAt = quoteExpiresAt;
+    }
+
+    public BigDecimal getManualDiscountTotal() {
+        return manualDiscountTotal;
+    }
+
+    public void setManualDiscountTotal(BigDecimal manualDiscountTotal) {
+        this.manualDiscountTotal = manualDiscountTotal != null ? manualDiscountTotal : BigDecimal.ZERO;
+    }
+
+    public String getQuoteNotes() {
+        return quoteNotes;
+    }
+
+    public void setQuoteNotes(String quoteNotes) {
+        this.quoteNotes = quoteNotes;
     }
 }

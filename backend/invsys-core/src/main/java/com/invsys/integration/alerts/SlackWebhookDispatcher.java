@@ -1,5 +1,7 @@
 package com.invsys.integration.alerts;
 
+import com.invsys.api.AlertPreferencesController;
+import com.invsys.media.MediaUrlValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,11 +23,14 @@ public class SlackWebhookDispatcher {
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build();
     private final ObjectMapper objectMapper;
+    private final MediaUrlValidator mediaUrlValidator;
 
-    public SlackWebhookDispatcher(ObjectMapper objectMapper) {
+    public SlackWebhookDispatcher(ObjectMapper objectMapper, MediaUrlValidator mediaUrlValidator) {
         this.objectMapper = objectMapper;
+        this.mediaUrlValidator = mediaUrlValidator;
     }
 
     public boolean dispatch(String webhookUrl, String title, String body) {
@@ -33,6 +38,8 @@ public class SlackWebhookDispatcher {
             return false;
         }
         try {
+            mediaUrlValidator.assertAllowedHttpsHost(
+                    webhookUrl, AlertPreferencesController.SLACK_HOSTS, "INVALID_SLACK_URL");
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("text", "*" + title + "*\n" + body);
             Map<String, Object> block = new LinkedHashMap<>();

@@ -6,6 +6,7 @@ COPY pom.xml .
 COPY invsys-core/pom.xml invsys-core/pom.xml
 COPY invsys-chatbot/pom.xml invsys-chatbot/pom.xml
 COPY invsys-training/pom.xml invsys-training/pom.xml
+COPY invsys-pos-api/pom.xml invsys-pos-api/pom.xml
 COPY invsys-app/pom.xml invsys-app/pom.xml
 COPY invsys-admin-api/pom.xml invsys-admin-api/pom.xml
 # Parent POM lists all modules; stub POMs satisfy the reactor without copying WMS sources.

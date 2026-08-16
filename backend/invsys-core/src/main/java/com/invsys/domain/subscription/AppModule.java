@@ -10,7 +10,7 @@ package com.invsys.domain.subscription;
  *   <li>INTERMEDIATE (Tier 2): CORE + Shopify, Accounting, Advanced Fulfillment,
  *       Manufacturing, Documents, MRP</li>
  *   <li>ENTERPRISE (Tier 3): all modules including B2B Showroom, Fintech, Mesh,
- *       RTLS, and AI Copilot</li>
+ *       RTLS, AI Copilot, and Retail POS</li>
  * </ul>
  */
 public enum AppModule {
@@ -39,7 +39,9 @@ public enum AppModule {
     /** {@code com.invsys.rtls} */
     RTLS_TELEMETRY,
     /** {@code com.invsys.chatbot} / Support Co-Pilot */
-    AI_COPILOT;
+    AI_COPILOT,
+    /** {@code com.invsys.pos} — offline-first retail Point of Sale */
+    RETAIL_POS;
 
     public static AppModule fromString(String raw) {
         if (raw == null || raw.isBlank()) {

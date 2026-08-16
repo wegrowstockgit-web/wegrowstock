@@ -30,6 +30,7 @@ export async function patchTenantTier(
 
 export type ImpersonationResponse = {
   accessToken: string;
+  handoffCode: string;
   expiresInSeconds: number;
   loginUrl: string;
   email: string;
@@ -77,14 +78,11 @@ export async function cloneSandbox(tenantId: string): Promise<SandboxCredentials
   return data;
 }
 
-export function buildWmsImpersonationUrl(accessToken: string, loginUrl?: string): string {
+export function buildWmsImpersonationUrl(handoffCode: string, loginUrl?: string): string {
   const base = (import.meta.env.VITE_WMS_APP_URL as string | undefined)?.replace(/\/$/, '')
     || 'http://localhost:3000';
-  if (base.includes('localhost') || base.includes('127.0.0.1')) {
-    return `${base}/login?impersonateToken=${encodeURIComponent(accessToken)}`;
-  }
-  if (loginUrl) return loginUrl;
-  return `${base}/login?impersonateToken=${encodeURIComponent(accessToken)}`;
+  if (loginUrl && loginUrl.includes('impersonateCode=')) return loginUrl;
+  return `${base}/login?impersonateCode=${encodeURIComponent(handoffCode)}`;
 }
 
 export type AdminLoginResponse = {

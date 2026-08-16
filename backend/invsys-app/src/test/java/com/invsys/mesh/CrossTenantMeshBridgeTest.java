@@ -122,6 +122,41 @@ class CrossTenantMeshBridgeTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void confirmOrderCreatesUnallocatedSalesOrderAndPoNote() {
+        UUID buyer = testDataHelper.createTenant("Mesh Buyer C", "mbc-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID seller = testDataHelper.createTenant("Mesh Seller C", "msc-" + UUID.randomUUID().toString().substring(0, 8));
+
+        TenantContext.setTenantId(buyer);
+        Supplier supplier = saveSupplier(buyer, "Partner Supplier Mirror");
+        Product buyerProduct = product(buyer, "MBC", "Buyer Widget");
+        ProductVariant buyerVariant = variant(buyer, buyerProduct.getId(), "BUYER-SKU-C");
+
+        TenantContext.setTenantId(seller);
+        Customer sellerCustomer = saveCustomer(seller, "Buyer as Customer");
+        Product sellerProduct = product(seller, "MSC", "Seller Widget");
+        ProductVariant sellerVariant = variant(seller, sellerProduct.getId(), "SELLER-SKU-C");
+
+        bootstrapJdbc.upsertMeshPartner(buyer, seller, supplier.getId(), sellerCustomer.getId(), "CONNECTED");
+
+        TenantContext.setTenantId(buyer);
+        persistMeshNetworkMapping(buyer, buyerVariant.getId(), seller, sellerVariant.getId());
+
+        PurchaseOrder po = saveDraftPo(buyer, supplier.getId(), "PO-MESH-CONFIRM");
+        savePoLine(buyer, po.getId(), buyerVariant.getId(), "4", "9.00");
+        PurchaseOrder confirmed = purchaseOrderService.confirmOrder(po.getId());
+        assertThat(confirmed.getNotes()).contains("Linked to Mesh Partner Sales Order #");
+
+        TenantContext.setTenantId(seller);
+        assertThat(salesOrderRepository.findAll()).anySatisfy(so -> {
+            assertThat(so.getStatus()).isEqualTo("UNALLOCATED");
+            assertThat(so.getChannel()).isEqualTo("MESH");
+            assertThat(so.getCustomerPoNumber()).isEqualTo("PO-MESH-CONFIRM");
+            assertThat(so.getCustomerId()).isEqualTo(sellerCustomer.getId());
+            assertThat(confirmed.getNotes()).contains(so.getNumber());
+        });
+    }
+
+    @Test
     void unmappedLinesCreateDraftExceptionOrderAndSellerAlert() {
         UUID buyer = testDataHelper.createTenant("Mesh Buyer 2", "mb2-" + UUID.randomUUID().toString().substring(0, 8));
         UUID seller = testDataHelper.createTenant("Mesh Seller 2", "ms2-" + UUID.randomUUID().toString().substring(0, 8));

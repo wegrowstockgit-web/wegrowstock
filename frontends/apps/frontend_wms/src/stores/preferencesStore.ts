@@ -15,6 +15,8 @@ export function registerTourDriverDestroy(fn: (() => void) | null): void {
 interface PreferencesState {
   densityMode: DensityMode;
   setDensityMode: (mode: DensityMode) => void;
+  language: 'en' | 'es' | 'fr';
+  setLanguage: (language: 'en' | 'es' | 'fr') => void;
   /** When true, prompt for interactive driver.js tour after login. */
   showOnboardingTour: boolean;
   setShowOnboardingTour: (show: boolean) => void;
@@ -80,6 +82,8 @@ export const usePreferencesStore = create<PreferencesState>()(
     (set) => ({
       densityMode: 'cozy',
       setDensityMode: (densityMode) => set({ densityMode }),
+      language: 'en',
+      setLanguage: (language) => set({ language }),
       showOnboardingTour: true,
       setShowOnboardingTour: (showOnboardingTour) => set({ showOnboardingTour }),
 
@@ -140,6 +144,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       name: 'invsys-preferences',
       partialize: (state) => ({
         densityMode: state.densityMode,
+        language: state.language,
         showOnboardingTour: state.showOnboardingTour,
         activeTourId: state.activeTourId,
         currentTourStep: state.currentTourStep,

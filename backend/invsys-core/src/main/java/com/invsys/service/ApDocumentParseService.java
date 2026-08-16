@@ -41,8 +41,9 @@ public class ApDocumentParseService {
 
     private static final Logger log = LoggerFactory.getLogger(ApDocumentParseService.class);
 
+    private static final int MAX_PARSE_CHARS = 200_000;
     private static final Pattern LINE_PATTERN = Pattern.compile(
-            "(?i)(?:sku[:\\s]*)?([A-Z0-9][A-Z0-9._-]{2,40})\\s+.*?(\\d+(?:\\.\\d+)?)\\s+(?:@\\s*)?\\$?(\\d+(?:\\.\\d{1,4})?)");
+            "(?i)(?:sku[:\\s]*)?([A-Z0-9][A-Z0-9._-]{2,40})\\s+(\\d+(?:\\.\\d+)?)\\s+(?:@\\s*)?\\$?(\\d+(?:\\.\\d{1,4})?)");
 
     private final ApInvoiceIngestionRepository ingestionRepository;
     private final ObjectStorage objectStorage;
@@ -104,7 +105,7 @@ public class ApDocumentParseService {
 
     private String readDocumentText(String storageKey) {
         try (InputStream in = objectStorage.open(storageKey)) {
-            byte[] bytes = in.readAllBytes();
+            byte[] bytes = in.readNBytes(MAX_PARSE_CHARS);
             String asText = new String(bytes, StandardCharsets.UTF_8);
             // Prefer printable text; binary PDFs still often contain embedded ASCII SKUs.
             StringBuilder printable = new StringBuilder(asText.length());
@@ -126,7 +127,8 @@ public class ApDocumentParseService {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("supplierName", detectSupplierName(tenantId, text));
         List<Map<String, Object>> lines = new ArrayList<>();
-        Matcher matcher = LINE_PATTERN.matcher(text);
+        String bounded = text.length() > MAX_PARSE_CHARS ? text.substring(0, MAX_PARSE_CHARS) : text;
+        Matcher matcher = LINE_PATTERN.matcher(bounded);
         while (matcher.find()) {
             String sku = matcher.group(1).toUpperCase(Locale.ROOT);
             if (!looksLikeSku(sku)) {

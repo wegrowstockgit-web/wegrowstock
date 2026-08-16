@@ -55,6 +55,34 @@ describe('session integrity', () => {
     expect(permissionsInclude(['printing:thermal'], 'inventory:cost:view')).toBe(false);
   });
 
+  it('applies persisted localeLanguage onto i18n and preferences', async () => {
+    const { default: i18n } = await import('@/lib/i18n');
+    const { usePreferencesStore } = await import('@/stores/preferencesStore');
+    try {
+      useSessionStore.getState().applyMeProfile({
+        userId: 'u-es',
+        email: 'owner@demo.test',
+        displayName: 'Owner',
+        roles: ['OWNER'],
+        tenantId: 't1',
+        localeLanguage: 'es-MX',
+      });
+      expect(useSessionStore.getState().user?.localeLanguage).toBe('es-MX');
+      expect(usePreferencesStore.getState().language).toBe('es');
+      expect(i18n.language).toMatch(/^es/);
+    } finally {
+      useSessionStore.getState().applyMeProfile({
+        userId: 'u-en',
+        email: 'owner@demo.test',
+        displayName: 'Owner',
+        roles: ['OWNER'],
+        tenantId: 't1',
+        localeLanguage: 'en',
+      });
+      await i18n.changeLanguage('en');
+    }
+  });
+
   it('freezeUser deep-freezes nested arrays', () => {
     const frozen = freezeUser({
       id: 'u2',

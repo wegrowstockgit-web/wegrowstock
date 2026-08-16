@@ -16,7 +16,7 @@ test.describe('Warehouse context gate', () => {
   });
 
   test('SSID hardware hint auto-locks owner warehouse switcher', async ({ ownerPage }) => {
-    await ownerPage.goto('/dashboard');
+    await ownerPage.goto('/fulfillment');
     await expect(ownerPage.getByLabel('Active warehouse')).toBeVisible({ timeout: 15_000 });
 
     const token = await sessionAccessToken(ownerPage);
@@ -58,7 +58,7 @@ test.describe('Warehouse context gate', () => {
   });
 
   test('owner without hardware hint still has warehouse switcher', async ({ ownerPage }) => {
-    await ownerPage.goto('/dashboard');
+    await ownerPage.goto('/fulfillment');
     await ownerPage.evaluate(() => localStorage.removeItem('invsys-network-hint'));
     await ownerPage.reload();
     await expect(ownerPage.getByLabel('Active warehouse')).toBeVisible({ timeout: 15_000 });

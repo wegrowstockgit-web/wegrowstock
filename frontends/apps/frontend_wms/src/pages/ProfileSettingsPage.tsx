@@ -11,6 +11,9 @@ import { MediaPicker } from '@/components/ui/MediaPicker';
 import { Select } from '@/components/ui/Select';
 import { usePreferencesStore, type DensityMode } from '@/stores/preferencesStore';
 import { useSessionStore } from '@/stores/session';
+import { useTranslation } from 'react-i18next';
+import { LanguageSelect } from '@/components/layout/LanguageSelect';
+import i18n, { type SupportedLanguage } from '@/lib/i18n';
 
 type MeProfile = {
   displayName?: string;
@@ -53,12 +56,15 @@ function densityFromApi(value?: string | null): DensityMode | null {
  * Organizational fields are read-only badges here (admin edits via Settings → Users).
  */
 export function ProfileSettingsPage() {
+  const { t } = useTranslation();
   const user = useSessionStore((s) => s.user);
   const setAvatarUrl = useSessionStore((s) => s.setAvatarUrl);
   const hasRole = useSessionStore((s) => s.hasRole);
   const isAdmin = hasRole('OWNER', 'ADMIN');
   const densityMode = usePreferencesStore((s) => s.densityMode);
   const setDensityMode = usePreferencesStore((s) => s.setDensityMode);
+  const language = usePreferencesStore((s) => s.language);
+  const setLanguage = usePreferencesStore((s) => s.setLanguage);
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [phone, setPhone] = useState('');
@@ -99,10 +105,19 @@ export function ProfileSettingsPage() {
         setMfaEnabled(Boolean(me.mfaEnabled));
         const mapped = densityFromApi(me.uiDensityPreference);
         if (mapped) setDensityMode(mapped);
+        if (me.localeLanguage) {
+          const next = me.localeLanguage.startsWith('es')
+            ? 'es'
+            : me.localeLanguage.startsWith('fr')
+              ? 'fr'
+              : 'en';
+          setLanguage(next);
+          void i18n.changeLanguage(next);
+        }
         setOrg(me);
       })
       .catch(() => undefined);
-  }, [setDensityMode, user?.displayName]);
+  }, [setDensityMode, setLanguage, user?.displayName]);
 
   const profileMutation = useMutation({
     mutationFn: async () => {
@@ -117,6 +132,8 @@ export function ProfileSettingsPage() {
         addressCountry: addressCountry || null,
         mfaEnabled,
         uiDensityPreference: densityToApi(densityMode),
+        preferredLanguage: language,
+        localeLanguage: language,
       });
     },
     onSuccess: () => setSaved(true),
@@ -147,7 +164,7 @@ export function ProfileSettingsPage() {
     <SettingsSubpageShell testId="profile-settings-page">
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
       <div>
-        <h1 className="text-2xl font-bold text-text">Personal settings</h1>
+        <h1 className="text-2xl font-bold text-text">{t('profile.title')}</h1>
         <p className="mt-1 text-sm text-text-muted">
           Manage your photo, contact details, password, and UI preferences. Organizational access
           is controlled by workspace admins.
@@ -241,6 +258,14 @@ export function ProfileSettingsPage() {
             <option value="cozy">Comfortable</option>
             <option value="spacious">Spacious</option>
           </Select>
+          <LanguageSelect
+            value={org.localeLanguage ?? language}
+            onChange={(lng: SupportedLanguage) => {
+              setLanguage(lng);
+              void i18n.changeLanguage(lng);
+              setOrg((prev) => ({ ...prev, localeLanguage: lng }));
+            }}
+          />
           <label className="flex items-center gap-2 pt-6 text-sm text-text" htmlFor="profile-mfa-enabled">
             <input
               id="profile-mfa-enabled"
@@ -252,11 +277,11 @@ export function ProfileSettingsPage() {
             MFA enabled (preference flag)
           </label>
           <div className="flex items-center gap-3 md:col-span-2">
-            <Button type="submit" loading={profileMutation.isPending}>
-              Save personal settings
+            <Button type="submit" loading={profileMutation.isPending} data-testid="save-personal-settings">
+              {t('profile.savePersonal')}
             </Button>
             {saved && !profileMutation.isPending && (
-              <span className="text-sm text-success">Saved</span>
+              <span className="text-sm text-success">{t('profile.saved')}</span>
             )}
           </div>
         </form>

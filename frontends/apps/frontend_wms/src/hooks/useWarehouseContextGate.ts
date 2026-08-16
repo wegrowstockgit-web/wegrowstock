@@ -21,6 +21,40 @@ interface ResolveResponse {
 const HINT_STORAGE_KEY = 'invsys-network-hint';
 const HINT_EVENT = 'invsys:network-context';
 
+const WAREHOUSE_SCOPED_EXACT = new Set([
+  '/fulfillment',
+  '/cycle-counts',
+  '/digital-twin',
+  '/locations',
+  '/technician-truck',
+  '/replenishments',
+  '/cluster-pick',
+  '/pallet-manifests',
+  '/manufacturing/terminal',
+  '/returns/receive',
+  '/issue-supplies',
+  '/field/truck',
+]);
+
+/**
+ * Warehouse dropdown belongs on floor / facility pages only.
+ * Tenant-global office pages (products, customers, settings, reports) stay unscoped.
+ */
+export function isWarehouseScopedPath(pathname: string): boolean {
+  const path = (pathname.split('?')[0] || '/').replace(/\/+$/, '') || '/';
+  if (WAREHOUSE_SCOPED_EXACT.has(path)) return true;
+  if (path.startsWith('/inbound/') || path === '/inbound') return true;
+  if (path.startsWith('/inventory/') || path === '/inventory') return true;
+  if (path.startsWith('/technician-truck')) return true;
+  if (path.startsWith('/digital-twin')) return true;
+  if (path.startsWith('/locations')) return true;
+  return false;
+}
+
+export function isTenantGlobalPath(pathname: string): boolean {
+  return !isWarehouseScopedPath(pathname);
+}
+
 /**
  * Read MDM / Zebra / Honeywell injected network hints.
  * Browsers cannot read Wi-Fi SSID without privileged APIs — devices and e2e

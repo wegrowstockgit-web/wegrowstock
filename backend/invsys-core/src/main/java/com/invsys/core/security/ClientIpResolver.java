@@ -1,6 +1,5 @@
 package com.invsys.core.security;
 
-import com.invsys.config.ActuatorProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.web.util.matcher.IpAddressMatcher;
@@ -13,8 +12,9 @@ import java.util.Locale;
 
 /**
  * Resolves the client IP without blindly trusting {@code X-Forwarded-For}.
- * Forwarded headers are honored only when the immediate peer is a configured
- * trusted proxy (actuator scrape CIDRs plus {@code invsys.security.trusted-proxy-cidrs}).
+ * Forwarded headers are honored only when the immediate peer is in
+ * {@code invsys.security.trusted-proxy-cidrs}. Hops are peeled from the
+ * <em>right</em> so a client-supplied leftmost XFF value cannot spoof the IP.
  */
 @Component
 public class ClientIpResolver {
@@ -22,14 +22,10 @@ public class ClientIpResolver {
     private final List<IpAddressMatcher> trustedProxies;
 
     public ClientIpResolver(
-            ActuatorProperties actuatorProperties,
-            @Value("${invsys.security.trusted-proxy-cidrs:}") String extraTrustedCidrs) {
+            @Value("${invsys.security.trusted-proxy-cidrs:}") String trustedProxyCidrs) {
         List<IpAddressMatcher> built = new ArrayList<>();
-        for (String cidr : actuatorProperties.resolvedScrapeAllowedCidrs()) {
-            addCidr(built, cidr);
-        }
-        if (extraTrustedCidrs != null && !extraTrustedCidrs.isBlank()) {
-            for (String cidr : extraTrustedCidrs.split(",")) {
+        if (trustedProxyCidrs != null && !trustedProxyCidrs.isBlank()) {
+            for (String cidr : trustedProxyCidrs.split(",")) {
                 addCidr(built, cidr.trim());
             }
         }
@@ -47,13 +43,18 @@ public class ClientIpResolver {
         if (!isTrustedProxy(remote)) {
             return remote;
         }
+        String realIp = normalizeIp(request.getHeader("X-Real-IP"));
+        if (realIp != null && !isTrustedProxy(realIp)) {
+            return realIp;
+        }
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded == null || forwarded.isBlank()) {
-            return remote;
+            return realIp != null ? realIp : remote;
         }
-        for (String hop : forwarded.split(",")) {
-            String candidate = normalizeIp(hop.trim());
-            if (candidate != null) {
+        String[] hops = forwarded.split(",");
+        for (int i = hops.length - 1; i >= 0; i--) {
+            String candidate = normalizeIp(hops[i].trim());
+            if (candidate != null && !isTrustedProxy(candidate)) {
                 return candidate;
             }
         }

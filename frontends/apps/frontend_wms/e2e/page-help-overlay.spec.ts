@@ -31,7 +31,7 @@ test.describe('Page help overlay', () => {
       expect(box!.height).toBeGreaterThan(700);
       expect(box!.width).toBeGreaterThan(320);
 
-      await expect(owner.page.getByRole('button', { name: /New PO/i })).toBeVisible();
+      await expect(owner.page.getByTestId('app-shell').getByRole('button', { name: 'New PO', exact: true })).toBeVisible();
 
       await owner.page.getByTestId('page-help-panel').getByRole('button', { name: 'Close', exact: true }).click();
       await expect(owner.page.getByTestId('page-help-body')).toHaveCount(0);
@@ -120,6 +120,24 @@ test.describe('Page help overlay', () => {
       await expect(picker.page.getByText(/Skip & Flag|stock correction|undo|mistake/i).first()).toBeVisible();
     } finally {
       await picker.close();
+    }
+  });
+
+  test('quick action navigates from sales orders into fulfillment', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      await manager.page.setViewportSize({ width: 1280, height: 800 });
+      await manager.page.goto('/sales-orders');
+      await completeScannerPin(manager.page);
+      await dismissOnboardingTourIfPresent(manager.page);
+
+      await manager.page.getByTestId('page-help-trigger').click();
+      await expect(manager.page.getByTestId('page-help-quick-actions')).toBeVisible({ timeout: 15_000 });
+      await manager.page.getByTestId('page-help-quick-action').filter({ hasText: /Go to Fulfillment/i }).click();
+      await expect(manager.page).toHaveURL(/\/fulfillment/, { timeout: 15_000 });
+      await expect(manager.page.getByTestId('page-help-body')).toHaveCount(0);
+    } finally {
+      await manager.close();
     }
   });
 });

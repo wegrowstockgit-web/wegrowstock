@@ -4,6 +4,8 @@
  * `/settings?tab=` keys so the copilot can answer tab-specific questions.
  */
 
+import i18n from '@/lib/i18n';
+
 export type RouteKnowledgeColumn = {
   name: string;
   purpose: string;
@@ -25,8 +27,36 @@ export type RouteKnowledgeComponent = {
   statuses?: Record<string, string>;
 };
 
+export interface PageAction {
+  label: string;
+  route: string;
+  icon: string;
+  variant?: 'primary' | 'secondary' | 'destructive';
+}
+
+export interface TroubleshootingStep {
+  issue: string;
+  solution: string;
+  action: PageAction;
+}
+
+/** Hybrid overlay playbook: static teaching copy + click-to-execute actions. */
+export interface PageKnowledge {
+  title: string;
+  description: string;
+  markdown: string;
+  quickActions: PageAction[];
+  troubleshooting?: TroubleshootingStep[];
+}
+
 export type RouteKnowledge = {
   title: string;
+  /** i18n playbook key under `pageHelp.playbooks.*` (EN/ES/FR). */
+  i18nKey?: string;
+  description?: string;
+  markdown?: string;
+  quickActions?: PageAction[];
+  troubleshooting?: TroubleshootingStep[];
   purpose: string;
   /**
    * Machine role codes. Prefer {@link ResolvedRouteKnowledge.whoCanUse} for UI copy.
@@ -44,17 +74,18 @@ export type RouteKnowledge = {
 };
 
 /** Fully resolved playbook for overlay + copilot (human-facing fields filled). */
-export type ResolvedRouteKnowledge = RouteKnowledge & {
-  rolePermissions: string[];
-  /** Human role labels, e.g. "Warehouse Managers, Floor Pickers". */
-  whoCanUse: string[];
-  /** Numbered operational steps (1…N). */
-  stepByStepFlow: string[];
-  /** Plain English undo / fix instructions. */
-  howToUndo: string[];
-  /** Page-level plain-English source summary. */
-  dataOrigin: string;
-};
+export type ResolvedRouteKnowledge = RouteKnowledge &
+  PageKnowledge & {
+    rolePermissions: string[];
+    /** Human role labels, e.g. "Warehouse Managers, Floor Pickers". */
+    whoCanUse: string[];
+    /** Numbered operational steps (1…N). */
+    stepByStepFlow: string[];
+    /** Plain English undo / fix instructions. */
+    howToUndo: string[];
+    /** Page-level plain-English source summary. */
+    dataOrigin: string;
+  };
 
 const OFFICE_ROLES = ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'] as const;
 const FLOOR_ROLES = ['PICKER', 'WAREHOUSE_MANAGER', 'ADMIN', 'OWNER'] as const;
@@ -104,6 +135,16 @@ export function humanRoleLabels(roles: string[]): string[] {
 }
 
 /** Ensure every resolved playbook exposes human-facing fields (no developer jargon). */
+/** Stable i18n key under `pageHelp.playbooks.*` for every registered route. */
+export function playbookI18nKey(routeKey: string, explicit?: string): string {
+  if (explicit) return explicit;
+  const slug = routeKey
+    .replace(/^\//, '')
+    .replace(/[/?=&-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return slug || 'page';
+}
+
 export function enrichRouteKnowledge(
   routeKey: string,
   knowledge: RouteKnowledge,
@@ -119,9 +160,15 @@ export function enrichRouteKnowledge(
   const pageOrigin =
     components[0]?.dataOrigin
     ?? 'Information your team enters on this screen or that syncs from connected storefronts.';
+  const description = knowledge.description?.trim() || knowledge.purpose;
+  const markdown = knowledge.markdown?.trim() || knowledge.flow.join('\n');
 
   return {
     ...knowledge,
+    i18nKey: playbookI18nKey(routeKey, knowledge.i18nKey),
+    description,
+    markdown,
+    quickActions: knowledge.quickActions ?? [],
     rolePermissions,
     whoCanUse: humanRoleLabels(rolePermissions),
     stepByStepFlow: knowledge.flow,
@@ -133,7 +180,15 @@ export function enrichRouteKnowledge(
 
 export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   '/dashboard': {
-    title: 'Dashboard',
+    i18nKey: 'dashboard',
+    title: 'Command Center',
+    description: 'Your daily overview of warehouse operations, active tasks, and system health.',
+    markdown:
+      'The dashboard monitors pending shipments, incoming deliveries, and worker velocity. Use the quick actions below to jump directly into your daily queue.',
+    quickActions: [
+      { label: 'View My Tasks', route: '/tasks/my-queue', icon: 'ListTodo', variant: 'primary' },
+      { label: 'Review Labor Analytics', route: '/dashboard/labor', icon: 'BarChart' },
+    ],
     purpose:
       'Command center for live warehouse KPIs — stock value, low stock, open orders, work-queue cards, exceptions, and sync conflicts — so managers see what needs attention without digging into every module.',
     flow: [
@@ -192,7 +247,15 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/purchase-orders': {
+    i18nKey: 'purchaseOrders',
     title: 'Purchase Orders',
+    description: 'Order new stock from your suppliers.',
+    markdown:
+      'Draft purchase orders to restock your warehouse. Once a PO is confirmed, the receiving dock will be notified to expect the delivery.',
+    quickActions: [
+      { label: 'Draft New PO', route: '/purchase-orders/new', icon: 'FilePlus', variant: 'primary' },
+      { label: 'View Supplier Directory', route: '/suppliers', icon: 'Users' },
+    ],
     purpose:
       'Create and submit inbound supply contracts against approved suppliers so the floor can receive freight against expected lines.',
     rolePermissions: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
@@ -245,7 +308,23 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/inbound/receive': {
-    title: 'Inbound Receive',
+    i18nKey: 'inboundReceive',
+    title: 'Inbound Receiving',
+    description: 'Check in newly arrived inventory from suppliers.',
+    markdown:
+      'Scan the incoming Purchase Order, verify the physical quantities match the invoice, and generate License Plates (LPNs) to put the items away on shelves.',
+    quickActions: [
+      { label: 'Scan Incoming PO', route: '/inbound/receive/scan', icon: 'Barcode', variant: 'primary' },
+      { label: 'Start Put-Away Tasks', route: '/inbound/putaway', icon: 'ArrowDownToLine' },
+    ],
+    troubleshooting: [
+      {
+        issue: 'The supplier sent more items than ordered (Over-receipt).',
+        solution:
+          'Depending on your tolerance settings, you may need to file an RTV (Return to Vendor) or accept the surplus.',
+        action: { label: 'Manage Returns (RTV)', route: '/returns/vendor', icon: 'Undo' },
+      },
+    ],
     rolePermissions: ['PICKER', 'WAREHOUSE_MANAGER', 'ADMIN', 'OWNER'],
     glossary: {
       LPN: 'License Plate Number scanned on the carton or pallet.',
@@ -298,7 +377,22 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/sales-orders': {
+    i18nKey: 'salesOrders',
     title: 'Sales Orders',
+    description: 'Manage customer orders awaiting processing and shipment.',
+    markdown:
+      'Orders drop in here from Shopify or B2B portals. To process an order, it must have sufficient inventory to be Allocated, after which it drops into the Fulfillment queue.',
+    quickActions: [
+      { label: 'Create Manual Order', route: '/sales-orders/new', icon: 'Plus' },
+      { label: 'Go to Fulfillment', route: '/fulfillment', icon: 'Package', variant: 'primary' },
+    ],
+    troubleshooting: [
+      {
+        issue: 'An order is stuck in "Unallocated".',
+        solution: 'You lack inventory for the requested items. Run a replenishment or adjust stock.',
+        action: { label: 'Check Inventory Levels', route: '/inventory', icon: 'Search' },
+      },
+    ],
     purpose:
       'Confirm customer demand, reserve earliest-expiry lots, and release picking waves so floor operators can fulfill outbound orders.',
     rolePermissions: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
@@ -354,7 +448,28 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/fulfillment': {
-    title: 'Fulfillment (Floor)',
+    i18nKey: 'fulfillment',
+    title: 'Fulfillment & Picking',
+    description: 'Group orders into waves, pick items from shelves, and pack them for shipping.',
+    markdown:
+      'Step 1: Generate a wave to group similar orders.\nStep 2: Claim the wave to your scanner.\nStep 3: Pick the items.\nStep 4: Pack and print shipping labels.',
+    quickActions: [
+      { label: 'Generate Picking Wave', route: '/fulfillment/waves/new', icon: 'Waves', variant: 'primary' },
+      { label: 'Start Picking', route: '/fulfillment/pick', icon: 'Scan' },
+      { label: 'Pack & Ship', route: '/fulfillment/pack', icon: 'Box' },
+    ],
+    troubleshooting: [
+      {
+        issue: 'I picked a damaged item.',
+        solution: 'Flag the item as an exception. The system will direct you to pick a replacement.',
+        action: {
+          label: 'Go to Exceptions Desk',
+          route: '/exceptions',
+          icon: 'AlertTriangle',
+          variant: 'destructive',
+        },
+      },
+    ],
     purpose:
       'Execute pick, pack, and ship scans against released wave tasks with glove-friendly, PIN-locked hardware scanning.',
     rolePermissions: ['PICKER', 'WAREHOUSE_MANAGER', 'ADMIN', 'OWNER'],
@@ -399,7 +514,15 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/products': {
-    title: 'Products',
+    i18nKey: 'products',
+    title: 'Product Catalog',
+    description: 'The master database of everything you sell and store.',
+    markdown:
+      'Manage SKUs, barcodes, Unit of Measure (UoM) conversions, and product imagery. Changes here sync globally across all facilities.',
+    quickActions: [
+      { label: 'Add New Product', route: '/products/new', icon: 'PackagePlus', variant: 'primary' },
+      { label: 'Import from CSV', route: '/import', icon: 'Upload' },
+    ],
     purpose:
       'Maintain the item master (variants, dimensions, packaging, temperature zones) and view on-hand, allocated, and available-to-promise quantities.',
     flow: [
@@ -474,7 +597,15 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/cycle-counts': {
+    i18nKey: 'cycleCounts',
     title: 'Cycle Counts',
+    description: 'Audit your physical shelves to ensure software accuracy.',
+    markdown:
+      'Generate blind counts for your team. If the physical count differs from the software ledger, a manager must approve the variance.',
+    quickActions: [
+      { label: 'Generate Blind Count', route: '/cycle-counts/new', icon: 'ClipboardList', variant: 'primary' },
+      { label: 'Review Variances', route: '/cycle-counts/variances', icon: 'Scale' },
+    ],
     purpose:
       'Blind physical counts that reconcile on-hand to reality. Small variances auto-adjust; large ones escalate to manager review.',
     flow: [
@@ -513,7 +644,15 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/exceptions': {
-    title: 'Exceptions',
+    i18nKey: 'exceptions',
+    title: 'Exceptions Desk',
+    description: 'Resolve hardware conflicts, damaged goods, and picking errors.',
+    markdown:
+      'When workers flag issues on the floor or devices lose internet connection, the errors land here for management resolution.',
+    quickActions: [
+      { label: 'Review Pending Exceptions', route: '/exceptions/pending', icon: 'AlertCircle', variant: 'primary' },
+      { label: 'Resolve Sync Conflicts', route: '/exceptions?tab=sync', icon: 'WifiOff' },
+    ],
     purpose:
       'Resolve floor Skip & Flag incidents and (on the Sync tab) review parked offline scan conflicts without erasing stock history.',
     rolePermissions: ['WAREHOUSE_MANAGER', 'ADMIN', 'OWNER'],
@@ -967,7 +1106,16 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
   },
 
   '/settings': {
-    title: 'Organization settings',
+    i18nKey: 'settings',
+    title: 'Tenant Settings',
+    description: 'Configure integrations, hardware, and access controls.',
+    markdown:
+      'Manage your connected Shopify stores, configure Bluetooth scales and Zebra scanners, and define Role-Based Access Control (RBAC) permissions for your staff.',
+    quickActions: [
+      { label: 'Connect Integration', route: '/settings/integrations', icon: 'Link', variant: 'primary' },
+      { label: 'Configure Hardware', route: '/settings/scanner', icon: 'Printer' },
+      { label: 'Manage Users', route: '/settings/roles', icon: 'Shield' },
+    ],
     purpose:
       'Tenant-wide configuration hub — profile defaults, users, warehouses, inventory rules, documents, security, reconciliation, accounting, integrations, partner mesh, operations, sync conflicts, and cost centers.',
     flow: [
@@ -1700,21 +1848,45 @@ export function formatRouteKnowledgeForChat(
   }
 
   const enriched = enrichRouteKnowledge(routeKey, knowledge);
+  const ns = enriched.i18nKey;
+  const loc = (suffix: string, fallback: string) =>
+    ns ? String(i18n.t(`pageHelp.playbooks.${ns}.${suffix}`, { defaultValue: fallback })) : fallback;
+  const title = loc('title', enriched.title);
+  const purpose = loc('purpose', enriched.purpose);
+  const description = loc('description', enriched.description);
+  const dataOrigin = loc('dataOrigin', enriched.dataOrigin);
+  const whoCanUse = enriched.rolePermissions
+    .map((code) => String(i18n.t(`roles.${code}`, { defaultValue: ROLE_LABELS[code] ?? code })))
+    .join(', ');
+  const undo = enriched.howToUndo
+    .map((item, index) => loc(`reversals.${index}`, item))
+    .join(' ');
   const componentBits = enriched.components.map(formatComponentForChat).join(' | ');
-  const undo = enriched.howToUndo.join(' ');
   const glossaryBits = enriched.glossary
     ? Object.entries(enriched.glossary)
         .map(([term, meaning]) => `${term}=${meaning}`)
         .join('; ')
     : '';
+  const actionBits = enriched.quickActions
+    .map((action, index) => `${loc(`actions.${index}`, action.label)}→${action.route}`)
+    .join('; ');
+  const troubleBits = (enriched.troubleshooting ?? [])
+    .map(
+      (step, index) =>
+        `${loc(`troubleshooting.${index}.issue`, step.issue)} => ${loc(`troubleshooting.${index}.solution`, step.solution)} (${loc(`troubleshooting.${index}.action`, step.action.label)}→${step.action.route})`,
+    )
+    .join('; ');
 
   return [
-    `System Context: The user is currently on the ${enriched.title} page.`,
-    `Purpose: ${enriched.purpose}`,
-    `Who can use this page: ${enriched.whoCanUse.join(', ')}.`,
-    `Where the information comes from: ${enriched.dataOrigin}`,
+    `System Context: The user is currently on the ${title} page.`,
+    `Purpose: ${purpose}`,
+    description ? `Overview: ${description}` : '',
+    `Who can use this page: ${whoCanUse}.`,
+    `Where the information comes from: ${dataOrigin}`,
     `On-screen areas: ${componentBits}`,
     glossaryBits ? `Glossary: ${glossaryBits}` : '',
+    actionBits ? `Quick actions: ${actionBits}` : '',
+    troubleBits ? `If stuck: ${troubleBits}` : '',
     `How to undo: ${undo}`,
     'Answer only with UI button labels and 1…N operational steps. Never mention APIs, HTTP codes, databases, services, or code files.',
     'User Query:',

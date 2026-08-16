@@ -6,13 +6,18 @@ import com.invsys.modules.catalog.domain.Product;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.purchasing.domain.PurchaseOrder;
 import com.invsys.modules.purchasing.domain.PurchaseOrderLine;
+import com.invsys.modules.purchasing.domain.Supplier;
+import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.modules.sales.domain.SalesOrderLine;
+import com.invsys.modules.sales.domain.SalesOrderStatus;
 import com.invsys.repository.ExternalReferenceRepository;
 import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderRepository;
+import com.invsys.modules.purchasing.repository.SupplierRepository;
+import com.invsys.modules.sales.repository.CustomerRepository;
 import com.invsys.modules.sales.repository.SalesOrderLineRepository;
 import com.invsys.modules.sales.repository.SalesOrderRepository;
 import com.invsys.service.DocumentSequenceService;
@@ -47,6 +52,9 @@ public class CrossTenantMeshBridgeService {
     public static final String CHANNEL_MESH = "MESH";
     public static final String CHANNEL_MESH_EXCEPTION = "MESH_EXCEPTION";
     public static final String ALERT_MESH_CATALOG = "MESH_CATALOG_MAPPING_REQUIRED";
+    public static final String STATUS_REQUESTED = "REQUESTED";
+    public static final String STATUS_PENDING = "PENDING";
+    public static final String STATUS_CONNECTED = "CONNECTED";
 
     private static final Logger log = LoggerFactory.getLogger(CrossTenantMeshBridgeService.class);
 
@@ -59,6 +67,8 @@ public class CrossTenantMeshBridgeService {
     private final ProductVariantRepository productVariantRepository;
     private final ProductRepository productRepository;
     private final ExternalReferenceRepository externalReferenceRepository;
+    private final SupplierRepository supplierRepository;
+    private final CustomerRepository customerRepository;
     private final DocumentSequenceService documentSequenceService;
     private final PlatformAlertService platformAlertService;
     private final TransactionTemplate requiresNew;
@@ -72,6 +82,8 @@ public class CrossTenantMeshBridgeService {
                                         ProductVariantRepository productVariantRepository,
                                         ProductRepository productRepository,
                                         ExternalReferenceRepository externalReferenceRepository,
+                                        SupplierRepository supplierRepository,
+                                        CustomerRepository customerRepository,
                                         DocumentSequenceService documentSequenceService,
                                         PlatformAlertService platformAlertService,
                                         PlatformTransactionManager transactionManager) {
@@ -84,47 +96,136 @@ public class CrossTenantMeshBridgeService {
         this.productVariantRepository = productVariantRepository;
         this.productRepository = productRepository;
         this.externalReferenceRepository = externalReferenceRepository;
+        this.supplierRepository = supplierRepository;
+        this.customerRepository = customerRepository;
         this.documentSequenceService = documentSequenceService;
         this.platformAlertService = platformAlertService;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
+    public BootstrapJdbc.MeshPartnerRow requestConnection(UUID partnerTenantId, UUID variantId) {
+        UUID buyer = TenantContext.requireTenantId();
+        UUID seller = resolveSellerTenant(partnerTenantId, variantId);
+        if (buyer.equals(seller)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "MESH_SELF_CONNECT",
+                    "Cannot request a mesh connection with your own tenant");
+        }
+        Optional<BootstrapJdbc.MeshPartnerRow> existing = bootstrapJdbc.findMeshByBuyerAndSeller(buyer, seller);
+        if (existing.isPresent()) {
+            String status = existing.get().connectionStatus();
+            if (STATUS_CONNECTED.equals(status) || STATUS_REQUESTED.equals(status) || STATUS_PENDING.equals(status)) {
+                if (STATUS_CONNECTED.equals(status)) {
+                    throw new ApiException(HttpStatus.CONFLICT, "MESH_ALREADY_CONNECTED",
+                            "A mesh connection already exists with this partner");
+                }
+                return existing.get();
+            }
+        }
+        UUID id = bootstrapJdbc.upsertMeshPartner(buyer, seller, null, null, STATUS_REQUESTED);
+        return bootstrapJdbc.findMeshPartnerById(id).orElseThrow(() ->
+                new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MESH_REQUEST_FAILED",
+                        "Mesh connection request could not be stored"));
+    }
+
+    public BootstrapJdbc.MeshPartnerRow approveConnection(UUID meshPartnerId) {
+        UUID seller = TenantContext.requireTenantId();
+        BootstrapJdbc.MeshPartnerRow row = bootstrapJdbc.findMeshPartnerById(meshPartnerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND",
+                        "Mesh connection not found"));
+        if (!seller.equals(row.partnerTenantId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "MESH_APPROVE_FORBIDDEN",
+                    "Only the selling partner can approve this connection");
+        }
+        if (STATUS_CONNECTED.equals(row.connectionStatus())) {
+            return row;
+        }
+        if (!STATUS_REQUESTED.equals(row.connectionStatus()) && !STATUS_PENDING.equals(row.connectionStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only REQUESTED or PENDING connections can be approved");
+        }
+
+        String sellerName = bootstrapJdbc.findTenantNameSlugStatus(row.partnerTenantId())
+                .map(BootstrapJdbc.TenantNameSlugStatusRow::name)
+                .orElse("Mesh partner");
+        String buyerName = bootstrapJdbc.findTenantNameSlugStatus(row.tenantId())
+                .map(BootstrapJdbc.TenantNameSlugStatusRow::name)
+                .orElse("Mesh buyer");
+
+        UUID supplierId = row.supplierId() != null
+                ? row.supplierId()
+                : createSupplierInBuyer(row.tenantId(), sellerName);
+        UUID customerId = row.customerId() != null
+                ? row.customerId()
+                : createCustomerInSeller(row.partnerTenantId(), buyerName);
+
+        UUID id = bootstrapJdbc.upsertMeshPartner(
+                row.tenantId(), row.partnerTenantId(), supplierId, customerId, STATUS_CONNECTED);
+        return bootstrapJdbc.findMeshPartnerById(id).orElseThrow(() ->
+                new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MESH_APPROVE_FAILED",
+                        "Mesh connection could not be approved"));
+    }
+
     public void onPurchaseOrderSubmitted(UUID buyerTenantId, UUID purchaseOrderId, Map<String, Object> payload) {
+        bridgePurchaseOrder(buyerTenantId, purchaseOrderId, "CONFIRMED", false);
+    }
+
+    /**
+     * Synchronous confirm path: mapped lines become an UNALLOCATED seller SO and the PO
+     * is annotated with the partner sales-order number.
+     */
+    public String confirmMeshPurchaseOrder(UUID buyerTenantId, UUID purchaseOrderId) {
+        return bridgePurchaseOrder(buyerTenantId, purchaseOrderId, SalesOrderStatus.UNALLOCATED.name(), false);
+    }
+
+    private String bridgePurchaseOrder(UUID buyerTenantId, UUID purchaseOrderId,
+                                       String mappedStatus, boolean appendNote) {
         PurchaseOrderSnapshot snapshot = loadBuyerPo(buyerTenantId, purchaseOrderId);
         Optional<BootstrapJdbc.MeshPartnerRow> mesh = bootstrapJdbc.findConnectedMeshByBuyerSupplier(
                 buyerTenantId, snapshot.supplierId());
         if (mesh.isEmpty()) {
             log.debug("No CONNECTED mesh partner for buyer={} supplier={}", buyerTenantId, snapshot.supplierId());
-            return;
+            return null;
         }
         BootstrapJdbc.MeshPartnerRow partner = mesh.get();
 
         Optional<ExternalReference> existing = findBuyerPoLink(buyerTenantId, purchaseOrderId);
         if (existing.isPresent()) {
             log.info("Mesh SO already linked for PO {} — skipping", purchaseOrderId);
-            return;
+            if (appendNote) {
+                String soNumber = lookupSellerSoNumber(existing.get());
+                if (soNumber != null) {
+                    appendPoNote(buyerTenantId, purchaseOrderId, soNumber);
+                }
+                return soNumber;
+            }
+            return null;
         }
 
         TranslatedLines translated = translateLines(buyerTenantId, partner.partnerTenantId(), snapshot.lines());
-        UUID primarySoId = null;
+        CreatedSalesOrder primary = null;
 
         if (!translated.mapped().isEmpty()) {
-            primarySoId = createPartnerSalesOrder(partner, snapshot, translated.mapped(), CHANNEL_MESH, "CONFIRMED");
+            primary = createPartnerSalesOrder(partner, snapshot, translated.mapped(), CHANNEL_MESH, mappedStatus);
         }
         if (!translated.unmapped().isEmpty()) {
-            UUID exceptionSoId = createExceptionSalesOrder(partner, snapshot, translated.unmapped());
-            if (primarySoId == null) {
-                primarySoId = exceptionSoId;
+            CreatedSalesOrder exception = createExceptionSalesOrder(partner, snapshot, translated.unmapped());
+            if (primary == null) {
+                primary = exception;
             }
         }
 
-        if (primarySoId != null) {
-            persistBuyerLink(buyerTenantId, purchaseOrderId, partner, primarySoId);
+        if (primary != null) {
+            persistBuyerLink(buyerTenantId, purchaseOrderId, partner, primary.id());
+            if (appendNote) {
+                appendPoNote(buyerTenantId, purchaseOrderId, primary.number());
+            }
             log.info("Mesh bridged PO {} → seller={} primarySO={} mapped={} unmapped={}",
-                    purchaseOrderId, partner.partnerTenantId(), primarySoId,
+                    purchaseOrderId, partner.partnerTenantId(), primary.id(),
                     translated.mapped().size(), translated.unmapped().size());
+            return primary.number();
         }
+        return null;
     }
 
     public void onSalesOrderShipped(UUID sellerTenantId, UUID salesOrderId, Map<String, Object> payload) {
@@ -204,11 +305,11 @@ public class CrossTenantMeshBridgeService {
         }
     }
 
-    private UUID createPartnerSalesOrder(BootstrapJdbc.MeshPartnerRow partner,
-                                         PurchaseOrderSnapshot snapshot,
-                                         List<MappedLine> lines,
-                                         String channel,
-                                         String status) {
+    private CreatedSalesOrder createPartnerSalesOrder(BootstrapJdbc.MeshPartnerRow partner,
+                                                      PurchaseOrderSnapshot snapshot,
+                                                      List<MappedLine> lines,
+                                                      String channel,
+                                                      String status) {
         UUID previous = TenantContext.getTenantId().orElse(null);
         try {
             return requiresNew.execute(statusTx -> {
@@ -248,16 +349,16 @@ public class CrossTenantMeshBridgeService {
                     ref.setExternalId(partner.tenantId() + ":" + snapshot.purchaseOrderId());
                     externalReferenceRepository.save(ref);
                 }
-                return order.getId();
+                return new CreatedSalesOrder(order.getId(), order.getNumber());
             });
         } finally {
             restoreTenant(previous);
         }
     }
 
-    private UUID createExceptionSalesOrder(BootstrapJdbc.MeshPartnerRow partner,
-                                           PurchaseOrderSnapshot snapshot,
-                                           List<LineSnapshot> unmapped) {
+    private CreatedSalesOrder createExceptionSalesOrder(BootstrapJdbc.MeshPartnerRow partner,
+                                                        PurchaseOrderSnapshot snapshot,
+                                                        List<LineSnapshot> unmapped) {
         UUID previous = TenantContext.getTenantId().orElse(null);
         try {
             return requiresNew.execute(statusTx -> {
@@ -304,7 +405,7 @@ public class CrossTenantMeshBridgeService {
                         "New mesh items require catalog mapping.",
                         details);
 
-                return order.getId();
+                return new CreatedSalesOrder(order.getId(), order.getNumber());
             });
         } finally {
             restoreTenant(previous);
@@ -458,6 +559,96 @@ public class CrossTenantMeshBridgeService {
         return entry;
     }
 
+    private UUID resolveSellerTenant(UUID partnerTenantId, UUID variantId) {
+        if (partnerTenantId != null) {
+            return partnerTenantId;
+        }
+        if (variantId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "partnerTenantId or variantId is required");
+        }
+        return bootstrapJdbc.findPublishedListingByVariant(variantId)
+                .map(BootstrapJdbc.PublishedMeshListingRow::sellerTenantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MESH_LISTING_NOT_FOUND",
+                        "Published mesh listing not found for variant"));
+    }
+
+    private UUID createSupplierInBuyer(UUID buyerTenantId, String sellerName) {
+        UUID previous = TenantContext.getTenantId().orElse(null);
+        try {
+            return requiresNew.execute(status -> {
+                TenantContext.setTenantId(buyerTenantId);
+                Supplier supplier = new Supplier();
+                supplier.setTenantId(buyerTenantId);
+                supplier.setName(sellerName);
+                return supplierRepository.save(supplier).getId();
+            });
+        } finally {
+            restoreTenant(previous);
+        }
+    }
+
+    private UUID createCustomerInSeller(UUID sellerTenantId, String buyerName) {
+        UUID previous = TenantContext.getTenantId().orElse(null);
+        try {
+            return requiresNew.execute(status -> {
+                TenantContext.setTenantId(sellerTenantId);
+                Customer customer = new Customer();
+                customer.setTenantId(sellerTenantId);
+                customer.setName(buyerName);
+                customer.setCustomerStatus("ACTIVE");
+                return customerRepository.save(customer).getId();
+            });
+        } finally {
+            restoreTenant(previous);
+        }
+    }
+
+    private void appendPoNote(UUID buyerTenantId, UUID purchaseOrderId, String soNumber) {
+        if (soNumber == null || soNumber.isBlank()) {
+            return;
+        }
+        String note = "Linked to Mesh Partner Sales Order #" + soNumber;
+        UUID previous = TenantContext.getTenantId().orElse(null);
+        try {
+            requiresNew.executeWithoutResult(status -> {
+                TenantContext.setTenantId(buyerTenantId);
+                PurchaseOrder po = purchaseOrderRepository.findById(purchaseOrderId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO not found"));
+                String existing = po.getNotes();
+                if (existing != null && existing.contains(note)) {
+                    return;
+                }
+                po.setNotes(existing == null || existing.isBlank() ? note : existing + "\n" + note);
+                purchaseOrderRepository.save(po);
+            });
+        } finally {
+            restoreTenant(previous);
+        }
+    }
+
+    private String lookupSellerSoNumber(ExternalReference buyerLink) {
+        try {
+            UUID sellerSoId = parsePeerId(buyerLink.getExternalId());
+            String[] parts = buyerLink.getExternalId().split(":", 2);
+            UUID sellerTenantId = UUID.fromString(parts[0]);
+            UUID previous = TenantContext.getTenantId().orElse(null);
+            try {
+                return requiresNew.execute(status -> {
+                    TenantContext.setTenantId(sellerTenantId);
+                    return salesOrderRepository.findById(sellerSoId)
+                            .map(SalesOrder::getNumber)
+                            .orElse(null);
+                });
+            } finally {
+                restoreTenant(previous);
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Could not resolve seller SO number from mesh link {}", buyerLink.getExternalId());
+            return null;
+        }
+    }
+
     private static void restoreTenant(UUID previous) {
         if (previous != null) {
             TenantContext.setTenantId(previous);
@@ -485,5 +676,8 @@ public class CrossTenantMeshBridgeService {
     }
 
     private record TranslatedLines(List<MappedLine> mapped, List<LineSnapshot> unmapped) {
+    }
+
+    private record CreatedSalesOrder(UUID id, String number) {
     }
 }

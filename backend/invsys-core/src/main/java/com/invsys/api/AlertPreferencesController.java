@@ -2,6 +2,7 @@ package com.invsys.api;
 
 import com.invsys.core.common.ApiException;
 import com.invsys.integration.alerts.IntegrationAlertService;
+import com.invsys.media.MediaUrlValidator;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
@@ -13,8 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @RestController
@@ -22,18 +23,22 @@ import java.util.regex.Pattern;
 @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
 public class AlertPreferencesController {
 
-    private final IntegrationAlertService integrationAlertService;
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    public static final Set<String> SLACK_HOSTS = Set.of("hooks.slack.com", "hooks.slack-gov.com");
 
-    public AlertPreferencesController(IntegrationAlertService integrationAlertService) {
+    private final IntegrationAlertService integrationAlertService;
+    private final MediaUrlValidator mediaUrlValidator;
+
+    public AlertPreferencesController(IntegrationAlertService integrationAlertService,
+                                      MediaUrlValidator mediaUrlValidator) {
         this.integrationAlertService = integrationAlertService;
+        this.mediaUrlValidator = mediaUrlValidator;
     }
 
     @GetMapping
     public IntegrationAlertService.AlertPreferencesDto get() {
         return integrationAlertService.getPreferences();
     }
-
-    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     @PutMapping
     public IntegrationAlertService.AlertPreferencesDto update(@Valid @RequestBody UpdateRequest request) {
@@ -59,25 +64,11 @@ public class AlertPreferencesController {
         }
     }
 
-    private static void validateSlackUrl(String url) {
+    private void validateSlackUrl(String url) {
         if (url == null || url.isBlank()) {
             return;
         }
-        try {
-            URI uri = URI.create(url.trim());
-            String scheme = uri.getScheme();
-            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SLACK_URL",
-                        "Slack webhook URL must be http(s)");
-            }
-            if (uri.getHost() == null || uri.getHost().isBlank()) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SLACK_URL",
-                        "Slack webhook URL is not a valid URL");
-            }
-        } catch (IllegalArgumentException ex) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SLACK_URL",
-                    "Slack webhook URL is not a valid URL");
-        }
+        mediaUrlValidator.assertAllowedHttpsHost(url, SLACK_HOSTS, "INVALID_SLACK_URL");
     }
 
     public record UpdateRequest(

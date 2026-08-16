@@ -39,7 +39,8 @@ class TenantSubscriptionServiceParseTest {
                 "ENTERPRISE",
                 List.of("CORE", "SHOPIFY", "ACCOUNTING", "ADVANCED_FULFILLMENT",
                         "MANUFACTURING", "DOCUMENTS", "MRP", "B2B_SHOWROOM",
-                        "FINTECH", "MESH_NETWORK", "RTLS_TELEMETRY", "AI_COPILOT"))));
+                        "FINTECH", "MESH_NETWORK", "RTLS_TELEMETRY", "AI_COPILOT",
+                        "RETAIL_POS"))));
     }
 
     @Test
@@ -64,7 +65,8 @@ class TenantSubscriptionServiceParseTest {
     void appModule_fromString() {
         assertThat(AppModule.fromString("b2b_showroom")).isEqualTo(AppModule.B2B_SHOWROOM);
         assertThat(AppModule.fromString("ai_copilot")).isEqualTo(AppModule.AI_COPILOT);
-        assertThat(AppModule.values()).hasSize(12);
+        assertThat(AppModule.fromString("retail_pos")).isEqualTo(AppModule.RETAIL_POS);
+        assertThat(AppModule.values()).hasSize(13);
     }
 
     @Test
@@ -90,7 +92,7 @@ class TenantSubscriptionServiceParseTest {
                 AppModule.MANUFACTURING,
                 AppModule.DOCUMENTS,
                 AppModule.MRP);
-        assertThat(mods).doesNotContain(AppModule.FINTECH, AppModule.AI_COPILOT);
+        assertThat(mods).doesNotContain(AppModule.FINTECH, AppModule.AI_COPILOT, AppModule.RETAIL_POS);
     }
 
     @Test

@@ -5,9 +5,11 @@ import com.invsys.modules.purchasing.domain.PurchaseOrder;
 import com.invsys.modules.purchasing.domain.PurchaseOrderLine;
 import com.invsys.domain.TenantSettings;
 import com.invsys.core.integration.OutboxService;
+import com.invsys.mesh.CrossTenantMeshBridgeService;
 import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderRepository;
 import com.invsys.repository.TenantSettingsRepository;
+import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,8 @@ public class PurchaseOrderService {
     private final TenantSettingsRepository tenantSettingsRepository;
     private final OutboxService outboxService;
     private final CrossDockService crossDockService;
+    private final BootstrapJdbc bootstrapJdbc;
+    private final CrossTenantMeshBridgeService meshBridgeService;
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderLineRepository lineRepository,
@@ -41,7 +45,9 @@ public class PurchaseOrderService {
                                 UomConversionService uomConversionService,
                                 TenantSettingsRepository tenantSettingsRepository,
                                 OutboxService outboxService,
-                                CrossDockService crossDockService) {
+                                CrossDockService crossDockService,
+                                BootstrapJdbc bootstrapJdbc,
+                                CrossTenantMeshBridgeService meshBridgeService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.inventoryService = inventoryService;
@@ -49,6 +55,8 @@ public class PurchaseOrderService {
         this.tenantSettingsRepository = tenantSettingsRepository;
         this.outboxService = outboxService;
         this.crossDockService = crossDockService;
+        this.bootstrapJdbc = bootstrapJdbc;
+        this.meshBridgeService = meshBridgeService;
     }
 
     @Transactional
@@ -65,6 +73,30 @@ public class PurchaseOrderService {
         payload.put("supplierId", po.getSupplierId());
         payload.put("number", po.getNumber());
         outboxService.append("PURCHASE_ORDER", po.getId(), "PURCHASE_ORDER_SUBMITTED", payload);
+        return po;
+    }
+
+    @Transactional
+    public PurchaseOrder confirmOrder(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if ("DRAFT".equals(po.getStatus())) {
+            po = submit(purchaseOrderId);
+        } else if (!List.of("SUBMITTED", "IN_TRANSIT", "PARTIALLY_RECEIVED").contains(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only DRAFT or open purchase orders can be confirmed against the mesh");
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        if (bootstrapJdbc.findConnectedMeshByBuyerSupplier(tenantId, po.getSupplierId()).isPresent()) {
+            String soNumber = meshBridgeService.confirmMeshPurchaseOrder(tenantId, po.getId());
+            if (soNumber != null && !soNumber.isBlank()) {
+                String note = "Linked to Mesh Partner Sales Order #" + soNumber;
+                String existing = po.getNotes();
+                if (existing == null || !existing.contains(note)) {
+                    po.setNotes(existing == null || existing.isBlank() ? note : existing + "\n" + note);
+                    po = purchaseOrderRepository.save(po);
+                }
+            }
+        }
         return po;
     }
 

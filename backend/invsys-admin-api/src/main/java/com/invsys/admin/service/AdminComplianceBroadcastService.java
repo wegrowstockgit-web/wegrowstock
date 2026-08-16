@@ -110,7 +110,11 @@ public class AdminComplianceBroadcastService {
         return null;
     }
 
-    public record CreateBroadcastRequest(String category, String title, Map<String, Object> payload) {
+    public record CreateBroadcastRequest(
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 64) String category,
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 200) String title,
+            Map<String, Object> payload
+    ) {
     }
 
     public record BroadcastView(

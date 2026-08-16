@@ -1,6 +1,7 @@
 package com.invsys.api;
 
 import com.invsys.modules.inventory.service.CycleCountService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -45,7 +46,7 @@ public class CycleCountController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER')")
-    public CycleCountService.CycleCountDetail start(@RequestBody StartCountRequest body) {
+    public CycleCountService.CycleCountDetail start(@Valid @RequestBody StartCountRequest body) {
         return cycleCountService.startCount(body.locationId());
     }
 
@@ -66,7 +67,7 @@ public class CycleCountController {
     public CycleCountService.CycleCountLineView submit(
             @PathVariable UUID id,
             @PathVariable UUID lineId,
-            @RequestBody SubmitCountRequest body) {
+            @Valid @RequestBody SubmitCountRequest body) {
         return cycleCountService.submitCountedQty(id, lineId, body.countedQty());
     }
 

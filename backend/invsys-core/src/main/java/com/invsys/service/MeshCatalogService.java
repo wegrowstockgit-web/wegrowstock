@@ -1,11 +1,20 @@
 package com.invsys.service;
 
 import com.invsys.core.common.ApiException;
+import com.invsys.domain.BinReplenishmentRule;
 import com.invsys.domain.ExternalReference;
-import com.invsys.modules.catalog.domain.ProductVariant;
+import com.invsys.domain.MeshCatalogListing;
+import com.invsys.mesh.CrossTenantMeshBridgeService;
 import com.invsys.mesh.MeshCatalogTranslationService;
-import com.invsys.repository.ExternalReferenceRepository;
+import com.invsys.modules.catalog.domain.Product;
+import com.invsys.modules.catalog.domain.ProductVariant;
+import com.invsys.modules.inventory.domain.InventoryLevel;
+import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import com.invsys.modules.inventory.repository.InventoryLevelRepository;
+import com.invsys.repository.BinReplenishmentRuleRepository;
+import com.invsys.repository.ExternalReferenceRepository;
+import com.invsys.repository.MeshCatalogListingRepository;
 import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import jakarta.persistence.EntityManager;
@@ -13,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,17 +35,187 @@ public class MeshCatalogService {
 
     private final BootstrapJdbc bootstrapJdbc;
     private final ProductVariantRepository productVariantRepository;
+    private final ProductRepository productRepository;
     private final ExternalReferenceRepository externalReferenceRepository;
+    private final MeshCatalogListingRepository listingRepository;
+    private final BinReplenishmentRuleRepository binReplenishmentRuleRepository;
+    private final InventoryLevelRepository inventoryLevelRepository;
     private final EntityManager entityManager;
 
     public MeshCatalogService(BootstrapJdbc bootstrapJdbc,
                               ProductVariantRepository productVariantRepository,
+                              ProductRepository productRepository,
                               ExternalReferenceRepository externalReferenceRepository,
+                              MeshCatalogListingRepository listingRepository,
+                              BinReplenishmentRuleRepository binReplenishmentRuleRepository,
+                              InventoryLevelRepository inventoryLevelRepository,
                               EntityManager entityManager) {
         this.bootstrapJdbc = bootstrapJdbc;
         this.productVariantRepository = productVariantRepository;
+        this.productRepository = productRepository;
         this.externalReferenceRepository = externalReferenceRepository;
+        this.listingRepository = listingRepository;
+        this.binReplenishmentRuleRepository = binReplenishmentRuleRepository;
+        this.inventoryLevelRepository = inventoryLevelRepository;
         this.entityManager = entityManager;
+    }
+
+    @Transactional(readOnly = true)
+    public List<DiscoverListing> discoverPublished() {
+        UUID me = TenantContext.requireTenantId();
+        return bootstrapJdbc.listPublishedMeshListings(me).stream()
+                .map(row -> new DiscoverListing(
+                        row.variantId(),
+                        row.productName(),
+                        row.imageUrl(),
+                        row.sellerName(),
+                        row.sellerTenantId()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<NetworkRelationship> listNetwork() {
+        UUID me = TenantContext.requireTenantId();
+        return bootstrapJdbc.listMeshRelationshipsForTenant(me).stream()
+                .map(row -> {
+                    boolean seller = me.equals(row.partnerTenantId());
+                    String display = seller && CrossTenantMeshBridgeService.STATUS_REQUESTED.equals(row.connectionStatus())
+                            ? CrossTenantMeshBridgeService.STATUS_PENDING
+                            : row.connectionStatus();
+                    return new NetworkRelationship(
+                            row.id(),
+                            seller ? row.tenantId() : row.partnerTenantId(),
+                            row.partnerName(),
+                            seller ? "SELLER" : "BUYER",
+                            display,
+                            row.connectionStatus(),
+                            row.supplierId(),
+                            row.customerId(),
+                            seller && (CrossTenantMeshBridgeService.STATUS_REQUESTED.equals(row.connectionStatus())
+                                    || CrossTenantMeshBridgeService.STATUS_PENDING.equals(row.connectionStatus())));
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<SharedCatalogRow> listSharedCatalog() {
+        UUID tenantId = TenantContext.requireTenantId();
+        Map<UUID, String> productNames = new LinkedHashMap<>();
+        for (Product product : productRepository.findAll()) {
+            if (tenantId.equals(product.getTenantId())) {
+                productNames.put(product.getId(), product.getName());
+            }
+        }
+        Map<UUID, MeshCatalogListing> listings = new LinkedHashMap<>();
+        for (MeshCatalogListing listing : listingRepository.findByTenantId(tenantId)) {
+            listings.put(listing.getVariantId(), listing);
+        }
+        List<SharedCatalogRow> rows = new ArrayList<>();
+        for (ProductVariant variant : productVariantRepository.findAll()) {
+            if (!tenantId.equals(variant.getTenantId()) || variant.getSku().startsWith("MESH-PENDING-")) {
+                continue;
+            }
+            MeshCatalogListing listing = listings.get(variant.getId());
+            rows.add(new SharedCatalogRow(
+                    variant.getId(),
+                    variant.getSku(),
+                    productNames.getOrDefault(variant.getProductId(), variant.getSku()),
+                    listing != null && listing.isPublished(),
+                    listing != null ? listing.getMeshWholesalePrice() : null));
+        }
+        rows.sort((a, b) -> a.sku().compareToIgnoreCase(b.sku()));
+        return rows;
+    }
+
+    @Transactional
+    public SharedCatalogRow upsertListing(UUID variantId, boolean published, BigDecimal meshWholesalePrice) {
+        UUID tenantId = TenantContext.requireTenantId();
+        ProductVariant variant = productVariantRepository.findById(variantId)
+                .filter(v -> tenantId.equals(v.getTenantId()))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found"));
+        MeshCatalogListing listing = listingRepository.findByTenantIdAndVariantId(tenantId, variantId)
+                .orElseGet(() -> {
+                    MeshCatalogListing created = new MeshCatalogListing();
+                    created.setTenantId(tenantId);
+                    created.setVariantId(variantId);
+                    return created;
+                });
+        listing.setPublished(published);
+        listing.setMeshWholesalePrice(meshWholesalePrice);
+        listingRepository.save(listing);
+        String productName = productRepository.findById(variant.getProductId())
+                .map(Product::getName)
+                .orElse(variant.getSku());
+        return new SharedCatalogRow(variant.getId(), variant.getSku(), productName, published, meshWholesalePrice);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MeshSourcingSuggestion> getMeshSourcingSuggestions() {
+        UUID tenantId = TenantContext.requireTenantId();
+        List<BootstrapJdbc.MeshPartnerRow> partners = bootstrapJdbc.listConnectedMeshPartnersForBuyer(tenantId);
+        if (partners.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, BigDecimal> onHandByLocationVariant = new LinkedHashMap<>();
+        for (InventoryLevel level : inventoryLevelRepository.findAll()) {
+            if (!tenantId.equals(level.getTenantId())) {
+                continue;
+            }
+            UUID key = locationVariantKey(level.getLocationId(), level.getVariantId());
+            onHandByLocationVariant.merge(key, level.getOnHand() != null ? level.getOnHand() : BigDecimal.ZERO, BigDecimal::add);
+        }
+        Map<UUID, ProductVariant> variants = new LinkedHashMap<>();
+        for (ProductVariant variant : productVariantRepository.findAll()) {
+            if (tenantId.equals(variant.getTenantId())) {
+                variants.put(variant.getId(), variant);
+            }
+        }
+        Map<UUID, String> productNames = new LinkedHashMap<>();
+        for (Product product : productRepository.findAll()) {
+            if (tenantId.equals(product.getTenantId())) {
+                productNames.put(product.getId(), product.getName());
+            }
+        }
+        List<MeshSourcingSuggestion> suggestions = new ArrayList<>();
+        for (BinReplenishmentRule rule : binReplenishmentRuleRepository.findByTenantId(tenantId)) {
+            BigDecimal threshold = rule.getMinQuantity();
+            if (threshold == null) {
+                continue;
+            }
+            BigDecimal quantity = onHandByLocationVariant.getOrDefault(
+                    locationVariantKey(rule.getLocationId(), rule.getVariantId()), BigDecimal.ZERO);
+            if (quantity.compareTo(threshold) >= 0) {
+                continue;
+            }
+            ProductVariant variant = variants.get(rule.getVariantId());
+            if (variant == null) {
+                continue;
+            }
+            for (BootstrapJdbc.MeshPartnerRow partner : partners) {
+                Optional<BootstrapJdbc.PartnerCatalogSku> match = bootstrapJdbc.findPublishedPartnerSkuMatch(
+                        partner.partnerTenantId(), variant.getSku(), variant.getBarcode());
+                if (match.isEmpty()) {
+                    continue;
+                }
+                String partnerName = bootstrapJdbc.findTenantNameSlugStatus(partner.partnerTenantId())
+                        .map(BootstrapJdbc.TenantNameSlugStatusRow::name)
+                        .orElse("Mesh partner");
+                suggestions.add(new MeshSourcingSuggestion(
+                        variant.getId(),
+                        productNames.getOrDefault(variant.getProductId(), variant.getSku()),
+                        variant.getSku(),
+                        partner.partnerTenantId(),
+                        partnerName,
+                        partner.supplierId(),
+                        match.get().sku()));
+                break;
+            }
+        }
+        return suggestions;
+    }
+
+    private static UUID locationVariantKey(UUID locationId, UUID variantId) {
+        return UUID.nameUUIDFromBytes((locationId + ":" + variantId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @Transactional(readOnly = true)
@@ -216,5 +396,43 @@ public class MeshCatalogService {
     }
 
     public record MappingUpsert(UUID localVariantId, UUID partnerVariantId) {
+    }
+
+    public record DiscoverListing(
+            UUID variantId,
+            String productName,
+            String imageUrl,
+            String sellerName,
+            UUID sellerTenantId) {
+    }
+
+    public record NetworkRelationship(
+            UUID id,
+            UUID partnerTenantId,
+            String partnerName,
+            String role,
+            String displayStatus,
+            String connectionStatus,
+            UUID supplierId,
+            UUID customerId,
+            boolean canApprove) {
+    }
+
+    public record SharedCatalogRow(
+            UUID variantId,
+            String sku,
+            String productName,
+            boolean published,
+            BigDecimal meshWholesalePrice) {
+    }
+
+    public record MeshSourcingSuggestion(
+            UUID variantId,
+            String productName,
+            String sku,
+            UUID partnerTenantId,
+            String partnerName,
+            UUID supplierId,
+            String meshPartnerSku) {
     }
 }

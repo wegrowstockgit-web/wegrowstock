@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_SALES?: string;
   readonly VITE_ENABLE_FULFILLMENT?: string;
   readonly VITE_ENABLE_FINTECH?: string;
+  readonly VITE_ENABLE_MESH?: string;
 }
 
 interface Window {

@@ -42,6 +42,9 @@ public class PurchaseOrder extends TenantScopedEntity {
     @Column(name = "tracking_metadata", columnDefinition = "jsonb", nullable = false)
     private List<Map<String, Object>> trackingMetadata = new ArrayList<>();
 
+    @Column(columnDefinition = "text")
+    private String notes;
+
     public UUID getSupplierId() {
         return supplierId;
     }
@@ -104,5 +107,13 @@ public class PurchaseOrder extends TenantScopedEntity {
 
     public void setTrackingMetadata(List<Map<String, Object>> trackingMetadata) {
         this.trackingMetadata = trackingMetadata != null ? trackingMetadata : new ArrayList<>();
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        this.notes = notes;
     }
 }

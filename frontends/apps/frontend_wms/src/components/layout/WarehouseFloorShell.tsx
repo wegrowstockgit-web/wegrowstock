@@ -23,6 +23,8 @@ interface MeResponse {
   grantedPermissions?: string[];
   isSuperAdmin?: boolean;
   enabledModules?: string[];
+  localeLanguage?: string | null;
+  tier?: string | null;
 }
 
 /**
@@ -62,18 +64,20 @@ export function WarehouseFloorShell() {
     queryKey: ['auth', 'me'],
     queryFn: async () => {
       const { data } = await apiClient.get<MeResponse>('/api/v1/auth/me');
-      applyMeProfile({
-        userId: data.userId,
-        email: data.email,
-        displayName: data.displayName,
-        roles: data.roles,
-        warehouseIds: data.warehouseIds,
-        avatarUrl: data.avatarUrl,
-        tenantId: data.tenantId,
-        grantedPermissions: data.grantedPermissions,
-        isSuperAdmin: data.isSuperAdmin,
-        enabledModules: data.enabledModules,
-      });
+        applyMeProfile({
+          userId: data.userId,
+          email: data.email,
+          displayName: data.displayName,
+          roles: data.roles,
+          warehouseIds: data.warehouseIds,
+          avatarUrl: data.avatarUrl,
+          tenantId: data.tenantId,
+          grantedPermissions: data.grantedPermissions,
+          isSuperAdmin: data.isSuperAdmin,
+          enabledModules: data.enabledModules,
+          localeLanguage: data.localeLanguage,
+          tier: data.tier,
+        });
       return data;
     },
     enabled: authenticated,

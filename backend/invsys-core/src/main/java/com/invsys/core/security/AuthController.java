@@ -40,23 +40,32 @@ public class AuthController {
     private final MagicLoginService magicLoginService;
     private final TerminalBiometricService terminalBiometricService;
     private final TenantSsoResolver tenantSsoResolver;
+    private final HomeRealmDiscoveryService homeRealmDiscoveryService;
     private final SsoProviderCatalog ssoProviderCatalog;
     private final AuthCookieService authCookieService;
+    private final LoginAttemptLimiter loginAttemptLimiter;
+    private final ClientIpResolver clientIpResolver;
     private final boolean publicSignupEnabled;
 
     public AuthController(AuthService authService,
                           MagicLoginService magicLoginService,
                           TerminalBiometricService terminalBiometricService,
                           TenantSsoResolver tenantSsoResolver,
+                          HomeRealmDiscoveryService homeRealmDiscoveryService,
                           SsoProviderCatalog ssoProviderCatalog,
                           AuthCookieService authCookieService,
-                          @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
+                          LoginAttemptLimiter loginAttemptLimiter,
+                          ClientIpResolver clientIpResolver,
+                          @Value("${invsys.security.public-signup-enabled:false}") boolean publicSignupEnabled) {
         this.authService = authService;
         this.magicLoginService = magicLoginService;
         this.terminalBiometricService = terminalBiometricService;
         this.tenantSsoResolver = tenantSsoResolver;
+        this.homeRealmDiscoveryService = homeRealmDiscoveryService;
         this.ssoProviderCatalog = ssoProviderCatalog;
         this.authCookieService = authCookieService;
+        this.loginAttemptLimiter = loginAttemptLimiter;
+        this.clientIpResolver = clientIpResolver;
         this.publicSignupEnabled = publicSignupEnabled;
     }
 
@@ -69,8 +78,21 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public SessionResponse login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
-        return issueSession(authService.login(request), response);
+    public SessionResponse login(@Valid @RequestBody LoginRequest request,
+                                 HttpServletRequest httpRequest,
+                                 HttpServletResponse response) {
+        String ip = clientIpResolver.resolve(httpRequest);
+        loginAttemptLimiter.assertAllowed(ip, request.email());
+        try {
+            SessionResponse session = issueSession(authService.login(request), response);
+            loginAttemptLimiter.reset(ip, request.email());
+            return session;
+        } catch (ApiException ex) {
+            if ("INVALID_CREDENTIALS".equals(ex.getCode())) {
+                loginAttemptLimiter.recordFailure(ip, request.email());
+            }
+            throw ex;
+        }
     }
 
     /**
@@ -82,6 +104,12 @@ public class AuthController {
         if (token == null || token.isBlank()) {
             token = body == null ? null : body.get("impersonateToken");
         }
+        if (token == null || token.isBlank()) {
+            token = body == null ? null : body.get("handoffCode");
+        }
+        if (token == null || token.isBlank()) {
+            token = body == null ? null : body.get("impersonateCode");
+        }
         return issueSession(authService.acceptImpersonation(token), response);
     }
 
@@ -92,6 +120,13 @@ public class AuthController {
     public SessionResponse warehouseLogin(@Valid @RequestBody WarehouseLoginRequest request,
                                           HttpServletResponse response) {
         return issueSession(authService.warehouseLogin(request), response);
+    }
+
+    @GetMapping("/discovery")
+    public com.invsys.core.security.dto.HomeRealmDiscoveryResponse discovery(
+            @RequestParam(required = false) String email,
+            HttpServletRequest request) {
+        return homeRealmDiscoveryService.discover(email, clientIpResolver.resolve(request));
     }
 
     @GetMapping("/sso-discover")
@@ -170,9 +205,6 @@ public class AuthController {
                                    HttpServletResponse response,
                                    @RequestBody(required = false) RefreshRequest body) {
         String refreshToken = authCookieService.readRefreshToken(request);
-        if ((refreshToken == null || refreshToken.isBlank()) && body != null) {
-            refreshToken = body.refreshToken();
-        }
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Missing refresh token");
         }

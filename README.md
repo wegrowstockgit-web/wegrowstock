@@ -12,13 +12,21 @@ Multi-tenant Inventory / WMS / Supply-Chain B2B SaaS with append-only inventory 
 
 ### Run everything with Docker (`deploy.bat`)
 
-On Windows, prefer the repo helper from the project root (quiet console; full log in `.deploy-last.log`):
+On Windows, prefer the repo helper from the project root (quiet console; full log in `.deploy-last.log`). On macOS / Linux use `./deploy.sh` with the same commands:
 
 ```bat
 deploy.bat deploy              Rem build images, start stack, wait for API health
 deploy.bat seed                Rem load demo users / catalog (password123)
 deploy.bat status              Rem container status + URLs
 deploy.bat down                Rem stop containers (keeps DB volume)
+```
+
+```bash
+chmod +x deploy.sh
+./deploy.sh deploy
+./deploy.sh seed
+./deploy.sh status
+./deploy.sh down
 ```
 
 | Command | What it does |
@@ -29,7 +37,7 @@ deploy.bat down                Rem stop containers (keeps DB volume)
 | `deploy.bat seed` | Apply `ops/demo_seed.sql` (+ extra tenants if present) |
 | `deploy.bat status` | Compact `docker compose ps` + endpoint list |
 | `deploy.bat down` | Stop/remove containers; Postgres volume kept |
-| `deploy.bat clean-frontend` | Remove `frontend_wms` / `frontend_admin` build artifacts |
+| `deploy.bat clean-frontend` / `./deploy.sh clean-frontend` | Remove `frontend_wms` / `frontend_admin` / `frontend_pos` build artifacts |
 | `deploy.bat help` | Print usage |
 
 **Support Co-Pilot / chatbot** (optional module — backend + frontend together):
@@ -62,12 +70,14 @@ Without a key, the chatbot module forces `spring.ai.model.*=none` and `SUPPORT_A
 | | API gateway | http://localhost:8080 |
 | | Swagger | http://localhost:8080/swagger-ui.html |
 | | Health | http://localhost:8080/actuator/health |
+| **Retail POS** (offline-first register) | UI | http://localhost:3003 |
+| | Sync API | `POST /api/v1/pos/sync-receipts` via :8080 |
 | **Control plane** (Super Admin) | UI | http://localhost:3002 |
 | | Admin API gateway | http://localhost:8081 (`Host: admin.invsys.com`) |
 | Observability | Grafana | http://localhost:3001 (admin / admin) |
 | Data | Postgres | `localhost:5432` — runtime `app_user` / Flyway `app_owner` |
 
-Containers: `invsys-web` (WMS SPA), `invsys-admin-web` (admin SPA), `invsys-api` (WMS Spring Boot), `invsys-admin-api` (control-plane Spring Boot :8081), `invsys-api-gateway`, `invsys-db` (Postgres 16).
+Containers: `invsys-web` (WMS SPA), `invsys-admin-web` (admin SPA), `invsys-pos-web` (retail POS SPA), `invsys-api` (WMS Spring Boot + `invsys-pos-api`), `invsys-admin-api` (control-plane Spring Boot :8081), `invsys-api-gateway`, `invsys-db` (Postgres 16).
 
 Copy `.env.example` → `.env` when overriding JWT keys, webhook secrets, or DB credentials. Dev JWT PEMs live under `ops/jwt/` (generated automatically on first `deploy.bat deploy` if missing).
 
@@ -87,7 +97,7 @@ To toggle chatbot without `deploy.bat`, set compose build/runtime env before bui
 ```bash
 # Disable both sides for this build
 export INVSYS_WITH_CHATBOT=false INVSYS_CHATBOT_ENABLED=false VITE_ENABLE_CHATBOT=false
-docker compose build backend frontend backend-admin frontend-admin && docker compose up -d
+docker compose build backend frontend backend-admin frontend-admin frontend-pos && docker compose up -d
 ```
 
 ### Demo credentials & tiers
@@ -112,7 +122,7 @@ Password for every account below: **password123**.
 
 | Tenant | Slug | Tier | Enabled modules |
 |--------|------|------|-----------------|
-| Demo Corp | `demo-corp` | **ENTERPRISE** | CORE, B2B_SHOWROOM, FINTECH, AI_COPILOT |
+| Demo Corp | `demo-corp` | **ENTERPRISE** | CORE, B2B_SHOWROOM, FINTECH, AI_COPILOT, RETAIL_POS, MESH_NETWORK |
 | Acme Wholesale | `acme-wholesale` | **BASIC** | CORE |
 | Northwind Logistics | `northwind-logistics` | **INTERMEDIATE** | CORE, SHOPIFY, ADVANCED_FULFILLMENT |
 
@@ -175,7 +185,8 @@ Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cyc
 | viewer@pacific.test | VIEWER | WH-PDX | No |
 | b2b@pacific.test | B2B_CUSTOMER | Showroom | No |
 
-Quick login (office, no PIN): http://localhost:3000 — **owner@demo.test** / **password123**.  
+Quick login (office, no PIN): http://localhost:3000 — enter **owner@demo.test**, **Continue**, then **password123**. Identifier-first Home Realm Discovery hides the password until the email (or warehouse IP) is resolved.  
+Retail POS register: http://localhost:3003 (same tenant login; checkout is offline-first).  
 Super Admin portal: http://localhost:3002 (`admin.invsys.com`) — **owner@demo.test** / **password123** via `platform_admins` (control-plane cookies).  
 Floor smoke (PIN **1234** after first open): same password, then open **Fulfillment** or sign in as **picker@demo.test**.
 
@@ -201,30 +212,33 @@ cd frontends
 pnpm install
 pnpm --filter frontend_wms dev      # http://localhost:5173 → WMS API :8080
 pnpm --filter frontend_admin dev    # http://localhost:5174 → Admin API :8081
+pnpm --filter frontend_pos dev      # http://localhost:5175 → WMS API :8080 (POS sync)
 ```
 
-Useful scripts: `pnpm --filter frontend_wms build|test|test:e2e`, `pnpm --filter frontend_admin build|test`.
+Useful scripts: `pnpm --filter frontend_wms build|test|test:e2e`, `pnpm --filter frontend_admin build|test`, `pnpm --filter frontend_pos build|test|test:coverage|test:e2e`.
 
 ## Architecture
 
-InventorySystem is split into two independently deployable planes:
+InventorySystem is split into independently deployable planes:
 
 | Plane | Purpose | Backend | Frontend | Edge |
 |-------|---------|---------|----------|------|
 | **Data plane** | Tenant WMS / warehouse ops | `invsys-app` (:8080) | `frontends/apps/frontend_wms` | `app.invsys.com` / `:8080` — **blocks** `/api/v1/control-plane/**` |
+| **Retail POS** | Offline-first store registers | `invsys-pos-api` (on `invsys-app`) | `frontends/apps/frontend_pos` | `:3003` / Vite `:5175` — syncs via `:8080` |
 | **Control plane** | Super Admin ops: entitlements, billing, impersonation, RAG, kill-switch, audit, shards, DLQ, telemetry, compliance | `invsys-admin-api` (:8081) | `frontends/apps/frontend_admin` | `admin.invsys.com` / `:8081` — admin JWT cookies (`invsys_admin_*`, SameSite=Strict) |
 
-Shared engine: `invsys-core` (entities, Flyway through `V108`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
+Shared engine: `invsys-core` (entities, Flyway through `V114`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
 
-- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V108`), RS256 JWT, virtual threads, Actuator/Prometheus
+- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V114`), RS256 JWT, virtual threads, Actuator/Prometheus
 - **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels` (optional `lpn_id` for palletized stock); control-plane writes use `app_owner` / BootstrapJdbc
 - **Commercial entitlements:** `tenant_subscriptions` + `@RequireModule` (e.g. FINTECH → 402 `MODULE_LOCKED`)
 - **Tenant suspend:** `tenants.status = SUSPENDED` → WMS `SuspendedTenantAccessFilter` returns **403** immediately
 - **CQRS dashboard:** `dashboard_kpi_snapshots` read model; refreshed from outbox (`STOCK_LEVEL_CHANGED`, `ORDER_ALLOCATED`, `INVOICE_PAID`, …)
 - **Realtime:** SSE `GET /api/v1/dashboard/stream` + `useDashboardStream` (replaces office polling intervals)
 - **Frontend (WMS):** React 19.2, TypeScript, Vite, Tailwind (Surface A office / Surface B warehouse), TanStack Query + persist, Zustand, Lucide — **no** control-plane UI (login accepts `?impersonateToken=` only)
-- **Frontend (Admin):** Login, tenants (impersonate / suspend / sandbox), billing, Copilot knowledge, integrations kill-switch, audit trail, shards, DLQ, concurrency throttling, global compliance, commercial + health reports
-- **Surfaces (WMS):** Office shell, warehouse floor ops, B2B showroom (`/showroom`)
+- **Frontend (Admin):** Login, tenants (impersonate / suspend / sandbox), billing, Copilot knowledge, integrations kill-switch, audit trail, shards, DLQ, concurrency throttling, global compliance, commercial + health reports. Sell **Retail Point of Sale (POS)** as an Enterprise addon.
+- **Frontend (POS):** Split-pane register (cart + tender). Checkout writes Dexie `outbox_receipts` immediately; `invsys-pos-api` converts receipts into `inventory_level_deltas` for the async WMS flush worker.
+- **Surfaces (WMS):** Office shell, warehouse floor ops, B2B showroom (`/showroom`), Mesh Network hub (`/mesh-network`, `MESH_NETWORK`)
 - **Digital Twin / LPNs / GS1 / Offline / Tenancy / LBAC / Integrations:** unchanged data-plane capabilities (see `DEVELOPER_ARCHITECTURE.md`)
 
 ## Demo Seed Data
@@ -251,9 +265,13 @@ cd backend && mvn -q "-Dtest=LpnMoveHttpTest,LpnPalletizationHttpTest,TaskInterl
 # Control-plane API ITs (JaCoCo gate 85% on com.invsys.admin)
 cd backend && mvn -q "-Dsurefire.failIfNoSpecifiedTests=false" -pl invsys-admin-api -am verify
 
+# POS ingest module (JaCoCo gate 85%)
+cd backend && mvn -q -pl invsys-pos-api -am verify
+
 # Frontend unit + build (pnpm workspace)
 cd frontends && pnpm --filter frontend_wms test && pnpm --filter frontend_wms build
 cd frontends && pnpm --filter frontend_admin test && pnpm --filter frontend_admin build
+cd frontends && pnpm --filter frontend_pos test:coverage && pnpm --filter frontend_pos build
 
 # E2E (requires docker stack + demo seed on :3000)
 cd frontends/apps/frontend_wms && pnpm test:e2e
@@ -269,7 +287,7 @@ Playwright notes:
 - `e2e/global.setup.ts` logs in all six demo roles and caches storage under `frontends/apps/frontend_wms/playwright/.auth/` (gitignored)
 - Role fixtures: `ownerPage`, `adminPage`, `managerPage`, `pickerPage`, `viewerPage`, `b2bPage`
 - Journey helpers: `e2e/journeys/helpers.ts` (`contextForRole`, `hidScan`, `apiJson`)
-- Suites include RBAC/LBAC, B2B fulfill cycle, offline picker, cross-dock, blind counts, internal lot mint, **LPN/tote/interleave**, **pallet builder**, **Digital Twin / A\***, **CQRS/SSE/GS1/path**
+- Suites include RBAC/LBAC, B2B fulfill cycle, offline picker, cross-dock, blind counts, internal lot mint, **LPN/tote/interleave**, **pallet builder**, **Digital Twin / A\***, **CQRS/SSE/GS1/path**, **mesh network hub** (`e2e/mesh-network.spec.ts`)
 
 ## Project Structure
 
@@ -279,6 +297,7 @@ InventorySystem/
 │   ├── invsys-core/              # Shared domain, Flyway, tenancy, WMS APIs
 │   ├── invsys-chatbot/           # Optional Support Co-Pilot
 │   ├── invsys-training/          # Optional Flight Simulator
+│   ├── invsys-pos-api/           # Retail POS ingest (offline receipt sync)
 │   ├── invsys-app/               # Data-plane bootable runner (:8080)
 │   ├── invsys-admin-api/         # Control-plane bootable runner (:8081)
 │   ├── Dockerfile                # WMS image
@@ -286,6 +305,7 @@ InventorySystem/
 ├── frontends/                    # pnpm workspace
 │   ├── apps/frontend_wms/        # Tenant WMS SPA + Playwright e2e
 │   ├── apps/frontend_admin/      # Super Admin SPA (tenants, billing, ops, reports)
+│   ├── apps/frontend_pos/        # Offline-first retail POS PWA
 │   ├── packages/shared-types/    # AppModule, CommercialTier, …
 │   └── packages/shared-ui/       # Button, Table, Modal, Drawer, Input
 ├── ops/
@@ -295,8 +315,9 @@ InventorySystem/
 │   ├── jwt/
 │   └── postgres/init/
 ├── .github/workflows/            # ci-backend, ci-frontends, terraform-*
-├── docker-compose.yml            # db + both APIs + both UIs + gateway + LGTM
+├── docker-compose.yml            # db + both APIs + WMS/admin/POS UIs + gateway + LGTM
 ├── deploy.bat
+├── deploy.sh
 ├── DATABASE_GUIDE.md
 ├── DEVELOPER_ARCHITECTURE.md
 ├── PRODUCT.md
@@ -308,6 +329,7 @@ InventorySystem/
 Auth & tenancy:
 
 - `POST /api/v1/auth/signup` — Create tenant + owner
+- `GET /api/v1/auth/discovery` — Home Realm Discovery (email domain and/or corporate CIDR → SSO or password)
 - `POST /api/v1/auth/login` — Access + refresh JWT
 - `POST /api/v1/auth/impersonation/accept` — Exchange a 15-min control-plane impersonation JWT for WMS cookies
 - `POST /api/v1/auth/refresh` — Rotate refresh token (access may be unchanged within the same second)
@@ -317,6 +339,7 @@ Core inventory & orders:
 - `GET /api/v1/scan/{barcode}` — Barcode lookup
 - `POST /api/v1/fulfillment/scan` — Floor pick/pack/receive scan
 - `GET /api/v1/dashboard/stats` — Office dashboard metrics (CQRS snapshot)
+- `GET /api/v1/dashboard/mesh-sourcing-suggestions` — Low-stock SKUs available from connected mesh partners
 - `GET /api/v1/shipments/cartonize-preview` — FFD 3D packing + billable weight
 - CRUD under `/api/v1/` for products, variants/UOM, locations, POs, SOs, shipments, invoices, customers, suppliers, returns, cycle counts
 
@@ -334,10 +357,14 @@ Warehouse & manufacturing:
 Portal, money & platform (data plane):
 
 - `/api/v1/portal/**` — B2B showroom catalog & draft orders
+- `/api/v1/mesh/**` — Discover published partner products, handshake (`connections/request`, `connections/{id}/approve`), shared catalog publish
+- `/api/v1/settings/mesh/**` — Connected-partner SKU mappings (Partner Catalog)
+- `POST /api/v1/purchase-orders/{id}/confirm` — Submit + synchronous mesh PO→SO (`UNALLOCATED`) when the supplier is a connected partner
 - `/api/v1/fintech/**` — Capital / underwriting cockpit (OWNER-gated; `@RequireModule(FINTECH)`)
 - `/api/v1/ap-ingestions/**` — Supplier invoice OCR/ingest
 - `/api/v1/webhooks/**` + public webhook receivers — Stripe, Shopify, EasyPost
 - `/api/v1/settings`, users, invitations, SSO, account mappings, tax rates, shipping credentials
+- `POST /api/v1/pos/sync-receipts` — Offline POS receipt batch (`@RequireModule(RETAIL_POS)`); enqueues `inventory_level_deltas`
 
 Control plane (admin API only — **not** on `:8080`):
 

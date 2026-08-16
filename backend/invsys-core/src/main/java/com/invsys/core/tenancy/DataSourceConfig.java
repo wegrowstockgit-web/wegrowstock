@@ -20,8 +20,12 @@ public class DataSourceConfig {
      */
     @Bean
     @ConfigurationProperties(prefix = "spring.datasource.hikari")
-    public HikariDataSource hikariDataSource(DataSourceProperties properties) {
-        return properties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
+    public HikariDataSource hikariDataSource(
+            DataSourceProperties properties,
+            @Value("${spring.application.name:}") String applicationName) {
+        HikariDataSource ds = properties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
+        ds.setUsername(resolveRuntimeJdbcRole(applicationName));
+        return ds;
     }
 
     @Bean
@@ -40,7 +44,7 @@ public class DataSourceConfig {
             DataSourceProperties properties,
             @Value("${spring.flyway.url:}") String flywayUrl,
             @Value("${spring.flyway.user:app_owner}") String flywayUser,
-            @Value("${spring.flyway.password:app_owner_secret}") String flywayPassword) {
+            @Value("${spring.flyway.password:}") String flywayPassword) {
         String url = (flywayUrl != null && !flywayUrl.isBlank()) ? flywayUrl : properties.determineUrl();
         url = ensurePrepareThresholdDisabled(url);
         return DataSourceBuilder.create()
@@ -50,6 +54,14 @@ public class DataSourceConfig {
                 .password(flywayPassword)
                 .driverClassName(properties.getDriverClassName())
                 .build();
+    }
+
+    /**
+     * Pin the runtime pool to the plane's least-privilege role so {@code DB_USER} /
+     * {@code SPRING_DATASOURCE_USERNAME} cannot point the WMS at {@code app_owner}.
+     */
+    static String resolveRuntimeJdbcRole(String applicationName) {
+        return "invsys-admin-api".equals(applicationName) ? "app_owner" : "app_user";
     }
 
     /** PgBouncer transaction pooling: disable server-side prepared statements. */

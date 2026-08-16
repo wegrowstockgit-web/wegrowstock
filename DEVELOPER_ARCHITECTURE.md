@@ -57,7 +57,7 @@
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
 2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
 
-**Scale notes (current head V108):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108).
+**Scale notes (current head V115):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
 
 ---
 
@@ -80,6 +80,7 @@ InventorySystem/
 │   │       └── …                    billing, media, mesh, rtls, modules/*, …
 │   ├── invsys-chatbot/              Optional Support Co-Pilot (Spring AI + PgVector RAG)
 │   ├── invsys-training/             Optional Flight Simulator (shadow tenant interceptor)
+│   ├── invsys-pos-api/              Retail POS ingest (`POST /api/v1/pos/sync-receipts`)
 │   ├── invsys-app/                  Data-plane runner (`InvSysApplication`, artifact `invsys-api`)
 │   │   └── src/test/java/...        WMS integration tests
 │   └── invsys-admin-api/            Control-plane runner (`InvSysAdminApplication`)
@@ -101,6 +102,7 @@ InventorySystem/
 │   │       ├── offline/             IDB mutation queue + PIN vault
 │   │       ├── pages/               Platform routes
 │   │       └── stores/              Zustand session (enabledModules, isSuperAdmin flag only)
+│   ├── apps/frontend_pos/           Offline-first retail POS PWA (`:3003` / Vite `:5175`)
 │   ├── apps/frontend_admin/         Super Admin SPA (admin.invsys.com)
 │   │   └── src/features/            auth, tenants, billing, copilot, integrations,
 │   │                                audit, infrastructure, operations, telemetry,
@@ -113,8 +115,9 @@ InventorySystem/
 │   ├── jwt/                         Dev RS256 PEMs (shared by both APIs)
 │   ├── postgres/init/               app_owner / app_user roles + vector ext
 │   └── demo_seed.sql                Demo Corp + Acme; Super Admin in platform_admins (owner@demo.test)
-├── docker-compose.yml               db, both APIs, both UIs, gateway, LGTM
-├── deploy.bat                       Windows deploy / seed / status (both planes)
+├── docker-compose.yml               db, both APIs, WMS + admin + POS UIs, gateway, LGTM
+├── deploy.bat                       Windows deploy / seed / status (WMS + POS + admin)
+├── deploy.sh                        macOS / Linux parity with deploy.bat
 ├── .github/workflows/               ci-backend, ci-frontends, terraform-*
 ├── DATABASE_GUIDE.md
 ├── USER_GUIDE.md
@@ -126,7 +129,8 @@ InventorySystem/
 |--------|-----------|------------|-------|
 | `invsys-core` | jar | Spring Boot web/security/JPA/Flyway — **no** `spring-ai-*` | Shared by both runners |
 | `invsys-chatbot` | jar | `invsys-core` + Spring AI | WMS optional via Maven profile |
-| `invsys-app` | boot jar (`invsys-api`) | `invsys-core`; chatbot via **`with-chatbot`** | Data plane — excludes `com.invsys.admin.*` |
+| `invsys-pos-api` | jar | `invsys-core` | Always on `invsys-app`; gated by `RETAIL_POS` |
+| `invsys-app` | boot jar (`invsys-api`) | `invsys-core` + `invsys-pos-api`; chatbot via **`with-chatbot`** | Data plane — excludes `com.invsys.admin.*` |
 | `invsys-admin-api` | boot jar | `invsys-core` | Control plane only — excludes WMS `api.*` controllers |
 
 ```
@@ -351,7 +355,7 @@ Entities live in `com.invsys.domain`. Most extend `TenantScopedEntity` (`id`, ti
 | `TenantSettings` | JSON preferences (blind receiving, alerts, costing, …) |
 | `TenantDomain` | Custom domain + DNS verification → CORS |
 | `TenantSsoConfig` | Per-tenant OIDC/SAML config |
-| `TenantMeshPartner` | Cross-tenant trading mesh link |
+| `TenantMeshPartner` | Cross-tenant trading mesh link (`REQUESTED` → `CONNECTED`) |
 | `User` | Login identity |
 | `Role` / `UserRole` | RBAC |
 | `UserWarehouse` | LBAC warehouse assignment |
@@ -372,6 +376,7 @@ Entities live in `com.invsys.domain`. Most extend `TenantScopedEntity` (`id`, ti
 | `SoftKitComponent` | Soft-kit explode into SO component lines |
 | `VolumePriceBreak` | Volume pricing |
 | `ExternalReference` | External / mesh IDs |
+| `MeshCatalogListing` | Publish-to-network flag + mesh wholesale price |
 
 #### Warehouse topology
 
@@ -490,6 +495,7 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 | `JwksController` | `/.well-known/jwks.json` |
 | `MagicLoginService` | Magic-link tokens |
 | `TenantSsoResolver` / `oidc.*` / `saml.*` | Enterprise SSO |
+| `HomeRealmDiscoveryService` / `CorporateCidrMatcher` | Identifier-first HRD (`GET /api/v1/auth/discovery`) |
 | `RedisPinLockoutService` / `TerminalPinBruteForceGuard` | PIN abuse protection |
 | `PemUtils` / `PasswordEncoderConfig` | Keys + BCrypt |
 | `WarehouseAccessFilter` | LBAC gate |
@@ -650,7 +656,7 @@ Floor:      /fulfillment, cycle-counts, manufacturing/terminal, returns/receive,
 Floor home: exclusive PICKER users land on /fulfillment
 ```
 
-Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/import` (not in sidebar — Products **Import** button), `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings` (Admin → Organization), `/settings/fintech` (OWNER).
+Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/mesh-network` (`MESH_NETWORK`, OWNER/ADMIN), `/import` (not in sidebar — Products **Import** button), `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings` (Admin → Organization), `/settings/fintech` (OWNER).
 
 **Do not** wrap floor routes in `AppShell` — that regresses glove-friendly hit targets and dual-surface design.
 
@@ -662,7 +668,7 @@ UI: `Sidebar.tsx` (expand/collapse categories; mobile drawer ≤1023px).
 | Category | Parent icon | Leaf examples |
 |----------|-------------|---------------|
 | *(solo)* | LayoutDashboard | Dashboard |
-| Inbound | DownloadCloud | PO `FileSpreadsheet`, Suppliers `Factory`, Returns |
+| Inbound | DownloadCloud | PO `FileSpreadsheet`, Suppliers `Factory`, Mesh Network `Network`, Returns |
 | Outbound | UploadCloud | SO `ShoppingCart`, Customers, Invoices, Fulfillment |
 | Inventory | Package | Products `Layers`, Replenishments, Cycle counts, Exceptions, Lot Trace |
 | Manufacturing | Component | BOMs, Production Orders |
@@ -781,7 +787,9 @@ Progress text: `Step {{current}} of {{total}}`. Final done: **Finish Onboarding*
 
 ```
 [LoginPage]
-    │ POST /api/v1/auth/login {email,password}
+    │ GET /api/v1/auth/discovery?email=…  (IP via ClientIpResolver, then verified domain)
+    │   → sso-redirect | sso-optional | password
+    │ POST /api/v1/auth/login {email,password}  (password path only)
     ▼
 [AuthController] → [AuthService.login]
     │ verify password, load roles + warehouseIds
@@ -804,7 +812,8 @@ Progress text: `Step {{current}} of {{total}}`. Final done: **Finish Onboarding*
 ```
 Manager (Surface A)
   POST /purchase-orders          → DRAFT + lines
-  POST /purchase-orders/{id}/submit → SUBMITTED (+ outbox)
+  POST /purchase-orders/{id}/submit → SUBMITTED (+ outbox → CONFIRMED seller SO if mapped mesh)
+  POST /purchase-orders/{id}/confirm → submit + sync UNALLOCATED seller SO + PO note (mesh)
        │
        ▼
 Picker / Manager
@@ -1056,6 +1065,13 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V106` | `platform_admins` + `platform_admin_refresh_tokens` (Super Admin off `users`) |
 | `V107` | Shard routing, kill-switch, rate overrides, compliance broadcasts, knowledge docs, sandbox credentials |
 | `V108` | `platform_audit_logs` — append-only Super Admin mutation trail |
+| `V109` | `platform_tier_definitions` (dynamic commercial bundles) |
+| `V110` | Security hardening |
+| `V111` | `pos_synced_receipts` + ENTERPRISE includes `RETAIL_POS` |
+| `V112` | B2B RFQ statuses + allocation policy |
+| `V113` | `wholesale_applications` |
+| `V114` | Mesh hub handshake + `mesh_catalog_listings` + PO `notes` |
+| `V115` | Home Realm Discovery: domain TXT/`is_verified` + SSO provider/ACS/cert/corporate CIDRs |
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 
@@ -1140,6 +1156,9 @@ Backend integration tests: `AbstractIntegrationTest` (Testcontainers Postgres + 
 | `PathOptimizationHeuristicTest` | Hierarchical path sort |
 | `DashboardKpiCqrsHttpTest` | Snapshot read model for `/dashboard/stats` |
 | `DashboardStreamHttpTest` | SSE `/dashboard/stream` auth + subscribe |
+| `MeshHandshakeHttpTest` | Discover (no price), request, forbid self-approve, Supplier/Customer on approve |
+| `MeshSourcingSuggestionsHttpTest` | Low-stock + published partner SKU → dashboard suggestions |
+| `CrossTenantMeshBridgeTest` | Submit→CONFIRMED SO; confirmOrder→UNALLOCATED + PO note; unmapped exception |
 | `AuditLogArchivalWorkerIT` | LocalStack S3 + Awaitility cron + Toxiproxy chaos (no silent purge) |
 | `PartitionedTelemetryIT` | Ledger/audit partition presence + immutability |
 
@@ -1154,14 +1173,16 @@ Decoupled module: `tests/e2e/decoupled-module.spec.ts` — Test A (FAB + tool-ca
 ## 14. Local ops cheat sheet
 
 ```
-deploy.bat deploy          Build & start full stack (WMS + admin)
+deploy.bat deploy          Build & start full stack (WMS + POS + admin)
+./deploy.sh deploy         macOS / Linux equivalent
 deploy.bat --no-chatbot    Same as deploy --no-chatbot (flag-only first arg works)
 deploy.bat seed            Load demo_seed.sql
-deploy.bat status          Compose ps + both plane URLs
+deploy.bat status          Compose ps + WMS / POS / admin URLs
 deploy.bat down            Stop (keeps pg volume)
 deploy.bat help            Usage
 
 WMS UI:    http://localhost:3000
+POS UI:    http://localhost:3003
 Admin UI:  http://localhost:3002
 WMS API:   http://localhost:8080   (control-plane paths blocked)
 Admin API: http://localhost:8081
@@ -1298,6 +1319,8 @@ ACTIVE → (picked/consumed) | CROSS_DOCK_ROUTED | released on cancel
 | Digital Twin map | `PATCH /locations/{id}/coordinates`, `GET /locations/heatmap` |
 | Dashboard CQRS stats | `GET /api/v1/dashboard/stats` → `dashboard_kpi_snapshots` |
 | Dashboard SSE | `GET /api/v1/dashboard/stream` (`text/event-stream`) |
+| Smart sourcing card | `GET /api/v1/dashboard/mesh-sourcing-suggestions` |
+| Mesh Network hub | `/api/v1/mesh/discover`, `/network`, `/catalog`, `/connections/**` |
 | Pack label | `/api/v1/shipments` pack-label (+ optional `lpnBarcode`) |
 | Skip & Flag | `/api/v1/fulfillment/exceptions/report` |
 | Office resolve | `/api/v1/office/exceptions/*` |

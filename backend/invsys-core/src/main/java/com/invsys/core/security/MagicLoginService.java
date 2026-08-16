@@ -6,10 +6,9 @@ import com.invsys.domain.MagicLoginToken;
 import com.invsys.repository.MagicLoginTokenRepository;
 import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.invsys.service.InvitationEmailService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,24 +21,26 @@ import java.util.UUID;
 @Service
 public class MagicLoginService {
 
-    private static final Logger log = LoggerFactory.getLogger(MagicLoginService.class);
     private static final int EXPIRY_MINUTES = 15;
 
     private final BootstrapJdbc bootstrapJdbc;
     private final MagicLoginTokenRepository magicLoginTokenRepository;
     private final AuthService authService;
-    private final Environment environment;
+    private final InvitationEmailService invitationEmailService;
+    private final boolean exposeMagicToken;
     private final MagicLoginService self;
 
     public MagicLoginService(BootstrapJdbc bootstrapJdbc,
                              MagicLoginTokenRepository magicLoginTokenRepository,
                              AuthService authService,
-                             Environment environment,
+                             InvitationEmailService invitationEmailService,
+                             @Value("${invsys.security.expose-magic-token:false}") boolean exposeMagicToken,
                              @Lazy MagicLoginService self) {
         this.bootstrapJdbc = bootstrapJdbc;
         this.magicLoginTokenRepository = magicLoginTokenRepository;
         this.authService = authService;
-        this.environment = environment;
+        this.invitationEmailService = invitationEmailService;
+        this.exposeMagicToken = exposeMagicToken;
         this.self = self;
     }
 
@@ -62,8 +63,26 @@ public class MagicLoginService {
             TenantContext.clear();
         }
 
-        if (!isProd()) {
-            log.info("Magic login token for {}: {}", email, plaintext);
+        invitationEmailService.sendMagicLink(email, invitationEmailService.magicLoginUrl(plaintext));
+        if (exposeMagicToken) {
+            response.put("magicToken", plaintext);
+        }
+        return response;
+    }
+
+    /**
+     * Issues a welcome magic link for a just-provisioned wholesale buyer.
+     * Does not clear the caller's {@link TenantContext}.
+     */
+    public Map<String, Object> issueWelcomeMagicLink(UUID tenantId, UUID userId, String email) {
+        String plaintext = UUID.randomUUID().toString() + UUID.randomUUID();
+        String hash = AuthService.hashToken(plaintext);
+        self.persistToken(tenantId, userId, hash);
+        invitationEmailService.sendWholesaleWelcome(email, invitationEmailService.wholesaleWelcomeUrl(plaintext));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "accepted");
+        if (exposeMagicToken) {
             response.put("magicToken", plaintext);
         }
         return response;
@@ -74,16 +93,15 @@ public class MagicLoginService {
         var row = bootstrapJdbc.findMagicLoginTokenByHash(hash)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid magic login token"));
 
-        if (row.consumedAt() != null) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "TOKEN_CONSUMED", "Magic login token already used");
-        }
         if (row.expiresAt().isBefore(Instant.now())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "TOKEN_EXPIRED", "Magic login token expired");
         }
 
         TenantContext.setTenantId(row.tenantId());
         try {
-            self.markConsumed(hash);
+            if (!self.markConsumedIfUnused(hash)) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "TOKEN_CONSUMED", "Magic login token already used");
+            }
             return authService.completeLogin(row.userId());
         } finally {
             TenantContext.clear();
@@ -101,19 +119,7 @@ public class MagicLoginService {
     }
 
     @Transactional
-    public void markConsumed(String hash) {
-        MagicLoginToken entity = magicLoginTokenRepository.findByTokenHash(hash)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid magic login token"));
-        entity.setConsumedAt(Instant.now());
-        magicLoginTokenRepository.save(entity);
-    }
-
-    private boolean isProd() {
-        for (String profile : environment.getActiveProfiles()) {
-            if ("prod".equalsIgnoreCase(profile) || "production".equalsIgnoreCase(profile)) {
-                return true;
-            }
-        }
-        return false;
+    public boolean markConsumedIfUnused(String hash) {
+        return magicLoginTokenRepository.consumeIfUnused(hash, Instant.now()) == 1;
     }
 }

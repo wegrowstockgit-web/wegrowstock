@@ -42,7 +42,7 @@ public class SecurityConfig {
                           OidcLoginSuccessHandler oidcLoginSuccessHandler,
                           Environment environment,
                           ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager,
-                          @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled) {
+                          @Value("${invsys.security.public-signup-enabled:false}") boolean publicSignupEnabled) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.suspendedTenantAccessFilter = suspendedTenantAccessFilter;
         this.warehouseAccessFilter = warehouseAccessFilter;
@@ -57,7 +57,6 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        boolean prod = ArraysContainsProd(environment.getActiveProfiles());
         http.csrf(AbstractHttpConfigurer::disable)
                 // CORS is enforced exclusively by com.invsys.gateway.ApiGatewayCorsFilter
                 .cors(AbstractHttpConfigurer::disable)
@@ -66,6 +65,8 @@ public class SecurityConfig {
                         })
                         .frameOptions(frame -> frame.deny())
                         .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(
+                                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"))
                         .permissionsPolicy(p -> p.policy("geolocation=(self), microphone=(), camera=()")))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
@@ -89,10 +90,13 @@ public class SecurityConfig {
                                     "/api/v1/auth/impersonation/accept",
                                     "/api/v1/auth/magic-login", "/api/v1/auth/magic-login/consume",
                                     "/api/v1/auth/sso-discover",
+                                    "/api/v1/auth/discovery",
                                     "/api/v1/auth/sso-providers").permitAll()
                             .requestMatchers("/api/v1/invitations/accept").permitAll()
                             .requestMatchers("/api/v1/webhooks/**").permitAll()
                             .requestMatchers("/api/v1/public/**").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/api/v1/showroom/apply").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/v1/showroom/catalog").permitAll()
                             .requestMatchers("/oauth2/**", "/login/oauth2/**", "/saml2/**").permitAll()
                             // Health + Prometheus: VPC / Docker scrape CIDRs only (public edge blocked in nginx).
                             .requestMatchers("/actuator/health", "/actuator/health/**")
@@ -100,7 +104,7 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
                             .access(actuatorScrapeAuthorizationManager)
                             .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll();
-                    if (!prod) {
+                    if (isLocal(environment.getActiveProfiles())) {
                         auth.requestMatchers("/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll();
                     }
                     // Support Co-Pilot API: authenticated when the optional chatbot module is present.
@@ -123,6 +127,15 @@ public class SecurityConfig {
     private static boolean ArraysContainsProd(String[] profiles) {
         for (String profile : profiles) {
             if ("prod".equalsIgnoreCase(profile) || "production".equalsIgnoreCase(profile)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLocal(String[] profiles) {
+        for (String profile : profiles) {
+            if ("local".equalsIgnoreCase(profile)) {
                 return true;
             }
         }

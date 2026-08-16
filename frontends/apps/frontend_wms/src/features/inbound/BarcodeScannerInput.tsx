@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { ScanLine } from 'lucide-react';
+import { Camera, ScanLine } from 'lucide-react';
+import { HardwareManualFallback } from '@/components/hardware/HardwareManualFallback';
+import { Button } from '@/components/ui/Button';
+import { WebRtcCamera } from '@/components/ui/WebRtcCamera';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { cn } from '@/lib/utils';
 
 /**
- * High-contrast hardware wedge / Bluetooth scanner capture for Zebra & Honeywell.
+ * Universal floor scanner: hardware wedge → device camera → keyboard entry.
  */
 export function BarcodeScannerInput({
   label,
@@ -21,24 +24,23 @@ export function BarcodeScannerInput({
   lastScan?: string | null;
   className?: string;
 }) {
-  const [manual, setManual] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useBarcodeScanner({
+  const { triggerSuccess } = useScanFeedback();
+  const { hardwareStatus, triggerCamera, setTriggerCamera, ingestScan } = useBarcodeScanner({
     enabled,
     captureAll: true,
     onScan: (barcode) => {
       if (!barcode) return;
+      triggerSuccess();
       onScan(barcode);
-      setManual('');
     },
   });
 
-  useEffect(() => {
-    if (enabled) {
-      inputRef.current?.focus();
-    }
-  }, [enabled, label]);
+  const hardwareReady = hardwareStatus === 'CONNECTED';
+  const showCameraCta = !hardwareReady && !triggerCamera;
+
+  const commit = (barcode: string, source: 'camera' | 'manual') => {
+    ingestScan(barcode, source);
+  };
 
   return (
     <div
@@ -48,7 +50,27 @@ export function BarcodeScannerInput({
       )}
       data-testid="barcode-scanner-input"
       data-tour="tour-inbound-scanner"
+      data-hardware-status={hardwareStatus}
     >
+      <div className="mb-3 flex justify-center">
+        {hardwareReady ? (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-success/20 px-3 py-1 text-xs font-semibold text-success ring-1 ring-success/40"
+            data-testid="scanner-status-badge"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
+            Scanner Ready
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-warning/20 px-3 py-1 text-xs font-semibold text-warning ring-1 ring-warning/40"
+            data-testid="scanner-status-badge"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden />
+            {hardwareStatus === 'UNSUPPORTED' ? 'No hardware scanner' : 'Scanner disconnected'}
+          </span>
+        )}
+      </div>
       <ScanLine className="mx-auto mb-3 h-12 w-12 text-accent" aria-hidden />
       <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">{label}</p>
       {hint && <p className="mt-2 text-sm text-white/70">{hint}</p>}
@@ -58,31 +80,40 @@ export function BarcodeScannerInput({
       >
         {lastScan || 'Waiting for scan…'}
       </p>
-      <form
-        className="mt-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const value = manual.trim();
-          if (!value) return;
-          onScan(value);
-          setManual('');
-        }}
-      >
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="none"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          value={manual}
-          onChange={(e) => setManual(e.target.value)}
-          aria-label={label}
-          data-testid="scanner-manual-input"
-          className="h-14 w-full rounded-xl border-2 border-white/40 bg-white/10 px-4 text-center font-mono text-xl text-white placeholder:text-white/40 focus:border-accent focus:outline-none"
-          placeholder="Or type barcode + Enter"
-        />
-      </form>
+
+      {showCameraCta && (
+        <Button
+          type="button"
+          size="lg"
+          className="mt-5 w-full active:scale-[0.97]"
+          onClick={() => setTriggerCamera(true)}
+          data-testid="scanner-camera-trigger"
+        >
+          <Camera className="h-5 w-5" />
+          Tap to Use Device Camera
+        </Button>
+      )}
+
+      {triggerCamera && (
+        <div className="mt-5">
+          <WebRtcCamera
+            autoStart
+            onBarcode={(barcode) => {
+              commit(barcode, 'camera');
+              setTriggerCamera(false);
+            }}
+            onCancel={() => setTriggerCamera(false)}
+          />
+        </div>
+      )}
+
+      <HardwareManualFallback
+        isSupported={false}
+        mode="scan"
+        className="mt-5 text-left"
+        tone="inverse"
+        onManualSubmit={(value) => commit(value, 'manual')}
+      />
     </div>
   );
 }

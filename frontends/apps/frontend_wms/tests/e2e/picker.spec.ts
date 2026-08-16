@@ -33,6 +33,10 @@ async function wedgeScan(page: Page, barcode: string): Promise<void> {
   // If the wedge burst was truncated (gap reset), commit via the focused manual field + Enter.
   const last = (await page.getByTestId('scanner-last-value').textContent()) ?? '';
   if (!last.includes(barcode)) {
+    const keyboard = page.getByTestId('scanner-keyboard-entry');
+    if ((await keyboard.count()) > 0) {
+      await keyboard.first().click();
+    }
     const input = page.getByTestId('scanner-manual-input');
     await input.fill(barcode);
     await input.press('Enter');

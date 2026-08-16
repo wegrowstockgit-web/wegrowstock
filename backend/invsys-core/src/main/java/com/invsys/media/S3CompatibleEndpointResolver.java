@@ -35,7 +35,11 @@ public final class S3CompatibleEndpointResolver {
             case "AWS" -> new ResolvedEndpoint(Optional.empty(), false);
             case "GCP" -> new ResolvedEndpoint(Optional.of("https://storage.googleapis.com"), false);
             case "DIGITALOCEAN", "OCEANBLUE", "DO" -> {
-                String region = props.getRegion() == null || props.getRegion().isBlank() ? "nyc3" : props.getRegion();
+                String region = props.getRegion() == null || props.getRegion().isBlank() ? "nyc3" : props.getRegion().trim().toLowerCase(Locale.ROOT);
+                if (!region.matches("^[a-z0-9][a-z0-9-]{0,31}$")) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEDIA_REGION",
+                            "DigitalOcean region must be a short alphanumeric token");
+                }
                 yield new ResolvedEndpoint(Optional.of("https://" + region + ".digitaloceanspaces.com"), false);
             }
             case "AZURE" ->

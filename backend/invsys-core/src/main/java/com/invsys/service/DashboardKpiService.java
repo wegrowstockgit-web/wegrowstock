@@ -28,7 +28,8 @@ import java.util.stream.Collectors;
 @Service
 public class DashboardKpiService {
 
-    static final List<String> OPEN_ORDER_STATUSES = List.of("CONFIRMED", "ALLOCATED", "PARTIALLY_SHIPPED");
+    static final List<String> OPEN_ORDER_STATUSES = List.of(
+            "CONFIRMED", "UNALLOCATED", "PARTIALLY_ALLOCATED", "ALLOCATED", "BACKORDERED", "PARTIALLY_SHIPPED");
     static final List<String> UNPAID_INVOICE_STATUSES = List.of("OPEN", "PARTIALLY_PAID");
 
     private final DashboardKpiSnapshotRepository snapshotRepository;

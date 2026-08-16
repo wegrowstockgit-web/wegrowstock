@@ -16,6 +16,7 @@ You will use three kinds of screens:
 |---------|-----|----------------|
 | **Office** | Owners, admins, managers, viewers | Laptop / desktop browser |
 | **Warehouse floor** | Pickers, warehouse managers on the dock | Phone, tablet, or rugged scanner |
+| **Retail POS** | Store cashiers (Enterprise addon) | Touch register — `http://localhost:3003`. Language follows **Organization → Company preferences** (English / Español / Français). Money follows the workspace base currency; the register also detects where it was opened for tax and a local-currency hint. If Retail POS is not on the tenant or tier, the register stays locked. |
 | **B2B showroom** | Your wholesale customers | Browser (catalog + checkout only) |
 | **Super Admin portal** | InvSys platform operators only | Laptop — `http://localhost:3002` (`admin.invsys.com`) |
 
@@ -48,7 +49,7 @@ The left rail groups related screens. Click a **category** to expand it, then op
 | Category | Typical pages |
 |----------|----------------|
 | *(top)* | **Dashboard** |
-| **Inbound** | Purchase Orders, Suppliers, Returns |
+| **Inbound** | Purchase Orders, Suppliers, Mesh Network, Returns |
 | **Outbound** | Sales Orders, Customers, Invoices, Fulfillment |
 | **Inventory** | Products, Replenishments, Cycle counts, Exceptions, Lot Trace |
 | **Manufacturing** | BOMs, Production Orders |
@@ -75,9 +76,10 @@ Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emai
 
 ### 2. Sign-in options later
 
-- Email + password (slug is inferred from email for demo).
+- **Identifier-first:** enter your work email, then **Continue**. The system looks up your company from a verified domain or the warehouse network (corporate CIDR).
+- Email + password when SSO is not enforced (slug is inferred from email for demo).
 - **Magic link** login when enabled (rate-limited at the gateway for safety).
-- Enterprise **SSO** (SAML/OIDC) if your admin configured it under **Admin → Organization** (Settings).
+- Enterprise **SSO** (SAML/OIDC/Google Workspace) when your admin configured it under **Settings → Security**. If they **Enforce SSO**, you never see a password field.
 
 ### 3. Invite your team
 
@@ -185,7 +187,8 @@ Pinned columns (usually **SKU** and **Name**) stay visible when you scroll sidew
 1. **Inbound → Purchase Orders → New PO** (or **Create**).
 2. Choose supplier, warehouse, lines (SKU + qty) → submit.
 3. When the truck is on the way, mark **In transit** if you use that status.
-4. When freight arrives, use **Floor receive** / open **Inbound receive** on a scanner so putaway posts to the ledger.
+4. If the supplier is a **connected Mesh partner**, confirming the PO also drafts their sales order automatically (you will see a note like “Linked to Mesh Partner Sales Order #SO-…”).
+5. When freight arrives, use **Floor receive** / open **Inbound receive** on a scanner so putaway posts to the ledger.
 
 ### Sell stock (sales order)
 
@@ -200,6 +203,8 @@ Pinned columns (usually **SKU** and **Name**) stay visible when you scroll sidew
 |------|------------|
 | **Products** | Catalog, images, reorder points, columns/density, Import |
 | **Customers / Suppliers** | Master data |
+| **Mesh Network** | Discover other tenants’ published products, request/approve connections, publish your wholesale list (`MESH_NETWORK`) |
+| **Dashboard — Smart sourcing** | Low-stock SKUs a connected partner already sells — **Draft PO** opens a prefilled purchase order |
 | **Exceptions** | Resolve “skip & flag” issues from the floor |
 | **Manufacturing** | BOMs and production orders |
 | **Returns** | Approve RMAs; floor receives dispositions |
@@ -280,6 +285,20 @@ Wholesale buyers invited as **B2B_CUSTOMER**:
 1. Sign in → **Catalog** (tier pricing applied).
 2. Add to cart → checkout / orders / billing screens under `/showroom/...`.
 3. They never see your internal PO, ledger, or settings screens.
+
+---
+
+## Mesh Network (buy and sell with other tenants)
+
+When your plan includes **MESH_NETWORK** (Demo Corp does), Owners and Admins can open **Inbound → Mesh Network**:
+
+1. **Discover** — browse products other companies published. You see name, image, and seller — not their price or stock. **Request Connection** starts a handshake.
+2. **My Network** — outgoing requests show **REQUESTED**. Incoming requests show **PENDING**; **Approve** creates a Supplier on your partner’s books and a Customer on yours, then marks the link **CONNECTED**.
+3. **Shared Catalog** — toggle **Publish to Network** on your own SKUs and set a **Mesh Wholesale Price** (visible only after you are connected and mapping catalogs).
+4. After you are connected, Settings → **Partner Catalog** still maps your SKUs to theirs so a submitted/confirmed PO can become their sales order.
+5. On the **Dashboard**, **Smart sourcing** appears when you are below a bin reorder point and a connected partner publishes that same SKU or barcode. **Draft PO** jumps to `/purchase-orders/new?meshPartnerSku=…`.
+
+Pickers and Viewers do not see this hub.
 
 ---
 

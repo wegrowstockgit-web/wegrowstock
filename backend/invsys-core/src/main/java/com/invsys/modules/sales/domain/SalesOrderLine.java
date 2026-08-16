@@ -31,6 +31,9 @@ public class SalesOrderLine extends TenantScopedEntity {
     @Column(name = "qty_shipped", nullable = false)
     private BigDecimal qtyShipped = BigDecimal.ZERO;
 
+    @Column(name = "qty_backordered", nullable = false)
+    private BigDecimal qtyBackordered = BigDecimal.ZERO;
+
     @Column(name = "unit_price", nullable = false)
     private BigDecimal unitPrice = BigDecimal.ZERO;
 
@@ -76,6 +79,14 @@ public class SalesOrderLine extends TenantScopedEntity {
 
     public void setQtyShipped(BigDecimal qtyShipped) {
         this.qtyShipped = qtyShipped;
+    }
+
+    public BigDecimal getQtyBackordered() {
+        return qtyBackordered;
+    }
+
+    public void setQtyBackordered(BigDecimal qtyBackordered) {
+        this.qtyBackordered = qtyBackordered != null ? qtyBackordered : BigDecimal.ZERO;
     }
 
     public BigDecimal getUnitPrice() {

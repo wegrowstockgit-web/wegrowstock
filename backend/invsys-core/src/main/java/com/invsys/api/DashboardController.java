@@ -15,6 +15,7 @@ import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.modules.sales.repository.SalesOrderRepository;
 import com.invsys.service.DashboardKpiService;
+import com.invsys.service.MeshCatalogService;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,6 +46,7 @@ public class DashboardController {
     private final ProductRepository productRepository;
     private final DemandForecastRepository forecastRepository;
     private final DashboardKpiService dashboardKpiService;
+    private final MeshCatalogService meshCatalogService;
 
     public DashboardController(InventoryLevelRepository levelRepository,
                                ProductVariantRepository variantRepository,
@@ -53,7 +55,8 @@ public class DashboardController {
                                CustomerRepository customerRepository,
                                ProductRepository productRepository,
                                DemandForecastRepository forecastRepository,
-                               DashboardKpiService dashboardKpiService) {
+                               DashboardKpiService dashboardKpiService,
+                               MeshCatalogService meshCatalogService) {
         this.levelRepository = levelRepository;
         this.variantRepository = variantRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -62,6 +65,12 @@ public class DashboardController {
         this.productRepository = productRepository;
         this.forecastRepository = forecastRepository;
         this.dashboardKpiService = dashboardKpiService;
+        this.meshCatalogService = meshCatalogService;
+    }
+
+    @GetMapping("/mesh-sourcing-suggestions")
+    public List<MeshCatalogService.MeshSourcingSuggestion> getMeshSourcingSuggestions() {
+        return meshCatalogService.getMeshSourcingSuggestions();
     }
 
     @GetMapping("/stats")
@@ -154,7 +163,8 @@ public class DashboardController {
     public KpiTrendsResponse kpiTrends() {
         TenantContext.requireTenantId();
 
-        List<String> openStatuses = List.of("CONFIRMED", "ALLOCATED", "PARTIALLY_SHIPPED");
+        List<String> openStatuses = List.of(
+                "CONFIRMED", "UNALLOCATED", "PARTIALLY_ALLOCATED", "ALLOCATED", "BACKORDERED", "PARTIALLY_SHIPPED");
         List<String> unpaidStatuses = List.of("OPEN", "PARTIALLY_PAID");
 
         long openOrders = salesOrderRepository.findAll().stream()

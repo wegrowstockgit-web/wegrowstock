@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractIntentBarcode, useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 describe('extractIntentBarcode', () => {
@@ -83,5 +83,69 @@ describe('useBarcodeScanner listener lifecycle', () => {
 
     addSpy.mockRestore();
     removeSpy.mockRestore();
+  });
+});
+
+describe('useBarcodeScanner camera + status', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'serial');
+  });
+
+  it('exposes UNSUPPORTED status, camera trigger, and interchangeable ingestScan', () => {
+    const onScan = vi.fn();
+    const { result } = renderHook(() =>
+      useBarcodeScanner({ enabled: true, captureAll: true, onScan }),
+    );
+
+    expect(result.current.hardwareStatus).toBe('UNSUPPORTED');
+    expect(result.current.triggerCamera).toBe(false);
+
+    act(() => {
+      result.current.setTriggerCamera(true);
+    });
+    expect(result.current.triggerCamera).toBe(true);
+
+    act(() => {
+      result.current.ingestScan('CAM-42', 'camera');
+    });
+    expect(onScan).toHaveBeenCalledWith('CAM-42', expect.anything());
+    expect(result.current.hardwareStatus).toBe('UNSUPPORTED');
+  });
+
+  it('marks CONNECTED after a hardware ingest when Web Serial exists', () => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    const onScan = vi.fn();
+    const { result } = renderHook(() =>
+      useBarcodeScanner({ enabled: true, captureAll: true, onScan }),
+    );
+
+    expect(result.current.hardwareStatus).toBe('DISCONNECTED');
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('hardwareScan', { detail: { barcode: 'SKU-HW-1' } }));
+    });
+
+    expect(onScan).toHaveBeenCalledWith('SKU-HW-1', expect.anything());
+    expect(result.current.hardwareStatus).toBe('CONNECTED');
+
+    act(() => {
+      result.current.ingestScan('CAM-KEEP', 'camera');
+    });
+    expect(result.current.hardwareStatus).toBe('CONNECTED');
+  });
+
+  it('does not treat camera ingest as a hardware connection', () => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    const onScan = vi.fn();
+    const { result } = renderHook(() =>
+      useBarcodeScanner({ enabled: true, captureAll: true, onScan }),
+    );
+
+    expect(result.current.hardwareStatus).toBe('DISCONNECTED');
+    act(() => {
+      result.current.ingestScan('CAM-ONLY', 'camera');
+    });
+    expect(onScan).toHaveBeenCalledWith('CAM-ONLY', expect.anything());
+    expect(result.current.hardwareStatus).toBe('DISCONNECTED');
   });
 });

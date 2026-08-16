@@ -15,15 +15,19 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { useTrainingSandboxStore } from '@/modules/training/trainingSandboxStore';
 import { compressImageForUpload } from '@/utils/imageCompression';
 
-vi.mock('./supportChatApi', () => ({
-  streamSupportChat: vi.fn(async (_msg, _roles, _route, handlers) => {
-    handlers.onToken('Scan the PO barcode on your handheld.');
-    handlers.onDone?.();
-  }),
-  executeSupportAction: vi.fn(async () => ({ ok: true, cycleCountId: 'cc-1' })),
-  executeSupportActionDraft: vi.fn(async () => ({ ok: true, cycleCountId: 'cc-draft' })),
-  fetchSupportInsight: vi.fn(async () => null),
-}));
+vi.mock('./supportChatApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./supportChatApi')>();
+  return {
+    ...actual,
+    streamSupportChat: vi.fn(async (_msg, _roles, _route, handlers) => {
+      handlers.onToken('Scan the PO barcode on your handheld.');
+      handlers.onDone?.();
+    }),
+    executeSupportAction: vi.fn(async () => ({ ok: true, cycleCountId: 'cc-1' })),
+    executeSupportActionDraft: vi.fn(async () => ({ ok: true, cycleCountId: 'cc-draft' })),
+    fetchSupportInsight: vi.fn(async () => null),
+  };
+});
 
 vi.mock('@/utils/imageCompression', () => ({
   compressImageForUpload: vi.fn(async (file: File) => file),
@@ -66,6 +70,12 @@ describe('SupportAssistantWidget', () => {
       lastRequestId: null,
       primarySession: null,
     });
+  });
+
+  it('does not poll insights or show the FAB on the login shell', () => {
+    renderWidget('/login');
+    expect(screen.queryByTestId('support-assistant-fab')).not.toBeInTheDocument();
+    expect(fetchSupportInsight).not.toHaveBeenCalled();
   });
 
   it('opens panel and streams a role-aware reply', async () => {

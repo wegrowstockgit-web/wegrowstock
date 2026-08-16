@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { completeIdentifierFirstLogin } from '../fixtures/roleFixture';
 import { contextForRole, DEMO_PASSWORD } from './helpers';
 
 /**
@@ -105,9 +106,7 @@ test.describe('Enterprise feature matrix', () => {
   test('UI login reaches MRP workspace when APIs are live', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto('/login');
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await completeIdentifierFirstLogin(page, 'owner@demo.test', DEMO_PASSWORD);
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
     await page.goto('/mrp');
     // Page shell must render even if suggestions API 404s on undeployed stacks

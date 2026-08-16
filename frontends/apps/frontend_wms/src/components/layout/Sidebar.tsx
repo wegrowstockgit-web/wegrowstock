@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  Boxes,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -9,6 +8,7 @@ import {
   UserCircle,
   type LucideIcon,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useSessionStore, useEnabledModules } from '@/stores/session';
 import { useRailStore } from '@/stores/rail';
@@ -19,6 +19,7 @@ import {
   type NavCategoryConfig,
   type NavLeafConfig,
 } from './navConfig';
+import { BrandLogo } from './BrandLogo';
 import '@/lib/router/appModules';
 import { isNavPathEnabled } from '@/lib/router/moduleRegistry';
 
@@ -108,6 +109,7 @@ function SoloLink({
  * Mobile (≤1023px): overlay drawer. Desktop: hover peek + pin.
  */
 export function Sidebar() {
+  const { t } = useTranslation();
   const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
   const isPickerOnly = useSessionStore((s) => s.isPickerOnly);
@@ -334,31 +336,8 @@ export function Sidebar() {
               labelsVisible ? 'justify-between gap-2 px-1' : 'justify-center',
             )}
           >
-            <div
-              className={cn(
-                'flex min-w-0 items-center',
-                labelsVisible ? 'gap-2.5' : 'justify-center',
-              )}
-            >
-              <div
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-text-inverse shadow-card"
-                title="InventorySystem"
-                aria-hidden
-              >
-                <Boxes className="h-4 w-4" />
-              </div>
-              <span
-                aria-hidden={!labelsVisible}
-                className={cn(
-                  'truncate text-sm font-semibold tracking-tight text-text',
-                  'transition-[opacity,transform,max-width] duration-[var(--rail-duration)] ease-[var(--rail-ease)]',
-                  labelsVisible
-                    ? 'max-w-[9rem] translate-x-0 opacity-100 delay-75'
-                    : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0',
-                )}
-              >
-                InventorySystem
-              </span>
+            <div className={cn('flex items-center', labelsVisible ? 'shrink-0' : 'justify-center')}>
+              <BrandLogo compact={!labelsVisible} size="sm" />
             </div>
 
             {!showOverlay && expanded && (
@@ -370,7 +349,7 @@ export function Sidebar() {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={handlePinToggle}
                 className={cn(
-                  'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg touch-target',
+                  'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
                   'text-text-muted transition-[background-color,color,transform] duration-150 ease-out',
                   'hover:bg-surface-overlay hover:text-text motion-safe:active:scale-[0.96]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
@@ -438,7 +417,7 @@ export function Sidebar() {
                 <SoloLink
                   key={solo.id}
                   to={solo.to}
-                  label={solo.label}
+                  label={t(`nav.${solo.label}`)}
                   icon={solo.icon}
                   labelsVisible={labelsVisible}
                   coarsePointer={coarsePointer}
@@ -464,8 +443,8 @@ export function Sidebar() {
                       aria-expanded={isOpen}
                       aria-controls={`nav-group-panel-${group.id}`}
                       data-testid={`nav-category-${group.id}`}
-                      title={coarsePointer || showOverlay ? undefined : group.category}
-                      aria-label={group.category}
+                      title={coarsePointer || showOverlay ? undefined : t(`nav.${group.category}`)}
+                      aria-label={t(`nav.${group.category}`)}
                       onClick={() => {
                         if (!labelsVisible) {
                           setPeekLocked(false);
@@ -496,7 +475,7 @@ export function Sidebar() {
                             : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0',
                         )}
                       >
-                        {group.category}
+                        {t(`nav.${group.category}`)}
                       </span>
                       {labelsVisible && (
                         <ChevronRight
@@ -513,18 +492,20 @@ export function Sidebar() {
                       <div
                         id={`nav-group-panel-${group.id}`}
                         role="group"
-                        aria-label={group.category}
+                        aria-label={t(`nav.${group.category}`)}
                         className={cn(
                           'flex flex-col gap-0.5',
                           labelsVisible && 'ml-5 border-l border-border/70 pl-1',
                         )}
                       >
-                        {group.items.map(({ to, label, icon: Icon, tourAnchor }) => (
+                        {group.items.map(({ to, label, icon: Icon, tourAnchor }) => {
+                          const translated = t(`nav.${label}`);
+                          return (
                           <NavLink
                             key={to}
                             to={to}
-                            title={coarsePointer || showOverlay ? undefined : label}
-                            aria-label={label}
+                            title={coarsePointer || showOverlay ? undefined : translated}
+                            aria-label={translated}
                             className={childLinkClass}
                             data-tour={tourAnchor}
                             onClick={() => {
@@ -533,10 +514,11 @@ export function Sidebar() {
                           >
                             <Icon className="h-3.5 w-3.5 shrink-0" />
                             <LabelSpan visible={labelsVisible} className="max-w-[9.5rem]">
-                              {label}
+                              {translated}
                             </LabelSpan>
                           </NavLink>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -548,7 +530,7 @@ export function Sidebar() {
 
           <SoloLink
             to="/settings/profile"
-            label="Profile"
+            label={t('nav.Profile')}
             icon={UserCircle}
             labelsVisible={labelsVisible}
             coarsePointer={coarsePointer}

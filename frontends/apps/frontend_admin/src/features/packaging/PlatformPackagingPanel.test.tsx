@@ -66,5 +66,7 @@ describe('PlatformPackagingPanel', () => {
     expect((screen.getByTestId('packaging-toggle-BASIC-CORE') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId('packaging-toggle-BASIC-SHOPIFY') as HTMLInputElement).disabled).toBe(false);
     expect((screen.getByTestId('packaging-toggle-INTERMEDIATE-SHOPIFY') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId('packaging-toggle-ENTERPRISE-RETAIL_POS')).toBeTruthy();
+    expect(screen.getByLabelText('ENTERPRISE Retail Point of Sale (POS)')).toBeTruthy();
   });
 });

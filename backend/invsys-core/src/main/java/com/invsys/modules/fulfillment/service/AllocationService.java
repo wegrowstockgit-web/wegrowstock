@@ -9,6 +9,9 @@ import com.invsys.modules.inventory.api.InventoryLevelLookup;
 import com.invsys.modules.sales.api.AllocateSalesOrderRequested;
 import com.invsys.modules.sales.api.ReleaseSalesOrderAllocationsRequested;
 import com.invsys.modules.sales.api.SalesOrderLineLookup;
+import com.invsys.modules.sales.api.SalesOrderLookup;
+import com.invsys.modules.sales.domain.AllocationPolicy;
+import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
@@ -29,22 +32,37 @@ public class AllocationService {
     private final InventoryLevelLookup levelRepository;
     private final AllocationLookup allocationRepository;
     private final SalesOrderLineLookup salesOrderLineRepository;
+    private final SalesOrderLookup salesOrderLookup;
     private final KitService kitService;
 
     public AllocationService(InventoryLevelLookup levelRepository,
                              AllocationLookup allocationRepository,
                              SalesOrderLineLookup salesOrderLineRepository,
+                             SalesOrderLookup salesOrderLookup,
                              KitService kitService) {
         this.levelRepository = levelRepository;
         this.allocationRepository = allocationRepository;
         this.salesOrderLineRepository = salesOrderLineRepository;
+        this.salesOrderLookup = salesOrderLookup;
         this.kitService = kitService;
     }
 
     @EventListener
     public void onAllocateRequested(AllocateSalesOrderRequested event) {
-        for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(event.orderId())) {
+        List<SalesOrderLine> lines = salesOrderLineRepository.findBySalesOrderId(event.orderId());
+        AllocationPolicy policy = salesOrderLookup.findById(event.orderId())
+                .map(SalesOrder::getAllocationPolicy)
+                .orElse(AllocationPolicy.ALLOW_PARTIAL);
+        if (policy == AllocationPolicy.SHIP_COMPLETE && !canFulfillCompletely(lines, event.locationIds())) {
+            for (SalesOrderLine line : lines) {
+                markBackorderedRemainder(line);
+            }
+            return;
+        }
+        for (SalesOrderLine line : lines) {
             allocate(line, event.locationIds());
+            SalesOrderLine refreshed = salesOrderLineRepository.findById(line.getId()).orElse(line);
+            markBackorderedRemainder(refreshed);
         }
     }
 
@@ -85,6 +103,9 @@ public class AllocationService {
         UUID tenantId = TenantContext.requireTenantId();
 
         BigDecimal kitsToAllocate = remainingKits;
+        if (locationIds == null || locationIds.isEmpty()) {
+            return created;
+        }
         for (KitService.BomComponent component : components) {
             List<InventoryLevel> levels = levelRepository.findAvailableForAllocation(
                     tenantId, component.variantId(), locationIds);
@@ -111,6 +132,9 @@ public class AllocationService {
 
     private void allocateQuantity(SalesOrderLine line, UUID variantId, BigDecimal quantity,
                                   List<UUID> locationIds, List<Allocation> created) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return;
+        }
         BigDecimal remaining = quantity;
         UUID tenantId = TenantContext.requireTenantId();
         List<InventoryLevel> levels = levelRepository.findAvailableForAllocation(tenantId, variantId, locationIds);
@@ -143,6 +167,62 @@ public class AllocationService {
             line.setQtyAllocated(line.getQtyAllocated().add(allocated));
             salesOrderLineRepository.save(line);
         }
+    }
+
+    private boolean canFulfillCompletely(List<SalesOrderLine> lines, List<UUID> locationIds) {
+        for (SalesOrderLine line : lines) {
+            BigDecimal remaining = remainingToAllocate(line);
+            if (remaining.signum() <= 0) {
+                continue;
+            }
+            if (previewAvailableQty(line, locationIds).compareTo(remaining) < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private BigDecimal previewAvailableQty(SalesOrderLine line, List<UUID> locationIds) {
+        if (kitService.isKit(line.getVariantId())) {
+            return previewAvailableKits(line, locationIds);
+        }
+        return availableAtp(line.getVariantId(), locationIds);
+    }
+
+    private BigDecimal previewAvailableKits(SalesOrderLine line, List<UUID> locationIds) {
+        List<KitService.BomComponent> components = kitService.explodeComponents(line.getVariantId());
+        if (components.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal kits = remainingToAllocate(line);
+        for (KitService.BomComponent component : components) {
+            BigDecimal available = availableAtp(component.variantId(), locationIds);
+            BigDecimal maxKits = available.divide(component.quantityPerParent(), 0, RoundingMode.DOWN);
+            kits = kits.min(maxKits);
+        }
+        return kits;
+    }
+
+    private BigDecimal availableAtp(UUID variantId, List<UUID> locationIds) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        return levelRepository.findAvailableForAllocation(tenantId, variantId, locationIds).stream()
+                .map(InventoryLevel::getAvailable)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static BigDecimal remainingToAllocate(SalesOrderLine line) {
+        BigDecimal ordered = line.getQtyOrdered() != null ? line.getQtyOrdered() : BigDecimal.ZERO;
+        BigDecimal allocated = line.getQtyAllocated() != null ? line.getQtyAllocated() : BigDecimal.ZERO;
+        return ordered.subtract(allocated);
+    }
+
+    private void markBackorderedRemainder(SalesOrderLine line) {
+        BigDecimal remaining = remainingToAllocate(line);
+        line.setQtyBackordered(remaining.signum() > 0 ? remaining : BigDecimal.ZERO);
+        salesOrderLineRepository.save(line);
     }
 
     @Transactional

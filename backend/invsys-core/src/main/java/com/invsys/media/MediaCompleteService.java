@@ -27,17 +27,23 @@ public class MediaCompleteService {
     private final MediaPreSignService preSignService;
     private final MediaObjectRepository mediaObjectRepository;
     private final MediaUploadService mediaUploadService;
+    private final ImageContentValidator imageContentValidator;
+    private final ObjectStorage objectStorage;
 
     public MediaCompleteService(S3Client s3Client,
                                 MediaStorageProperties properties,
                                 MediaPreSignService preSignService,
                                 MediaObjectRepository mediaObjectRepository,
-                                MediaUploadService mediaUploadService) {
+                                MediaUploadService mediaUploadService,
+                                ImageContentValidator imageContentValidator,
+                                ObjectStorage objectStorage) {
         this.s3Client = s3Client;
         this.properties = properties;
         this.preSignService = preSignService;
         this.mediaObjectRepository = mediaObjectRepository;
         this.mediaUploadService = mediaUploadService;
+        this.imageContentValidator = imageContentValidator;
+        this.objectStorage = objectStorage;
     }
 
     @Transactional
@@ -68,9 +74,17 @@ public class MediaCompleteService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE", "Uploaded object size is invalid");
         }
 
-        String contentType = head.contentType() != null && !head.contentType().isBlank()
-                ? head.contentType().split(";")[0].trim().toLowerCase()
-                : (declaredContentType == null ? "application/octet-stream" : declaredContentType);
+        byte[] bytes;
+        try (var in = objectStorage.open(objectKey)) {
+            bytes = in.readAllBytes();
+        } catch (Exception ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "UPLOAD_UNREADABLE",
+                    "Uploaded object could not be read for validation");
+        }
+        if (bytes.length != size && bytes.length > properties.getMaxBytes()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE", "Uploaded object size is invalid");
+        }
+        String contentType = imageContentValidator.detectAndValidate(bytes, declaredContentType);
 
         MediaObject media = new MediaObject();
         media.setTenantId(tenantId);

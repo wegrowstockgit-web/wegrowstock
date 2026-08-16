@@ -9,12 +9,16 @@ export {
   resolveRouteKnowledge,
   formatRouteKnowledgeForChat,
   enrichRouteKnowledge,
+  playbookI18nKey,
   humanRoleLabels,
   rolePermissionsForRouteKey,
   ROUTE_KNOWLEDGE,
 } from './RouteKnowledgeRegistry';
 
 export type {
+  PageAction,
+  TroubleshootingStep,
+  PageKnowledge,
   RouteKnowledgeColumn,
   RouteKnowledgeColumns,
   RouteKnowledgeComponent,

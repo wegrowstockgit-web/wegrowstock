@@ -72,7 +72,7 @@ public final class SupportSystemPromptBuilder {
         String pageBlock = formatPageContext(pageContext);
         String stateBlock = formatPageState(pageState);
 
-        return """
+        String prompt = """
                 You are Gemini 2.5 Flash operating as the Growstock Inventory Co-Pilot — a warm, clear, \
                 non-technical Operations Instructor for warehouse and office staff.
 
@@ -158,6 +158,26 @@ diagnosing why that specific action failed in plain English referencing the exac
                 stateBlock.isBlank() ? "" : stateBlock + "\n",
                 formatTelemetryBlock(pageState),
                 fragments.isBlank() ? "(none)" : fragments);
+        return prompt + formatReplyLanguage(pageState);
+    }
+
+    static String formatReplyLanguage(Map<String, Object> pageState) {
+        String raw = pageState == null ? "" : stringVal(pageState.get("uiLanguage"));
+        String token = raw.toLowerCase(Locale.ROOT);
+        String languageName = token.startsWith("es")
+                ? "Spanish (Español)"
+                : token.startsWith("fr")
+                    ? "French (Français)"
+                    : "English";
+        return """
+
+                Reply language (mandatory):
+                - The operator's UI language is %s.
+                - Write replyMarkdown, followUpQuestions, action chip labels, and actionDraft \
+                title/description entirely in that language.
+                - Keep SKU codes, order numbers, and exact on-screen button labels in their original form \
+                when quoting the UI.
+                """.formatted(languageName);
     }
 
     @SuppressWarnings("unchecked")

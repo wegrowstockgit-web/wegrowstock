@@ -9,7 +9,6 @@ import type {
   InternalRequisition,
   OutboxEventItem,
   PlatformAlertItem,
-  SsoConfig,
   SyncLog,
   TaxRate,
   TaxScheme,
@@ -18,6 +17,7 @@ import type {
   TenantUser,
 } from '@/api/types';
 import { cn } from '@/lib/utils';
+import { TenantSecuritySettings } from '@/pages/TenantSecuritySettings';
 import { useSessionStore } from '@/stores/session';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -133,10 +133,15 @@ function SavedNote({ show }: { show: boolean }) {
 function ProfileTab() {
   const settings = useTenantSettings();
   const [currency, setCurrency] = useState('');
+  const [localeLanguage, setLocaleLanguage] = useState('en');
 
   useEffect(() => {
     if (settings.data && typeof settings.data.currency === 'string') {
       setCurrency(settings.data.currency);
+    }
+    if (settings.data && typeof settings.data.locale_language === 'string' && settings.data.locale_language) {
+      const raw = settings.data.locale_language.toLowerCase();
+      setLocaleLanguage(raw.startsWith('es') ? 'es' : raw.startsWith('fr') ? 'fr' : 'en');
     }
   }, [settings.data]);
 
@@ -163,16 +168,34 @@ function ProfileTab() {
       </Card>
 
       <Card>
-        <CardHeader title="Company preferences" description="Applied across the whole workspace" />
+        <CardHeader
+          title="Company preferences"
+          description="Workspace language and currency apply to Retail POS when the module is enabled"
+        />
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            settings.patch.mutate({ currency });
+            settings.patch.mutate({ currency, locale_language: localeLanguage });
           }}
           className="grid grid-cols-1 gap-4 md:grid-cols-2"
         >
-          <Select label="Base currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {['USD', 'EUR', 'GBP', 'CAD', 'AUD'].map((c) => (
+          <Select
+            label="Workspace language"
+            value={localeLanguage}
+            onChange={(e) => setLocaleLanguage(e.target.value)}
+            data-testid="org-locale-language"
+          >
+            <option value="en">English</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+          </Select>
+          <Select
+            label="Base currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            data-testid="org-base-currency"
+          >
+            {['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'MXN'].map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -1365,212 +1388,7 @@ function DocumentsTab() {
 /* ------------------------------------ Security & SSO ----------------------------------- */
 
 function SecuritySsoTab() {
-  const queryClient = useQueryClient();
-  const [issuerUrl, setIssuerUrl] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [enabled, setEnabled] = useState(false);
-  const [forceSso, setForceSso] = useState(false);
-  const [protocol, setProtocol] = useState<'OIDC' | 'SAML'>('OIDC');
-  const [samlMetadataUrl, setSamlMetadataUrl] = useState('');
-  const [samlEntityId, setSamlEntityId] = useState('');
-  const [error, setError] = useState('');
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['settings', 'sso'],
-    queryFn: async () => (await apiClient.get<SsoConfig>('/api/v1/settings/sso')).data,
-    retry: false,
-  });
-
-  const { data: connectionStates } = useQuery({
-    queryKey: ['settings', 'sso', 'connection-states'],
-    queryFn: async () =>
-      (
-        await apiClient.get<{
-          providers: Array<{
-            id: string;
-            displayName: string;
-            status: string;
-            connected: boolean;
-            issuerTemplate: string;
-          }>;
-        }>('/api/v1/settings/sso/connection-states')
-      ).data,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (!data) return;
-    setIssuerUrl(data.issuerUrl);
-    setClientId(data.clientId);
-    setEnabled(data.enabled);
-    setForceSso(data.forceSso);
-    setProtocol(data.protocol === 'SAML' ? 'SAML' : 'OIDC');
-    setSamlMetadataUrl(data.samlMetadataUrl ?? '');
-    setSamlEntityId(data.samlEntityId ?? '');
-  }, [data]);
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.put('/api/v1/settings/sso', {
-        issuerUrl,
-        clientId,
-        clientSecret: clientSecret || undefined,
-        enabled,
-        forceSso,
-        protocol,
-        samlMetadataUrl: samlMetadataUrl || undefined,
-        samlEntityId: samlEntityId || undefined,
-      });
-    },
-    onSuccess: () => {
-      setClientSecret('');
-      setError('');
-      void queryClient.invalidateQueries({ queryKey: ['settings', 'sso'] });
-    },
-    onError: () => setError('Could not save SSO settings. Check issuer URL, client ID, and secret.'),
-  });
-
-  if (isLoading) return <TableSkeleton rows={4} cols={2} />;
-
-  return (
-    <div className="space-y-6" data-testid="security-sso-tab">
-      <Card>
-        <CardHeader
-          title="Identity providers"
-          description="OAuth2 / OIDC connection state for Google Workspace, Entra ID, and Okta"
-        />
-        <div className="grid gap-3 sm:grid-cols-3" data-testid="sso-connection-cards">
-          {(connectionStates?.providers ?? [
-            { id: 'GOOGLE', displayName: 'Google Workspace', status: 'DISCONNECTED', connected: false, issuerTemplate: '' },
-            { id: 'ENTRA', displayName: 'Microsoft Entra ID', status: 'DISCONNECTED', connected: false, issuerTemplate: '' },
-            { id: 'OKTA', displayName: 'Okta', status: 'DISCONNECTED', connected: false, issuerTemplate: '' },
-          ]).map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              data-testid={`sso-card-${p.id}`}
-              className="rounded-lg border border-border bg-surface-raised p-4 text-left transition hover:border-accent"
-              onClick={() => {
-                if (p.issuerTemplate && !p.issuerTemplate.includes('{')) {
-                  setIssuerUrl(p.issuerTemplate);
-                } else if (p.id === 'GOOGLE') {
-                  setIssuerUrl('https://accounts.google.com');
-                } else if (p.id === 'ENTRA') {
-                  setIssuerUrl('https://login.microsoftonline.com/common/v2.0');
-                } else if (p.id === 'OKTA') {
-                  setIssuerUrl('https://your-org.okta.com/oauth2/default');
-                }
-                setProtocol('OIDC');
-              }}
-            >
-              <div className="text-sm font-semibold text-text">{p.displayName}</div>
-              <div
-                className={`mt-2 text-xs font-medium ${p.connected ? 'text-success' : 'text-text-muted'}`}
-                data-testid={`sso-status-${p.id}`}
-              >
-                {p.status}
-              </div>
-            </button>
-          ))}
-        </div>
-      </Card>
-    <Card>
-      <CardHeader
-        title="Security & SSO"
-        description="OIDC or SAML routing for Google Workspace, Okta, and Microsoft Entra ID"
-      />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          saveMutation.mutate();
-        }}
-        className="space-y-4"
-      >
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-text">Protocol</span>
-          <select
-            value={protocol}
-            onChange={(e) => setProtocol(e.target.value === 'SAML' ? 'SAML' : 'OIDC')}
-            className="h-10 w-full rounded-md border border-border bg-surface-raised px-3 text-sm"
-          >
-            <option value="OIDC">OIDC (OAuth2)</option>
-            <option value="SAML">SAML 2.0</option>
-          </select>
-        </label>
-        <Input
-          label="Issuer URL"
-          value={issuerUrl}
-          onChange={(e) => setIssuerUrl(e.target.value)}
-          placeholder="https://your-org.okta.com/oauth2/default"
-          required={protocol === 'OIDC'}
-        />
-        {protocol === 'SAML' && (
-          <>
-            <Input
-              label="SAML metadata URL"
-              value={samlMetadataUrl}
-              onChange={(e) => setSamlMetadataUrl(e.target.value)}
-              placeholder="https://login.microsoftonline.com/.../federationmetadata/..."
-            />
-            <Input
-              label="SAML entity ID"
-              value={samlEntityId}
-              onChange={(e) => setSamlEntityId(e.target.value)}
-            />
-          </>
-        )}
-        <Input
-          label="Client ID"
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-          required={protocol === 'OIDC'}
-        />
-        <Input
-          label="Client secret"
-          type="password"
-          value={clientSecret}
-          onChange={(e) => setClientSecret(e.target.value)}
-          placeholder={data?.configured ? 'Leave blank to keep existing secret' : 'Required on first save'}
-          required={!data?.configured}
-        />
-        <label className="flex items-center gap-3" htmlFor="sso-enabled">
-          <input
-            id="sso-enabled"
-            name="ssoEnabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-border accent-accent"
-          />
-          <span className="text-sm text-text">Enable SSO for this workspace</span>
-        </label>
-        <label className="flex items-center gap-3" htmlFor="sso-force">
-          <input
-            id="sso-force"
-            name="forceCorporateSso"
-            type="checkbox"
-            checked={forceSso}
-            disabled={!enabled}
-            onChange={(e) => setForceSso(e.target.checked)}
-            className="h-4 w-4 rounded border-border accent-accent disabled:opacity-50"
-          />
-          <span className="text-sm text-text">
-            Force corporate SSO (block password login)
-          </span>
-        </label>
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex items-center gap-3">
-          <Button type="submit" loading={saveMutation.isPending}>
-            Save SSO settings
-          </Button>
-          <SavedNote show={saveMutation.isSuccess && !saveMutation.isPending} />
-        </div>
-      </form>
-    </Card>
-    </div>
-  );
+  return <TenantSecuritySettings />;
 }
 
 /* ------------------------------ Financial reconciliation -------------------------- */

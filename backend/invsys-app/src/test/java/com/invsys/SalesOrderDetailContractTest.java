@@ -94,5 +94,7 @@ class SalesOrderDetailContractTest extends AbstractIntegrationTest {
         assertThat(detail.lines().getFirst().sku()).isEqualTo("PEEK-01");
         assertThat(detail.lines().getFirst().name()).isEqualTo("Peek Widget");
         assertThat(detail.lines().getFirst().qtyOrdered()).isEqualByComparingTo("3");
+        assertThat(detail.allocationPolicy()).isEqualTo("ALLOW_PARTIAL");
+        assertThat(detail.lines().getFirst().qtyBackordered()).isEqualByComparingTo("0");
     }
 }

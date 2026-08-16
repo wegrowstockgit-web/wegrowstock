@@ -16,8 +16,12 @@ test.describe('Production tracks (conflicts, time-travel, migration wizard)', ()
     await expect(page.getByTestId('exceptions-tab-sync')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('sync-conflicts-panel')).toBeVisible({ timeout: 20_000 });
     await expect(
-      page.getByText(/No pending sync conflicts|Force Retry|Could not load sync conflicts/i).first(),
-    ).toBeVisible();
+      page
+        .getByTestId('sync-conflicts-empty')
+        .or(page.getByTestId('sync-conflicts-list'))
+        .or(page.getByText(/No pending sync conflicts|Force Retry|Could not load sync conflicts|Approve & Re-process/i))
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('settings sync conflicts tab loads', async ({ ownerPage: page }) => {

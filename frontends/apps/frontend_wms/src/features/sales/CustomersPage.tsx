@@ -21,6 +21,8 @@ import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 import { CustomerDetail } from '@/features/customers/CustomerDetail';
+import { WholesaleApplicationsPanel } from '@/features/sales/WholesaleApplicationsPanel';
+import { cn } from '@/lib/utils';
 
 function CustomersTable({
   items,
@@ -306,6 +308,7 @@ export function CustomersPage() {
   const canCreate = hasRole('OWNER', 'ADMIN');
   const [modalOpen, setModalOpen] = useState(false);
   const [peekCustomer, setPeekCustomer] = useState<Customer | null>(null);
+  const [tab, setTab] = useState<'customers' | 'applications'>('customers');
 
   const { data, isLoading, isError, error, refetch } =
     useListQuery<Customer>(['customers'], '/api/v1/customers');
@@ -328,36 +331,74 @@ export function CustomersPage() {
         )}
       </div>
 
-      <div className="shrink-0">
-        <DataListToolbar />
+      <div className="mb-4 flex shrink-0 gap-2" role="tablist" aria-label="Customer views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'customers'}
+          className={cn(
+            'rounded-md px-3 py-1.5 text-sm font-medium',
+            tab === 'customers' ? 'bg-accent-muted text-accent' : 'text-text-muted hover:bg-surface-overlay',
+          )}
+          onClick={() => setTab('customers')}
+        >
+          Customers
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'applications'}
+          data-testid="pending-applications-tab"
+          className={cn(
+            'rounded-md px-3 py-1.5 text-sm font-medium',
+            tab === 'applications' ? 'bg-accent-muted text-accent' : 'text-text-muted hover:bg-surface-overlay',
+          )}
+          onClick={() => setTab('applications')}
+        >
+          Pending Applications
+        </button>
       </div>
 
-      <div className="min-h-0 min-w-0 flex-1">
-        <ListPageState
-          isLoading={isLoading}
-          isError={isError}
-          error={error}
-          data={data}
-          refetch={refetch}
-          emptyIcon={Users}
-          emptyTitle="No customers yet"
-          emptyDescription={
-            canCreate
-              ? 'Add customers to create sales orders and invoices.'
-              : 'Customers will appear here once added by an admin.'
-          }
-          emptyAction={
-            canCreate ? (
-              <Button onClick={() => setModalOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Add customer
-              </Button>
-            ) : undefined
-          }
-        >
-          {(items) => <CustomersTable items={items} onPeek={setPeekCustomer} />}
-        </ListPageState>
-      </div>
+      {tab === 'customers' && (
+        <>
+          <div className="shrink-0">
+            <DataListToolbar />
+          </div>
+
+          <div className="min-h-0 min-w-0 flex-1">
+            <ListPageState
+              isLoading={isLoading}
+              isError={isError}
+              error={error}
+              data={data}
+              refetch={refetch}
+              emptyIcon={Users}
+              emptyTitle="No customers yet"
+              emptyDescription={
+                canCreate
+                  ? 'Add customers to create sales orders and invoices.'
+                  : 'Customers will appear here once added by an admin.'
+              }
+              emptyAction={
+                canCreate ? (
+                  <Button onClick={() => setModalOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add customer
+                  </Button>
+                ) : undefined
+              }
+            >
+              {(items) => <CustomersTable items={items} onPeek={setPeekCustomer} />}
+            </ListPageState>
+          </div>
+        </>
+      )}
+
+      {tab === 'applications' && (
+        <div className="min-h-0 min-w-0 flex-1">
+          <WholesaleApplicationsPanel />
+        </div>
+      )}
 
       <AddCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />
 

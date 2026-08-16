@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { completeIdentifierFirstLogin } from '../fixtures/roleFixture';
 
 const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 const API = process.env.E2E_API_URL ?? 'http://localhost:8080';
@@ -33,9 +34,7 @@ test.describe('Invoice PDF generation & dispatch', () => {
     }
 
     await page.goto('/login');
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(DEMO_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await completeIdentifierFirstLogin(page, 'owner@demo.test', DEMO_PASSWORD);
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
 
     await page.goto('/invoices');

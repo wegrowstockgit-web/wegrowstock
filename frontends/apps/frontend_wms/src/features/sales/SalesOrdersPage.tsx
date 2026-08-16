@@ -25,14 +25,49 @@ import { useSessionStore } from '@/stores/session';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
+  DRAFT_QUOTE: 'bg-surface-overlay text-text-muted',
+  PENDING_REP_APPROVAL: 'bg-warning/10 text-warning',
+  QUOTE_READY: 'bg-accent-muted text-accent',
+  QUOTE_ACCEPTED: 'bg-accent-muted text-accent',
+  UNALLOCATED: 'bg-warning/10 text-warning',
   CONFIRMED: 'bg-accent-muted text-accent',
   BACKORDERED: 'bg-warning/10 text-warning',
+  PARTIALLY_ALLOCATED: 'bg-warning/10 text-warning',
   ALLOCATED: 'bg-accent-muted text-accent',
   PARTIALLY_SHIPPED: 'bg-warning/10 text-warning',
   SHIPPED: 'bg-success/10 text-success',
   CLOSED: 'bg-success/10 text-success',
   CANCELLED: 'bg-danger/10 text-danger',
 };
+
+function defaultQuoteExpiry(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 14);
+  return d.toISOString().slice(0, 10);
+}
+
+function AllocationHoldBadge({
+  status,
+  allocationPolicy,
+}: {
+  status: string;
+  allocationPolicy?: string;
+}) {
+  if (!['PARTIALLY_ALLOCATED', 'BACKORDERED', 'UNALLOCATED'].includes(status)) {
+    return null;
+  }
+  const shipComplete = allocationPolicy === 'SHIP_COMPLETE';
+  return (
+    <p
+      className="rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+      data-testid="allocation-hold-badge"
+    >
+      {shipComplete
+        ? 'Held by Ship Complete — waiting until every line has ATP.'
+        : 'Split shipment — remaining quantity is backordered.'}
+    </p>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -87,7 +122,15 @@ function SalesOrdersTable({
       </TableHeader>
       <TableBody>
         {sorted.map((so) => (
-          <TableRow key={so.id} className="cursor-pointer" onClick={() => onPeek(so.id)}>
+          <TableRow
+            key={so.id}
+            className={cn(
+              'cursor-pointer',
+              so.status === 'PENDING_REP_APPROVAL' && 'bg-warning/10',
+            )}
+            data-rfq={so.status === 'PENDING_REP_APPROVAL' ? 'true' : undefined}
+            onClick={() => onPeek(so.id)}
+          >
             <TableCell mono>{so.number}</TableCell>
             <TableCell>{so.customerName}</TableCell>
             <TableCell>
@@ -344,7 +387,11 @@ function RowActions({ order }: { order: SalesOrder }) {
           Confirm
         </Button>
       )}
-      {canManage && (order.status === 'CONFIRMED' || order.status === 'BACKORDERED') && (
+      {canManage &&
+        (order.status === 'CONFIRMED' ||
+          order.status === 'BACKORDERED' ||
+          order.status === 'UNALLOCATED' ||
+          order.status === 'PARTIALLY_ALLOCATED') && (
         <Button
           variant="secondary"
           size="sm"
@@ -370,7 +417,11 @@ function RowActions({ order }: { order: SalesOrder }) {
             {order.billingStatus === 'PARTIAL' ? 'Invoice remaining' : 'Invoice'}
           </Button>
         ))}
-      {canManage && (order.status === 'DRAFT' || order.status === 'CONFIRMED') && (
+      {canManage &&
+        (order.status === 'DRAFT' ||
+          order.status === 'CONFIRMED' ||
+          order.status === 'PENDING_REP_APPROVAL' ||
+          order.status === 'QUOTE_READY') && (
         <Button
           variant="ghost"
           size="sm"
@@ -413,6 +464,7 @@ export function SalesOrdersPage() {
 
   const orderPresets = [
     { id: 'all', label: 'All', filters: {} as Record<string, string> },
+    { id: 'rfq', label: 'RFQ inbox', filters: { status: 'PENDING_REP_APPROVAL' } },
     { id: 'open', label: 'Open', filters: { status: 'CONFIRMED' } },
     { id: 'allocated', label: 'Allocated', filters: { status: 'ALLOCATED' } },
     { id: 'shipped', label: 'Shipped', filters: { status: 'SHIPPED' } },
@@ -491,39 +543,164 @@ export function SalesOrdersPage() {
       >
         {peekOrder ? (
           <div className="space-y-4">
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {peekOrder.lines.map((line) => (
-                <li key={line.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-text">{line.name ?? 'Item'}</p>
-                    <p className="font-mono text-xs text-text-muted">{line.sku ?? line.variantId.slice(0, 8)}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="tabular-nums text-text">
-                      {line.qtyOrdered} × {formatCurrency(Number(line.unitPrice))}
-                    </p>
-                    {Number(line.qtyShipped) > 0 && (
-                      <p className="text-xs text-text-muted">Shipped {line.qtyShipped}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="flex justify-end" onClick={(e: MouseEvent) => e.stopPropagation()}>
-              <RowActions order={{
-                id: peekOrder.id,
-                number: peekOrder.number,
-                customerName: peekOrder.customerName,
-                status: peekOrder.status,
-                channel: 'DIRECT',
-                createdAt: new Date().toISOString(),
-              }} />
-            </div>
+            <AllocationHoldBadge
+              status={peekOrder.status}
+              allocationPolicy={peekOrder.allocationPolicy}
+            />
+            {peekOrder.status === 'PENDING_REP_APPROVAL' || peekOrder.status === 'QUOTE_READY' ? (
+              <QuoteNegotiationForm order={peekOrder} onSent={() => setPeekOrderId(null)} />
+            ) : (
+              <>
+                <ul className="divide-y divide-border rounded-lg border border-border">
+                  {peekOrder.lines.map((line) => (
+                    <li key={line.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-text">{line.name ?? 'Item'}</p>
+                        <p className="font-mono text-xs text-text-muted">{line.sku ?? line.variantId.slice(0, 8)}</p>
+                        {Number(line.qtyBackordered ?? 0) > 0 && (
+                          <p className="text-xs text-warning">Backordered {line.qtyBackordered}</p>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="tabular-nums text-text">
+                          {line.qtyOrdered} × {formatCurrency(Number(line.unitPrice))}
+                        </p>
+                        {Number(line.qtyAllocated ?? 0) > 0 && (
+                          <p className="text-xs text-text-muted">Allocated {line.qtyAllocated}</p>
+                        )}
+                        {Number(line.qtyShipped) > 0 && (
+                          <p className="text-xs text-text-muted">Shipped {line.qtyShipped}</p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex justify-end" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                  <RowActions
+                    order={{
+                      id: peekOrder.id,
+                      number: peekOrder.number,
+                      customerName: peekOrder.customerName,
+                      status: peekOrder.status,
+                      channel: 'DIRECT',
+                      createdAt: new Date().toISOString(),
+                      allocationPolicy: peekOrder.allocationPolicy,
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <p className="text-sm text-text-muted">Loading…</p>
         )}
       </RightPeekDrawer>
     </div>
+  );
+}
+
+function QuoteNegotiationForm({
+  order,
+  onSent,
+}: {
+  order: SalesOrderDetail;
+  onSent: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [prices, setPrices] = useState<Record<string, string>>(() =>
+    Object.fromEntries(order.lines.map((line) => [line.id, String(line.unitPrice)])),
+  );
+  const [discount, setDiscount] = useState(String(order.manualDiscountTotal ?? 0));
+  const [expires, setExpires] = useState(
+    order.quoteExpiresAt ? order.quoteExpiresAt.slice(0, 10) : defaultQuoteExpiry(),
+  );
+  const [notes, setNotes] = useState(order.quoteNotes ?? '');
+  const [error, setError] = useState('');
+
+  const sendQuote = useMutation({
+    mutationFn: async () => {
+      const expiryDate = new Date(`${expires}T23:59:59.000Z`);
+      await apiClient.post(`/api/v1/sales-orders/${order.id}/quote`, {
+        linePrices: order.lines.map((line) => ({
+          lineId: line.id,
+          unitPrice: Number(prices[line.id] || line.unitPrice),
+        })),
+        manualDiscountTotal: Number(discount || 0),
+        quoteExpiresAt: expiryDate.toISOString(),
+        quoteNotes: notes || undefined,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      onSent();
+    },
+    onError: () => setError('Could not send quote. Check prices and expiry.'),
+  });
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError('');
+        sendQuote.mutate();
+      }}
+    >
+      <p className="text-sm text-text-muted">
+        Edit unit prices, apply a flat discount, and send this quote to the buyer.
+      </p>
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {order.lines.map((line) => (
+          <li key={line.id} className="space-y-2 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-text">{line.name ?? 'Item'}</p>
+                <p className="font-mono text-xs text-text-muted">
+                  {line.sku ?? line.variantId.slice(0, 8)} · qty {line.qtyOrdered}
+                </p>
+              </div>
+            </div>
+            <Input
+              label="Unit price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={prices[line.id] ?? ''}
+              onChange={(e) => setPrices((prev) => ({ ...prev, [line.id]: e.target.value }))}
+            />
+          </li>
+        ))}
+      </ul>
+      <Input
+        label="Global flat discount"
+        type="number"
+        min="0"
+        step="0.01"
+        value={discount}
+        onChange={(e) => setDiscount(e.target.value)}
+      />
+      <Input
+        label="Quote expires"
+        type="date"
+        value={expires}
+        onChange={(e) => setExpires(e.target.value)}
+      />
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="rep-quote-notes" className="text-sm font-medium text-text">
+          Notes to customer
+        </label>
+        <textarea
+          id="rep-quote-notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <Button type="submit" className="w-full" loading={sendQuote.isPending}>
+        Send Quote to Customer
+      </Button>
+    </form>
   );
 }

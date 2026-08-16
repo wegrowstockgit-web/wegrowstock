@@ -34,9 +34,13 @@ management:
 invsys:
   dev:
     auto-seed: true
+  jwt:
+    allow-ephemeral: true
   security:
     cookie-secure: false
     cookie-same-site: Lax
+    expose-magic-token: true
+    public-signup-enabled: true
   redis:
     enabled: false
   observability:

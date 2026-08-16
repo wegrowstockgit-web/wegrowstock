@@ -91,7 +91,7 @@ class InfrastructureHealthIndicatorsTest extends AbstractIntegrationTest {
         ActuatorProperties vpcOnly = new ActuatorProperties();
         vpcOnly.setScrapeAllowedCidrs("10.0.0.0/8,172.16.0.0/12");
         ActuatorScrapeAuthorizationManager vpc = new ActuatorScrapeAuthorizationManager(
-                vpcOnly, new com.invsys.core.security.ClientIpResolver(vpcOnly, ""));
+                vpcOnly, new com.invsys.core.security.ClientIpResolver(""));
 
         MockHttpServletRequest privateReq = new MockHttpServletRequest();
         privateReq.setRemoteAddr("10.0.4.20");

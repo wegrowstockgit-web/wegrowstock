@@ -6,7 +6,7 @@ A plain-language map of how InventorySystem stores warehouse data in PostgreSQL 
 
 **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (how the app uses this schema), `USER_GUIDE.md` (day-to-day product use), `README.md` (run the stack).
 
-Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V108**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
+Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V115**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
 
 ---
 
@@ -80,8 +80,8 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 | `tenants` | Company workspace (`status` includes `ACTIVE` / `SUSPENDED`) |
 | `tenant_settings` | Currency, negative-stock rules, barcode masks, density prefs, … |
 | `tenant_subscriptions` | Commercial **tier** + `enabled_modules` JSON (**V104** / **V105**) — control-plane writable via `app_owner` |
-| `tenant_domains` | Verified domains (CORS / email) |
-| `tenant_sso_configurations` | SAML / OIDC enterprise login |
+| `tenant_domains` | Verified corporate domains (CORS / email / Home Realm Discovery). **V115** adds `dns_verification_token` + `is_verified` |
+| `tenant_sso_configs` | SAML / OIDC enterprise login. **V115** adds `sso_provider`, `acs_url`, `saml_certificate`, `corporate_cidr_ips` |
 | `users` | Tenant people (email, password hash, profile fields) — **not** Super Admins |
 | `platform_admins` | Control-plane Super Admin identities (**V106**, no tenant RLS) |
 | `platform_admin_refresh_tokens` | Admin session refresh (**V106**) |
@@ -126,7 +126,7 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 | Table | Purpose |
 |-------|---------|
 | `suppliers` | Vendors |
-| `purchase_orders` / `purchase_order_lines` | PO lifecycle + qty received |
+| `purchase_orders` / `purchase_order_lines` | PO lifecycle + qty received; optional `notes` (mesh SO link text) |
 | `demand_forecasts` | Restock suggestions |
 | `ap_invoice_ingestions` | Supplier invoice OCR / AP ingest |
 
@@ -147,7 +147,8 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 |-------|---------|
 | `customer_user_mappings` | Login ↔ B2B customer |
 | `customer_price_tiers` / `customer_credit_lines` | Pricing & NET terms |
-| `tenant_mesh_partners` | Cross-tenant PO ↔ SO bridge |
+| `tenant_mesh_partners` | Cross-tenant handshake + PO ↔ SO bridge (`PENDING` / `REQUESTED` / `CONNECTED` / `DISCONNECTED`; `supplier_id` / `customer_id` nullable until approve) |
+| `mesh_catalog_listings` | Per-variant publish-to-network flag + mesh wholesale price |
 
 ### 8. Manufacturing
 
@@ -266,7 +267,7 @@ Property: `invsys.integration.vault-provider`.
 
 ---
 
-## Recent Flyway head (V080–V108)
+## Recent Flyway head (V080–V115)
 
 | Version | Purpose |
 |---------|---------|
@@ -297,6 +298,13 @@ Property: `invsys.integration.vault-provider`.
 | **V106** | `platform_admins` (Super Admin off `users`) |
 | **V107** | Shard routing, kill-switch, rate overrides, compliance, knowledge docs, sandbox creds |
 | **V108** | `platform_audit_logs` |
+| **V109** | `platform_tier_definitions` |
+| **V110** | Security hardening |
+| **V111** | `pos_synced_receipts` (POS idempotency) + ENTERPRISE `RETAIL_POS` |
+| **V112** | B2B RFQ statuses + allocation policy on sales orders |
+| **V113** | `wholesale_applications` + `customers:manage` |
+| **V114** | Mesh hub: `REQUESTED` status, nullable pairing FKs, `mesh_catalog_listings`, `purchase_orders.notes` |
+| **V115** | Home Realm Discovery: domain TXT token + `is_verified`; SSO provider / ACS / cert / corporate CIDRs |
 
 ---
 
@@ -316,4 +324,4 @@ Property: `invsys.integration.vault-provider`.
 
 Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_*`, `platform_admins`, `platform_admin_refresh_tokens`, `platform_audit_logs`, `platform_compliance_broadcasts`, `platform_knowledge_documents`. Almost everything else is tenant-scoped.
 
-See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V108`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).
+See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V115`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).

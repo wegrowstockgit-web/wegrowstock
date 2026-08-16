@@ -49,6 +49,8 @@ public class TenantDomainController {
             UUID id,
             String domainName,
             String verificationStatus,
+            boolean isVerified,
+            String dnsVerificationToken,
             List<Map<String, String>> dkimTokens
     ) {
         static DomainResponse from(TenantDomain domain) {
@@ -56,6 +58,8 @@ public class TenantDomainController {
                     domain.getId(),
                     domain.getDomainName(),
                     domain.getVerificationStatus(),
+                    domain.isVerified(),
+                    domain.getDnsVerificationToken(),
                     domain.getDkimTokens());
         }
     }

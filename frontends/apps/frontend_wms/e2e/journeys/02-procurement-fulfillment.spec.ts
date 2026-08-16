@@ -108,6 +108,7 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
         .toMatch(/RECEIVED|CLOSED|PARTIALLY_RECEIVED/);
 
       await manager.page.goto('/products');
+      await manager.page.getByPlaceholder('Filter by SKU or name...').fill(WIDGET_S_SKU);
       await expect(manager.page.getByText(WIDGET_S_SKU).first()).toBeVisible({ timeout: 15_000 });
 
       const levelsAfter = await manager.page.request.get(

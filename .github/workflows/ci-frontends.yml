@@ -1,4 +1,4 @@
-# CI — frontend_wms (data plane) + frontend_admin (control plane)
+# CI — frontend_wms (data plane) + frontend_admin (control plane) + frontend_pos
 name: CI Frontends
 
 on:
@@ -91,3 +91,34 @@ jobs:
 
       - name: Production build
         run: pnpm --filter frontend_admin build
+
+  frontend-pos:
+    name: frontend_pos build + unit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontends
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontends/pnpm-lock.yaml
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests + coverage
+        run: pnpm --filter frontend_pos test:coverage
+
+      - name: Production build
+        run: pnpm --filter frontend_pos build

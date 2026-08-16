@@ -1,10 +1,12 @@
 package com.invsys.modules.sales.service;
 
 import com.invsys.core.common.ApiException;
+import com.invsys.modules.sales.domain.AllocationPolicy;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.modules.sales.domain.SalesOrderLine;
+import com.invsys.modules.sales.domain.SalesOrderStatus;
 import com.invsys.core.integration.OutboxService;
 import com.invsys.integration.inbound.CanonicalAddress;
 import com.invsys.integration.inbound.CanonicalInboundOrder;
@@ -24,6 +26,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +168,96 @@ public class SalesOrderService {
     }
 
     @Transactional
+    public SalesOrder requestQuote(UUID orderId, String notes) {
+        SalesOrder order = getOrder(orderId);
+        if (!List.of(SalesOrderStatus.DRAFT.name(), SalesOrderStatus.DRAFT_QUOTE.name())
+                .contains(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Quote can only be requested from a draft order");
+        }
+        String before = order.getStatus();
+        if (notes != null && !notes.isBlank()) {
+            order.setQuoteNotes(notes.trim());
+        }
+        order.setStatus(SalesOrderStatus.PENDING_REP_APPROVAL.name());
+        order = salesOrderRepository.save(order);
+        auditService.record("SALES_ORDER_REQUEST_QUOTE", "SALES_ORDER", order.getId(), Map.of(
+                "status", Map.of("before", before, "after", order.getStatus())));
+        return order;
+    }
+
+    @Transactional
+    public SalesOrder updateQuotePricing(UUID orderId,
+                                         List<QuoteLinePrice> linePrices,
+                                         BigDecimal manualDiscountTotal,
+                                         Instant quoteExpiresAt,
+                                         String quoteNotes) {
+        SalesOrder order = getOrder(orderId);
+        if (!SalesOrderStatus.canEditQuote(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Quote pricing can only be updated while pending approval or quote-ready");
+        }
+        String before = order.getStatus();
+        if (linePrices != null) {
+            for (QuoteLinePrice price : linePrices) {
+                if (price == null || price.lineId() == null || price.unitPrice() == null) {
+                    continue;
+                }
+                if (price.unitPrice().signum() < 0) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Unit price cannot be negative");
+                }
+                SalesOrderLine line = lineRepository.findById(price.lineId())
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Order line not found"));
+                if (!orderId.equals(line.getSalesOrderId())) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Line does not belong to this order");
+                }
+                line.setUnitPrice(price.unitPrice());
+                lineRepository.save(line);
+            }
+        }
+        if (manualDiscountTotal != null) {
+            if (manualDiscountTotal.signum() < 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Discount cannot be negative");
+            }
+            order.setManualDiscountTotal(manualDiscountTotal);
+        }
+        Instant expiry = quoteExpiresAt != null ? quoteExpiresAt : Instant.now().plus(14, ChronoUnit.DAYS);
+        if (!expiry.isAfter(Instant.now())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Quote expiry must be in the future");
+        }
+        order.setQuoteExpiresAt(expiry);
+        if (quoteNotes != null) {
+            order.setQuoteNotes(quoteNotes.isBlank() ? order.getQuoteNotes() : quoteNotes.trim());
+        }
+        order.setStatus(SalesOrderStatus.QUOTE_READY.name());
+        order = salesOrderRepository.save(order);
+        auditService.record("SALES_ORDER_QUOTE_PRICING", "SALES_ORDER", order.getId(), Map.of(
+                "status", Map.of("before", before, "after", order.getStatus()),
+                "manualDiscountTotal", order.getManualDiscountTotal(),
+                "quoteExpiresAt", order.getQuoteExpiresAt().toString()));
+        return order;
+    }
+
+    @Transactional
+    public SalesOrder acceptQuote(UUID orderId) {
+        SalesOrder order = getOrder(orderId);
+        if (!SalesOrderStatus.QUOTE_READY.name().equals(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Quote is not ready to accept");
+        }
+        if (order.getQuoteExpiresAt() != null && !order.getQuoteExpiresAt().isAfter(Instant.now())) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "This quote has expired");
+        }
+        String before = order.getStatus();
+        order.setStatus(SalesOrderStatus.QUOTE_ACCEPTED.name());
+        salesOrderRepository.save(order);
+        auditService.record("SALES_ORDER_ACCEPT_QUOTE", "SALES_ORDER", order.getId(), Map.of(
+                "status", Map.of("before", before, "after", SalesOrderStatus.QUOTE_ACCEPTED.name())));
+        order.setStatus(SalesOrderStatus.UNALLOCATED.name());
+        salesOrderRepository.save(order);
+        return allocate(orderId);
+    }
+
+    @Transactional
     public SalesOrder confirm(UUID orderId) {
         SalesOrder order = getOrder(orderId);
         if (!"DRAFT".equals(order.getStatus())) {
@@ -183,7 +277,7 @@ public class SalesOrderService {
         Timer.Sample allocationSample = wmsMetrics.startAllocation();
         try {
             SalesOrder order = getOrder(orderId);
-            if (!List.of("CONFIRMED", "BACKORDERED", "ALLOCATED").contains(order.getStatus())) {
+            if (!SalesOrderStatus.canAllocate(order.getStatus())) {
                 throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be allocated");
             }
             String before = order.getStatus();
@@ -198,8 +292,9 @@ public class SalesOrderService {
                 totalAllocated = totalAllocated.add(
                         refreshed.getQtyAllocated() != null ? refreshed.getQtyAllocated() : BigDecimal.ZERO);
             }
-            // Soft backorder: no stock reserved → BACKORDERED; otherwise ALLOCATED (may still be short).
-            String after = totalAllocated.signum() <= 0 ? "BACKORDERED" : "ALLOCATED";
+            AllocationPolicy policy = order.getAllocationPolicy() != null
+                    ? order.getAllocationPolicy() : AllocationPolicy.ALLOW_PARTIAL;
+            String after = resolveAllocationStatus(policy, before, totalOrdered, totalAllocated);
             order.setStatus(after);
             order = salesOrderRepository.save(order);
             if ("ALLOCATED".equals(after)) {
@@ -289,8 +384,30 @@ public class SalesOrderService {
         }
     }
 
+    private static String resolveAllocationStatus(AllocationPolicy policy,
+                                                 String previousStatus,
+                                                 BigDecimal totalOrdered,
+                                                 BigDecimal totalAllocated) {
+        boolean fullyAllocated = totalOrdered.signum() > 0 && totalAllocated.compareTo(totalOrdered) >= 0;
+        if (fullyAllocated) {
+            return SalesOrderStatus.ALLOCATED.name();
+        }
+        if (policy == AllocationPolicy.SHIP_COMPLETE) {
+            return SalesOrderStatus.UNALLOCATED.name().equals(previousStatus)
+                    ? SalesOrderStatus.UNALLOCATED.name()
+                    : SalesOrderStatus.BACKORDERED.name();
+        }
+        if (totalAllocated.signum() <= 0) {
+            return SalesOrderStatus.BACKORDERED.name();
+        }
+        return SalesOrderStatus.PARTIALLY_ALLOCATED.name();
+    }
+
     private SalesOrder getOrder(UUID orderId) {
         return salesOrderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+    }
+
+    public record QuoteLinePrice(UUID lineId, BigDecimal unitPrice) {
     }
 }

@@ -1,6 +1,8 @@
 package com.invsys.architecture;
 
+import com.invsys.InvSysApplication;
 import org.junit.jupiter.api.Test;
+import org.springframework.modulith.core.ApplicationModules;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,13 +16,46 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Guardrail: core foundation packages must not depend on business feature modules.
- * Feature modules may depend on core and (transitionally) on sibling modules via services/DTOs.
+ * Feature modules may depend on core and (transitionally) on sibling modules via named
+ * interfaces ({@code api} / {@code domain}).
+ *
+ * <p>Event-migration plan for remaining shared-kernel coupling (not a Modulith
+ * {@code verify()} failure today because the adapters live in {@code com.invsys.service},
+ * outside {@code @ApplicationModule} packages):
+ * <ol>
+ *   <li>{@code ShipmentInvoiceSourceAdapter} reads fulfillment repositories to feed sales
+ *       invoicing — publish {@code ShipmentCompleted} from fulfillment and handle it with
+ *       {@code @Async @EventListener} in fintech/sales instead of repository hopping.</li>
+ *   <li>{@code FulfillmentService} / {@code ReturnToVendorService} / {@code SpatialMapService}
+ *       call fulfillment internals — move those facades into {@code modules.fulfillment} or
+ *       replace cross-slice calls with application events ({@code InventoryAllocated},
+ *       {@code RtvOpened}).</li>
+ *   <li>Keep {@code allowedDependencies} tight: fintech may use {@code sales :: api/domain}
+ *       only; never fulfillment {@code service} / {@code repository} packages.</li>
+ * </ol>
  */
 class ModularMonolithBoundaryTest {
 
     private static final Path CORE_ROOT = Path.of("..", "invsys-core", "src", "main", "java", "com", "invsys", "core")
             .normalize()
             .toAbsolutePath();
+
+    @Test
+    void verifyModulithArchitecture() {
+        String previous = System.getProperty("spring.modulith.detection-strategy");
+        System.setProperty("spring.modulith.detection-strategy",
+                "com.invsys.modules.BoundedContextDetectionStrategy");
+        try {
+            ApplicationModules modules = ApplicationModules.of(InvSysApplication.class);
+            modules.verify();
+        } finally {
+            if (previous == null) {
+                System.clearProperty("spring.modulith.detection-strategy");
+            } else {
+                System.setProperty("spring.modulith.detection-strategy", previous);
+            }
+        }
+    }
 
     @Test
     void coreFoundationDoesNotImportFeatureModules() throws IOException {

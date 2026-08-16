@@ -181,13 +181,23 @@ export function createPrintStore(agent: QzTrayAgent = defaultQzTrayAgent) {
         if (format === 'ZPL') {
           try {
             if (agent.getStatus() !== 'connected') {
-              await agent.connect();
+              await Promise.race([
+                agent.connect(),
+                new Promise<never>((_, reject) => {
+                  window.setTimeout(() => reject(new Error('Print agent connect timeout')), 1500);
+                }),
+              ]);
             }
             if (!printer) {
               throw new Error('No ZPL printer bound — pick one in Scanner Settings');
             }
             const zpl = await resolveZplText(payload);
-            await agent.printRaw(printer, zpl);
+            await Promise.race([
+              agent.printRaw(printer, zpl),
+              new Promise<never>((_, reject) => {
+                window.setTimeout(() => reject(new Error('Print agent write timeout')), 2000);
+              }),
+            ]);
             set({ agentStatus: 'connected' });
             return 'hardware';
           } catch (err) {

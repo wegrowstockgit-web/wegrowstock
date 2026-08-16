@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import {
+  resolveHardwareStatus,
+  type HardwareStatus,
+} from '@/lib/hardwareCapabilities';
 import { createScanEventPayload, type ScanEventPayload } from '@/offline/scanEvent';
 import { useScanBufferStore } from '@/stores/scanBuffer';
 import { parseGs1, type ParsedBarcode } from '@/utils/gs1Parser';
+
+export type { HardwareStatus };
+export type ScanIngestSource = 'hardware' | 'camera' | 'manual';
 
 const SCANNER_MAX_GAP_MS = 35;
 
@@ -120,6 +127,14 @@ const DATAWEDGE_ACTIONS = [
   'com.honeywell.decode.intent.action.EDIT_DATA',
 ] as const;
 
+export interface UseBarcodeScannerResult {
+  hardwareStatus: HardwareStatus;
+  triggerCamera: boolean;
+  setTriggerCamera: (open: boolean) => void;
+  /** Same ingest path for HID/intent hardware, camera decode, and typed entry. */
+  ingestScan: (barcode: string, source?: ScanIngestSource) => void;
+}
+
 /**
  * HID keyboard wedge + background intent broadcasting (DataWedge / Honeywell).
  * Intent listeners do not require focused input elements — glove-friendly floor ops.
@@ -136,13 +151,16 @@ export function useBarcodeScanner({
   suffix,
   captureAll = false,
   enabled = true,
-}: BarcodeScannerOptions): void {
+}: BarcodeScannerOptions): UseBarcodeScannerResult {
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const onScanRef = useRef(onScan);
   const onScanEventRef = useRef(onScanEvent);
   const onGs1ScanRef = useRef(onGs1Scan);
   const { append, reset, commit } = useScanBufferStore();
+  const [hardwareConnected, setHardwareConnected] = useState(false);
+  const [triggerCamera, setTriggerCamera] = useState(false);
+  const hardwareStatus = resolveHardwareStatus(undefined, { connected: hardwareConnected });
 
   useEffect(() => {
     onScanRef.current = onScan;
@@ -157,9 +175,12 @@ export function useBarcodeScanner({
   }, [onGs1Scan]);
 
   const ingestCommitted = useCallback(
-    (barcode: string) => {
+    (barcode: string, source: ScanIngestSource = 'hardware') => {
       const cleaned = barcode.trim();
       if (!cleaned) return;
+      if (source === 'hardware') {
+        setHardwareConnected(true);
+      }
       reset();
 
       const parsed = parseGs1(cleaned);
@@ -291,4 +312,13 @@ export function useBarcodeScanner({
       }
     };
   }, [enabled, handleKeyDown, handleNativeScan, handleMessage, ingestCommitted, prefix, suffix]);
+
+  const ingestScan = useCallback(
+    (barcode: string, source: ScanIngestSource = 'manual') => {
+      ingestCommitted(stripAffixes(barcode, prefix, suffix), source);
+    },
+    [ingestCommitted, prefix, suffix],
+  );
+
+  return { hardwareStatus, triggerCamera, setTriggerCamera, ingestScan };
 }

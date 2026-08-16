@@ -20,5 +20,15 @@ class DataSourceConfigPrepareThresholdTest {
     void leavesExistingPrepareThresholdAlone() {
         String url = "jdbc:postgresql://pgbouncer:6432/invsys?prepareThreshold=0";
         assertThat(DataSourceConfig.ensurePrepareThresholdDisabled(url)).isEqualTo(url);
+        assertThat(DataSourceConfig.ensurePrepareThresholdDisabled(null)).isNull();
+        assertThat(DataSourceConfig.ensurePrepareThresholdDisabled("")).isEmpty();
+    }
+
+    @Test
+    void pinsDataPlaneToAppUserAndControlPlaneToAppOwner() {
+        assertThat(DataSourceConfig.resolveRuntimeJdbcRole("invsys-api")).isEqualTo("app_user");
+        assertThat(DataSourceConfig.resolveRuntimeJdbcRole("")).isEqualTo("app_user");
+        assertThat(DataSourceConfig.resolveRuntimeJdbcRole(null)).isEqualTo("app_user");
+        assertThat(DataSourceConfig.resolveRuntimeJdbcRole("invsys-admin-api")).isEqualTo("app_owner");
     }
 }

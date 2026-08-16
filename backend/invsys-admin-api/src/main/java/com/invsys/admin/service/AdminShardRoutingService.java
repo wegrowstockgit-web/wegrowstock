@@ -105,11 +105,11 @@ public class AdminShardRoutingService {
     }
 
     public record ShardUpsertRequest(
-            String shardKey,
-            String jdbcUrl,
-            String auroraCluster,
-            String region,
-            String notes
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 64) String shardKey,
+            @jakarta.validation.constraints.Size(max = 512) String jdbcUrl,
+            @jakarta.validation.constraints.Size(max = 128) String auroraCluster,
+            @jakarta.validation.constraints.Pattern(regexp = "^[a-z0-9-]{0,32}$") String region,
+            @jakarta.validation.constraints.Size(max = 500) String notes
     ) {
     }
 

@@ -21,6 +21,20 @@ public interface InventoryLevelDeltaFlushRepository {
 
     BigDecimal sumPendingOnHandForLpn(UUID tenantId, UUID lpnId);
 
+    /**
+     * Append a lock-free on-hand delta for the current tenant connection.
+     * The flush worker materializes {@code inventory_levels} asynchronously
+     * ({@code FOR UPDATE SKIP LOCKED}) — callers must not update levels in-place.
+     */
+    void enqueueOnHandDelta(
+            UUID tenantId,
+            UUID variantId,
+            UUID locationId,
+            UUID lotId,
+            UUID lpnId,
+            BigDecimal onHandDelta,
+            UUID ownerCustomerId);
+
     record ClaimedDelta(
             UUID id,
             UUID tenantId,

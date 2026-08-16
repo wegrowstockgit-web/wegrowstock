@@ -9,7 +9,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.invsys.core.security.CorporateCidrMatcher;
+import com.invsys.core.security.SsoProviderCatalog;
+
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,11 +22,14 @@ public class SsoConfigService {
 
     private final TenantSsoConfigRepository repository;
     private final CredentialVaultService credentialVaultService;
+    private final SsoProviderCatalog ssoProviderCatalog;
 
     public SsoConfigService(TenantSsoConfigRepository repository,
-                            CredentialVaultService credentialVaultService) {
+                            CredentialVaultService credentialVaultService,
+                            SsoProviderCatalog ssoProviderCatalog) {
         this.repository = repository;
         this.credentialVaultService = credentialVaultService;
+        this.ssoProviderCatalog = ssoProviderCatalog;
     }
 
     public Optional<SsoConfigView> getForCurrentTenant() {
@@ -67,6 +74,16 @@ public class SsoConfigService {
         }
         config.setEnabled(request.enabled());
         config.setForceSso(request.forceSso());
+        config.setAcsUrl(blankToNull(request.acsUrl()));
+        config.setSamlCertificate(blankToNull(request.samlCertificate()));
+        config.setCorporateCidrIps(CorporateCidrMatcher.normalizeOrReject(request.corporateCidrIps()));
+        String provider = request.ssoProvider();
+        if (provider == null || provider.isBlank()) {
+            provider = "SAML".equals(protocol)
+                    ? "CUSTOM_SAML"
+                    : ssoProviderCatalog.inferProvider(config.getIssuerUrl());
+        }
+        config.setSsoProvider(normalizeProvider(provider));
         return toView(repository.save(config));
     }
 
@@ -95,8 +112,20 @@ public class SsoConfigService {
                 config.getEncryptedClientSecret() != null,
                 config.getProtocol() != null ? config.getProtocol() : "OIDC",
                 config.getSamlMetadataUrl(),
-                config.getSamlEntityId()
+                config.getSamlEntityId(),
+                config.getSsoProvider() != null ? config.getSsoProvider() : "CUSTOM",
+                config.getAcsUrl(),
+                config.getSamlCertificate(),
+                config.getCorporateCidrIps() != null ? config.getCorporateCidrIps() : List.of()
         );
+    }
+
+    private static String normalizeProvider(String raw) {
+        String value = raw.trim().toUpperCase();
+        return switch (value) {
+            case "OKTA", "ENTRA", "GOOGLE", "CUSTOM_SAML", "CUSTOM" -> value;
+            default -> "CUSTOM";
+        };
     }
 
     private static String blankToNull(String value) {
@@ -105,16 +134,28 @@ public class SsoConfigService {
 
     public record UpsertRequest(String issuerUrl, String clientId, String clientSecret,
                               boolean enabled, boolean forceSso,
-                              String protocol, String samlMetadataUrl, String samlEntityId) {
+                              String protocol, String samlMetadataUrl, String samlEntityId,
+                              String ssoProvider, String acsUrl, String samlCertificate,
+                              List<String> corporateCidrIps) {
         public UpsertRequest(String issuerUrl, String clientId, String clientSecret,
                              boolean enabled, boolean forceSso) {
-            this(issuerUrl, clientId, clientSecret, enabled, forceSso, "OIDC", null, null);
+            this(issuerUrl, clientId, clientSecret, enabled, forceSso, "OIDC", null, null,
+                    null, null, null, List.of());
+        }
+
+        public UpsertRequest(String issuerUrl, String clientId, String clientSecret,
+                             boolean enabled, boolean forceSso,
+                             String protocol, String samlMetadataUrl, String samlEntityId) {
+            this(issuerUrl, clientId, clientSecret, enabled, forceSso, protocol, samlMetadataUrl, samlEntityId,
+                    null, null, null, List.of());
         }
     }
 
     public record SsoConfigView(String issuerUrl, String clientId, boolean enabled,
                                 boolean forceSso, boolean hasSecret,
-                                String protocol, String samlMetadataUrl, String samlEntityId) {
+                                String protocol, String samlMetadataUrl, String samlEntityId,
+                                String ssoProvider, String acsUrl, String samlCertificate,
+                                List<String> corporateCidrIps) {
     }
 
     public record ResolvedSsoConfig(UUID tenantId, String issuerUrl, String clientId,

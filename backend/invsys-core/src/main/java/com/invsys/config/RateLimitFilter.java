@@ -81,7 +81,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/auth/signup")
                 || path.startsWith("/api/v1/auth/refresh")
                 || path.startsWith("/api/v1/auth/sso-discover")
-                || path.startsWith("/api/v1/invitations/accept")) {
+                || path.startsWith("/api/v1/auth/discovery")
+                || path.startsWith("/api/v1/auth/magic-login")
+                || path.startsWith("/api/v1/auth/impersonation/accept")
+                || path.startsWith("/api/v1/invitations/accept")
+                || path.startsWith("/api/v1/showroom/apply")
+                || path.startsWith("/api/v1/showroom/catalog")
+                || path.startsWith("/saml2/authenticate/")) {
             return authLimit;
         }
         if (path.startsWith("/api/v1/webhooks/") || path.startsWith("/api/v1/public/webhooks/")) {
@@ -96,7 +102,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/auth/warehouse/login")) {
             return "terminal-pin";
         }
-        if (path.startsWith("/api/v1/auth/")) {
+        if (path.startsWith("/api/v1/auth/") || path.startsWith("/api/v1/showroom/")) {
             return "auth";
         }
         if (path.startsWith("/api/v1/webhooks/") || path.startsWith("/api/v1/public/webhooks/")) {

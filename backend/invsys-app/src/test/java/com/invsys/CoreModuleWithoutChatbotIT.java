@@ -38,6 +38,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -173,11 +175,19 @@ class CoreModuleWithoutChatbotIT extends AbstractIntegrationTest {
         assertThat(allLedgers.stream().map(InventoryLedger::getMovementType).distinct())
                 .contains("RECEIVE");
 
-        // Support API must not be mapped when chatbot is disabled
+        // Chat stays unmapped when the optional module is off...
         mockMvc.perform(post("/api/v1/support/chat")
                         .header("Authorization", "Bearer " + owner.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"hello\"}"))
                 .andExpect(status().isNotFound());
+
+        // ...but insights degrades to an empty 200 so the WMS copilot does not 404.
+        mockMvc.perform(get("/api/v1/support/insights")
+                        .param("route", "/dashboard")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.proactiveInsight").value(nullValue()));
     }
 }

@@ -57,18 +57,8 @@ public class AdminJwtAuthFilter extends OncePerRequestFilter {
     }
 
     private static boolean isPlatformAdmin(JWTClaimsSet claims) {
-        if (JwtService.TOKEN_TYPE_PLATFORM_ADMIN.equals(claims.getClaim(JwtService.CLAIM_TOKEN_TYPE))) {
-            return true;
-        }
-        Object platformAdmin = claims.getClaim(JwtService.CLAIM_PLATFORM_ADMIN);
-        if (Boolean.TRUE.equals(platformAdmin)) {
-            return true;
-        }
-        Object roles = claims.getClaim("roles");
-        if (roles instanceof List<?> raw) {
-            return raw.stream().anyMatch("SUPER_ADMIN"::equals);
-        }
-        return false;
+        return JwtService.TOKEN_TYPE_PLATFORM_ADMIN.equals(claims.getClaim(JwtService.CLAIM_TOKEN_TYPE))
+                && Boolean.TRUE.equals(claims.getClaim(JwtService.CLAIM_PLATFORM_ADMIN));
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

@@ -1,6 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '@/api/client';
-import { executeSupportAction, executeSupportActionDraft, streamSupportChat } from './supportChatApi';
+import { usePreferencesStore } from '@/stores/preferencesStore';
+import {
+  executeSupportAction,
+  executeSupportActionDraft,
+  fetchSupportInsight,
+  isSupportInsightRoute,
+  resetSupportInsightAvailability,
+  streamSupportChat,
+} from './supportChatApi';
 
 describe('streamSupportChat', () => {
   it('preserves whitespace between SSE token payloads', async () => {
@@ -44,6 +52,8 @@ describe('streamSupportChat', () => {
         headers: expect.objectContaining({
           'X-User-Roles': 'B2B_CUSTOMER',
           'X-Current-Route': '/showroom',
+          'X-User-Language': 'en',
+          'Accept-Language': 'en',
         }),
         body: expect.stringContaining('System Context:'),
       }),
@@ -64,8 +74,40 @@ describe('streamSupportChat', () => {
     expect(requestBody.userRoles).toEqual(['B2B_CUSTOMER']);
     expect(requestBody.pageState.userRoles).toEqual(['B2B_CUSTOMER']);
     expect(requestBody.pageState.routePath).toBe('/showroom');
+    expect((requestBody.pageState as { uiLanguage?: string }).uiLanguage).toBe('en');
 
     vi.unstubAllGlobals();
+  });
+
+  it('forwards the operator UI language to the support chat API', async () => {
+    usePreferencesStore.getState().setLanguage('es');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event:done\ndata: {"ok":true}\n\n'));
+            controller.close();
+          },
+        }),
+        text: async () => '',
+      }),
+    );
+
+    try {
+      await streamSupportChat('hola', ['OWNER'], '/dashboard', { onToken: () => {} });
+      const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as {
+        headers: Record<string, string>;
+        body: string;
+      };
+      expect(init.headers['X-User-Language']).toBe('es');
+      expect(init.headers['Accept-Language']).toBe('es');
+      expect(JSON.parse(init.body).pageState.uiLanguage).toBe('es');
+    } finally {
+      usePreferencesStore.getState().setLanguage('en');
+      vi.unstubAllGlobals();
+    }
   });
 
   it('embeds pageState snapshot fields in the chat payload', async () => {
@@ -561,5 +603,35 @@ describe('streamSupportChat multimodal payload', () => {
     expect(payload.base64Image).toBe('abc123');
     expect(payload.imageMimeType).toBe('image/jpeg');
     vi.unstubAllGlobals();
+  });
+});
+
+describe('fetchSupportInsight', () => {
+  afterEach(() => {
+    resetSupportInsightAvailability();
+    vi.restoreAllMocks();
+  });
+
+  it('skips auth-shell routes without calling the API', async () => {
+    const spy = vi.spyOn(apiClient, 'get');
+    expect(isSupportInsightRoute('/login')).toBe(false);
+    expect(await fetchSupportInsight('/login')).toBeNull();
+    expect(await fetchSupportInsight('/signup')).toBeNull();
+    expect(await fetchSupportInsight('/invite/abc')).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns the proactive insight when the endpoint is present', async () => {
+    vi.spyOn(apiClient, 'get').mockResolvedValue({
+      data: { ok: true, proactiveInsight: '3 orders need attention' },
+    });
+    expect(await fetchSupportInsight('/dashboard')).toBe('3 orders need attention');
+  });
+
+  it('stops polling after a 404 so a disabled chatbot module does not spam the console', async () => {
+    const spy = vi.spyOn(apiClient, 'get').mockRejectedValue({ response: { status: 404 } });
+    expect(await fetchSupportInsight('/dashboard')).toBeNull();
+    expect(await fetchSupportInsight('/fulfillment')).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

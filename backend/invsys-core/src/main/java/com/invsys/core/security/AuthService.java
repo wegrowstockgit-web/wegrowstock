@@ -56,6 +56,7 @@ public class AuthService {
     private final TerminalPinBruteForceGuard terminalPinBruteForceGuard;
     private final RolePermissionService rolePermissionService;
     private final TenantSubscriptionService tenantSubscriptionService;
+    private final ImpersonationHandoffStore impersonationHandoffStore;
     private final AuthService self;
 
     public AuthService(TenantOnboardingService onboardingService,
@@ -73,6 +74,7 @@ public class AuthService {
                        TerminalPinBruteForceGuard terminalPinBruteForceGuard,
                        RolePermissionService rolePermissionService,
                        TenantSubscriptionService tenantSubscriptionService,
+                       ImpersonationHandoffStore impersonationHandoffStore,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
@@ -89,6 +91,7 @@ public class AuthService {
         this.terminalPinBruteForceGuard = terminalPinBruteForceGuard;
         this.rolePermissionService = rolePermissionService;
         this.tenantSubscriptionService = tenantSubscriptionService;
+        this.impersonationHandoffStore = impersonationHandoffStore;
         this.self = self;
     }
 
@@ -147,17 +150,28 @@ public class AuthService {
     }
 
     /**
-     * Exchanges a control-plane impersonation JWT for a normal WMS session (cookies).
+     * Exchanges a control-plane impersonation JWT or one-time handoff code for a WMS session.
      */
     @Transactional
-    public TokenResponse acceptImpersonation(String impersonationToken) {
-        if (impersonationToken == null || impersonationToken.isBlank()) {
+    public TokenResponse acceptImpersonation(String impersonationTokenOrCode) {
+        if (impersonationTokenOrCode == null || impersonationTokenOrCode.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "impersonation token required");
         }
-        var claims = jwtService.validateAndParse(impersonationToken);
+        String jwt = impersonationTokenOrCode.trim();
+        if (!looksLikeJwt(jwt)) {
+            jwt = impersonationHandoffStore.redeemCode(jwt)
+                    .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN",
+                            "Invalid or already used impersonation code"));
+        }
+        var claims = jwtService.validateAndParse(jwt);
         Object type = claims.getClaim(JwtService.CLAIM_TOKEN_TYPE);
         if (!JwtService.TOKEN_TYPE_IMPERSONATION.equals(type)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Not an impersonation token");
+        }
+        String jti = claims.getJWTID();
+        if (jti == null || jti.isBlank() || !impersonationHandoffStore.consumeJti(jti)) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "TOKEN_CONSUMED",
+                    "Impersonation token already used or revoked");
         }
         UUID userId = UUID.fromString(claims.getSubject());
         UUID tenantId = UUID.fromString((String) claims.getClaim(JwtService.CLAIM_TENANT_ID));
@@ -170,6 +184,16 @@ public class AuthService {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    private static boolean looksLikeJwt(String value) {
+        int dots = 0;
+        for (int i = 0; i < value.length(); i++) {
+            if (value.charAt(i) == '.') {
+                dots++;
+            }
+        }
+        return dots == 2;
     }
 
     @Transactional
@@ -417,7 +441,8 @@ public class AuthService {
                 user.getUiDensityPreference(),
                 grantedPermissions,
                 false,
-                tenantSubscriptionService.getEnabledModules(user.getTenantId()));
+                tenantSubscriptionService.getEnabledModules(user.getTenantId()),
+                tenantSubscriptionService.getCommercialTier(user.getTenantId()).name());
     }
 
     /**
@@ -435,7 +460,8 @@ public class AuthService {
             String addressPostalCode,
             String addressCountry,
             Boolean mfaEnabled,
-            String uiDensityPreference) {
+            String uiDensityPreference,
+            String localeLanguage) {
         UUID userId = TenantContext.getUserId()
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
         User user = userRepository.findById(userId)
@@ -486,7 +512,28 @@ public class AuthService {
             }
             user.setUiDensityPreference(density);
         }
+        if (localeLanguage != null) {
+            user.setLocaleLanguage(normalizePreferredLanguage(localeLanguage));
+        }
         return userRepository.save(user);
+    }
+
+    static String normalizePreferredLanguage(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "en";
+        }
+        String token = raw.trim().toLowerCase().replace('_', '-');
+        if (token.startsWith("es")) {
+            return "es";
+        }
+        if (token.startsWith("fr")) {
+            return "fr";
+        }
+        if (token.startsWith("en")) {
+            return "en";
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                "localeLanguage must be en, es, or fr");
     }
 
     @Transactional

@@ -3,7 +3,7 @@ title: "B2B Showroom & Commercial Finance SOP"
 slug: "sop-b2b-showroom-fintech"
 sourcePath: "docs/sops/05_b2b_showroom_and_fintech.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "B2B_CUSTOMER", "VIEWER"]
-routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations"]
+routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/mesh-network", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations"]
 ---
 
 # B2B Showroom & Commercial Finance — Operations Playbook
@@ -156,7 +156,7 @@ Wholesale buyers shop the Showroom; Owners manage billing, financing, and integr
 4. **Billing** — subscription/plan matters for Owners.
 5. **Cash Flow & Financing** (Owner) — review financing / factoring style options your organization enabled; follow on-screen connects/confirms only.
 6. **Integrations** / Integrations Hub — connect accounting or channel apps; respect **LIVE** badges when a connection is healthy.
-7. Other tabs as needed: **Warehouses**, **Inventory Rules**, **Documents**, **Security & SSO**, **Reconciliation**, **Accounting Sync**, **Operations**, **Sync Conflicts**, **Cost Centers & Requisitions**, **Partner Catalog** (mesh).
+7. Other tabs as needed: **Warehouses**, **Inventory Rules**, **Documents**, **Security & SSO**, **Reconciliation**, **Accounting Sync**, **Operations**, **Sync Conflicts**, **Cost Centers & Requisitions**, **Partner Catalog** (SKU mapping after a Mesh Network connection). Cross-tenant discover/handshake lives on **Inbound → Mesh Network**.
 8. Save each tab using its on-screen save/confirm controls before leaving.
 
 #### 2. Correlated Flow & Downstream Ripple Effect

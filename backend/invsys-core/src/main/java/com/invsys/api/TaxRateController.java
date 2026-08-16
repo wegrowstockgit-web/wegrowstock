@@ -43,7 +43,7 @@ public class TaxRateController {
     }
 
     @PatchMapping("/{id}")
-    public TaxRateResponse update(@PathVariable UUID id, @RequestBody UpdateTaxRateRequest request) {
+    public TaxRateResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateTaxRateRequest request) {
         return TaxRateResponse.from(taxService.update(id, request.name(), request.rate(), request.isDefault()));
     }
 

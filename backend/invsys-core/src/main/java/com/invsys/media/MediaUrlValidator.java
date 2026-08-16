@@ -24,6 +24,37 @@ public class MediaUrlValidator {
     private static final Set<String> BLOCKED_HOSTS = Set.of(
             "localhost", "metadata.google.internal", "metadata");
 
+    public void assertHttpsPublicUrl(String rawUrl, String errorCode, String message) {
+        try {
+            validateAndNormalize(rawUrl);
+        } catch (ApiException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, message);
+        }
+    }
+
+    public void assertAllowedHttpsHost(String rawUrl, Set<String> allowedHosts, String errorCode) {
+        if (rawUrl == null || rawUrl.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, "URL is required");
+        }
+        URI uri;
+        try {
+            uri = URI.create(rawUrl.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, "Malformed URL");
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getHost().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, "Only https URLs with a host are allowed");
+        }
+        String host = IDN.toASCII(uri.getHost()).toLowerCase(Locale.ROOT);
+        if (!allowedHosts.contains(host)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, "Host is not allowed");
+        }
+        if (resolvesToBlockedAddress(host)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, errorCode,
+                    "URL must not resolve to a private or loopback address");
+        }
+    }
+
     public String validateAndNormalize(String rawUrl) {
         if (rawUrl == null || rawUrl.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEDIA_URL", "url is required");

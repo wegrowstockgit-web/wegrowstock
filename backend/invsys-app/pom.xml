@@ -20,6 +20,14 @@
             <groupId>com.invsys</groupId>
             <artifactId>invsys-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.invsys</groupId>
+            <artifactId>invsys-pos-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-starter-core</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -137,11 +145,13 @@
                             <classDirectories>
                                 <classDirectory>${project.basedir}/../invsys-core/target/classes</classDirectory>
                                 <classDirectory>${project.basedir}/../invsys-chatbot/target/classes</classDirectory>
+                                <classDirectory>${project.basedir}/../invsys-pos-api/target/classes</classDirectory>
                                 <classDirectory>${project.build.outputDirectory}</classDirectory>
                             </classDirectories>
                             <sourceDirectories>
                                 <sourceDirectory>${project.basedir}/../invsys-core/src/main/java</sourceDirectory>
                                 <sourceDirectory>${project.basedir}/../invsys-chatbot/src/main/java</sourceDirectory>
+                                <sourceDirectory>${project.basedir}/../invsys-pos-api/src/main/java</sourceDirectory>
                                 <sourceDirectory>${project.build.sourceDirectory}</sourceDirectory>
                             </sourceDirectories>
                         </configuration>
@@ -156,6 +166,7 @@
                             <classDirectories>
                                 <classDirectory>${project.basedir}/../invsys-core/target/classes</classDirectory>
                                 <classDirectory>${project.basedir}/../invsys-chatbot/target/classes</classDirectory>
+                                <classDirectory>${project.basedir}/../invsys-pos-api/target/classes</classDirectory>
                                 <classDirectory>${project.build.outputDirectory}</classDirectory>
                             </classDirectories>
                             <rules>
@@ -256,6 +267,8 @@
                                 <exclude>com/invsys/ratelimit/**</exclude>
                                 <exclude>com/invsys/mesh/**</exclude>
                                 <exclude>com/invsys/tenancy/**</exclude>
+                                <exclude>com/invsys/pos/dto/**</exclude>
+                                <exclude>com/invsys/pos/event/**</exclude>
                             </excludes>
                         </configuration>
                     </execution>

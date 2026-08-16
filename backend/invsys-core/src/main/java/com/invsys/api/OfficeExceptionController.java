@@ -2,6 +2,8 @@ package com.invsys.api;
 
 import com.invsys.modules.fulfillment.domain.FulfillmentException;
 import com.invsys.service.FulfillmentExceptionService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,7 +35,7 @@ public class OfficeExceptionController {
     }
 
     @PostMapping("/{id}/resolve")
-    public ExceptionResponse resolve(@PathVariable UUID id, @RequestBody ResolveBody body) {
+    public ExceptionResponse resolve(@PathVariable UUID id, @Valid @RequestBody ResolveBody body) {
         FulfillmentException resolved = exceptionService.resolve(
                 id,
                 new FulfillmentExceptionService.ResolveRequest(
@@ -55,7 +57,11 @@ public class OfficeExceptionController {
                 e.getUpdatedAt());
     }
 
-    public record ResolveBody(String action, String lotNumber, String notes) {
+    public record ResolveBody(
+            @Size(max = 32) String action,
+            @Size(max = 64) String lotNumber,
+            @Size(max = 2000) String notes
+    ) {
     }
 
     public record ExceptionResponse(

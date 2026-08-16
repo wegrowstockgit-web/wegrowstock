@@ -145,6 +145,21 @@ async function pageForRole(
 
 const DEMO_PASSWORD_DEFAULT = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 
+/** Identifier-first login: email → Continue (HRD) → password → Sign in. */
+export async function completeIdentifierFirstLogin(
+  page: Page,
+  email: string,
+  password = DEMO_PASSWORD_DEFAULT,
+): Promise<void> {
+  await expect(page.getByTestId('login-email')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('login-email').fill(email);
+  await expect(page.getByTestId('login-continue')).toBeVisible();
+  await page.getByTestId('login-continue').click();
+  await expect(page.getByTestId('login-password')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('login-password').fill(password);
+  await page.getByTestId('login-submit').click();
+}
+
 /**
  * UI login for specs that don't use pageForRole / contextForRole.
  * Disables onboarding tour prefs and unlocks the scanner PIN gate.
@@ -179,10 +194,7 @@ export async function loginAsDemo(
   });
   // Reload so Zustand persist rehydrates showOnboardingTour=false (memory otherwise stays true).
   await page.reload();
-  await expect(page.getByLabel('Email')).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await completeIdentifierFirstLogin(page, email, password);
   await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45_000 });
   await completeScannerPin(page);
   await dismissOnboardingTourIfPresent(page);

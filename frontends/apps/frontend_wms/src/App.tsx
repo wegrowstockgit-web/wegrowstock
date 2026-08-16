@@ -42,6 +42,8 @@ import { ShowroomCatalogPage } from '@/pages/showroom/ShowroomCatalogPage';
 import { ShowroomOrdersPage } from '@/pages/showroom/ShowroomOrdersPage';
 import { ShowroomCheckoutPage } from '@/pages/showroom/ShowroomCheckoutPage';
 import { ShowroomBillingPage } from '@/pages/showroom/ShowroomBillingPage';
+import { ShowroomApplyPage } from '@/pages/showroom/ShowroomApplyPage';
+import { ShowroomLoginPage } from '@/pages/showroom/ShowroomLoginPage';
 import { ScannerSecurityGate } from '@/components/security/ScannerSecurityGate';
 import {
   useIsAuthenticated,
@@ -49,6 +51,7 @@ import {
   isExclusiveRole,
   useEnabledModules,
 } from '@/stores/session';
+import { PLAYBOOK_ROUTE_ALIASES } from '@/lib/pageKnowledge/playbookAliases';
 
 /** Prompt alias: /invite/accept?token=… → /invite/:token */
 function InviteAcceptRedirect() {
@@ -58,6 +61,19 @@ function InviteAcceptRedirect() {
     return <Navigate to="/login" replace />;
   }
   return <Navigate to={`/invite/${token}`} replace />;
+}
+
+function AliasRedirect({ to }: { to: string }) {
+  const [params] = useSearchParams();
+  const [path, existingQs] = to.split('?');
+  const merged = new URLSearchParams(existingQs ?? '');
+  params.forEach((value, key) => {
+    if (!merged.has(key)) {
+      merged.set(key, value);
+    }
+  });
+  const qs = merged.toString();
+  return <Navigate to={qs ? `${path}?${qs}` : path} replace />;
 }
 
 function RootRedirect() {
@@ -124,10 +140,15 @@ export function App() {
           {IS_TRAINING_ENABLED && isTrainingEnabled() ? <TrainingHost /> : null}
           <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/showroom/login" element={<ShowroomLoginPage />} />
+          <Route path="/showroom/apply" element={<ShowroomApplyPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/invite/accept" element={<InviteAcceptRedirect />} />
           <Route path="/supplier-portal/po/:token" element={<SupplierPortalPage />} />
+          {PLAYBOOK_ROUTE_ALIASES.map(({ from, to }) => (
+            <Route key={from} path={from} element={<AliasRedirect to={to} />} />
+          ))}
 
           {standaloneFeatureRoutes.map((route) => renderRoute(route))}
 
@@ -149,18 +170,37 @@ export function App() {
           <Route
             path="/showroom"
             element={
-              <ProtectedRoute b2bOnly>
-                <ErrorBoundary boundaryName="showroom">
-                  <ShowroomLayout />
-                </ErrorBoundary>
-              </ProtectedRoute>
+              <ErrorBoundary boundaryName="showroom">
+                <ShowroomLayout />
+              </ErrorBoundary>
             }
           >
             <Route index element={<Navigate to="catalog" replace />} />
             <Route path="catalog" element={<ShowroomCatalogPage />} />
-            <Route path="orders" element={<ShowroomOrdersPage />} />
-            <Route path="checkout" element={<ShowroomCheckoutPage />} />
-            <Route path="billing" element={<ShowroomBillingPage />} />
+            <Route
+              path="orders"
+              element={
+                <ProtectedRoute b2bOnly>
+                  <ShowroomOrdersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="checkout"
+              element={
+                <ProtectedRoute b2bOnly>
+                  <ShowroomCheckoutPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="billing"
+              element={
+                <ProtectedRoute b2bOnly>
+                  <ShowroomBillingPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
 

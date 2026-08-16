@@ -179,4 +179,29 @@ class SupportSystemPromptBuilderTest {
         assertThat(block).contains("Status");
         assertThat(block).doesNotContain("SalesOrderService");
     }
+
+    @Test
+    void repliesInSpanishWhenUiLanguageIsEs() {
+        String prompt = SupportSystemPromptBuilder.build(
+                List.of("WAREHOUSE_MANAGER"),
+                "/dashboard",
+                List.of(),
+                Map.of("title", "Command Center"),
+                Map.of("uiLanguage", "es"));
+
+        assertThat(prompt).contains("Spanish (Español)");
+        assertThat(prompt).contains("Reply language (mandatory)");
+    }
+
+    @Test
+    void repliesInFrenchWhenUiLanguageIsFr() {
+        String prompt = SupportSystemPromptBuilder.build(
+                List.of("WAREHOUSE_MANAGER"),
+                "/dashboard",
+                List.of(),
+                Map.of("title", "Command Center"),
+                Map.of("uiLanguage", "fr-CA"));
+
+        assertThat(prompt).contains("French (Français)");
+    }
 }

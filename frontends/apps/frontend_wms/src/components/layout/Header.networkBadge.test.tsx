@@ -63,5 +63,6 @@ describe('Header network badge gating', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByTestId('network-status-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brand-logo')).not.toBeInTheDocument();
   });
 });

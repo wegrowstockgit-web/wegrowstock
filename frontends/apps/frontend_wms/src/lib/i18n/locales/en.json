@@ -1,0 +1,1028 @@
+{
+  "brand": {
+    "name": "weGrowStock",
+    "globalScope": "Global Tenant Scope"
+  },
+  "nav": {
+    "Dashboard": "Dashboard",
+    "Inbound": "Inbound",
+    "Outbound": "Outbound",
+    "Inventory": "Inventory",
+    "Manufacturing": "Manufacturing",
+    "Field": "Field",
+    "Admin": "Admin",
+    "Purchase Orders": "Purchase Orders",
+    "Suppliers": "Suppliers",
+    "MRP reorder": "MRP reorder",
+    "Returns": "Returns",
+    "Sales Orders": "Sales Orders",
+    "Customers": "Customers",
+    "Invoices": "Invoices",
+    "Fulfillment": "Fulfillment",
+    "Cluster pick": "Cluster pick",
+    "Pallet manifests": "Pallet manifests",
+    "Products": "Products",
+    "Replenishments": "Replenishments",
+    "Cycle counts": "Cycle counts",
+    "Exceptions": "Exceptions",
+    "Lot Trace": "Lot Trace",
+    "BOMs": "BOMs",
+    "Production Orders": "Production Orders",
+    "Issue Supplies": "Issue Supplies",
+    "Technician Truck": "Technician Truck",
+    "Reports": "Reports",
+    "RTLS map": "RTLS map",
+    "Organization": "Organization",
+    "Profile": "Profile",
+    "Settings": "Settings",
+    "Integrations Hub": "Integrations Hub",
+    "Receive Returns": "Receive Returns",
+    "Manufacturing BOMs": "Manufacturing BOMs",
+    "Manufacturing Orders": "Manufacturing Orders"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "search": "Search",
+    "signOut": "Sign out",
+    "signIn": "Sign in",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "close": "Close",
+    "openNavigation": "Open navigation",
+    "profileSettings": "Profile Settings",
+    "language": "Language"
+  },
+  "status": {
+    "draft": "Draft",
+    "open": "Open",
+    "closed": "Closed",
+    "shipped": "Shipped",
+    "received": "Received",
+    "allocated": "Allocated",
+    "cancelled": "Cancelled"
+  },
+  "table": {
+    "sku": "SKU",
+    "name": "Name",
+    "barcode": "Barcode",
+    "status": "Status",
+    "qty": "Qty",
+    "customer": "Customer",
+    "supplier": "Supplier",
+    "number": "Number",
+    "updated": "Updated"
+  },
+  "errors": {
+    "generic": "Something went wrong. Try again.",
+    "unauthorized": "Your session expired. Please sign in again.",
+    "forbidden": "You do not have permission to do that.",
+    "notFound": "We could not find that record.",
+    "network": "Network error. Check your connection.",
+    "invalidCredentials": "Invalid email or password."
+  },
+  "login": {
+    "headline": "Run your warehouse and office from one place",
+    "subhead": "Real-time inventory, scan-first fulfillment, manufacturing, and embedded B2B payments — on one system.",
+    "welcome": "Welcome back",
+    "email": "Email",
+    "password": "Password",
+    "continue": "Continue",
+    "changeEmail": "Use a different email",
+    "useSso": "Sign in with {{company}} SSO",
+    "magicLink": "Email magic link",
+    "copyright": "© {{year}} weGrowStock. All rights reserved."
+  },
+  "search": {
+    "placeholder": "Search pages, SKUs, orders, customers…",
+    "pages": "Pages",
+    "noMatches": "No matches found",
+    "noCommands": "No commands found"
+  },
+  "profile": {
+    "title": "Personal settings",
+    "languageHelp": "Language / Idioma / Langue",
+    "saved": "Saved",
+    "photoHelp": "Update your profile photo for the office header",
+    "uploadPhoto": "Upload profile photo",
+    "photoCompressed": "Photos are compressed on-device before upload for a fast header avatar.",
+    "savePersonal": "Save personal settings"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Español",
+    "fr": "Français"
+  },
+  "pageHelp": {
+    "trigger": "Page info",
+    "triggerTitle": "What is this page?",
+    "fallbackTitle": "Page info",
+    "overview": "Overview",
+    "process": "The Process",
+    "takeAction": "Take Action",
+    "troubleshooting": "Troubleshooting",
+    "purpose": "Purpose",
+    "stepByStep": "Step-by-step",
+    "howToUndo": "How to undo a mistake",
+    "whoElse": "Who else this affects",
+    "components": "Components, columns & statuses",
+    "glossary": "Glossary",
+    "whereFrom": "Where this comes from:",
+    "columns": "Columns",
+    "statuses": "Statuses",
+    "fallbackBody": "No specialized playbook is registered for",
+    "fallbackHint": "Prefer on-screen Undo, Cancel, or Un-allocate actions — never erase inventory history.",
+    "playbooks": {
+      "dashboard": {
+        "title": "Command Center",
+        "description": "Your daily overview of warehouse operations, active tasks, and system health.",
+        "markdown": "The dashboard monitors pending shipments, incoming deliveries, and worker velocity. Use the quick actions below to jump directly into your daily queue.",
+        "actions": {
+          "0": "View My Tasks",
+          "1": "Review Labor Analytics"
+        },
+        "purpose": "See pending work, inbound freight, and labor at a glance so you can jump into today's queue.",
+        "dataOrigin": "Live warehouse and office activity summarized for your roles.",
+        "flow": {
+          "0": "Scan the KPIs for blocked orders, inbound, and labor.",
+          "1": "Open a quick action to jump into the matching queue."
+        },
+        "reversals": {
+          "0": "The dashboard is read-only — reverse work on the operational page it links to."
+        },
+        "correlations": {
+          "0": "Owners also see live paid-invoice signals from finance."
+        }
+      },
+      "salesOrders": {
+        "title": "Sales Orders",
+        "description": "Manage customer orders awaiting processing and shipment.",
+        "markdown": "Orders drop in here from Shopify or B2B portals. To process an order, it must have sufficient inventory to be Allocated, after which it drops into the Fulfillment queue.",
+        "actions": {
+          "0": "Create Manual Order",
+          "1": "Go to Fulfillment"
+        },
+        "troubleshooting": {
+          "0": {
+            "issue": "An order is stuck in \"Unallocated\".",
+            "solution": "You lack inventory for the requested items. Run a replenishment or adjust stock.",
+            "action": "Check Inventory Levels"
+          }
+        },
+        "purpose": "Confirm customer demand and allocate stock so orders can enter the fulfillment queue.",
+        "dataOrigin": "Sales orders entered by the office team or synced from connected storefronts.",
+        "flow": {
+          "0": "Confirm the order.",
+          "1": "Allocate stock.",
+          "2": "Release into fulfillment."
+        },
+        "reversals": {
+          "0": "Un-allocate releases reserved stock back to the pool."
+        },
+        "correlations": {
+          "0": "Allocated orders drop into the Fulfillment wave queue."
+        }
+      },
+      "fulfillment": {
+        "title": "Fulfillment & Picking",
+        "description": "Group orders into waves, pick items from shelves, and pack them for shipping.",
+        "markdown": "Step 1: Generate a wave to group similar orders.\nStep 2: Claim the wave to your scanner.\nStep 3: Pick the items.\nStep 4: Pack and print shipping labels.",
+        "actions": {
+          "0": "Generate Picking Wave",
+          "1": "Start Picking",
+          "2": "Pack & Ship"
+        },
+        "troubleshooting": {
+          "0": {
+            "issue": "I picked a damaged item.",
+            "solution": "Flag the item as an exception. The system will direct you to pick a replacement.",
+            "action": "Go to Exceptions Desk"
+          }
+        },
+        "purpose": "Group orders into waves, pick from shelves, and pack for shipping.",
+        "dataOrigin": "Allocated sales orders waiting to be picked and packed.",
+        "flow": {
+          "0": "Generate a wave.",
+          "1": "Claim the wave to your scanner.",
+          "2": "Pick, pack, and ship."
+        },
+        "reversals": {
+          "0": "Un-allocate or exception the line rather than inventing a stock adjust."
+        },
+        "correlations": {
+          "0": "Skip & Flag incidents land on the Exceptions desk."
+        }
+      },
+      "purchaseOrders": {
+        "title": "Purchase Orders",
+        "description": "Order new stock from your suppliers.",
+        "markdown": "Draft purchase orders to restock your warehouse. Once a PO is confirmed, the receiving dock will be notified to expect the delivery.",
+        "actions": {
+          "0": "Draft New PO",
+          "1": "View Supplier Directory"
+        },
+        "purpose": "Order new stock from your suppliers and notify the receiving dock.",
+        "dataOrigin": "Purchase orders drafted by purchasing.",
+        "flow": {
+          "0": "Draft a PO.",
+          "1": "Confirm so receiving expects the delivery."
+        },
+        "reversals": {
+          "0": "Cancel an unreceived PO; received lines reverse through returns or stock correction."
+        },
+        "correlations": {
+          "0": "Confirmed POs appear on Inbound Receiving."
+        }
+      },
+      "inboundReceive": {
+        "title": "Inbound Receiving",
+        "description": "Check in newly arrived inventory from suppliers.",
+        "markdown": "Scan the incoming Purchase Order, verify the physical quantities match the invoice, and generate License Plates (LPNs) to put the items away on shelves.",
+        "actions": {
+          "0": "Scan Incoming PO",
+          "1": "Start Put-Away Tasks"
+        },
+        "troubleshooting": {
+          "0": {
+            "issue": "The supplier sent more items than ordered (Over-receipt).",
+            "solution": "Depending on your tolerance settings, you may need to file an RTV (Return to Vendor) or accept the surplus.",
+            "action": "Manage Returns (RTV)"
+          }
+        },
+        "purpose": "Check in newly arrived inventory from suppliers and generate LPNs for putaway.",
+        "dataOrigin": "Inbound receipts against confirmed purchase orders.",
+        "flow": {
+          "0": "Scan the incoming PO.",
+          "1": "Verify quantities.",
+          "2": "Generate LPNs and start put-away."
+        },
+        "reversals": {
+          "0": "Use the undo window before commit; after commit reverse via RTV or stock correction."
+        },
+        "correlations": {
+          "0": "Over-receipts may require a return-to-vendor."
+        }
+      },
+      "products": {
+        "title": "Product Catalog",
+        "description": "The master database of everything you sell and store.",
+        "markdown": "Manage SKUs, barcodes, Unit of Measure (UoM) conversions, and product imagery. Changes here sync globally across all facilities.",
+        "actions": {
+          "0": "Add New Product",
+          "1": "Import from CSV"
+        },
+        "purpose": "The master catalog of everything you sell and store.",
+        "dataOrigin": "Product catalog with current on-hand quantities.",
+        "flow": {
+          "0": "Add or edit a SKU.",
+          "1": "Set barcodes and units.",
+          "2": "Import from CSV when loading many rows."
+        },
+        "reversals": {
+          "0": "Edit the master again; catalog edits do not erase stock history."
+        },
+        "correlations": {
+          "0": "Changes sync across facilities and feed barcode resolution on the floor."
+        }
+      },
+      "cycleCounts": {
+        "title": "Cycle Counts",
+        "description": "Audit your physical shelves to ensure software accuracy.",
+        "markdown": "Generate blind counts for your team. If the physical count differs from the software ledger, a manager must approve the variance.",
+        "actions": {
+          "0": "Generate Blind Count",
+          "1": "Review Variances"
+        },
+        "purpose": "Blind physical counts that reconcile on-hand to reality.",
+        "dataOrigin": "Cycle count worksheets and variance approvals.",
+        "flow": {
+          "0": "Open a count task (expected qty hidden).",
+          "1": "Enter the physical quantity.",
+          "2": "Managers approve large variances."
+        },
+        "reversals": {
+          "0": "Before confirm, clear the entry and re-count.",
+          "1": "After an auto-adjust, reverse with a manager stock correction."
+        },
+        "correlations": {
+          "0": "Approved counts write a stock correction and refresh on-hand quantities."
+        }
+      },
+      "exceptions": {
+        "title": "Exceptions Desk",
+        "description": "Resolve hardware conflicts, damaged goods, and picking errors.",
+        "markdown": "When workers flag issues on the floor or devices lose internet connection, the errors land here for management resolution.",
+        "actions": {
+          "0": "Review Pending Exceptions",
+          "1": "Resolve Sync Conflicts"
+        },
+        "purpose": "Resolve floor Skip & Flag incidents and parked offline scan conflicts.",
+        "dataOrigin": "Lines pickers marked as Skip & Flag and parked offline scans.",
+        "flow": {
+          "0": "Open an OPEN fulfillment exception.",
+          "1": "Investigate, then Resolve with disposition.",
+          "2": "On Sync Conflicts, Approve & Re-process or Discard."
+        },
+        "reversals": {
+          "0": "Resolving an exception does not automatically restore the original allocation."
+        },
+        "correlations": {
+          "0": "Pickers create exceptions to keep waves moving; managers close the loop."
+        }
+      },
+      "settings": {
+        "title": "Tenant Settings",
+        "description": "Configure integrations, hardware, and access controls.",
+        "markdown": "Manage your connected Shopify stores, configure Bluetooth scales and Zebra scanners, and define Role-Based Access Control (RBAC) permissions for your staff.",
+        "actions": {
+          "0": "Connect Integration",
+          "1": "Configure Hardware",
+          "2": "Manage Users"
+        },
+        "purpose": "Tenant-wide configuration hub for users, warehouses, floor rules, and integrations.",
+        "dataOrigin": "Company settings your administrators maintain.",
+        "flow": {
+          "0": "Open the tab that matches the change you need.",
+          "1": "Save — the audit log records the actor.",
+          "2": "Confirm floor devices pick up the new rule."
+        },
+        "reversals": {
+          "0": "Toggle the rule back; every change is recorded in the audit history."
+        },
+        "correlations": {
+          "0": "Blind receiving and variance thresholds change what pickers may post without manager review."
+        }
+      },
+      "inventory_ledger": {
+        "title": "Inventory Ledger",
+        "description": "Review stock movements. History is never erased — corrections add a new row.",
+        "purpose": "Review stock movements (receive, adjust, ship, transfer, assemble). History is never erased — corrections add a new row.",
+        "markdown": "Filter movements, open a row for reason and actor, and reverse only with the built-in Undo when policy allows.",
+        "dataOrigin": "Stock movement history shown for managers (every receive, pick, and adjust).",
+        "flow": {
+          "0": "Filter by SKU, location, date, or movement type.",
+          "1": "Open a row to see reason code, actor, lot/serial, and references.",
+          "2": "Use Undo only on reversible rows when policy allows."
+        },
+        "reversals": {
+          "0": "Prefer the built-in Undo — it posts a compensating stock correction attributed to you.",
+          "1": "Never delete historical stock movements.",
+          "2": "If Undo is hidden, post an explicit stock correction with a clear reason."
+        },
+        "correlations": {
+          "0": "Every floor scan and office allocate/ship eventually appears here.",
+          "1": "Lot Trace walks these rows for recall response."
+        }
+      },
+      "replenishments": {
+        "title": "Replenishments",
+        "description": "Move stock from reserve into pick faces so outbound waves do not starve.",
+        "purpose": "Move stock from reserve/bulk into pick faces so outbound waves do not starve.",
+        "markdown": "Review suggested moves, scan source then destination, and confirm the transfer.",
+        "dataOrigin": "Suggested moves from reserve storage into pick faces.",
+        "flow": {
+          "0": "Review suggested movements (min/max rules + predictive triggers).",
+          "1": "Scan source, scan destination, confirm the transfer."
+        },
+        "reversals": {
+          "0": "Before confirm, cancel the task.",
+          "1": "After confirm, reverse with an opposite transfer documented as a replenishment correction."
+        },
+        "correlations": {
+          "0": "Prevents pick-line stockouts that would otherwise become Skip & Flag exceptions."
+        }
+      },
+      "customers": {
+        "title": "Customers",
+        "description": "Maintain customer master data and credit lines that gate outbound allocation.",
+        "purpose": "Maintain customer master data and credit lines that gate outbound allocation.",
+        "markdown": "Create or edit a customer, set the credit limit, and link ship-to addresses used on sales orders.",
+        "dataOrigin": "Customer records maintained by your office team.",
+        "flow": {
+          "0": "Create or edit a customer profile.",
+          "1": "Set or adjust the line-of-credit limit.",
+          "2": "Link ship-to addresses used on sales orders."
+        },
+        "reversals": {
+          "0": "Credit limit changes take effect on the next allocate.",
+          "1": "Deactivating a customer does not cancel open sales orders."
+        },
+        "correlations": {
+          "0": "Over-limit allocate attempts freeze orders for review.",
+          "1": "B2B showroom price lists bind to these customer records."
+        }
+      },
+      "invoices": {
+        "title": "Invoices",
+        "description": "Track invoices and payment state; when a payment clears, the invoice shows PAID.",
+        "purpose": "Track invoices and payment state; when a payment clears, the invoice shows PAID for finance.",
+        "markdown": "Review AR aging, send payment requests when configured, and watch live PAID updates after settlement.",
+        "dataOrigin": "Invoices created after orders ship or are ready to bill.",
+        "flow": {
+          "0": "Review AR aging and open invoices.",
+          "1": "Send payment requests when configured.",
+          "2": "Watch live PAID updates after payment settles."
+        },
+        "reversals": {
+          "0": "Do not manually flip PAID without a finance process.",
+          "1": "Refunds are accounting events; stock returns use the Returns module."
+        },
+        "correlations": {
+          "0": "Paid invoices may release credit exposure for new allocations."
+        }
+      },
+      "suppliers": {
+        "title": "Suppliers",
+        "description": "Vendor master — terms, lead times, quality ratings, and masked banking details.",
+        "purpose": "Vendor master — terms, lead times, quality ratings, and envelope-encrypted banking details.",
+        "markdown": "Create or edit a supplier, set lead times for replenishment planning, and store banking details (masked after save).",
+        "dataOrigin": "Supplier records maintained by purchasing.",
+        "flow": {
+          "0": "Create or edit a supplier profile.",
+          "1": "Set lead times that feed replenishment planning.",
+          "2": "Store banking details (shown masked after save)."
+        },
+        "reversals": {
+          "0": "Correct master data with another edit.",
+          "1": "Deactivate rather than delete suppliers tied to historical POs."
+        },
+        "correlations": {
+          "0": "PO creation requires an approved supplier.",
+          "1": "Lead times influence automated replenishment suggestions."
+        }
+      },
+      "returns": {
+        "title": "Returns / RMA",
+        "description": "Authorize customer returns, then receive and disposition (restock vs scrap) on the floor.",
+        "purpose": "Authorize customer returns, then receive and disposition (restock vs scrap) on the floor.",
+        "markdown": "Create and approve an RMA, receive against it on the floor, then restock or scrap.",
+        "dataOrigin": "Customer return (RMA) documents.",
+        "flow": {
+          "0": "Create and approve an RMA in the office.",
+          "1": "Floor receives against the RMA on Receive Returns.",
+          "2": "Disposition RESTOCK or SCRAP."
+        },
+        "reversals": {
+          "0": "Cancel an unreceived RMA before floor intake.",
+          "1": "Restocked units that should not sell: move back to quarantine or scrap with a stock correction."
+        },
+        "correlations": {
+          "0": "Restock increases sellable ATP; scrap does not.",
+          "1": "Finance may issue credits separately from inventory disposition."
+        }
+      },
+      "returns_receive": {
+        "title": "Returns Receive (Floor)",
+        "description": "Scan returned goods against an approved RMA and apply quarantine-aware disposition.",
+        "purpose": "Scan returned goods against an approved RMA and apply quarantine-aware disposition.",
+        "markdown": "Open the RMA on the handheld, scan the item, and complete putaway to quarantine or scrap as directed.",
+        "dataOrigin": "Return receipts scanned on the floor.",
+        "flow": {
+          "0": "Open the RMA on the handheld.",
+          "1": "Scan the returned item and confirm disposition path.",
+          "2": "Complete putaway to quarantine or scrap location as directed."
+        },
+        "reversals": {
+          "0": "Mis-scan undo window applies before commit.",
+          "1": "After restock, only managers release or scrap with attributed ledger moves."
+        },
+        "correlations": {
+          "0": "Closes RMA lines visible to office Returns.",
+          "1": "Quarantine release is an office decision."
+        }
+      },
+      "compliance_lot_trace": {
+        "title": "Lot Trace",
+        "description": "Read-only genealogy of a lot or serial for recall and quality response.",
+        "purpose": "Read-only genealogy of a lot/serial across supplier, receive, assembly, ship, and customer.",
+        "markdown": "Enter the lot or serial, review the chain, and export CSV for regulators when needed.",
+        "dataOrigin": "Lot and serial history for recalls and quality checks.",
+        "flow": {
+          "0": "Enter the lot or serial number.",
+          "1": "Review the recursive ledger chain.",
+          "2": "Export CSV for regulators or customers when needed."
+        },
+        "reversals": {
+          "0": "Lot Trace is read-only — nothing to undo here.",
+          "1": "Correct source data via returns, adjusts, or re-ship elsewhere."
+        },
+        "correlations": {
+          "0": "VIEWER role is enough; operational roles write the underlying history."
+        }
+      },
+      "rtls": {
+        "title": "RTLS map",
+        "description": "Spatial digital twin — live picker positions, congestion heat, and walkable edges.",
+        "purpose": "Spatial digital twin — live picker positions, congestion heat, and walkable edges for wayfinding.",
+        "markdown": "Open the map, watch live positions, inspect the heatmap, and adjust coordinates when the layout changes.",
+        "dataOrigin": "Live device or asset positions on the warehouse map.",
+        "flow": {
+          "0": "Open the map and watch live position updates.",
+          "1": "Inspect the 7-day heatmap of stock movement activity.",
+          "2": "Adjust coordinates / edges when the physical layout changes."
+        },
+        "reversals": {
+          "0": "Coordinate edits can be patched again; they do not reverse inventory.",
+          "1": "Heatmap history is analytical — not a transaction log to undo."
+        },
+        "correlations": {
+          "0": "Pick pathing consumes this graph.",
+          "1": "Floor scans feed both ledger heat and live tags."
+        }
+      },
+      "manufacturing_boms": {
+        "title": "Bills of Materials",
+        "description": "Define assembly recipes that drive production orders.",
+        "purpose": "Define assembly recipes (components, operations, co-products) that drive production orders.",
+        "markdown": "Create a BOM for a finished SKU, add component lines and operations, then save.",
+        "dataOrigin": "Bills of materials that define what goes into a finished good.",
+        "flow": {
+          "0": "Create a BOM for a finished SKU.",
+          "1": "Add component lines, operations, and outputs.",
+          "2": "Save — production orders will consume this recipe."
+        },
+        "reversals": {
+          "0": "Edit or version the BOM before orders allocate against it.",
+          "1": "After production has run, supersede with a new revision instead of deleting history."
+        },
+        "correlations": {
+          "0": "Component availability is checked when production orders allocate."
+        }
+      },
+      "manufacturing_orders": {
+        "title": "Production Orders",
+        "description": "Schedule work orders and allocate raw components so sales picks cannot steal reserved materials.",
+        "purpose": "Schedule work orders and allocate raw components so sales picks cannot steal reserved materials.",
+        "markdown": "Create a production order from a BOM, allocate components, then release to the Production Terminal.",
+        "dataOrigin": "Manufacturing work orders.",
+        "flow": {
+          "0": "Create a production order from a BOM.",
+          "1": "Allocate components.",
+          "2": "Release to the Production Terminal for assembly."
+        },
+        "reversals": {
+          "0": "Deallocate components before assembly to return raw materials to ATP.",
+          "1": "After assemble posts, reverse with compensating entries — never erase completed production history."
+        },
+        "correlations": {
+          "0": "Locks components away from outbound sales picks.",
+          "1": "Terminal labor timesheets attach cost to the order."
+        }
+      },
+      "manufacturing_terminal": {
+        "title": "Production Terminal",
+        "description": "Floor assembly station — start/stop labor, consume components, mint finished-goods labels.",
+        "purpose": "Floor assembly station — start/stop labor, consume components, mint finished goods labels.",
+        "markdown": "Scan the work order, start the timesheet, complete the run, then stop and post assemble.",
+        "dataOrigin": "Shop-floor terminal scan steps for production.",
+        "flow": {
+          "0": "Scan the work order and Start timesheet.",
+          "1": "Complete the assembly run.",
+          "2": "Stop timesheet and post assemble."
+        },
+        "reversals": {
+          "0": "Stop a timesheet without assemble if the run aborts.",
+          "1": "Wrong assemble: a manager posts a compensating assembly or stock correction."
+        },
+        "correlations": {
+          "0": "Finished goods become allocatable for sales immediately after assemble."
+        }
+      },
+      "issue_supplies": {
+        "title": "Issue Supplies",
+        "description": "Internal consumption against a cost center — deducts stockroom qty without a customer sales order.",
+        "purpose": "Internal consumption against a cost center — deducts stockroom qty without creating a customer SO.",
+        "markdown": "Select the cost center, scan the supply SKU, and confirm the issue.",
+        "dataOrigin": "Internal issue of supplies to cost centers or jobs.",
+        "flow": {
+          "0": "Select the cost center.",
+          "1": "Scan the supply SKU and confirm issue."
+        },
+        "reversals": {
+          "0": "Before confirm, cancel the issue.",
+          "1": "After confirm, reverse with a positive stock correction to the stockroom attributed to the manager."
+        },
+        "correlations": {
+          "0": "Charges the cost center budget; does not affect customer allocations."
+        }
+      },
+      "field_truck": {
+        "title": "Technician Truck",
+        "description": "Consume van stock on-site; low stock signals depot replenishment.",
+        "purpose": "Consume van stock (vehicle location) on-site; low stock signals depot replenishment.",
+        "markdown": "Scan components used on the job and confirm consumption from the assigned vehicle location.",
+        "dataOrigin": "Stock assigned to service trucks and field techs.",
+        "flow": {
+          "0": "Scan components used on the job.",
+          "1": "Confirm consumption from the assigned vehicle location.",
+          "2": "Work offline if needed — queue replays on reconnect."
+        },
+        "reversals": {
+          "0": "Undo window before offline queue commit.",
+          "1": "After sync, reverse via depot stock correction or transfer back onto the van."
+        },
+        "correlations": {
+          "0": "Reorder-point triggers truck replenishment from the warehouse."
+        }
+      },
+      "reports": {
+        "title": "Reports",
+        "description": "Financial and operational analytics over warehouse data in your access scope.",
+        "purpose": "Financial and operational analytics (profit, COGS, turns) over warehouse data in your access scope.",
+        "markdown": "Open the analysis board you need, filter by date or warehouse, then export for leadership packs.",
+        "dataOrigin": "Saved operational reports and KPI snapshots.",
+        "flow": {
+          "0": "Open the analysis board you need.",
+          "1": "Filter by date / warehouse.",
+          "2": "Export or screenshot for leadership packs."
+        },
+        "reversals": {
+          "0": "Reports are read-only — reverse underlying transactions on operational pages."
+        },
+        "correlations": {
+          "0": "Headline KPIs may refresh on a short delay rather than updating every second."
+        }
+      },
+      "settings_tab_profile": {
+        "title": "Settings — Profile",
+        "description": "Your user profile and the default organization name.",
+        "purpose": "Your user profile and the default organization name shown across the app.",
+        "markdown": "Update display name, contact, and locale preferences, then save.",
+        "dataOrigin": "Your signed-in profile details.",
+        "flow": {
+          "0": "Update display name, contact, and locale preferences.",
+          "1": "Save — changes apply to your session immediately."
+        },
+        "reversals": {
+          "0": "Edit the fields again; profile edits do not touch inventory or roles."
+        },
+        "correlations": {
+          "0": "Org branding may also appear on documents from the Documents tab."
+        }
+      },
+      "settings_tab_users": {
+        "title": "Settings — Users",
+        "description": "Invite users, assign roles, and scope warehouse access.",
+        "purpose": "Invite and manage company users, assign roles, and scope which warehouses each person can access.",
+        "markdown": "Invite a user, assign roles that match their job, check warehouses they may access, then save.",
+        "dataOrigin": "User invitations and role assignments.",
+        "flow": {
+          "0": "Invite a user or open an existing account.",
+          "1": "Assign one or more roles that match their job.",
+          "2": "Check the warehouses they may access.",
+          "3": "Save — the next login enforces the new capabilities."
+        },
+        "reversals": {
+          "0": "Remove a role or warehouse checkbox and save again.",
+          "1": "Deactivate rather than delete users tied to historical stock movements."
+        },
+        "correlations": {
+          "0": "Warehouse assignments control which bins, waves, and documents appear."
+        }
+      },
+      "settings_tab_warehouses": {
+        "title": "Settings — Warehouses",
+        "description": "Define buildings, zones, and bins used by access and putaway rules.",
+        "purpose": "Define buildings, zones, and bins that warehouse access and putaway rules reference.",
+        "markdown": "Add or edit a warehouse, maintain zones/bins, and assign users from the Users tab.",
+        "dataOrigin": "Warehouses and bin locations for your company.",
+        "flow": {
+          "0": "Add or edit a warehouse.",
+          "1": "Maintain zones/bins (or open the visualizer).",
+          "2": "Assign users to the warehouse from the Users tab."
+        },
+        "reversals": {
+          "0": "Deactivate unused warehouses instead of deleting ones with ledger history.",
+          "1": "Bin coordinate edits do not reverse stock."
+        },
+        "correlations": {
+          "0": "Pick pathing, RTLS, and replenishment depend on this layout."
+        }
+      },
+      "settings_tab_inventory": {
+        "title": "Settings — Inventory Rules",
+        "description": "Reorder points, UOM defaults, and inventory policy knobs.",
+        "purpose": "Reorder points, UOM defaults, and inventory policy knobs that feed ATP and replenishment.",
+        "markdown": "Adjust reorder / safety-stock defaults, then save so planning picks up the new thresholds.",
+        "dataOrigin": "Inventory policy settings (reorder rules, units, and similar).",
+        "flow": {
+          "0": "Adjust reorder / safety-stock defaults as needed.",
+          "1": "Save — planning and low-stock KPIs pick up the new thresholds."
+        },
+        "reversals": {
+          "0": "Restore prior thresholds with another save."
+        },
+        "correlations": {
+          "0": "Dashboard Low Stock Count and purchase suggestions use these thresholds."
+        }
+      },
+      "settings_tab_documents": {
+        "title": "Settings — Documents",
+        "description": "Templates and numbering for POs, packing slips, invoices, and other printables.",
+        "purpose": "Templates and numbering for POs, packing slips, invoices, and other printable documents.",
+        "markdown": "Pick the document type, update logo or number series, then save.",
+        "dataOrigin": "Printable labels and document templates.",
+        "flow": {
+          "0": "Pick the document type to customize.",
+          "1": "Update logo, footer, or number series.",
+          "2": "Save — next print jobs use the new template."
+        },
+        "reversals": {
+          "0": "Revert template fields and save again; already-printed PDFs are not rewritten."
+        },
+        "correlations": {
+          "0": "Sales ship and PO submit flows render from these templates."
+        }
+      },
+      "settings_tab_security": {
+        "title": "Settings — Security & SSO",
+        "description": "SSO, session policy, and authentication hardening for the tenant.",
+        "purpose": "SSO configuration, session policy, and authentication hardening for the tenant.",
+        "markdown": "Configure SSO if your IdP is ready, review session toggles, then save.",
+        "dataOrigin": "Sign-in and security options for your company.",
+        "flow": {
+          "0": "Configure SSO provider fields if your IdP is ready.",
+          "1": "Review session / MFA related toggles.",
+          "2": "Save — next login follows the new policy."
+        },
+        "reversals": {
+          "0": "Disable SSO carefully — ensure local login still works for admins.",
+          "1": "Every security change is audited."
+        },
+        "correlations": {
+          "0": "Affects how owners, admins, and pickers sign in; does not change warehouse access by itself."
+        }
+      },
+      "settings_tab_reconciliation": {
+        "title": "Settings — Reconciliation",
+        "description": "Tools and schedules for reconciling inventory and external books.",
+        "purpose": "Tools and schedules for reconciling inventory levels, accounting balances, and external sync ledgers.",
+        "markdown": "Review the last run, trigger a reconcile when finance asks, then investigate mismatches on operational pages.",
+        "dataOrigin": "Comparisons between this system and connected storefronts.",
+        "flow": {
+          "0": "Review the last reconciliation run.",
+          "1": "Trigger or schedule a reconcile when finance asks.",
+          "2": "Investigate mismatches on the linked operational pages."
+        },
+        "reversals": {
+          "0": "Reconciliation jobs do not delete ledger rows — they report drift for manager stock correction."
+        },
+        "correlations": {
+          "0": "Pairs with Accounting Sync and Cycle Counts when numbers disagree."
+        }
+      },
+      "settings_tab_accounting": {
+        "title": "Settings — Accounting Sync",
+        "description": "Connect QuickBooks/Xero so invoices and journals flow through finance sync.",
+        "purpose": "Connect QuickBooks/Xero (or similar) so invoices and journals flow through the finance sync.",
+        "markdown": "Connect or refresh the accounting adapter, map tax schemes, and retry FAILED rows.",
+        "dataOrigin": "Accounting export status for finance systems.",
+        "flow": {
+          "0": "Connect or refresh the accounting adapter.",
+          "1": "Map tax schemes and accounts as prompted.",
+          "2": "Watch sync status chips for FAILED rows and retry."
+        },
+        "reversals": {
+          "0": "Disconnecting stops new syncs; already-posted external journals must be voided in the accounting system."
+        },
+        "correlations": {
+          "0": "Paid invoices and COGS journals depend on this bridge."
+        }
+      },
+      "settings_tab_integrations": {
+        "title": "Settings — Integrations",
+        "description": "Connect storefronts and accounting so orders and payments land without double entry.",
+        "purpose": "Connect e-commerce storefronts and accounting systems so orders and payments land without double entry.",
+        "markdown": "Choose a connector, paste connection keys, enable the channel, and verify a test order or payment.",
+        "dataOrigin": "Connections to storefronts and marketplaces.",
+        "flow": {
+          "0": "Choose an e-commerce or accounting connector.",
+          "1": "Paste the connection keys provided by the storefront or accounting system.",
+          "2": "Enable the channel and verify a test order or payment event."
+        },
+        "reversals": {
+          "0": "Disable a connector to stop inbound events; already-imported sales orders stay in the outbound pipeline.",
+          "1": "Rotate connection keys if a key leaks."
+        },
+        "correlations": {
+          "0": "Storefront connections create or update sales orders that still allocate and ship like office-entered orders."
+        }
+      },
+      "settings_tab_mesh": {
+        "title": "Settings — Partner Catalog",
+        "description": "Cross-tenant mappings so seller SKUs resolve to buyer products.",
+        "purpose": "Cross-tenant mesh mappings so seller SKUs resolve to buyer products on multi-party POs/SOs.",
+        "markdown": "Open Partner Catalog Mapping, map partner SKUs to local variants, then save.",
+        "dataOrigin": "Partner catalog sharing between trusted companies.",
+        "flow": {
+          "0": "Open Partner Catalog Mapping.",
+          "1": "Map partner SKUs to local variants.",
+          "2": "Save — the mesh uses the map on the next purchase-order submit."
+        },
+        "reversals": {
+          "0": "Unmap or remap a SKU; historical documents keep the snapshot they were created with."
+        },
+        "correlations": {
+          "0": "Unmapped mesh lines may create DRAFT exception sales orders for review."
+        }
+      },
+      "settings_tab_operations": {
+        "title": "Settings — Operations",
+        "description": "Floor rules — blind receiving, adjustment limits, scanner options — plus the Audit Log.",
+        "purpose": "Tenant floor rules — blind receiving, adjustment limits, scanner options — plus the Audit Log of who changed what.",
+        "markdown": "Toggle the operational rule you need, save, then confirm floor devices pick up the new rule.",
+        "dataOrigin": "Floor operating rules (receiving and scanner options).",
+        "flow": {
+          "0": "Toggle the operational rule you need (e.g. blind receiving, max adjust qty).",
+          "1": "Save — the audit log records the actor.",
+          "2": "Confirm floor devices pick up the new rule on the next scan."
+        },
+        "reversals": {
+          "0": "Toggle the rule back; every change is recorded in the audit history.",
+          "1": "Raising an adjustment limit does not auto-approve past pending manager review counts."
+        },
+        "correlations": {
+          "0": "Blind receiving and variance thresholds change what pickers may post without manager review."
+        }
+      },
+      "settings_tab_syncConflicts": {
+        "title": "Settings — Sync Conflicts",
+        "description": "Review parked offline floor scans that could not finish after reconnecting.",
+        "purpose": "Review parked offline floor scans that could not finish after reconnecting.",
+        "markdown": "Open a parked conflict, correct highlighted fields, then Approve & Re-process or Discard.",
+        "dataOrigin": "The conflict list on Dashboard or Exceptions.",
+        "flow": {
+          "0": "Open a PARKED conflict.",
+          "1": "Correct the highlighted fields if needed.",
+          "2": "Approve & Re-process or Discard."
+        },
+        "reversals": {
+          "0": "Discard permanently drops the parked scan.",
+          "1": "Approve posts under the manager name; reverse later only with a compensating stock correction."
+        },
+        "correlations": {
+          "0": "Same board is reachable from Exceptions Sync tab and the dashboard banner."
+        }
+      },
+      "settings_tab_costCenters": {
+        "title": "Settings — Cost Centers & Requisitions",
+        "description": "Internal budgets that authorize Issue Supplies without a customer sales order.",
+        "purpose": "Internal budgets and requisitions that authorize Issue Supplies without a customer sales order.",
+        "markdown": "Create or edit a cost center, review draft requisitions, then floor Issue Supplies charges the center.",
+        "dataOrigin": "Cost centers used when issuing internal supplies.",
+        "flow": {
+          "0": "Create or edit a cost center budget.",
+          "1": "Review DRAFT requisitions and approve when appropriate.",
+          "2": "Floor Issue Supplies charges against the approved center."
+        },
+        "reversals": {
+          "0": "Cancel DRAFT requisitions before issue.",
+          "1": "After issue, reverse stock with a manager stock correction referencing the original consumption."
+        },
+        "correlations": {
+          "0": "Issue Supplies on the floor reads these centers for budget clearance."
+        }
+      },
+      "settings_profile": {
+        "title": "Profile settings",
+        "description": "Dedicated profile page for the signed-in user.",
+        "purpose": "Dedicated profile page for the signed-in user (same domain as Settings → Profile).",
+        "markdown": "Update personal details, then save and return to the app shell.",
+        "dataOrigin": "Your signed-in profile details.",
+        "flow": {
+          "0": "Update personal details.",
+          "1": "Save and return to the app shell."
+        },
+        "reversals": {
+          "0": "Edit again; no inventory impact."
+        },
+        "correlations": {
+          "0": "Opens from the header avatar; Users tab remains the place for role and location access changes."
+        }
+      },
+      "settings_billing": {
+        "title": "Billing",
+        "description": "OWNER-scoped subscription and plan management for the tenant.",
+        "purpose": "OWNER-scoped subscription and plan management for the tenant.",
+        "markdown": "Review the current plan and seats, then change plan or payment method in the billing portal when needed.",
+        "dataOrigin": "Subscription and billing managed by owners.",
+        "flow": {
+          "0": "Review the current plan and seats.",
+          "1": "Change plan or payment method in the billing portal when needed."
+        },
+        "reversals": {
+          "0": "Plan downgrades may take effect at period end — confirm in the billing portal.",
+          "1": "Billing changes do not reverse warehouse transactions."
+        },
+        "correlations": {
+          "0": "Only OWNER (and sometimes ADMIN) can open this hub."
+        }
+      },
+      "settings_fintech": {
+        "title": "Cash Flow & Financing",
+        "description": "OWNER-scoped cash-flow and financing insights tied to AR/AP signals.",
+        "purpose": "OWNER-scoped cash-flow and financing insights tied to AR/AP signals.",
+        "markdown": "Review cash-flow panels and open financing offers only when OWNER policy allows.",
+        "dataOrigin": "Payment and payout options configured by owners.",
+        "flow": {
+          "0": "Review cash-flow panels.",
+          "1": "Open financing offers only when OWNER policy allows."
+        },
+        "reversals": {
+          "0": "Financing acceptances are contractual — reverse via the fintech partner, not the inventory ledger."
+        },
+        "correlations": {
+          "0": "Uses paid invoices and open receivables from the Invoices page."
+        }
+      },
+      "settings_integrations": {
+        "title": "Integrations Hub",
+        "description": "Hub that routes into e-commerce, accounting, and operations integration surfaces.",
+        "purpose": "Hub that routes into e-commerce, accounting, and operations integration surfaces.",
+        "markdown": "Pick the connector category, then follow the shortcut into the matching Settings tab.",
+        "dataOrigin": "Integration setup screens for storefronts and partners.",
+        "flow": {
+          "0": "Pick the connector category (storefront, accounting, or operations).",
+          "1": "Follow the shortcut into the matching Settings tab or connection page."
+        },
+        "reversals": {
+          "0": "Disable connectors from the Integrations or Accounting tabs — the hub itself does not mutate stock."
+        },
+        "correlations": {
+          "0": "Shortcuts land on Integrations, Accounting, or Operations tabs."
+        }
+      },
+      "import": {
+        "title": "Import wizard",
+        "description": "Bulk-load products via mapped CSV/Excel with preflight validation.",
+        "purpose": "Bulk-load products/variants via mapped CSV/Excel with preflight validation.",
+        "markdown": "Download the template, map columns, run preflight, then commit the import.",
+        "dataOrigin": "Spreadsheets uploaded by your team to create or update records.",
+        "flow": {
+          "0": "Download the template.",
+          "1": "Map columns and run preflight.",
+          "2": "Resolve missing products, then commit the import."
+        },
+        "reversals": {
+          "0": "Stop before commit if preflight shows errors.",
+          "1": "After commit, correct with a follow-up import or manual edits — imports do not delete ledger stock."
+        },
+        "correlations": {
+          "0": "Imported masters immediately feed PO/SO and floor barcode resolution."
+        }
+      },
+      "showroom": {
+        "title": "B2B Showroom",
+        "description": "Customer portal for catalog, cart, checkout, and order status at negotiated prices.",
+        "purpose": "Customer portal for catalog browse, cart, checkout, and order status at negotiated prices.",
+        "markdown": "Browse the restricted catalog, add to cart, checkout, then track order status.",
+        "dataOrigin": "Products your B2B customers can browse in the showroom.",
+        "flow": {
+          "0": "Browse the restricted catalog.",
+          "1": "Add to cart and checkout.",
+          "2": "Track order status under Showroom Orders."
+        },
+        "reversals": {
+          "0": "Remove cart lines before checkout.",
+          "1": "After place-order, cancellations go through the office sales-order Cancel/Un-allocate path."
+        },
+        "correlations": {
+          "0": "Portal DRAFT orders enter the same outbound pipeline as office-entered sales orders."
+        }
+      }
+    }
+  },
+  "chat": {
+    "title": "Operations Co-Pilot",
+    "open": "Open support copilot",
+    "close": "Close support copilot",
+    "intro": "Ask how to use this screen. I can spotlight buttons, draft a safe action for you to approve, or walk a training scenario without touching live stock.",
+    "unreachable": "Support chat is unavailable right now. Try again in a moment.",
+    "trainingActive": "TRAINING SIMULATOR ACTIVE{{role}}",
+    "askPlaceholder": "Ask a question…",
+    "listening": "Listening…",
+    "attachPhoto": "Attach photo",
+    "pushToTalk": "Push to talk",
+    "stopVoice": "Stop voice input",
+    "send": "Send",
+    "signedIn": "Signed in",
+    "approveExecute": "Approve & Execute",
+    "working": "Working…",
+    "running": "Running…",
+    "executed": "✓ Executed",
+    "draftFailed": "Could not execute — check the zone or try the on-screen button.",
+    "photoFailed": "Could not prepare that photo. Try a smaller image.",
+    "practice": "Practice: {{title}}",
+    "trainingMode": "Training mode: **{{title}}**. Live stock will not change."
+  },
+  "roles": {
+    "OWNER": "Owners",
+    "ADMIN": "Administrators",
+    "WAREHOUSE_MANAGER": "Warehouse Managers",
+    "PICKER": "Floor Pickers",
+    "VIEWER": "Viewers",
+    "B2B_CUSTOMER": "B2B Buyers"
+  }
+}

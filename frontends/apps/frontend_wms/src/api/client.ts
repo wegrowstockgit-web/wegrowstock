@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useSessionStore } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
+import { usePreferencesStore } from '@/stores/preferencesStore';
 import { clearQueryCache, queryClient } from '@/offline/queryPersistence';
 import { getTrainingGuard } from '@/lib/training/active';
 import { recordSupportNetworkError } from '@/lib/chatbot/active';
@@ -71,7 +72,9 @@ function isProtectedApiRequest(url?: string): boolean {
     url.includes('/api/v1/') &&
     !url.includes('/api/v1/auth/login') &&
     !url.includes('/api/v1/auth/signup') &&
-    !url.includes('/api/v1/auth/warehouse/login')
+    !url.includes('/api/v1/auth/warehouse/login') &&
+    !url.includes('/api/v1/auth/discovery') &&
+    !url.includes('/api/v1/auth/sso-discover')
   );
 }
 
@@ -134,6 +137,11 @@ apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) =>
   const warehouseId = useActiveWarehouseStore.getState().warehouseId;
   if (warehouseId) {
     config.headers['X-Warehouse-Id'] = warehouseId;
+  }
+  const uiLanguage = usePreferencesStore.getState().language;
+  if (uiLanguage) {
+    config.headers['Accept-Language'] = uiLanguage;
+    config.headers['X-User-Language'] = uiLanguage;
   }
   if (!config.headers['X-Request-Id']) {
     config.headers['X-Request-Id'] =

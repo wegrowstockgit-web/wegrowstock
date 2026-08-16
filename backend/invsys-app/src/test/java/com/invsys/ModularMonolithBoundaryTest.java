@@ -6,10 +6,10 @@ import org.springframework.modulith.core.ApplicationModules;
 /**
  * CI guardrail: a new cross-module Service/Repository import fails the build.
  *
- * <p>{@link InvSysApplication} lives in {@code com.invsys}, so
- * {@code ApplicationModules.of(InvSysApplication.class)} would treat every
- * sibling package ({@code api}, {@code service}, …) as a module. Bounded
- * contexts live under {@code com.invsys.modules} and are verified here.
+ * <p>Detection uses {@link com.invsys.modules.BoundedContextDetectionStrategy} so
+ * {@code ApplicationModules.of(InvSysApplication.class)} only sees
+ * {@code com.invsys.modules.*}. {@link com.invsys.architecture.ModularMonolithBoundaryTest}
+ * runs the same check via {@code ApplicationModules.of(InvSysApplication.class)}.
  */
 class ModularMonolithBoundaryTest {
 

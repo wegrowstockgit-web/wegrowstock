@@ -29,7 +29,7 @@ test.describe('B2B portal', () => {
     await expect(page.getByLabel('Your PO number')).toBeVisible();
     await page.getByLabel('Your PO number').fill('PO-E2E-1');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByRole('button', { name: 'Place order' }).click();
+    await page.getByRole('button', { name: 'Instant Checkout' }).click();
 
     await expect(page.getByText('Order submitted')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: 'View orders' }).click();

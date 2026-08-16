@@ -1,5 +1,7 @@
 package com.invsys.core.tenancy;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -15,6 +17,8 @@ import java.util.UUID;
  */
 @Component
 public class BootstrapJdbc {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JdbcTemplate jdbc;
 
@@ -273,6 +277,69 @@ public class BootstrapJdbc {
                 domainName.trim());
     }
 
+    public Optional<HrdTenantRow> findHrdByVerifiedDomain(String domainName) {
+        if (domainName == null || domainName.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbc.query(
+                """
+                SELECT t.id AS tenant_id, t.name AS company_name,
+                       COALESCE(s.enabled, FALSE) AS sso_enabled,
+                       COALESCE(s.force_sso, FALSE) AS force_sso,
+                       COALESCE(s.protocol, 'OIDC') AS protocol,
+                       COALESCE(s.sso_provider, 'CUSTOM') AS sso_provider,
+                       COALESCE(s.corporate_cidr_ips, '[]'::jsonb)::text AS corporate_cidr_ips
+                FROM tenant_domains td
+                JOIN tenants t ON t.id = td.tenant_id
+                LEFT JOIN tenant_sso_configs s ON s.tenant_id = td.tenant_id
+                WHERE lower(td.domain_name) = lower(?)
+                  AND (td.is_verified = TRUE OR td.verification_status IN ('ACTIVE', 'VERIFIED'))
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(mapHrdRow(rs)) : Optional.empty(),
+                domainName.trim());
+    }
+
+    public List<HrdTenantRow> listEnabledSsoWithCorporateCidrs() {
+        return jdbc.query(
+                """
+                SELECT t.id AS tenant_id, t.name AS company_name,
+                       s.enabled AS sso_enabled, s.force_sso,
+                       COALESCE(s.protocol, 'OIDC') AS protocol,
+                       COALESCE(s.sso_provider, 'CUSTOM') AS sso_provider,
+                       COALESCE(s.corporate_cidr_ips, '[]'::jsonb)::text AS corporate_cidr_ips
+                FROM tenant_sso_configs s
+                JOIN tenants t ON t.id = s.tenant_id
+                WHERE s.enabled = TRUE
+                  AND s.corporate_cidr_ips IS NOT NULL
+                  AND s.corporate_cidr_ips <> '[]'::jsonb
+                """,
+                (rs, rowNum) -> mapHrdRow(rs));
+    }
+
+    private static HrdTenantRow mapHrdRow(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new HrdTenantRow(
+                UUID.fromString(rs.getString("tenant_id")),
+                rs.getString("company_name"),
+                rs.getBoolean("sso_enabled"),
+                rs.getBoolean("force_sso"),
+                rs.getString("protocol"),
+                rs.getString("sso_provider"),
+                parseStringList(rs.getString("corporate_cidr_ips")));
+    }
+
+    private static List<String> parseStringList(String raw) {
+        if (raw == null || raw.isBlank() || "[]".equals(raw.trim())) {
+            return List.of();
+        }
+        try {
+            List<String> parsed = JSON.readValue(raw, new TypeReference<List<String>>() { });
+            return parsed != null ? parsed : List.of();
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
     public void insertOauthCallbackState(String state, UUID tenantId, String provider, String payloadJson,
                                          java.time.Instant expiresAt) {
         jdbc.update("""
@@ -355,14 +422,18 @@ public class BootstrapJdbc {
         } catch (IllegalArgumentException ignored) {
             // treat as invoice number
         }
-        return jdbc.query(
-                "SELECT id, tenant_id, number, status FROM invoices WHERE number = ? LIMIT 1",
-                rs -> rs.next() ? Optional.of(new InvoiceBootstrapRow(
+        List<InvoiceBootstrapRow> matches = jdbc.query(
+                "SELECT id, tenant_id, number, status FROM invoices WHERE number = ?",
+                (rs, rowNum) -> new InvoiceBootstrapRow(
                         UUID.fromString(rs.getString("id")),
                         UUID.fromString(rs.getString("tenant_id")),
                         rs.getString("number"),
-                        rs.getString("status"))) : Optional.empty(),
+                        rs.getString("status")),
                 trimmed);
+        if (matches.size() != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(matches.getFirst());
     }
 
     public List<MeshPartnerRow> listConnectedMeshPartnersForBuyer(UUID buyerTenantId) {
@@ -376,6 +447,134 @@ public class BootstrapJdbc {
                 """,
                 (rs, rowNum) -> mapMeshPartner(rs),
                 buyerTenantId);
+    }
+
+    public List<MeshRelationshipRow> listMeshRelationshipsForTenant(UUID tenantId) {
+        return jdbc.query(
+                """
+                SELECT p.id, p.tenant_id, p.partner_tenant_id, p.supplier_id, p.customer_id,
+                       p.connection_status,
+                       CASE WHEN p.tenant_id = ? THEN seller.name ELSE buyer.name END AS partner_name
+                FROM tenant_mesh_partners p
+                JOIN tenants buyer ON buyer.id = p.tenant_id
+                JOIN tenants seller ON seller.id = p.partner_tenant_id
+                WHERE (p.tenant_id = ? OR p.partner_tenant_id = ?)
+                  AND p.connection_status IN ('PENDING', 'REQUESTED', 'CONNECTED')
+                ORDER BY p.updated_at DESC
+                """,
+                (rs, rowNum) -> new MeshRelationshipRow(
+                        uuidOrNull(rs.getString("id")),
+                        uuidOrNull(rs.getString("tenant_id")),
+                        uuidOrNull(rs.getString("partner_tenant_id")),
+                        uuidOrNull(rs.getString("supplier_id")),
+                        uuidOrNull(rs.getString("customer_id")),
+                        rs.getString("connection_status"),
+                        rs.getString("partner_name")),
+                tenantId, tenantId, tenantId);
+    }
+
+    public Optional<MeshPartnerRow> findMeshPartnerById(UUID meshPartnerId) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, partner_tenant_id, supplier_id, customer_id, connection_status
+                FROM tenant_mesh_partners
+                WHERE id = ?
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(mapMeshPartner(rs)) : Optional.empty(),
+                meshPartnerId);
+    }
+
+    public Optional<MeshPartnerRow> findMeshByBuyerAndSeller(UUID buyerTenantId, UUID sellerTenantId) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, partner_tenant_id, supplier_id, customer_id, connection_status
+                FROM tenant_mesh_partners
+                WHERE tenant_id = ?
+                  AND partner_tenant_id = ?
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(mapMeshPartner(rs)) : Optional.empty(),
+                buyerTenantId, sellerTenantId);
+    }
+
+    public List<PublishedMeshListingRow> listPublishedMeshListings(UUID excludeTenantId) {
+        return jdbc.query(
+                """
+                SELECT mcl.variant_id, mcl.tenant_id,
+                       COALESCE(p.name, pv.sku) AS product_name,
+                       t.name AS seller_name,
+                       (SELECT pm.url FROM product_media pm
+                         WHERE pm.tenant_id = mcl.tenant_id
+                           AND pm.variant_id = mcl.variant_id
+                         ORDER BY pm.is_primary DESC, pm.sort_order ASC
+                         LIMIT 1) AS image_url
+                FROM mesh_catalog_listings mcl
+                JOIN product_variants pv ON pv.id = mcl.variant_id AND pv.tenant_id = mcl.tenant_id
+                LEFT JOIN products p ON p.id = pv.product_id AND p.tenant_id = pv.tenant_id
+                JOIN tenants t ON t.id = mcl.tenant_id
+                WHERE mcl.published = TRUE
+                  AND mcl.tenant_id <> ?
+                ORDER BY product_name, pv.sku
+                """,
+                (rs, rowNum) -> new PublishedMeshListingRow(
+                        uuidOrNull(rs.getString("variant_id")),
+                        uuidOrNull(rs.getString("tenant_id")),
+                        rs.getString("product_name"),
+                        rs.getString("seller_name"),
+                        rs.getString("image_url")),
+                excludeTenantId);
+    }
+
+    public Optional<PublishedMeshListingRow> findPublishedListingByVariant(UUID variantId) {
+        return jdbc.query(
+                """
+                SELECT mcl.variant_id, mcl.tenant_id,
+                       COALESCE(p.name, pv.sku) AS product_name,
+                       t.name AS seller_name,
+                       NULL AS image_url
+                FROM mesh_catalog_listings mcl
+                JOIN product_variants pv ON pv.id = mcl.variant_id AND pv.tenant_id = mcl.tenant_id
+                LEFT JOIN products p ON p.id = pv.product_id AND p.tenant_id = pv.tenant_id
+                JOIN tenants t ON t.id = mcl.tenant_id
+                WHERE mcl.variant_id = ?
+                  AND mcl.published = TRUE
+                LIMIT 1
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new PublishedMeshListingRow(
+                        uuidOrNull(rs.getString("variant_id")),
+                        uuidOrNull(rs.getString("tenant_id")),
+                        rs.getString("product_name"),
+                        rs.getString("seller_name"),
+                        rs.getString("image_url")))
+                        : Optional.empty(),
+                variantId);
+    }
+
+    public Optional<PartnerCatalogSku> findPublishedPartnerSkuMatch(
+            UUID partnerTenantId, String sku, String barcode) {
+        return jdbc.query(
+                """
+                SELECT pv.id AS variant_id, pv.sku, COALESCE(p.name, pv.sku) AS product_name
+                FROM mesh_catalog_listings mcl
+                JOIN product_variants pv ON pv.id = mcl.variant_id AND pv.tenant_id = mcl.tenant_id
+                LEFT JOIN products p ON p.id = pv.product_id AND p.tenant_id = pv.tenant_id
+                WHERE mcl.tenant_id = ?
+                  AND mcl.published = TRUE
+                  AND (
+                        LOWER(pv.sku) = LOWER(?)
+                        OR (? IS NOT NULL AND ? <> '' AND LOWER(COALESCE(pv.barcode, '')) = LOWER(?))
+                      )
+                LIMIT 1
+                """,
+                rs -> rs.next()
+                        ? Optional.of(new PartnerCatalogSku(
+                        UUID.fromString(rs.getString("variant_id")),
+                        rs.getString("sku"),
+                        rs.getString("product_name")))
+                        : Optional.empty(),
+                partnerTenantId, sku, barcode, barcode, barcode);
     }
 
     public List<PartnerCatalogSku> listPartnerCatalogSkus(UUID partnerTenantId) {
@@ -442,12 +641,16 @@ public class BootstrapJdbc {
 
     private static MeshPartnerRow mapMeshPartner(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new MeshPartnerRow(
-                UUID.fromString(rs.getString("id")),
-                UUID.fromString(rs.getString("tenant_id")),
-                UUID.fromString(rs.getString("partner_tenant_id")),
-                UUID.fromString(rs.getString("supplier_id")),
-                UUID.fromString(rs.getString("customer_id")),
+                uuidOrNull(rs.getString("id")),
+                uuidOrNull(rs.getString("tenant_id")),
+                uuidOrNull(rs.getString("partner_tenant_id")),
+                uuidOrNull(rs.getString("supplier_id")),
+                uuidOrNull(rs.getString("customer_id")),
                 rs.getString("connection_status"));
+    }
+
+    private static UUID uuidOrNull(String value) {
+        return value == null || value.isBlank() ? null : UUID.fromString(value);
     }
 
     public record MeshPartnerRow(
@@ -457,6 +660,24 @@ public class BootstrapJdbc {
             UUID supplierId,
             UUID customerId,
             String connectionStatus) {
+    }
+
+    public record MeshRelationshipRow(
+            UUID id,
+            UUID tenantId,
+            UUID partnerTenantId,
+            UUID supplierId,
+            UUID customerId,
+            String connectionStatus,
+            String partnerName) {
+    }
+
+    public record PublishedMeshListingRow(
+            UUID variantId,
+            UUID sellerTenantId,
+            String productName,
+            String sellerName,
+            String imageUrl) {
     }
 
     public record PartnerCatalogSku(UUID variantId, String sku, String productName) {
@@ -486,6 +707,17 @@ public class BootstrapJdbc {
 
     public record DomainSsoRow(UUID tenantId, String issuerUrl, String clientId,
                                boolean enabled, boolean forceSso, String protocol) {
+    }
+
+    public record HrdTenantRow(
+            UUID tenantId,
+            String companyName,
+            boolean ssoEnabled,
+            boolean forceSso,
+            String protocol,
+            String ssoProvider,
+            List<String> corporateCidrIps
+    ) {
     }
 
     public record OauthStateRow(String state, UUID tenantId, String provider,

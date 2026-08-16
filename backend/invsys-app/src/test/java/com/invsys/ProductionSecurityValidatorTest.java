@@ -54,6 +54,42 @@ class ProductionSecurityValidatorTest {
     }
 
     @Test
+    void prodProfileFailsWhenDataPlaneUsesOwnerRole() {
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("prod");
+        env.setProperty("spring.application.name", "invsys-api");
+        env.setProperty("spring.datasource.username", "app_owner");
+        ProductionSecurityValidator validator = validator(
+                env,
+                "sk_live_real_key",
+                "EZAK_live",
+                "shopify_live",
+                liveProps(),
+                liveGatewayProvider());
+        assertThatThrownBy(() -> validator.run(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Data plane spring.datasource.username must be app_user");
+    }
+
+    @Test
+    void prodProfileFailsWhenControlPlaneUsesRestrictedRole() {
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("prod");
+        env.setProperty("spring.application.name", "invsys-admin-api");
+        env.setProperty("spring.datasource.username", "app_user");
+        ProductionSecurityValidator validator = validator(
+                env,
+                "sk_live_real_key",
+                "EZAK_live",
+                "shopify_live",
+                liveProps(),
+                liveGatewayProvider());
+        assertThatThrownBy(() -> validator.run(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Control plane spring.datasource.username must be app_owner");
+    }
+
+    @Test
     void nonProdProfileSkipsChecks() {
         Environment env = new MockEnvironment();
         @SuppressWarnings("unchecked")
@@ -89,6 +125,10 @@ class ProductionSecurityValidatorTest {
                 false,
                 "shopify_live_whsec",
                 "easypost_live_whsec",
+                "accounting_live_whsec",
+                "media-live-secret",
+                "db-live-password",
+                true,
                 gateway,
                 props);
     }

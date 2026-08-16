@@ -11,6 +11,8 @@ public class JwtProperties {
     private String publicKeyPem;
     private String privateKeyFile;
     private String publicKeyFile;
+    /** When true, missing PEMs generate an ephemeral RSA keypair (tests / explicit local only). */
+    private boolean allowEphemeral = false;
 
     public int getAccessTokenMinutes() {
         return accessTokenMinutes;
@@ -66,5 +68,13 @@ public class JwtProperties {
 
     public void setPublicKeyFile(String publicKeyFile) {
         this.publicKeyFile = publicKeyFile;
+    }
+
+    public boolean isAllowEphemeral() {
+        return allowEphemeral;
+    }
+
+    public void setAllowEphemeral(boolean allowEphemeral) {
+        this.allowEphemeral = allowEphemeral;
     }
 }

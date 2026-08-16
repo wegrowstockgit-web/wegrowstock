@@ -26,6 +26,7 @@ npm run build
 ```
 VITE_API_URL=          # leave empty to use same-origin / Vite proxy
 VITE_ENABLE_CHATBOT=true
+VITE_ENABLE_MESH=true  # omit or false to drop /mesh-network at build time
 ```
 
 ## Stack
@@ -38,6 +39,6 @@ VITE_ENABLE_CHATBOT=true
 
 ## Not in this app
 
-Control-plane Super Admin UI lives in `../frontend_admin` and talks to `invsys-admin-api` on `:8081`.
+Control-plane Super Admin UI lives in `../frontend_admin` and talks to `invsys-admin-api` on `:8081`. Retail POS lives in `../frontend_pos` (`:3003` / Vite `:5175`) and syncs through the same data-plane API.
 
 This app has **no** admin routes. The only control-plane touch is login: `?impersonateToken=` is exchanged with `POST /api/v1/auth/impersonation/accept` (15-minute support God Mode JWT minted by the admin API).

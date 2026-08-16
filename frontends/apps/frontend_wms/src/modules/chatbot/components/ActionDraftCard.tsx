@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import type { SupportActionDraft } from '../supportChatApi';
@@ -42,6 +43,7 @@ export function ActionDraftCard({
   onApprove,
   onCancel,
 }: ActionDraftCardProps) {
+  const { t } = useTranslation();
   const initial = useMemo(() => editableEntries(draft.payload ?? undefined), [draft.payload]);
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(initial),
@@ -94,11 +96,11 @@ export function ActionDraftCard({
 
       {status === 'approved' ? (
         <p className="mt-2 text-xs font-semibold text-success" data-testid="support-draft-approved">
-          ✓ Executed
+          {t('chat.executed')}
         </p>
       ) : status === 'failed' ? (
         <p className="mt-2 text-xs font-semibold text-danger" data-testid="support-draft-failed">
-          Could not execute — check the zone or try the on-screen button.
+          {t('chat.draftFailed')}
         </p>
       ) : status === 'cancelled' ? null : (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -109,7 +111,7 @@ export function ActionDraftCard({
             disabled={busy}
             onClick={() => void onApprove(mergedDraft())}
           >
-            {busy ? 'Working…' : 'Approve & Execute'}
+            {busy ? t('chat.working') : t('chat.approveExecute')}
           </Button>
           {onCancel ? (
             <Button
@@ -120,7 +122,7 @@ export function ActionDraftCard({
               disabled={busy}
               onClick={onCancel}
             >
-              Dismiss
+              {t('common.cancel')}
             </Button>
           ) : null}
         </div>

@@ -1,0 +1,1028 @@
+{
+  "brand": {
+    "name": "weGrowStock",
+    "globalScope": "Alcance global del inquilino"
+  },
+  "nav": {
+    "Dashboard": "Panel",
+    "Inbound": "Entrada",
+    "Outbound": "Salida",
+    "Inventory": "Inventario",
+    "Manufacturing": "Manufactura",
+    "Field": "Campo",
+    "Admin": "Admin",
+    "Purchase Orders": "Órdenes de compra",
+    "Suppliers": "Proveedores",
+    "MRP reorder": "Reposición MRP",
+    "Returns": "Devoluciones",
+    "Sales Orders": "Pedidos de venta",
+    "Customers": "Clientes",
+    "Invoices": "Facturas",
+    "Fulfillment": "Cumplimiento",
+    "Cluster pick": "Picking en clúster",
+    "Pallet manifests": "Manifiestos de palé",
+    "Products": "Productos",
+    "Replenishments": "Reposiciones",
+    "Cycle counts": "Conteos cíclicos",
+    "Exceptions": "Excepciones",
+    "Lot Trace": "Trazabilidad de lote",
+    "BOMs": "Listas de materiales",
+    "Production Orders": "Órdenes de producción",
+    "Issue Supplies": "Emitir suministros",
+    "Technician Truck": "Camión técnico",
+    "Reports": "Informes",
+    "RTLS map": "Mapa RTLS",
+    "Organization": "Organización",
+    "Profile": "Perfil",
+    "Settings": "Ajustes",
+    "Integrations Hub": "Centro de integraciones",
+    "Receive Returns": "Recibir devoluciones",
+    "Manufacturing BOMs": "BOMs de manufactura",
+    "Manufacturing Orders": "Órdenes de manufactura"
+  },
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "search": "Buscar",
+    "signOut": "Cerrar sesión",
+    "signIn": "Iniciar sesión",
+    "loading": "Cargando…",
+    "retry": "Reintentar",
+    "close": "Cerrar",
+    "openNavigation": "Abrir navegación",
+    "profileSettings": "Ajustes de perfil",
+    "language": "Idioma"
+  },
+  "status": {
+    "draft": "Borrador",
+    "open": "Abierto",
+    "closed": "Cerrado",
+    "shipped": "Enviado",
+    "received": "Recibido",
+    "allocated": "Asignado",
+    "cancelled": "Cancelado"
+  },
+  "table": {
+    "sku": "SKU",
+    "name": "Nombre",
+    "barcode": "Código de barras",
+    "status": "Estado",
+    "qty": "Cant.",
+    "customer": "Cliente",
+    "supplier": "Proveedor",
+    "number": "Número",
+    "updated": "Actualizado"
+  },
+  "errors": {
+    "generic": "Algo salió mal. Inténtalo de nuevo.",
+    "unauthorized": "Tu sesión caducó. Inicia sesión otra vez.",
+    "forbidden": "No tienes permiso para hacer eso.",
+    "notFound": "No encontramos ese registro.",
+    "network": "Error de red. Comprueba tu conexión.",
+    "invalidCredentials": "Correo o contraseña no válidos."
+  },
+  "login": {
+    "headline": "Opera tu almacén y oficina desde un solo lugar",
+    "subhead": "Inventario en tiempo real, fulfillment por escaneo, manufactura y pagos B2B — en un sistema.",
+    "welcome": "Bienvenido de nuevo",
+    "email": "Correo",
+    "password": "Contraseña",
+    "continue": "Continuar",
+    "changeEmail": "Usar otro correo",
+    "useSso": "Entrar con SSO de {{company}}",
+    "magicLink": "Enlace mágico",
+    "copyright": "© {{year}} weGrowStock. Todos los derechos reservados."
+  },
+  "search": {
+    "placeholder": "Buscar páginas, SKUs, pedidos, clientes…",
+    "pages": "Páginas",
+    "noMatches": "Sin coincidencias",
+    "noCommands": "No hay comandos"
+  },
+  "profile": {
+    "title": "Ajustes personales",
+    "languageHelp": "Language / Idioma / Langue",
+    "saved": "Guardado",
+    "photoHelp": "Actualiza tu foto de perfil para el encabezado de oficina",
+    "uploadPhoto": "Subir foto de perfil",
+    "photoCompressed": "Las fotos se comprimen en el dispositivo antes de subirlas para un avatar rápido.",
+    "savePersonal": "Guardar ajustes personales"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Español",
+    "fr": "Français"
+  },
+  "pageHelp": {
+    "trigger": "Info de la página",
+    "triggerTitle": "¿Qué es esta página?",
+    "fallbackTitle": "Info de la página",
+    "overview": "Resumen",
+    "process": "El proceso",
+    "takeAction": "Tomar acción",
+    "troubleshooting": "Solución de problemas",
+    "purpose": "Propósito",
+    "stepByStep": "Paso a paso",
+    "howToUndo": "Cómo deshacer un error",
+    "whoElse": "A quién más afecta",
+    "components": "Componentes, columnas y estados",
+    "glossary": "Glosario",
+    "whereFrom": "De dónde viene:",
+    "columns": "Columnas",
+    "statuses": "Estados",
+    "fallbackBody": "Aún no hay un playbook especializado para",
+    "fallbackHint": "Prefiere Deshacer, Cancelar o Desasignar en pantalla — nunca borres el historial de inventario.",
+    "playbooks": {
+      "dashboard": {
+        "title": "Centro de mando",
+        "description": "Tu vista diaria de operaciones de almacén, tareas activas y salud del sistema.",
+        "markdown": "El panel vigila envíos pendientes, entregas entrantes y la velocidad del equipo. Usa las acciones rápidas para saltar a tu cola del día.",
+        "actions": {
+          "0": "Ver mis tareas",
+          "1": "Revisar analítica laboral"
+        },
+        "purpose": "Ve el trabajo pendiente, la carga entrante y la mano de obra para saltar a la cola del día.",
+        "dataOrigin": "Actividad de almacén y oficina resumida según tus roles.",
+        "flow": {
+          "0": "Revisa los KPI de pedidos bloqueados, entrada y mano de obra.",
+          "1": "Abre una acción rápida para ir a la cola correspondiente."
+        },
+        "reversals": {
+          "0": "El panel es de solo lectura — deshaz el trabajo en la página operativa a la que enlaza."
+        },
+        "correlations": {
+          "0": "Los propietarios también ven señales de facturas pagadas en vivo."
+        }
+      },
+      "salesOrders": {
+        "title": "Pedidos de venta",
+        "description": "Gestiona los pedidos de clientes que esperan procesamiento y envío.",
+        "markdown": "Los pedidos llegan desde Shopify o portales B2B. Para procesar uno, debe haber inventario suficiente para Asignarlo; después entra a la cola de Cumplimiento.",
+        "actions": {
+          "0": "Crear pedido manual",
+          "1": "Ir a cumplimiento"
+        },
+        "troubleshooting": {
+          "0": {
+            "issue": "Un pedido está atascado en \"Sin asignar\".",
+            "solution": "Falta inventario para los artículos. Lanza una reposición o ajusta existencias.",
+            "action": "Ver niveles de inventario"
+          }
+        },
+        "purpose": "Confirma la demanda del cliente y asigna stock para que el pedido entre a cumplimiento.",
+        "dataOrigin": "Pedidos de venta capturados por oficina o sincronizados desde tiendas conectadas.",
+        "flow": {
+          "0": "Confirma el pedido.",
+          "1": "Asigna stock.",
+          "2": "Libera a cumplimiento."
+        },
+        "reversals": {
+          "0": "Desasignar libera el stock reservado de vuelta al pool."
+        },
+        "correlations": {
+          "0": "Los pedidos asignados entran a la cola de oleadas de Cumplimiento."
+        }
+      },
+      "fulfillment": {
+        "title": "Cumplimiento y picking",
+        "description": "Agrupa pedidos en oleadas, recolecta de estantes y empaca para envío.",
+        "markdown": "Paso 1: Genera una oleada para agrupar pedidos similares.\nPaso 2: Reclama la oleada en tu escáner.\nPaso 3: Recolecta los artículos.\nPaso 4: Empaca e imprime etiquetas de envío.",
+        "actions": {
+          "0": "Generar oleada de picking",
+          "1": "Empezar picking",
+          "2": "Empacar y enviar"
+        },
+        "troubleshooting": {
+          "0": {
+            "issue": "Recolecté un artículo dañado.",
+            "solution": "Márcalo como excepción. El sistema te dirigirá a recolectar un reemplazo.",
+            "action": "Ir al escritorio de excepciones"
+          }
+        },
+        "purpose": "Agrupa pedidos en oleadas, recolecta de estantes y empaca para envío.",
+        "dataOrigin": "Pedidos de venta asignados que esperan picking y empaque.",
+        "flow": {
+          "0": "Genera una oleada.",
+          "1": "Reclama la oleada en tu escáner.",
+          "2": "Recolecta, empaca y envía."
+        },
+        "reversals": {
+          "0": "Desasigna o marca excepción en lugar de inventar un ajuste de stock."
+        },
+        "correlations": {
+          "0": "Las incidencias Saltar y marcar llegan al escritorio de Excepciones."
+        }
+      },
+      "purchaseOrders": {
+        "title": "Órdenes de compra",
+        "description": "Pide stock nuevo a tus proveedores.",
+        "markdown": "Redacte órdenes de compra para reponer el almacén. Cuando una OC se confirma, el muelle de recepción espera la entrega.",
+        "actions": {
+          "0": "Borrador de OC",
+          "1": "Ver directorio de proveedores"
+        },
+        "purpose": "Pide stock nuevo a tus proveedores y avisa al muelle de recepción.",
+        "dataOrigin": "Órdenes de compra redactadas por compras.",
+        "flow": {
+          "0": "Redacta una OC.",
+          "1": "Confirma para que recepción espere la entrega."
+        },
+        "reversals": {
+          "0": "Cancela una OC no recibida; las líneas recibidas se revierten por devoluciones o corrección."
+        },
+        "correlations": {
+          "0": "Las OC confirmadas aparecen en Recepción de entrada."
+        }
+      },
+      "inboundReceive": {
+        "title": "Recepción de entrada",
+        "description": "Da de alta el inventario recién llegado de proveedores.",
+        "markdown": "Escanea la orden de compra, verifica que las cantidades coincidan con la factura y genera matrículas (LPN) para ubicar los artículos.",
+        "actions": {
+          "0": "Escanear OC entrante",
+          "1": "Iniciar tareas de ubicación"
+        },
+        "troubleshooting": {
+          "0": {
+            "issue": "El proveedor envió más artículos de los pedidos (sobre-recibo).",
+            "solution": "Según tus tolerancias, puedes abrir un RTV (devolución a proveedor) o aceptar el excedente.",
+            "action": "Gestionar devoluciones (RTV)"
+          }
+        },
+        "purpose": "Da de alta inventario recién llegado y genera LPN para ubicación.",
+        "dataOrigin": "Recibos de entrada contra órdenes de compra confirmadas.",
+        "flow": {
+          "0": "Escanea la OC entrante.",
+          "1": "Verifica cantidades.",
+          "2": "Genera LPN e inicia ubicación."
+        },
+        "reversals": {
+          "0": "Usa la ventana de deshacer antes de confirmar; después revierte por RTV o corrección."
+        },
+        "correlations": {
+          "0": "Los sobre-recibos pueden requerir devolución a proveedor."
+        }
+      },
+      "products": {
+        "title": "Catálogo de productos",
+        "description": "La base maestra de todo lo que vendes y almacenas.",
+        "markdown": "Gestiona SKU, códigos de barras, conversiones de unidad de medida e imágenes. Los cambios se sincronizan en todas las instalaciones.",
+        "actions": {
+          "0": "Añadir producto",
+          "1": "Importar desde CSV"
+        },
+        "purpose": "El catálogo maestro de todo lo que vendes y almacenas.",
+        "dataOrigin": "Catálogo de productos con existencias actuales.",
+        "flow": {
+          "0": "Añade o edita un SKU.",
+          "1": "Define códigos de barras y unidades.",
+          "2": "Importa CSV cuando cargues muchas filas."
+        },
+        "reversals": {
+          "0": "Vuelve a editar el maestro; los cambios de catálogo no borran el historial de stock."
+        },
+        "correlations": {
+          "0": "Los cambios se sincronizan entre instalaciones y alimentan códigos de barras en el piso."
+        }
+      },
+      "cycleCounts": {
+        "title": "Conteos cíclicos",
+        "description": "Audita los estantes físicos para que coincidan con el software.",
+        "markdown": "Genera conteos ciegos para tu equipo. Si el conteo físico difiere del libro, un manager debe aprobar la varianza.",
+        "actions": {
+          "0": "Generar conteo ciego",
+          "1": "Revisar varianzas"
+        },
+        "purpose": "Conteos físicos ciegos que concilian existencias con la realidad.",
+        "dataOrigin": "Hojas de conteo cíclico y aprobaciones de varianza.",
+        "flow": {
+          "0": "Abre una tarea de conteo (cantidad esperada oculta).",
+          "1": "Ingresa la cantidad física.",
+          "2": "Los gerentes aprueban varianzas grandes."
+        },
+        "reversals": {
+          "0": "Antes de confirmar, borra y vuelve a contar.",
+          "1": "Tras un autoajuste, revierte con una corrección del gerente."
+        },
+        "correlations": {
+          "0": "Los conteos aprobados escriben una corrección y refrescan existencias."
+        }
+      },
+      "exceptions": {
+        "title": "Escritorio de excepciones",
+        "description": "Resuelve conflictos de hardware, mercancía dañada y errores de picking.",
+        "markdown": "Cuando el piso marca incidencias o un dispositivo pierde conexión, los errores llegan aquí para que la gerencia los resuelva.",
+        "actions": {
+          "0": "Revisar excepciones pendientes",
+          "1": "Resolver conflictos de sync"
+        },
+        "purpose": "Resuelve incidencias Saltar y marcar y conflictos de escaneo offline.",
+        "dataOrigin": "Líneas marcadas por pickers y escaneos offline aparcados.",
+        "flow": {
+          "0": "Abre una excepción ABIERTA de cumplimiento.",
+          "1": "Investiga y Resuelve con disposición.",
+          "2": "En Conflictos de sync, Aprueba y reprocesa o Descarta."
+        },
+        "reversals": {
+          "0": "Resolver una excepción no restaura automáticamente la asignación original."
+        },
+        "correlations": {
+          "0": "Los pickers crean excepciones para seguir; los gerentes cierran el ciclo."
+        }
+      },
+      "settings": {
+        "title": "Ajustes del inquilino",
+        "description": "Configura integraciones, hardware y controles de acceso.",
+        "markdown": "Gestiona tus tiendas Shopify, configura básculas Bluetooth y escáneres Zebra, y define permisos RBAC para tu personal.",
+        "actions": {
+          "0": "Conectar integración",
+          "1": "Configurar hardware",
+          "2": "Gestionar usuarios"
+        },
+        "purpose": "Hub de configuración del inquilino: usuarios, almacenes, reglas de piso e integraciones.",
+        "dataOrigin": "Ajustes de empresa que mantienen los administradores.",
+        "flow": {
+          "0": "Abre la pestaña del cambio que necesitas.",
+          "1": "Guarda: el registro de auditoría anota al actor.",
+          "2": "Confirma que los dispositivos tomen la nueva regla."
+        },
+        "reversals": {
+          "0": "Vuelve a cambiar la regla; cada cambio queda en auditoría."
+        },
+        "correlations": {
+          "0": "Recepción ciega y umbrales de varianza cambian lo que los pickers pueden publicar sin revisión."
+        }
+      },
+      "inventory_ledger": {
+        "title": "Libro de inventario",
+        "description": "Revisa movimientos de stock. El historial no se borra: las correcciones añaden una fila nueva.",
+        "purpose": "Revisa movimientos (recibo, ajuste, envío, traslado, ensamble). El historial nunca se borra.",
+        "markdown": "Filtra movimientos, abre una fila para ver motivo y actor, y revierte solo con Deshacer cuando la política lo permita.",
+        "dataOrigin": "Historial de movimientos de stock para gerentes (cada recibo, picking y ajuste).",
+        "flow": {
+          "0": "Filtra por SKU, ubicación, fecha o tipo de movimiento.",
+          "1": "Abre una fila para ver motivo, actor, lote/serie y referencias.",
+          "2": "Usa Deshacer solo en filas reversibles cuando la política lo permita."
+        },
+        "reversals": {
+          "0": "Prefiere Deshacer integrado: publica una corrección compensatoria a tu nombre.",
+          "1": "Nunca borres movimientos históricos.",
+          "2": "Si Deshacer está oculto, publica una corrección de stock con un motivo claro."
+        },
+        "correlations": {
+          "0": "Cada escaneo de piso y asignación/envío de oficina aparece aquí.",
+          "1": "Trazabilidad de lote recorre estas filas en un recall."
+        }
+      },
+      "replenishments": {
+        "title": "Reposiciones",
+        "description": "Mueve stock de reserva a caras de picking para que las oleadas no se queden sin producto.",
+        "purpose": "Mueve stock de reserva/granel a caras de picking para que las oleadas de salida no se queden cortas.",
+        "markdown": "Revisa movimientos sugeridos, escanea origen y destino, y confirma el traslado.",
+        "dataOrigin": "Movimientos sugeridos desde reserva hacia caras de picking.",
+        "flow": {
+          "0": "Revisa movimientos sugeridos (mín/máx y disparadores predictivos).",
+          "1": "Escanea origen, destino y confirma el traslado."
+        },
+        "reversals": {
+          "0": "Antes de confirmar, cancela la tarea.",
+          "1": "Después de confirmar, revierte con un traslado inverso documentado como corrección de reposición."
+        },
+        "correlations": {
+          "0": "Evita quiebres en la línea de picking que se volverían excepciones Saltar y marcar."
+        }
+      },
+      "customers": {
+        "title": "Clientes",
+        "description": "Mantén datos maestros de clientes y líneas de crédito que controlan la asignación de salida.",
+        "purpose": "Mantén datos maestros de clientes y líneas de crédito que controlan la asignación de salida.",
+        "markdown": "Crea o edita un cliente, define el límite de crédito y vincula direcciones de envío de los pedidos.",
+        "dataOrigin": "Registros de clientes que mantiene tu equipo de oficina.",
+        "flow": {
+          "0": "Crea o edita un perfil de cliente.",
+          "1": "Define o ajusta el límite de crédito.",
+          "2": "Vincula direcciones de envío usadas en pedidos de venta."
+        },
+        "reversals": {
+          "0": "Los cambios de crédito aplican en la siguiente asignación.",
+          "1": "Desactivar un cliente no cancela pedidos abiertos."
+        },
+        "correlations": {
+          "0": "Intentos sobre el límite congelan pedidos para revisión.",
+          "1": "Las listas de precios del showroom B2B se ligan a estos clientes."
+        }
+      },
+      "invoices": {
+        "title": "Facturas",
+        "description": "Sigue facturas y el estado de pago; al liquidarse, la factura muestra PAGADA.",
+        "purpose": "Sigue facturas y el estado de pago; al liquidarse, la factura muestra PAGADA para finanzas.",
+        "markdown": "Revisa antigüedad de CXC, envía solicitudes de pago y observa actualizaciones PAGADA en vivo.",
+        "dataOrigin": "Facturas creadas cuando los pedidos se envían o están listos para facturar.",
+        "flow": {
+          "0": "Revisa antigüedad y facturas abiertas.",
+          "1": "Envía solicitudes de pago si está configurado.",
+          "2": "Observa actualizaciones PAGADA en vivo."
+        },
+        "reversals": {
+          "0": "No marques PAGADA a mano sin un proceso de finanzas.",
+          "1": "Los reembolsos son eventos contables; las devoluciones de stock usan Devoluciones."
+        },
+        "correlations": {
+          "0": "Las facturas pagadas pueden liberar crédito para nuevas asignaciones."
+        }
+      },
+      "suppliers": {
+        "title": "Proveedores",
+        "description": "Maestro de proveedores: plazos, tiempos de entrega, calidad y datos bancarios enmascarados.",
+        "purpose": "Maestro de proveedores: plazos, tiempos de entrega, calidad y datos bancarios cifrados.",
+        "markdown": "Crea o edita un proveedor, define plazos para planificación y guarda datos bancarios (enmascarados al guardar).",
+        "dataOrigin": "Registros de proveedores que mantiene compras.",
+        "flow": {
+          "0": "Crea o edita un perfil de proveedor.",
+          "1": "Define plazos que alimentan la planificación de reposición.",
+          "2": "Guarda datos bancarios (enmascarados al guardar)."
+        },
+        "reversals": {
+          "0": "Corrige datos maestros con otra edición.",
+          "1": "Desactiva en lugar de borrar proveedores ligados a OC históricas."
+        },
+        "correlations": {
+          "0": "Crear una OC requiere un proveedor aprobado.",
+          "1": "Los plazos influyen en las sugerencias de reposición."
+        }
+      },
+      "returns": {
+        "title": "Devoluciones / RMA",
+        "description": "Autoriza devoluciones de clientes, luego recibe y dispone (reponer o desechar) en el piso.",
+        "purpose": "Autoriza devoluciones de clientes, luego recibe y dispone (reponer o desechar) en el piso.",
+        "markdown": "Crea y aprueba un RMA, recíbelo en el piso y luego repón o desecha.",
+        "dataOrigin": "Documentos de devolución de clientes (RMA).",
+        "flow": {
+          "0": "Crea y aprueba un RMA en oficina.",
+          "1": "El piso recibe contra el RMA en Recibir devoluciones.",
+          "2": "Disposición REPOSICIÓN o DESECHO."
+        },
+        "reversals": {
+          "0": "Cancela un RMA no recibido antes del ingreso.",
+          "1": "Unidades repuestas que no deben venderse: vuelve a cuarentena o desecho con una corrección."
+        },
+        "correlations": {
+          "0": "Reponer aumenta el ATP vendible; desechar no.",
+          "1": "Finanzas puede emitir créditos aparte de la disposición de inventario."
+        }
+      },
+      "returns_receive": {
+        "title": "Recepción de devoluciones (piso)",
+        "description": "Escanea mercancía devuelta contra un RMA aprobado y aplica disposición con cuarentena.",
+        "purpose": "Escanea mercancía devuelta contra un RMA aprobado y aplica disposición con cuarentena.",
+        "markdown": "Abre el RMA en el handheld, escanea el artículo y completa la ubicación a cuarentena o desecho.",
+        "dataOrigin": "Recibos de devolución escaneados en el piso.",
+        "flow": {
+          "0": "Abre el RMA en el handheld.",
+          "1": "Escanea el artículo y confirma la disposición.",
+          "2": "Completa la ubicación a cuarentena o desecho según indiquen."
+        },
+        "reversals": {
+          "0": "La ventana de deshacer aplica antes de confirmar.",
+          "1": "Tras reponer, solo gerentes liberan o desechan con movimientos atribuidos."
+        },
+        "correlations": {
+          "0": "Cierra líneas RMA visibles en Devoluciones de oficina.",
+          "1": "Liberar cuarentena es decisión de oficina."
+        }
+      },
+      "compliance_lot_trace": {
+        "title": "Trazabilidad de lote",
+        "description": "Genealogía de solo lectura de un lote o serie para recalls y calidad.",
+        "purpose": "Genealogía de solo lectura de un lote/serie desde proveedor, recibo, ensamble, envío y cliente.",
+        "markdown": "Ingresa el lote o serie, revisa la cadena y exporta CSV para reguladores si hace falta.",
+        "dataOrigin": "Historial de lote y serie para recalls y calidad.",
+        "flow": {
+          "0": "Ingresa el lote o número de serie.",
+          "1": "Revisa la cadena del libro.",
+          "2": "Exporta CSV para reguladores o clientes si hace falta."
+        },
+        "reversals": {
+          "0": "Trazabilidad es de solo lectura — no hay nada que deshacer aquí.",
+          "1": "Corrige los datos de origen con devoluciones, ajustes o reenvíos."
+        },
+        "correlations": {
+          "0": "El rol VIEWER basta; los roles operativos escriben el historial."
+        }
+      },
+      "rtls": {
+        "title": "Mapa RTLS",
+        "description": "Gemelo espacial: posiciones de picking en vivo, calor de congestión y bordes transitables.",
+        "purpose": "Gemelo espacial: posiciones de picking en vivo, calor de congestión y bordes transitables.",
+        "markdown": "Abre el mapa, observa posiciones en vivo, revisa el mapa de calor y ajusta coordenadas si cambia el layout.",
+        "dataOrigin": "Posiciones en vivo de dispositivos o activos en el mapa del almacén.",
+        "flow": {
+          "0": "Abre el mapa y observa actualizaciones de posición.",
+          "1": "Revisa el mapa de calor de 7 días.",
+          "2": "Ajusta coordenadas o bordes cuando cambie el layout físico."
+        },
+        "reversals": {
+          "0": "Las coordenadas se pueden volver a editar; no revierten inventario.",
+          "1": "El mapa de calor es analítico, no un libro para deshacer."
+        },
+        "correlations": {
+          "0": "El ruteo de picking usa este grafo.",
+          "1": "Los escaneos de piso alimentan el calor y las etiquetas en vivo."
+        }
+      },
+      "manufacturing_boms": {
+        "title": "Listas de materiales",
+        "description": "Define recetas de ensamble que impulsan las órdenes de producción.",
+        "purpose": "Define recetas de ensamble (componentes, operaciones, coproductos) que impulsan las órdenes de producción.",
+        "markdown": "Crea un BOM para un SKU terminado, añade componentes y operaciones, y guarda.",
+        "dataOrigin": "Listas de materiales que definen qué entra en un producto terminado.",
+        "flow": {
+          "0": "Crea un BOM para un SKU terminado.",
+          "1": "Añade componentes, operaciones y salidas.",
+          "2": "Guarda: las órdenes de producción usarán esta receta."
+        },
+        "reversals": {
+          "0": "Edita o versiona el BOM antes de que las órdenes asignen contra él.",
+          "1": "Tras producir, sustituye con una revisión nueva; no borres el historial."
+        },
+        "correlations": {
+          "0": "La disponibilidad de componentes se verifica al asignar órdenes de producción."
+        }
+      },
+      "manufacturing_orders": {
+        "title": "Órdenes de producción",
+        "description": "Programa órdenes de trabajo y asigna componentes para que el picking de ventas no tome material reservado.",
+        "purpose": "Programa órdenes de trabajo y asigna componentes para que el picking de ventas no tome material reservado.",
+        "markdown": "Crea una orden desde un BOM, asigna componentes y libérala al Terminal de producción.",
+        "dataOrigin": "Órdenes de trabajo de manufactura.",
+        "flow": {
+          "0": "Crea una orden de producción desde un BOM.",
+          "1": "Asigna componentes.",
+          "2": "Libera al Terminal de producción para ensamble."
+        },
+        "reversals": {
+          "0": "Desasigna componentes antes del ensamble para devolver materia prima al ATP.",
+          "1": "Tras ensamblar, revierte con asientos compensatorios — no borres el historial."
+        },
+        "correlations": {
+          "0": "Bloquea componentes lejos del picking de ventas.",
+          "1": "Las hojas de tiempo del terminal imputan costo a la orden."
+        }
+      },
+      "manufacturing_terminal": {
+        "title": "Terminal de producción",
+        "description": "Estación de ensamble: inicia/detén mano de obra, consume componentes y genera etiquetas de producto terminado.",
+        "purpose": "Estación de ensamble: inicia/detén mano de obra, consume componentes y genera etiquetas de producto terminado.",
+        "markdown": "Escanea la orden, inicia la hoja de tiempo, completa la corrida y publica el ensamble.",
+        "dataOrigin": "Pasos de escaneo del terminal de piso para producción.",
+        "flow": {
+          "0": "Escanea la orden de trabajo e inicia la hoja de tiempo.",
+          "1": "Completa la corrida de ensamble.",
+          "2": "Detén la hoja de tiempo y publica el ensamble."
+        },
+        "reversals": {
+          "0": "Detén la hoja de tiempo sin ensamblar si la corrida se aborta.",
+          "1": "Ensamble erróneo: un gerente publica un ensamble o corrección compensatoria."
+        },
+        "correlations": {
+          "0": "El producto terminado queda asignable a ventas de inmediato."
+        }
+      },
+      "issue_supplies": {
+        "title": "Emitir suministros",
+        "description": "Consumo interno contra un centro de costo: descuenta almacén sin un pedido de cliente.",
+        "purpose": "Consumo interno contra un centro de costo: descuenta almacén sin crear un pedido de cliente.",
+        "markdown": "Elige el centro de costo, escanea el SKU y confirma la emisión.",
+        "dataOrigin": "Emisión interna de suministros a centros de costo o trabajos.",
+        "flow": {
+          "0": "Selecciona el centro de costo.",
+          "1": "Escanea el SKU de suministro y confirma la emisión."
+        },
+        "reversals": {
+          "0": "Antes de confirmar, cancela la emisión.",
+          "1": "Después de confirmar, revierte con una corrección positiva al almacén a nombre del gerente."
+        },
+        "correlations": {
+          "0": "Carga el presupuesto del centro de costo; no afecta asignaciones de clientes."
+        }
+      },
+      "field_truck": {
+        "title": "Camión técnico",
+        "description": "Consume stock de la furgoneta en sitio; el stock bajo pide reposición al depósito.",
+        "purpose": "Consume stock de la furgoneta (ubicación vehículo) en sitio; el stock bajo pide reposición al depósito.",
+        "markdown": "Escanea componentes usados en el trabajo y confirma el consumo desde la ubicación del vehículo.",
+        "dataOrigin": "Stock asignado a camiones de servicio y técnicos de campo.",
+        "flow": {
+          "0": "Escanea componentes usados en el trabajo.",
+          "1": "Confirma el consumo desde la ubicación del vehículo.",
+          "2": "Trabaja sin conexión si hace falta: la cola se reenvía al reconectar."
+        },
+        "reversals": {
+          "0": "Ventana de deshacer antes de confirmar la cola offline.",
+          "1": "Tras sincronizar, revierte con una corrección o traslado de vuelta a la furgoneta."
+        },
+        "correlations": {
+          "0": "El punto de reorden dispara la reposición del camión desde el almacén."
+        }
+      },
+      "reports": {
+        "title": "Informes",
+        "description": "Analítica financiera y operativa sobre datos de almacén en tu alcance de acceso.",
+        "purpose": "Analítica financiera y operativa (margen, COGS, rotación) sobre datos de almacén en tu alcance.",
+        "markdown": "Abre el tablero que necesitas, filtra por fecha o almacén y exporta para dirección.",
+        "dataOrigin": "Informes operativos guardados e instantáneas de KPI.",
+        "flow": {
+          "0": "Abre el tablero de análisis que necesitas.",
+          "1": "Filtra por fecha / almacén.",
+          "2": "Exporta o captura para paquetes de dirección."
+        },
+        "reversals": {
+          "0": "Los informes son de solo lectura — revierte transacciones en las páginas operativas."
+        },
+        "correlations": {
+          "0": "Los KPI principales pueden actualizarse con un breve retraso."
+        }
+      },
+      "settings_tab_profile": {
+        "title": "Ajustes — Perfil",
+        "description": "Tu perfil de usuario y el nombre de organización por defecto.",
+        "purpose": "Tu perfil de usuario y el nombre de organización mostrado en la app.",
+        "markdown": "Actualiza nombre, contacto e idioma, luego guarda.",
+        "dataOrigin": "Datos de tu perfil con sesión iniciada.",
+        "flow": {
+          "0": "Actualiza nombre, contacto e idioma.",
+          "1": "Guarda: los cambios aplican de inmediato."
+        },
+        "reversals": {
+          "0": "Vuelve a editar; el perfil no toca inventario ni roles."
+        },
+        "correlations": {
+          "0": "La marca de la organización también puede aparecer en documentos."
+        }
+      },
+      "settings_tab_users": {
+        "title": "Ajustes — Usuarios",
+        "description": "Invita usuarios, asigna roles y limita el acceso a almacenes.",
+        "purpose": "Invita y gestiona usuarios, asigna roles y define qué almacenes puede ver cada persona.",
+        "markdown": "Invita a un usuario, asigna roles, marca almacenes y guarda.",
+        "dataOrigin": "Invitaciones de usuarios y asignación de roles.",
+        "flow": {
+          "0": "Invita a un usuario o abre una cuenta existente.",
+          "1": "Asigna uno o más roles según su trabajo.",
+          "2": "Marca los almacenes a los que puede acceder.",
+          "3": "Guarda: el próximo inicio de sesión aplica las capacidades."
+        },
+        "reversals": {
+          "0": "Quita un rol o almacén y vuelve a guardar.",
+          "1": "Desactiva en lugar de borrar usuarios ligados a movimientos históricos."
+        },
+        "correlations": {
+          "0": "Las asignaciones de almacén controlan qué ubicaciones, oleadas y documentos aparecen."
+        }
+      },
+      "settings_tab_warehouses": {
+        "title": "Ajustes — Almacenes",
+        "description": "Define edificios, zonas y ubicaciones usados por acceso y ubicación.",
+        "purpose": "Define edificios, zonas y ubicaciones que usan las reglas de acceso y putaway.",
+        "markdown": "Añade o edita un almacén, mantén zonas/ubicaciones y asigna usuarios en Usuarios.",
+        "dataOrigin": "Almacenes y ubicaciones de tu empresa.",
+        "flow": {
+          "0": "Añade o edita un almacén.",
+          "1": "Mantén zonas/ubicaciones (o abre el visualizador).",
+          "2": "Asigna usuarios al almacén desde Usuarios."
+        },
+        "reversals": {
+          "0": "Desactiva almacenes sin uso en lugar de borrar los que tienen historial.",
+          "1": "Editar coordenadas no revierte stock."
+        },
+        "correlations": {
+          "0": "El ruteo de picking, RTLS y reposición dependen de este layout."
+        }
+      },
+      "settings_tab_inventory": {
+        "title": "Ajustes — Reglas de inventario",
+        "description": "Puntos de reorden, unidades y políticas de inventario.",
+        "purpose": "Puntos de reorden, unidades y políticas que alimentan ATP y reposición.",
+        "markdown": "Ajusta reorden / stock de seguridad y guarda para que la planificación use los umbrales.",
+        "dataOrigin": "Ajustes de política de inventario (reorden, unidades y similares).",
+        "flow": {
+          "0": "Ajusta reorden / stock de seguridad.",
+          "1": "Guarda: la planificación y el KPI de stock bajo usan los umbrales."
+        },
+        "reversals": {
+          "0": "Restaura umbrales previos con otro guardado."
+        },
+        "correlations": {
+          "0": "El conteo de stock bajo del panel y las sugerencias de compra usan estos umbrales."
+        }
+      },
+      "settings_tab_documents": {
+        "title": "Ajustes — Documentos",
+        "description": "Plantillas y numeración de OC, packing slips, facturas y otros impresos.",
+        "purpose": "Plantillas y numeración de OC, packing slips, facturas y otros documentos imprimibles.",
+        "markdown": "Elige el tipo de documento, actualiza logo o serie y guarda.",
+        "dataOrigin": "Etiquetas y plantillas de documentos imprimibles.",
+        "flow": {
+          "0": "Elige el tipo de documento a personalizar.",
+          "1": "Actualiza logo, pie o serie de números.",
+          "2": "Guarda: los próximos trabajos de impresión usan la plantilla."
+        },
+        "reversals": {
+          "0": "Revierte campos y guarda de nuevo; los PDF ya impresos no se reescriben."
+        },
+        "correlations": {
+          "0": "Envío de ventas y envío de OC usan estas plantillas."
+        }
+      },
+      "settings_tab_security": {
+        "title": "Ajustes — Seguridad y SSO",
+        "description": "SSO, política de sesión y refuerzo de autenticación del inquilino.",
+        "purpose": "Configuración SSO, política de sesión y refuerzo de autenticación.",
+        "markdown": "Configura SSO si tu IdP está listo, revisa opciones de sesión y guarda.",
+        "dataOrigin": "Opciones de inicio de sesión y seguridad de tu empresa.",
+        "flow": {
+          "0": "Configura el proveedor SSO si tu IdP está listo.",
+          "1": "Revisa opciones de sesión / MFA.",
+          "2": "Guarda: el próximo inicio de sesión sigue la nueva política."
+        },
+        "reversals": {
+          "0": "Desactiva SSO con cuidado: asegúrate de que el login local siga funcionando.",
+          "1": "Todo cambio de seguridad queda auditado."
+        },
+        "correlations": {
+          "0": "Afecta cómo inician sesión propietarios, admins y pickers; no cambia el acceso a almacenes por sí solo."
+        }
+      },
+      "settings_tab_reconciliation": {
+        "title": "Ajustes — Conciliación",
+        "description": "Herramientas y calendarios para conciliar inventario y libros externos.",
+        "purpose": "Herramientas y calendarios para conciliar inventario, saldos contables y libros de sync externos.",
+        "markdown": "Revisa la última corrida, lanza una conciliación si finanzas lo pide e investiga desvíos en páginas operativas.",
+        "dataOrigin": "Comparaciones entre este sistema y las tiendas conectadas.",
+        "flow": {
+          "0": "Revisa la última conciliación.",
+          "1": "Lanza o programa una conciliación si finanzas lo pide.",
+          "2": "Investiga desvíos en las páginas operativas vinculadas."
+        },
+        "reversals": {
+          "0": "Las conciliaciones no borran filas del libro: reportan desvío para corrección del gerente."
+        },
+        "correlations": {
+          "0": "Se combina con Sync contable y Conteos cíclicos cuando los números no coinciden."
+        }
+      },
+      "settings_tab_accounting": {
+        "title": "Ajustes — Sync contable",
+        "description": "Conecta QuickBooks/Xero para que facturas y diarios fluyan a finanzas.",
+        "purpose": "Conecta QuickBooks/Xero (o similar) para que facturas y diarios fluyan por el sync de finanzas.",
+        "markdown": "Conecta o refresca el adaptador, mapea impuestos y reintenta filas FALLIDAS.",
+        "dataOrigin": "Estado de exportación contable hacia sistemas de finanzas.",
+        "flow": {
+          "0": "Conecta o refresca el adaptador contable.",
+          "1": "Mapea esquemas de impuestos y cuentas.",
+          "2": "Vigila chips FALLIDO y reintenta."
+        },
+        "reversals": {
+          "0": "Desconectar detiene syncs nuevos; los diarios ya publicados se anulan en el sistema contable."
+        },
+        "correlations": {
+          "0": "Las facturas pagadas y diarios de COGS dependen de este puente."
+        }
+      },
+      "settings_tab_integrations": {
+        "title": "Ajustes — Integraciones",
+        "description": "Conecta tiendas y contabilidad para que pedidos y pagos lleguen sin doble captura.",
+        "purpose": "Conecta tiendas e-commerce y sistemas contables para que pedidos y pagos lleguen sin doble captura.",
+        "markdown": "Elige un conector, pega las claves, habilita el canal y verifica un pedido o pago de prueba.",
+        "dataOrigin": "Conexiones a tiendas y marketplaces.",
+        "flow": {
+          "0": "Elige un conector de e-commerce o contabilidad.",
+          "1": "Pega las claves que da la tienda o el sistema contable.",
+          "2": "Habilita el canal y verifica un pedido o pago de prueba."
+        },
+        "reversals": {
+          "0": "Deshabilita un conector para detener eventos; los pedidos ya importados siguen en la tubería de salida.",
+          "1": "Rota las claves si hay una filtración."
+        },
+        "correlations": {
+          "0": "Las conexiones de tienda crean o actualizan pedidos que se asignan y envían como los de oficina."
+        }
+      },
+      "settings_tab_mesh": {
+        "title": "Ajustes — Catálogo de socios",
+        "description": "Mapeos entre inquilinos para que los SKU del vendedor coincidan con productos del comprador.",
+        "purpose": "Mapeos de malla entre inquilinos para que los SKU del vendedor coincidan en OC/pedidos multipartes.",
+        "markdown": "Abre Mapeo de catálogo de socios, mapea SKU a variantes locales y guarda.",
+        "dataOrigin": "Compartir catálogo entre empresas de confianza.",
+        "flow": {
+          "0": "Abre Mapeo de catálogo de socios.",
+          "1": "Mapea SKU del socio a variantes locales.",
+          "2": "Guarda: la malla usa el mapa en el próximo envío de OC."
+        },
+        "reversals": {
+          "0": "Desmapea o remapéa un SKU; los documentos históricos conservan la instantánea original."
+        },
+        "correlations": {
+          "0": "Líneas de malla sin mapear pueden crear pedidos DRAFT de excepción."
+        }
+      },
+      "settings_tab_operations": {
+        "title": "Ajustes — Operaciones",
+        "description": "Reglas de piso: recepción ciega, límites de ajuste, opciones de escáner, más el registro de auditoría.",
+        "purpose": "Reglas de piso del inquilino: recepción ciega, límites de ajuste, opciones de escáner, más el registro de quién cambió qué.",
+        "markdown": "Activa la regla que necesites, guarda y confirma que los dispositivos la tomen.",
+        "dataOrigin": "Reglas operativas de piso (recepción y opciones de escáner).",
+        "flow": {
+          "0": "Activa la regla operativa (p. ej. recepción ciega, máx. de ajuste).",
+          "1": "Guarda: el registro de auditoría anota al actor.",
+          "2": "Confirma que los dispositivos tomen la regla en el próximo escaneo."
+        },
+        "reversals": {
+          "0": "Vuelve a desactivar la regla; cada cambio queda en auditoría.",
+          "1": "Subir un límite de ajuste no aprueba conteos pendientes de gerente."
+        },
+        "correlations": {
+          "0": "Recepción ciega y umbrales de varianza cambian lo que los pickers pueden publicar sin revisión."
+        }
+      },
+      "settings_tab_syncConflicts": {
+        "title": "Ajustes — Conflictos de sync",
+        "description": "Revisa escaneos de piso offline que no pudieron terminar al reconectar.",
+        "purpose": "Revisa escaneos de piso offline que no pudieron terminar al reconectar.",
+        "markdown": "Abre un conflicto aparcado, corrige campos resaltados y Aprueba y reprocesa o Descarta.",
+        "dataOrigin": "La lista de conflictos en Panel o Excepciones.",
+        "flow": {
+          "0": "Abre un conflicto APARCADO.",
+          "1": "Corrige los campos resaltados si hace falta.",
+          "2": "Aprueba y reprocesa o Descarta."
+        },
+        "reversals": {
+          "0": "Descartar elimina de forma permanente el escaneo aparcado.",
+          "1": "Aprobar publica a nombre del gerente; revierte después solo con una corrección compensatoria."
+        },
+        "correlations": {
+          "0": "El mismo tablero está en Excepciones (sync) y en el banner del panel."
+        }
+      },
+      "settings_tab_costCenters": {
+        "title": "Ajustes — Centros de costo y requisiciones",
+        "description": "Presupuestos internos que autorizan Emitir suministros sin un pedido de cliente.",
+        "purpose": "Presupuestos y requisiciones internas que autorizan Emitir suministros sin un pedido de cliente.",
+        "markdown": "Crea o edita un centro de costo, revisa requisiciones en borrador y el piso carga al centro.",
+        "dataOrigin": "Centros de costo usados al emitir suministros internos.",
+        "flow": {
+          "0": "Crea o edita el presupuesto de un centro de costo.",
+          "1": "Revisa requisiciones en BORRADOR y aprueba.",
+          "2": "Emitir suministros en el piso carga contra el centro aprobado."
+        },
+        "reversals": {
+          "0": "Cancela requisiciones en BORRADOR antes de emitir.",
+          "1": "Tras emitir, revierte stock con una corrección del gerente que cite el consumo original."
+        },
+        "correlations": {
+          "0": "Emitir suministros en el piso lee estos centros para autorización de presupuesto."
+        }
+      },
+      "settings_profile": {
+        "title": "Ajustes de perfil",
+        "description": "Página de perfil dedicada para el usuario con sesión iniciada.",
+        "purpose": "Página de perfil dedicada (mismo dominio que Ajustes → Perfil).",
+        "markdown": "Actualiza datos personales, guarda y vuelve al shell.",
+        "dataOrigin": "Datos de tu perfil con sesión iniciada.",
+        "flow": {
+          "0": "Actualiza datos personales.",
+          "1": "Guarda y vuelve al shell."
+        },
+        "reversals": {
+          "0": "Vuelve a editar; no hay impacto de inventario."
+        },
+        "correlations": {
+          "0": "Se abre desde el avatar del encabezado; Usuarios sigue siendo el lugar para roles y almacenes."
+        }
+      },
+      "settings_billing": {
+        "title": "Facturación",
+        "description": "Suscripción y plan del inquilino, alcance PROPIETARIO.",
+        "purpose": "Suscripción y plan del inquilino, alcance PROPIETARIO.",
+        "markdown": "Revisa el plan y asientos, luego cambia plan o método de pago en el portal de facturación.",
+        "dataOrigin": "Suscripción y facturación gestionadas por propietarios.",
+        "flow": {
+          "0": "Revisa el plan actual y los asientos.",
+          "1": "Cambia plan o método de pago en el portal cuando haga falta."
+        },
+        "reversals": {
+          "0": "Las bajadas de plan pueden aplicar al fin de periodo — confirma en el portal.",
+          "1": "Los cambios de facturación no revierten transacciones de almacén."
+        },
+        "correlations": {
+          "0": "Solo PROPIETARIO (y a veces ADMIN) puede abrir este hub."
+        }
+      },
+      "settings_fintech": {
+        "title": "Flujo de caja y financiamiento",
+        "description": "Perspectivas de caja y financiamiento, alcance PROPIETARIO, ligadas a CXC/CXP.",
+        "purpose": "Perspectivas de caja y financiamiento, alcance PROPIETARIO, ligadas a CXC/CXP.",
+        "markdown": "Revisa paneles de caja y abre ofertas de financiamiento solo si la política de PROPIETARIO lo permite.",
+        "dataOrigin": "Opciones de pago y desembolso configuradas por propietarios.",
+        "flow": {
+          "0": "Revisa paneles de flujo de caja.",
+          "1": "Abre ofertas de financiamiento solo si la política de PROPIETARIO lo permite."
+        },
+        "reversals": {
+          "0": "Aceptar financiamiento es contractual: revierte con el socio fintech, no en el libro de inventario."
+        },
+        "correlations": {
+          "0": "Usa facturas pagadas y cuentas por cobrar abiertas de Facturas."
+        }
+      },
+      "settings_integrations": {
+        "title": "Centro de integraciones",
+        "description": "Hub que lleva a superficies de e-commerce, contabilidad y operaciones.",
+        "purpose": "Hub que lleva a superficies de e-commerce, contabilidad y operaciones.",
+        "markdown": "Elige la categoría del conector y sigue el atajo a la pestaña de Ajustes.",
+        "dataOrigin": "Pantallas de alta de integraciones para tiendas y socios.",
+        "flow": {
+          "0": "Elige la categoría (tienda, contabilidad u operaciones).",
+          "1": "Sigue el atajo a la pestaña o página de conexión."
+        },
+        "reversals": {
+          "0": "Deshabilita conectores desde Integraciones o Contabilidad: el hub no muta stock."
+        },
+        "correlations": {
+          "0": "Los atajos llegan a Integraciones, Contabilidad u Operaciones."
+        }
+      },
+      "import": {
+        "title": "Asistente de importación",
+        "description": "Carga masiva de productos vía CSV/Excel mapeado con validación previa.",
+        "purpose": "Carga masiva de productos/variantes vía CSV/Excel mapeado con validación previa.",
+        "markdown": "Descarga la plantilla, mapea columnas, ejecuta preflight y confirma la importación.",
+        "dataOrigin": "Hojas de cálculo que sube tu equipo para crear o actualizar registros.",
+        "flow": {
+          "0": "Descarga la plantilla.",
+          "1": "Mapea columnas y ejecuta preflight.",
+          "2": "Resuelve productos faltantes y confirma la importación."
+        },
+        "reversals": {
+          "0": "Detente antes de confirmar si el preflight muestra errores.",
+          "1": "Tras confirmar, corrige con otra importación o ediciones: las importaciones no borran stock del libro."
+        },
+        "correlations": {
+          "0": "Los maestros importados alimentan de inmediato OC/pedidos y códigos de barras de piso."
+        }
+      },
+      "showroom": {
+        "title": "Showroom B2B",
+        "description": "Portal de cliente para catálogo, carrito, checkout y estado de pedidos a precios negociados.",
+        "purpose": "Portal de cliente para catálogo, carrito, checkout y estado de pedidos a precios negociados.",
+        "markdown": "Explora el catálogo restringido, añade al carrito, paga y sigue el estado del pedido.",
+        "dataOrigin": "Productos que tus clientes B2B pueden ver en el showroom.",
+        "flow": {
+          "0": "Explora el catálogo restringido.",
+          "1": "Añade al carrito y paga.",
+          "2": "Sigue el estado del pedido en Pedidos del showroom."
+        },
+        "reversals": {
+          "0": "Quita líneas del carrito antes del checkout.",
+          "1": "Tras colocar el pedido, las cancelaciones van por Cancelar/Desasignar en oficina."
+        },
+        "correlations": {
+          "0": "Los pedidos DRAFT del portal entran a la misma tubería de salida que los de oficina."
+        }
+      }
+    }
+  },
+  "chat": {
+    "title": "Copiloto de operaciones",
+    "open": "Abrir copiloto de soporte",
+    "close": "Cerrar copiloto de soporte",
+    "intro": "Pregunta cómo usar esta pantalla. Puedo resaltar botones, preparar una acción segura para que la apruebes o guiar un escenario de práctica sin tocar el stock real.",
+    "unreachable": "El chat de soporte no está disponible ahora. Inténtalo en un momento.",
+    "trainingActive": "SIMULADOR DE ENTRENAMIENTO ACTIVO{{role}}",
+    "askPlaceholder": "Haz una pregunta…",
+    "listening": "Escuchando…",
+    "attachPhoto": "Adjuntar foto",
+    "pushToTalk": "Mantén para hablar",
+    "stopVoice": "Detener entrada de voz",
+    "send": "Enviar",
+    "signedIn": "Sesión iniciada",
+    "approveExecute": "Aprobar y ejecutar",
+    "working": "Trabajando…",
+    "running": "Ejecutando…",
+    "executed": "✓ Ejecutado",
+    "draftFailed": "No se pudo ejecutar — revisa la zona o usa el botón en pantalla.",
+    "photoFailed": "No se pudo preparar esa foto. Prueba con una imagen más pequeña.",
+    "practice": "Práctica: {{title}}",
+    "trainingMode": "Modo de entrenamiento: **{{title}}**. El stock real no cambiará."
+  },
+  "roles": {
+    "OWNER": "Propietarios",
+    "ADMIN": "Administradores",
+    "WAREHOUSE_MANAGER": "Gerentes de almacén",
+    "PICKER": "Preparadores de piso",
+    "VIEWER": "Consultores",
+    "B2B_CUSTOMER": "Compradores B2B"
+  }
+}

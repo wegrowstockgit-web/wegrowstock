@@ -10,6 +10,7 @@ import com.invsys.service.TenantSubscriptionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -64,6 +65,7 @@ public class ControlPlaneTenantController {
     }
 
     @PostMapping("/{tenantId}/impersonate")
+    @PlatformAudit(action = "TENANT_IMPERSONATE", tenantIdParam = "tenantId")
     public AdminImpersonationService.ImpersonationResponse impersonate(@PathVariable UUID tenantId) {
         return adminImpersonationService.impersonate(tenantId);
     }
@@ -77,6 +79,7 @@ public class ControlPlaneTenantController {
     }
 
     @PostMapping("/{tenantId}/clone-sandbox")
+    @PlatformAudit(action = "TENANT_CLONE_SANDBOX", tenantIdParam = "tenantId")
     public AdminSandboxProvisioningService.SandboxCredentials cloneSandbox(@PathVariable UUID tenantId) {
         return adminSandboxProvisioningService.cloneSandbox(tenantId);
     }
@@ -92,7 +95,9 @@ public class ControlPlaneTenantController {
     }
 
     public record UpdateStatusRequest(
-            @NotBlank String status
+            @NotBlank
+            @Pattern(regexp = "ACTIVE|SUSPENDED", message = "status must be ACTIVE or SUSPENDED")
+            String status
     ) {
     }
 }

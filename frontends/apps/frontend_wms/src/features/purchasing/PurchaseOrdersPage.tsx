@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ClipboardList, FileUp, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -116,9 +116,19 @@ interface DraftLine {
   unitCost: string;
 }
 
-function CreatePoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreatePoModal({
+  open,
+  onClose,
+  initialSku,
+  initialSupplierId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialSku?: string;
+  initialSupplierId?: string;
+}) {
   const queryClient = useQueryClient();
-  const [supplierId, setSupplierId] = useState('');
+  const [supplierId, setSupplierId] = useState(initialSupplierId ?? '');
   const [destinationLocationId, setDestinationLocationId] = useState('');
   const [freightAmount, setFreightAmount] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([{ variantId: '', qtyOrdered: '1', unitCost: '' }]);
@@ -144,6 +154,22 @@ function CreatePoModal({ open, onClose }: { open: boolean; onClose: () => void }
     enabled: open,
   });
   const variants = variantsPage?.items ?? [];
+
+  useEffect(() => {
+    if (!open) return;
+    if (initialSupplierId) {
+      setSupplierId(initialSupplierId);
+    }
+    if (initialSku) {
+      const match = variants.find((variant) => variant.sku === initialSku);
+      if (match) {
+        setLines((prev) => {
+          if (prev.some((line) => line.variantId === match.id)) return prev;
+          return [{ variantId: match.id, qtyOrdered: '1', unitCost: '' }, ...prev.filter((line) => line.variantId)];
+        });
+      }
+    }
+  }, [open, initialSku, initialSupplierId, variants]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -706,10 +732,13 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
 
 export function PurchaseOrdersPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const meshPartnerSku = searchParams.get('meshPartnerSku') ?? undefined;
+  const meshSupplierId = searchParams.get('supplierId') ?? undefined;
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const canReceive = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER');
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(Boolean(meshPartnerSku || meshSupplierId));
   const [peekPoId, setPeekPoId] = useState<string | null>(null);
   const [receivePoId, setReceivePoId] = useState<string | null>(null);
 
@@ -789,7 +818,12 @@ export function PurchaseOrdersPage() {
         )}
       </div>
 
-      <CreatePoModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <CreatePoModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        initialSku={meshPartnerSku}
+        initialSupplierId={meshSupplierId}
+      />
       <ReceivePoModal
         open={!!receivePoId}
         poId={receivePoId}

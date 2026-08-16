@@ -415,7 +415,7 @@ public class ReportingAnalyticsService {
                 FROM sales_order_lines sol
                 JOIN sales_orders so ON so.id = sol.sales_order_id AND so.tenant_id = sol.tenant_id
                 WHERE sol.tenant_id = ?
-                  AND so.status IN ('CONFIRMED', 'ALLOCATED', 'PARTIALLY_SHIPPED')
+                  AND so.status IN ('CONFIRMED', 'UNALLOCATED', 'PARTIALLY_ALLOCATED', 'ALLOCATED', 'BACKORDERED', 'PARTIALLY_SHIPPED')
                 """, tenantId).into(BigDecimal.class);
 
         BigDecimal ordered = dsl.fetchOne("""

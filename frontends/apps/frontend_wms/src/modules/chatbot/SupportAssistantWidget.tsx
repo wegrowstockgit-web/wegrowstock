@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Bot, Camera, MessageCircle, Mic, MicOff, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
@@ -10,6 +11,7 @@ import {
   executeSupportAction,
   executeSupportActionDraft,
   fetchSupportInsight,
+  isSupportInsightRoute,
   streamSupportChat,
   type SupportActionButton,
   type SupportActionChip,
@@ -46,6 +48,7 @@ type TranscriptLine = {
  * drafts, vision, proactive insights, and training entry points.
  */
 export function SupportAssistantWidget() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const roles = useSessionRoles();
@@ -107,7 +110,10 @@ export function SupportAssistantWidget() {
   useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || !isSupportInsightRoute(location.pathname)) {
+      setProactiveInsight(null);
+      return;
+    }
     let cancelled = false;
     const route = location.pathname + location.search;
     void fetchSupportInsight(route)
@@ -125,7 +131,7 @@ export function SupportAssistantWidget() {
     };
   }, [authenticated, location.pathname, location.search]);
 
-  if (!authenticated) return null;
+  if (!authenticated || !isSupportInsightRoute(location.pathname)) return null;
 
   const onShowroom = location.pathname.startsWith('/showroom');
 
@@ -234,16 +240,15 @@ export function SupportAssistantWidget() {
       );
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setTranscript((t) => {
-          const copy = [...t];
+        setTranscript((lines) => {
+          const copy = [...lines];
           const last = copy[copy.length - 1];
-          const msg =
-            'Could not reach the support assistant. Check your connection and try again.';
+          const msg = t('chat.unreachable');
           if (last?.role === 'assistant') {
             copy[copy.length - 1] = { ...last, text: msg };
             return copy;
           }
-          return [...t, { role: 'assistant', text: msg }];
+          return [...lines, { role: 'assistant', text: msg }];
         });
       }
     } finally {
@@ -267,7 +272,7 @@ export function SupportAssistantWidget() {
         previewUrl: dataUrl,
       });
     } catch {
-      toast('Could not prepare that photo. Try a smaller image.', { tone: 'danger' });
+        toast(t('chat.photoFailed'), { tone: 'danger' });
     }
   };
 
@@ -453,7 +458,7 @@ export function SupportAssistantWidget() {
         type="button"
         data-testid="support-assistant-fab"
         data-tour="support-assistant"
-        aria-label="Open support assistant"
+        aria-label={t('chat.open')}
         onClick={() => setOpen(true)}
         className={cn(
           'fixed z-[60] flex h-14 w-14 items-center justify-center rounded-full',
@@ -480,7 +485,7 @@ export function SupportAssistantWidget() {
           )}
           data-testid="support-assistant-panel"
           role="dialog"
-          aria-label="Support assistant"
+          aria-label={t('chat.title')}
         >
           {trainingActive ? (
             <div
@@ -492,8 +497,7 @@ export function SupportAssistantWidget() {
               role="status"
             >
               <span className="inline-block rounded bg-amber-400/95 px-2 py-0.5">
-                ⚠️ TRAINING SIMULATOR ACTIVE
-                {trainingRole ? `: ${trainingRole}` : ''} — NO DATA WILL BE SAVED
+                {t('chat.trainingActive', { role: trainingRole ? `: ${trainingRole}` : '' })}
               </span>
             </div>
           ) : null}
@@ -507,9 +511,9 @@ export function SupportAssistantWidget() {
                 <Bot className="h-4 w-4" strokeWidth={2.25} />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-text">Operations copilot</p>
+                <p className="text-sm font-semibold text-text">{t('chat.title')}</p>
                 <p className="truncate text-xs text-text-muted">
-                  {roles.join(', ') || 'Signed in'} · {location.pathname}
+                  {roles.join(', ') || t('chat.signedIn')} · {location.pathname}
                   {pageState.networkPhase !== 'online' ? ` · ${pageState.networkPhase}` : ''}
                 </p>
               </div>
@@ -518,7 +522,7 @@ export function SupportAssistantWidget() {
               type="button"
               variant="ghost"
               size="sm"
-              aria-label="Close assistant"
+              aria-label={t('chat.close')}
               data-testid="support-assistant-close"
               onClick={() => setOpen(false)}
             >
@@ -531,10 +535,7 @@ export function SupportAssistantWidget() {
               <div className="space-y-3">
                 <ChatMessageBubble role="assistant">
                   <SupportMarkdown
-                    text={
-                      'Ask how to **receive**, **allocate**, handle damage, or reverse a mistake.\n\n'
-                      + 'Attach a photo of a label or damaged item for visual help.'
-                    }
+                    text={t('chat.intro')}
                   />
                 </ChatMessageBubble>
                 <div className="flex flex-wrap gap-2 pl-10">
@@ -548,16 +549,16 @@ export function SupportAssistantWidget() {
                       data-testid={`support-training-${id}`}
                       onClick={() => {
                         startScenario(id);
-                        setTranscript((t) => [
-                          ...t,
+                        setTranscript((lines) => [
+                          ...lines,
                           {
                             role: 'assistant',
-                            text: `Training mode: **${TRAINING_SCENARIOS[id].title}**. Live stock will not change.`,
+                            text: t('chat.trainingMode', { title: TRAINING_SCENARIOS[id].title }),
                           },
                         ]);
                       }}
                     >
-                      Practice: {TRAINING_SCENARIOS[id].title}
+                      {t('chat.practice', { title: TRAINING_SCENARIOS[id].title })}
                     </Button>
                   ))}
                 </div>
@@ -653,7 +654,7 @@ export function SupportAssistantWidget() {
                           disabled={executing != null}
                           onClick={() => void runPlatformAction(action, i)}
                         >
-                          {executing === `${i}:${action.action}` ? 'Running…' : action.label}
+                          {executing === `${i}:${action.action}` ? t('chat.running') : action.label}
                         </Button>
                       ),
                     )}
@@ -747,7 +748,7 @@ export function SupportAssistantWidget() {
               type="button"
               variant="secondary"
               className="min-h-12 min-w-12"
-              aria-label="Attach photo"
+              aria-label={t('chat.attachPhoto')}
               data-testid="support-camera-button"
               disabled={busy}
               onClick={() => fileRef.current?.click()}
@@ -760,7 +761,7 @@ export function SupportAssistantWidget() {
                 type="button"
                 variant="secondary"
                 className={cn('min-h-12 min-w-12', listening && 'border-accent bg-accent/15')}
-                aria-label={listening ? 'Stop voice input' : 'Push to talk'}
+                aria-label={listening ? t('chat.stopVoice') : t('chat.pushToTalk')}
                 aria-pressed={listening}
                 data-testid="support-voice-toggle"
                 disabled={busy}
@@ -772,7 +773,7 @@ export function SupportAssistantWidget() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={listening ? 'Listening…' : 'Ask a question…'}
+              placeholder={listening ? t('chat.listening') : t('chat.askPlaceholder')}
               data-testid="support-assistant-input"
               className="min-h-12 flex-1 rounded-md border border-border bg-background px-3 text-base text-text sm:text-sm"
               enterKeyHint="send"
@@ -783,7 +784,7 @@ export function SupportAssistantWidget() {
               disabled={busy || (!input.trim() && !pendingImage)}
               data-testid="support-assistant-send"
               className="min-h-12 min-w-12"
-              aria-label="Send"
+              aria-label={t('chat.send')}
             >
               <Send className="h-4 w-4" />
             </Button>

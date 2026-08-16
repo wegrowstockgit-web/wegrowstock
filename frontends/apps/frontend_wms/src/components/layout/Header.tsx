@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, LogOut, Menu, Search, Settings2, User, Warehouse } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Avatar, initialsFromName } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { PageHelpOverlay } from '@/components/ui/PageHelpOverlay';
@@ -27,6 +28,8 @@ interface HeaderProps {
   onSignOut: () => void;
   /** Optional Surface B quarantine review opener (preferred over navigate). */
   onOpenQuarantine?: () => void;
+  /** When false, hide the warehouse switcher and show tenant-global scope. */
+  warehouseScoped?: boolean;
 }
 
 export function Header({
@@ -41,7 +44,9 @@ export function Header({
   onWarehouseChange,
   onSignOut,
   onOpenQuarantine,
+  warehouseScoped = true,
 }: HeaderProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
@@ -77,7 +82,7 @@ export function Header({
               size="sm"
               onClick={toggleMobileOpen}
               className="min-h-11 min-w-11 touch-target lg:hidden"
-              aria-label="Open navigation"
+              aria-label={t('common.openNavigation')}
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -90,7 +95,7 @@ export function Header({
               className="hidden min-h-11 touch-target sm:inline-flex"
             >
               <Search className="h-4 w-4" />
-              <span className="text-text-muted">Search</span>
+              <span className="text-text-muted">{t('common.search')}</span>
               <kbd className="ml-2 rounded border border-border px-1 text-xs">⌘K</kbd>
             </Button>
           )}
@@ -100,7 +105,7 @@ export function Header({
             </h1>
           ) : null}
 
-          {warehouses.length > 0 &&
+          {warehouseScoped && warehouses.length > 0 &&
             (hideSwitcher ? (
               <div
                 className="flex h-9 items-center gap-2 rounded-md border border-border bg-surface-overlay px-3 text-sm text-text"
@@ -133,6 +138,14 @@ export function Header({
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               </div>
             ))}
+          {!warehouseScoped && !isWarehouseView && (
+            <span
+              className="hidden h-9 items-center rounded-full border border-border/70 bg-surface-overlay px-3 text-xs font-medium text-text-muted sm:inline-flex"
+              data-testid="global-tenant-scope"
+            >
+              {t('brand.globalScope')}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -202,7 +215,7 @@ export function Header({
                   }}
                 >
                   <Settings2 className="h-4 w-4 text-text-muted" />
-                  Profile Settings
+                  {t('common.profileSettings')}
                 </button>
                 <button
                   type="button"
@@ -214,7 +227,7 @@ export function Header({
                   }}
                 >
                   <LogOut className="h-4 w-4 text-text-muted" />
-                  Sign out
+                  {t('common.signOut')}
                 </button>
               </div>
             )}
@@ -222,7 +235,7 @@ export function Header({
           {isWarehouseView && (
             <Button variant="ghost" size="sm" onClick={onSignOut}>
               <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sign out</span>
+              <span className="hidden sm:inline">{t('common.signOut')}</span>
             </Button>
           )}
         </div>

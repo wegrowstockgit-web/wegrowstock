@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useSessionStore } from '@/stores/session';
 import { globalSearch } from '@/api/globalSearch';
 import {
@@ -22,6 +23,11 @@ import {
   GitBranch,
   Search,
   Loader2,
+  MapPin,
+  Hash,
+  DollarSign,
+  Box,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -193,7 +199,45 @@ const commands: CommandItem[] = [
 
 type PaletteItem =
   | { kind: 'command'; id: string; label: string; icon: React.ComponentType<{ className?: string }>; path: string }
-  | { kind: 'result'; id: string; label: string; sublabel?: string; category: string; path: string };
+  | {
+      kind: 'result';
+      id: string;
+      label: string;
+      sublabel?: string;
+      category: string;
+      path: string;
+      icon: React.ComponentType<{ className?: string }>;
+    };
+
+function categoryIcon(category: string): LucideIcon {
+  switch (category) {
+    case 'Catalog':
+      return Package;
+    case 'Sales Order':
+    case 'B2B Order':
+      return ShoppingCart;
+    case 'Purchase Order':
+      return ClipboardList;
+    case 'Customer':
+      return Users;
+    case 'Supplier':
+      return Truck;
+    case 'Invoice':
+    case 'Factored Invoice':
+      return DollarSign;
+    case 'Lot':
+      return GitBranch;
+    case 'Serial':
+      return Hash;
+    case 'LPN':
+      return Box;
+    case 'Location':
+    case 'Zone':
+      return MapPin;
+    default:
+      return Search;
+  }
+}
 
 interface CommandPaletteProps {
   open: boolean;
@@ -201,6 +245,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const isPickerOnly = useSessionStore((s) => s.isPickerOnly);
@@ -260,10 +305,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     const resultItems: PaletteItem[] = searchResults.map((result) => ({
       kind: 'result',
       id: result.id,
-      label: result.label,
-      sublabel: result.sublabel,
+      label: result.title,
+      sublabel: result.subtitle,
       category: result.category,
-      path: result.path,
+      path: result.route,
+      icon: categoryIcon(result.category),
     }));
 
     return [...commandItems, ...resultItems];
@@ -321,7 +367,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search pages, orders, products, customers..."
+            placeholder={t('search.placeholder')}
             className="h-12 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-muted"
           />
           {isSearching && <Loader2 className="h-4 w-4 animate-spin text-text-muted" />}
@@ -333,19 +379,28 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         <ul className="max-h-80 overflow-y-auto py-2">
           {items.length === 0 ? (
             <li className="px-4 py-6 text-center text-sm text-text-muted">
-              {debouncedQuery.length >= 2 ? 'No matches found' : 'No commands found'}
+              {debouncedQuery.length >= 2 ? t('search.noMatches') : t('search.noCommands')}
             </li>
           ) : (
             items.map((item, index) => {
+              const previous = items[index - 1];
               const showSectionHeader =
                 item.kind === 'result' &&
-                (index === 0 || items[index - 1]?.kind !== 'result');
+                (index === 0 ||
+                  previous?.kind !== 'result' ||
+                  (previous.kind === 'result' && previous.category !== item.category));
+              const showPagesHeader = item.kind === 'command' && index === 0;
 
               return (
                 <li key={item.id}>
+                  {showPagesHeader && (
+                    <p className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+                      {t('search.pages')}
+                    </p>
+                  )}
                   {showSectionHeader && showEntitySection && (
                     <p className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-                      Records
+                      {item.category}
                     </p>
                   )}
                   <button
@@ -365,18 +420,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     {item.kind === 'command' ? (
                       <>
                         <item.icon className="h-4 w-4 shrink-0" />
-                        <span>{item.label}</span>
+                        <span>{t(`nav.${item.label}`, { defaultValue: item.label })}</span>
                       </>
                     ) : (
                       <>
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[10px] font-semibold uppercase text-text-muted">
-                          {item.category.slice(0, 2)}
-                        </span>
+                        <item.icon className="h-4 w-4 shrink-0 text-text-muted" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate">{item.label}</span>
                           {item.sublabel && (
                             <span className="block truncate text-xs text-text-muted">
-                              {item.category} · {item.sublabel}
+                              {item.sublabel}
                             </span>
                           )}
                         </span>

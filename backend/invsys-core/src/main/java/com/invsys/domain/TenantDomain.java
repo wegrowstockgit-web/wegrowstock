@@ -21,6 +21,12 @@ public class TenantDomain extends TenantScopedEntity {
     @Column(name = "verification_status", nullable = false)
     private String verificationStatus = "PENDING";
 
+    @Column(name = "dns_verification_token", length = 128)
+    private String dnsVerificationToken;
+
+    @Column(name = "is_verified", nullable = false)
+    private boolean verified;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "dkim_tokens", columnDefinition = "jsonb", nullable = false)
     private List<Map<String, String>> dkimTokens = new ArrayList<>();
@@ -39,6 +45,26 @@ public class TenantDomain extends TenantScopedEntity {
 
     public void setVerificationStatus(String verificationStatus) {
         this.verificationStatus = verificationStatus;
+        this.verified = "ACTIVE".equalsIgnoreCase(verificationStatus)
+                || "VERIFIED".equalsIgnoreCase(verificationStatus);
+    }
+
+    public String getDnsVerificationToken() {
+        return dnsVerificationToken;
+    }
+
+    public void setDnsVerificationToken(String dnsVerificationToken) {
+        this.dnsVerificationToken = dnsVerificationToken;
+    }
+
+    public boolean isVerified() {
+        return verified
+                || "ACTIVE".equalsIgnoreCase(verificationStatus)
+                || "VERIFIED".equalsIgnoreCase(verificationStatus);
+    }
+
+    public void setVerified(boolean verified) {
+        this.verified = verified;
     }
 
     public List<Map<String, String>> getDkimTokens() {

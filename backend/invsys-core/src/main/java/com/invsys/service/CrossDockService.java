@@ -41,7 +41,8 @@ public class CrossDockService {
     public static final String STAGING_PATH = "WH-01/Z-SHIP/S-01";
 
     private static final Set<String> OPEN_PO = Set.of("SUBMITTED", "IN_TRANSIT", "PARTIALLY_RECEIVED");
-    private static final Set<String> OPEN_SO = Set.of("CONFIRMED", "BACKORDERED", "ALLOCATED");
+    private static final Set<String> OPEN_SO = Set.of(
+            "CONFIRMED", "UNALLOCATED", "BACKORDERED", "PARTIALLY_ALLOCATED", "ALLOCATED");
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderLineRepository purchaseOrderLineRepository;
@@ -177,7 +178,7 @@ public class CrossDockService {
                   ON pv.id = sol.variant_id AND pv.tenant_id = sol.tenant_id
                 WHERE sol.tenant_id = ?
                   AND sol.variant_id = ?
-                  AND so.status IN ('CONFIRMED', 'BACKORDERED', 'ALLOCATED', 'PICKING')
+                  AND so.status IN ('CONFIRMED', 'UNALLOCATED', 'BACKORDERED', 'PARTIALLY_ALLOCATED', 'ALLOCATED', 'PICKING')
                   AND (sol.qty_ordered - COALESCE(sol.qty_shipped, 0)) > 0
                 ORDER BY
                   CASE so.status
@@ -232,7 +233,7 @@ public class CrossDockService {
                 WHERE a.tenant_id = ?
                   AND a.variant_id = ?
                   AND a.status = 'ACTIVE'
-                  AND so.status IN ('CONFIRMED', 'BACKORDERED', 'ALLOCATED', 'PICKING')
+                  AND so.status IN ('CONFIRMED', 'UNALLOCATED', 'BACKORDERED', 'PARTIALLY_ALLOCATED', 'ALLOCATED', 'PICKING')
                 ORDER BY a.created_at ASC
                 LIMIT 1
                 """, tenantId, variantId);
@@ -315,7 +316,8 @@ public class CrossDockService {
 
         SalesOrder order = salesOrderRepository.findById(demand.salesOrderId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
-        if (List.of("BACKORDERED", "CONFIRMED", "ALLOCATED").contains(order.getStatus())) {
+        if (List.of("BACKORDERED", "CONFIRMED", "UNALLOCATED", "PARTIALLY_ALLOCATED", "ALLOCATED")
+                .contains(order.getStatus())) {
             order.setStatus("ALLOCATED");
             salesOrderRepository.save(order);
         }

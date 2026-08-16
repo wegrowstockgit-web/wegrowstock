@@ -28,9 +28,10 @@ public class ImageContentValidator {
             "image/svg+xml", "svg",
             "application/pdf", "pdf");
 
+    private static final int SVG_MAX_BYTES = 256 * 1024;
     private static final Pattern SVG_UNSAFE = Pattern.compile(
-            "(?i)<script|</script|onload\\s*=|onerror\\s*=|onmouseover\\s*=|onclick\\s*=|"
-                    + "xlink:href|javascript:|data:text/html|<!ENTITY|<!DOCTYPE|SYSTEM\\s+[\"']");
+            "(?i)<script|</script|on[a-z]+\\s*=|xlink:href|javascript:|data:text/html|"
+                    + "<!ENTITY|<!DOCTYPE|SYSTEM\\s+[\"']|<foreignObject");
 
     public String detectAndValidate(byte[] bytes, String declaredContentType) {
         if (bytes == null || bytes.length < 8) {
@@ -42,6 +43,10 @@ public class ImageContentValidator {
                     "Only JPEG, PNG, WebP, GIF, SVG, and PDF files are allowed");
         }
         if ("image/svg+xml".equals(detected)) {
+            if (bytes.length > SVG_MAX_BYTES) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_IMAGE",
+                        "SVG uploads must be 256KB or smaller");
+            }
             sanitizeSvg(bytes);
         }
         if (declaredContentType != null && !declaredContentType.isBlank()) {

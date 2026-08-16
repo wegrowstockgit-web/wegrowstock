@@ -13,7 +13,11 @@ test.describe('Journey 44: Admin SSO / ops / geo / RTLS', () => {
     try {
       const anonPage = await anon.newPage();
       await anonPage.goto('/login');
-      await expect(anonPage.getByTestId('login-google-sso')).toBeVisible({ timeout: 15_000 });
+      await expect(anonPage.getByRole('heading', { name: /welcome back/i })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(anonPage.getByTestId('login-continue')).toBeVisible();
+      await expect(anonPage.getByTestId('login-password')).toHaveCount(0);
     } finally {
       await anon.close();
     }
@@ -25,6 +29,9 @@ test.describe('Journey 44: Admin SSO / ops / geo / RTLS', () => {
       await expect(owner.page.getByTestId('sso-card-GOOGLE')).toBeVisible();
       await expect(owner.page.getByTestId('sso-card-ENTRA')).toBeVisible();
       await expect(owner.page.getByTestId('sso-card-OKTA')).toBeVisible();
+      await expect(owner.page.getByTestId('hrd-domain-input')).toBeVisible();
+      await expect(owner.page.getByTestId('hrd-cidr-input')).toBeVisible();
+      await expect(owner.page.getByTestId('sso-enforce')).toBeVisible();
 
       await owner.page.goto('/settings?tab=operations');
       await expect(owner.page.getByTestId('operations-settings-panel')).toBeVisible({ timeout: 20_000 });

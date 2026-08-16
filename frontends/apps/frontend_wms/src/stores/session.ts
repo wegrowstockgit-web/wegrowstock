@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useEffect, useState } from 'react';
 import type { User, SessionResponse } from '@/api/types';
+import i18n, { normalizeLanguage } from '@/lib/i18n';
+import { usePreferencesStore } from '@/stores/preferencesStore';
 
 const EMPTY_ROLES: readonly string[] = Object.freeze([]);
 const EMPTY_WAREHOUSES: readonly string[] = Object.freeze([]);
@@ -40,6 +42,9 @@ interface SessionState {
     grantedPermissions?: string[];
     isSuperAdmin?: boolean;
     enabledModules?: string[];
+    localeLanguage?: string | null;
+    preferredLanguage?: string | null;
+    tier?: string | null;
   }) => void;
   applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
   restorePrimarySession: () => void;
@@ -69,6 +74,8 @@ export function freezeUser(user: User): Readonly<User> {
     tenantId: user.tenantId,
     isSuperAdmin: user.isSuperAdmin === true,
     enabledModules: Object.freeze([...(user.enabledModules ?? [])]) as string[],
+    localeLanguage: user.localeLanguage ?? null,
+    tier: user.tier ?? null,
   });
 }
 
@@ -153,7 +160,18 @@ export const useSessionStore = create<SessionState>()(
             tenantId: profile.tenantId ?? state.user?.tenantId,
             isSuperAdmin: profile.isSuperAdmin ?? state.user?.isSuperAdmin ?? false,
             enabledModules: profile.enabledModules ?? state.user?.enabledModules ?? [],
+            localeLanguage:
+              profile.localeLanguage ??
+              profile.preferredLanguage ??
+              state.user?.localeLanguage ??
+              null,
+            tier: profile.tier ?? state.user?.tier ?? null,
           });
+          const language = normalizeLanguage(
+            nextUser.localeLanguage ?? profile.preferredLanguage,
+          );
+          void i18n.changeLanguage(language);
+          usePreferencesStore.getState().setLanguage(language);
           return {
             authenticated: true,
             user: nextUser,

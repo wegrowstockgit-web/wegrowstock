@@ -46,6 +46,12 @@ public class SettingsService {
                 .orElseGet(() -> TenantSettings.withDefaults(tenantId));
         String previousCosting = stringOrNull(settings.getSettings().get("costing_method"));
         if (patch != null) {
+            if (patch.size() > 64) {
+                throw new com.invsys.core.common.ApiException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "SETTINGS_TOO_LARGE",
+                        "Settings patch cannot contain more than 64 keys");
+            }
             settings.getSettings().putAll(patch);
             applyTypedColumns(settings, patch);
         }

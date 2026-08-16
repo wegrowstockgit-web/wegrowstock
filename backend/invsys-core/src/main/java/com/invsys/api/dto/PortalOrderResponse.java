@@ -1,7 +1,6 @@
 package com.invsys.api.dto;
 
 import java.math.BigDecimal;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -11,6 +10,10 @@ public record PortalOrderResponse(
         String status,
         BigDecimal total,
         String currency,
-        Instant createdAt
+        Instant createdAt,
+        String allocationPolicy,
+        Instant quoteExpiresAt,
+        BigDecimal manualDiscountTotal,
+        String quoteNotes
 ) {
 }

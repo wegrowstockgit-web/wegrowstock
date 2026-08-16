@@ -138,10 +138,9 @@ test.describe('Support proactive insights & action drafts (functional)', () => {
       await manager.page.getByTestId('support-draft-approve').click();
 
       await expect(
-        manager.page
-          .getByTestId('support-draft-approved')
-          .or(manager.page.getByTestId('support-draft-failed'))
-          .or(manager.page.getByTestId('support-draft-executed-badge')),
+        manager.page.getByTestId('support-draft-approved').first()
+          .or(manager.page.getByTestId('support-draft-failed').first())
+          .or(manager.page.getByTestId('support-draft-executed-badge').first()),
       ).toBeVisible({ timeout: 25_000 });
     } finally {
       await manager.close();

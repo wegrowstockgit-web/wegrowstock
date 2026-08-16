@@ -10,7 +10,7 @@ import { useSessionStore, useIsAuthenticated, useSessionWarehouseIds } from '@/s
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useWarehouseStore } from '@/stores/warehouseStore';
 import { usePreferencesStore } from '@/stores/preferencesStore';
-import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
+import { useWarehouseContextGate, isWarehouseScopedPath } from '@/hooks/useWarehouseContextGate';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import { cn } from '@/lib/utils';
@@ -57,6 +57,9 @@ interface MeResponse {
   grantedPermissions?: string[];
   isSuperAdmin?: boolean;
   enabledModules?: string[];
+  localeLanguage?: string | null;
+  preferredLanguage?: string | null;
+  tier?: string | null;
 }
 
 export function AppShell() {
@@ -92,18 +95,20 @@ export function AppShell() {
     queryKey: ['auth', 'me'],
     queryFn: async () => {
       const { data } = await apiClient.get<MeResponse>('/api/v1/auth/me');
-      applyMeProfile({
-        userId: data.userId,
-        email: data.email,
-        displayName: data.displayName,
-        roles: data.roles,
-        warehouseIds: data.warehouseIds,
-        avatarUrl: data.avatarUrl,
-        tenantId: data.tenantId,
-        grantedPermissions: data.grantedPermissions,
-        isSuperAdmin: data.isSuperAdmin,
-        enabledModules: data.enabledModules,
-      });
+        applyMeProfile({
+          userId: data.userId,
+          email: data.email,
+          displayName: data.displayName,
+          roles: data.roles,
+          warehouseIds: data.warehouseIds,
+          avatarUrl: data.avatarUrl,
+          tenantId: data.tenantId,
+          grantedPermissions: data.grantedPermissions,
+          isSuperAdmin: data.isSuperAdmin,
+          enabledModules: data.enabledModules,
+          localeLanguage: data.localeLanguage,
+          tier: data.tier,
+        });
       return data;
     },
     enabled: authenticated,
@@ -199,6 +204,7 @@ export function AppShell() {
           onToggleCommandPalette={toggle}
           onWarehouseChange={handleWarehouseChange}
           onSignOut={() => void handleSignOut()}
+          warehouseScoped={isWarehouseScopedPath(location.pathname)}
         />
 
         {/*

@@ -3,6 +3,7 @@ package com.invsys.api;
 import com.invsys.api.dto.PortalCatalogItemResponse;
 import com.invsys.api.dto.PortalInvoiceResponse;
 import com.invsys.api.dto.PortalOrderResponse;
+import com.invsys.modules.sales.domain.AllocationPolicy;
 import com.invsys.service.PortalService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -45,7 +46,29 @@ public class PortalController {
         List<PortalService.PortalOrderLineInput> lines = request.lines().stream()
                 .map(l -> new PortalService.PortalOrderLineInput(l.variantId(), l.quantity()))
                 .toList();
-        return portalService.createOrder(lines, request.customerPoNumber(), request.requestedShipDate());
+        return portalService.createOrder(
+                lines,
+                request.customerPoNumber(),
+                request.requestedShipDate(),
+                parsePolicy(request.allocationPolicy()));
+    }
+
+    @PostMapping("/quotes")
+    public PortalOrderResponse requestQuote(@Valid @RequestBody RequestPortalQuoteRequest request) {
+        List<PortalService.PortalOrderLineInput> lines = request.lines().stream()
+                .map(l -> new PortalService.PortalOrderLineInput(l.variantId(), l.quantity()))
+                .toList();
+        return portalService.requestQuote(
+                lines,
+                request.customerPoNumber(),
+                request.requestedShipDate(),
+                parsePolicy(request.allocationPolicy()),
+                request.quoteNotes());
+    }
+
+    @PostMapping("/orders/{orderId}/accept-quote")
+    public PortalOrderResponse acceptQuote(@PathVariable UUID orderId) {
+        return portalService.acceptQuote(orderId);
     }
 
     @GetMapping("/invoices")
@@ -83,8 +106,29 @@ public class PortalController {
     public record CreatePortalOrderRequest(
             @NotNull List<PortalOrderLineRequest> lines,
             String customerPoNumber,
-            java.time.Instant requestedShipDate
+            java.time.Instant requestedShipDate,
+            String allocationPolicy
     ) {
+    }
+
+    public record RequestPortalQuoteRequest(
+            @NotNull List<PortalOrderLineRequest> lines,
+            String customerPoNumber,
+            java.time.Instant requestedShipDate,
+            String allocationPolicy,
+            String quoteNotes
+    ) {
+    }
+
+    private static AllocationPolicy parsePolicy(String raw) {
+        try {
+            return AllocationPolicy.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new com.invsys.core.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "VALIDATION",
+                    "allocationPolicy must be SHIP_COMPLETE or ALLOW_PARTIAL");
+        }
     }
 
     public record PortalOrderLineRequest(

@@ -1,0 +1,18 @@
+{
+  "name": "weGrowStock POS",
+  "short_name": "POS",
+  "description": "Offline-first retail Point of Sale",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

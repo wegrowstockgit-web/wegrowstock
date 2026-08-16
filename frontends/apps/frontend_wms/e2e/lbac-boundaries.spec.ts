@@ -1,4 +1,4 @@
-import { expect, sessionAccessToken, test } from './fixtures/roleFixture';
+import { completeIdentifierFirstLogin, expect, sessionAccessToken, test } from './fixtures/roleFixture';
 
 const WH_01 = 'a0000000-0000-4000-8000-000000000601';
 const WH_02 = 'a0000000-0000-4000-8000-000000000611';
@@ -43,7 +43,7 @@ test.describe('LBAC warehouse boundaries', () => {
   });
 
   test('owner can switch to Overflow Warehouse', async ({ ownerPage }) => {
-    await ownerPage.goto('/dashboard');
+    await ownerPage.goto('/fulfillment');
     const select = ownerPage.getByLabel('Active warehouse');
     await expect(select).toBeVisible({ timeout: 15_000 });
     await expect(select.locator(`option[value="${WH_02}"]`)).toHaveCount(1);
@@ -58,10 +58,7 @@ test.describe('LBAC warehouse boundaries', () => {
     const page = await context.newPage();
     await page.goto('/login');
     await expect(page.getByLabel('Company slug')).toHaveCount(0);
-    await expect(page.getByLabel('Email')).toBeVisible({ timeout: 30_000 });
-    await page.getByLabel('Email').fill('owner@demo.test');
-    await page.getByLabel('Password').fill(process.env.E2E_DEMO_PASSWORD ?? 'password123');
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await completeIdentifierFirstLogin(page, 'owner@demo.test');
     await expect(page).toHaveURL(/\/dashboard/);
     await context.close();
   });

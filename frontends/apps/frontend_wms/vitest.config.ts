@@ -24,6 +24,12 @@ export default defineConfig({
         'src/lib/gs1Barcode.ts',
         'src/lib/terminalPasskey.ts',
         'src/hooks/useBarcodeScanner.ts',
+        'src/hooks/useHardwareScanner.ts',
+        'src/lib/hardwareCapabilities.ts',
+        'src/lib/barcodeCameraDecode.ts',
+        'src/features/inbound/BarcodeScannerInput.tsx',
+        'src/components/hardware/HardwareManualFallback.tsx',
+        'src/components/ui/WebRtcCamera.tsx',
         'src/hooks/useDensity.ts',
         'src/hooks/useScannerIdle.ts',
         'src/stores/offlineStore.ts',
@@ -58,6 +64,10 @@ export default defineConfig({
         'src/modules/training/trainingSandboxStore.ts',
         'src/modules/chatbot/supportSpotlight.ts',
         'src/components/ui/PageHelpOverlay.tsx',
+        'src/api/portal.ts',
+        'src/api/mesh.ts',
+        'src/lib/hrd.ts',
+        'src/pages/showroom/ShowroomCheckoutPage.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       // Scanner PIN overlays: covered by Mobile-Scanner Playwright + store/hook unit tests.

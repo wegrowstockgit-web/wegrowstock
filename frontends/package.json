@@ -6,11 +6,14 @@
   "scripts": {
     "dev:wms": "pnpm --filter frontend_wms dev",
     "dev:admin": "pnpm --filter frontend_admin dev",
+    "dev:pos": "pnpm --filter frontend_pos dev",
     "build:wms": "pnpm --filter frontend_wms build",
     "build:admin": "pnpm --filter frontend_admin build",
+    "build:pos": "pnpm --filter frontend_pos build",
     "build": "pnpm -r --filter \"./apps/*\" build",
     "test:wms": "pnpm --filter frontend_wms test",
-    "test:admin": "pnpm --filter frontend_admin test"
+    "test:admin": "pnpm --filter frontend_admin test",
+    "test:pos": "pnpm --filter frontend_pos test"
   },
   "engines": {
     "node": ">=24",

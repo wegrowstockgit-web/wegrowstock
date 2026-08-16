@@ -11,8 +11,11 @@ import com.invsys.modules.sales.domain.Invoice;
 import com.invsys.modules.catalog.domain.Product;
 import com.invsys.domain.ProductMedia;
 import com.invsys.modules.catalog.domain.ProductVariant;
+import com.invsys.modules.sales.domain.AllocationPolicy;
 import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.modules.sales.domain.SalesOrderLine;
+import com.invsys.modules.sales.domain.SalesOrderStatus;
+import com.invsys.modules.sales.service.SalesOrderService;
 import com.invsys.domain.VolumePriceBreak;
 import com.invsys.modules.sales.repository.CustomerCatalogRestrictionRepository;
 import com.invsys.modules.sales.repository.CustomerPriceTierRepository;
@@ -57,6 +60,7 @@ public class PortalService {
     private final VolumePriceBreakRepository volumePriceBreakRepository;
     private final ProductMediaRepository productMediaRepository;
     private final SoftKitExplosionService softKitExplosionService;
+    private final SalesOrderService salesOrderService;
 
     public PortalService(ProductVariantRepository variantRepository,
                          ProductRepository productRepository,
@@ -71,7 +75,8 @@ public class PortalService {
                          CustomerCatalogRestrictionRepository catalogRestrictionRepository,
                          VolumePriceBreakRepository volumePriceBreakRepository,
                          ProductMediaRepository productMediaRepository,
-                         SoftKitExplosionService softKitExplosionService) {
+                         SoftKitExplosionService softKitExplosionService,
+                         SalesOrderService salesOrderService) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
@@ -86,6 +91,7 @@ public class PortalService {
         this.volumePriceBreakRepository = volumePriceBreakRepository;
         this.productMediaRepository = productMediaRepository;
         this.softKitExplosionService = softKitExplosionService;
+        this.salesOrderService = salesOrderService;
     }
 
     public List<PortalCatalogItemResponse> catalog() {
@@ -127,15 +133,91 @@ public class PortalService {
         return items;
     }
 
+    /**
+     * Guest catalog: list/MSRP prices only — never customer-tier wholesale rates.
+     */
+    public List<PortalCatalogItemResponse> publicCatalog(UUID tenantId) {
+        List<ProductVariant> variants = new ArrayList<>();
+        Map<UUID, String> productNames = new java.util.LinkedHashMap<>();
+        for (Product product : productRepository.findByTenantIdAndDeletedAtIsNullOrderByNameAsc(tenantId)) {
+            productNames.put(product.getId(), product.getName());
+            variants.addAll(variantRepository.findByTenantIdAndProductId(tenantId, product.getId()));
+        }
+        Map<UUID, String> primaryMedia = productMediaRepository
+                .findByTenantIdAndVariantIdInAndPrimaryTrue(
+                        tenantId, variants.stream().map(ProductVariant::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(ProductMedia::getVariantId, ProductMedia::getUrl, (a, b) -> a));
+        List<PortalCatalogItemResponse> items = new ArrayList<>();
+        for (ProductVariant variant : variants) {
+            items.add(new PortalCatalogItemResponse(
+                    variant.getId(),
+                    variant.getProductId(),
+                    variant.getSku(),
+                    productNames.getOrDefault(variant.getProductId(), variant.getSku()),
+                    variant.getPrice(),
+                    variant.getCurrency(),
+                    primaryMedia.get(variant.getId())));
+        }
+        return items;
+    }
+
     @Transactional
     public PortalOrderResponse createOrder(List<PortalOrderLineInput> lines) {
-        return createOrder(lines, null, null);
+        return createOrder(lines, null, null, AllocationPolicy.ALLOW_PARTIAL);
     }
 
     @Transactional
     public PortalOrderResponse createOrder(List<PortalOrderLineInput> lines,
                                            String customerPoNumber,
                                            java.time.Instant requestedShipDate) {
+        return createOrder(lines, customerPoNumber, requestedShipDate, AllocationPolicy.ALLOW_PARTIAL);
+    }
+
+    @Transactional
+    public PortalOrderResponse createOrder(List<PortalOrderLineInput> lines,
+                                           String customerPoNumber,
+                                           java.time.Instant requestedShipDate,
+                                           AllocationPolicy allocationPolicy) {
+        return persistPortalOrder(lines, customerPoNumber, requestedShipDate, allocationPolicy,
+                SalesOrderStatus.DRAFT.name(), null, true);
+    }
+
+    @Transactional
+    public PortalOrderResponse requestQuote(List<PortalOrderLineInput> lines,
+                                            String customerPoNumber,
+                                            java.time.Instant requestedShipDate,
+                                            AllocationPolicy allocationPolicy,
+                                            String quoteNotes) {
+        return persistPortalOrder(lines, customerPoNumber, requestedShipDate,
+                allocationPolicy != null ? allocationPolicy : AllocationPolicy.ALLOW_PARTIAL,
+                SalesOrderStatus.PENDING_REP_APPROVAL.name(), quoteNotes, false);
+    }
+
+    @Transactional
+    public PortalOrderResponse acceptQuote(UUID orderId) {
+        UUID customerId = TenantContext.requireCustomerId();
+        SalesOrder order = ownedOrder(orderId, customerId);
+        if (!SalesOrderStatus.QUOTE_READY.name().equals(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Quote is not ready to accept");
+        }
+        if (order.getQuoteExpiresAt() != null && !order.getQuoteExpiresAt().isAfter(java.time.Instant.now())) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUOTE_EXPIRED", "This quote has expired");
+        }
+        if (paymentTerms().startsWith("NET")) {
+            creditService.reserveCredit(customerId, orderTotal(order.getId()));
+        }
+        SalesOrder accepted = salesOrderService.acceptQuote(order.getId());
+        return toOrderResponse(accepted, orderTotal(accepted.getId()), orderCurrency(accepted.getId()));
+    }
+
+    private PortalOrderResponse persistPortalOrder(List<PortalOrderLineInput> lines,
+                                                   String customerPoNumber,
+                                                   java.time.Instant requestedShipDate,
+                                                   AllocationPolicy allocationPolicy,
+                                                   String status,
+                                                   String quoteNotes,
+                                                   boolean reserveCredit) {
         UUID tenantId = TenantContext.requireTenantId();
         UUID customerId = TenantContext.requireCustomerId();
         BigDecimal tierDiscount = resolveDiscount(customerId);
@@ -145,8 +227,12 @@ public class PortalService {
         order.setTenantId(tenantId);
         order.setCustomerId(customerId);
         order.setNumber(sequenceService.nextNumber("SO", "SO-{YYYY}-{seq:5}"));
-        order.setStatus("DRAFT");
+        order.setStatus(status);
         order.setChannel("PORTAL");
+        order.setAllocationPolicy(allocationPolicy != null ? allocationPolicy : AllocationPolicy.ALLOW_PARTIAL);
+        if (quoteNotes != null && !quoteNotes.isBlank()) {
+            order.setQuoteNotes(quoteNotes.trim());
+        }
         if (customerPoNumber != null && !customerPoNumber.isBlank()) {
             order.setCustomerPoNumber(customerPoNumber.trim());
         }
@@ -182,11 +268,20 @@ public class PortalService {
             orderTotal = orderTotal.add(unitPrice.multiply(line.quantity()));
         }
 
-        if (paymentTerms().startsWith("NET")) {
+        if (reserveCredit && paymentTerms().startsWith("NET")) {
             creditService.reserveCredit(customerId, orderTotal);
         }
 
         return toOrderResponse(order, orderTotal, currency);
+    }
+
+    private SalesOrder ownedOrder(UUID orderId, UUID customerId) {
+        SalesOrder order = salesOrderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Order not found"));
+        if (!customerId.equals(order.getCustomerId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Order not accessible");
+        }
+        return order;
     }
 
     public List<PortalOrderResponse> orders() {
@@ -204,7 +299,22 @@ public class PortalService {
     }
 
     private PortalOrderResponse toOrderResponse(SalesOrder order, BigDecimal total, String currency) {
-        return new PortalOrderResponse(order.getId(), order.getNumber(), order.getStatus(), total, currency, order.getCreatedAt());
+        BigDecimal discount = order.getManualDiscountTotal() != null ? order.getManualDiscountTotal() : BigDecimal.ZERO;
+        BigDecimal net = total.subtract(discount);
+        if (net.signum() < 0) {
+            net = BigDecimal.ZERO;
+        }
+        return new PortalOrderResponse(
+                order.getId(),
+                order.getNumber(),
+                order.getStatus(),
+                net,
+                currency,
+                order.getCreatedAt(),
+                order.getAllocationPolicy() != null ? order.getAllocationPolicy().name() : AllocationPolicy.ALLOW_PARTIAL.name(),
+                order.getQuoteExpiresAt(),
+                discount,
+                order.getQuoteNotes());
     }
 
     private BigDecimal orderTotal(UUID orderId) {

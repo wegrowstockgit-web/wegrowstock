@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { PackageOpen, RotateCcw, ShoppingCart } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PortalCatalogItem, PortalOrder, PortalReorderLine } from '@/api/types';
-import { mapPortalCatalog, type PortalCatalogItemRaw } from '@/api/portal';
+import { acceptPortalQuote, mapPortalCatalog, type PortalCatalogItemRaw } from '@/api/portal';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
@@ -103,14 +103,57 @@ function ShowroomOrdersTable({
   );
 }
 
+function QuoteReadyBanner({
+  order,
+  accepting,
+  onAccept,
+}: {
+  order: PortalOrder;
+  accepting: boolean;
+  onAccept: () => void;
+}) {
+  const discount = Number(order.manualDiscountTotal ?? 0);
+  const expires = order.quoteExpiresAt ? new Date(order.quoteExpiresAt) : null;
+  return (
+    <div
+      className="mb-6 rounded-xl border border-accent/40 bg-accent-muted p-5"
+      data-testid={`quote-ready-${order.id}`}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent">Quote ready</p>
+      <h2 className="mt-1 text-xl font-bold text-text">{order.number}</h2>
+      <p className="mt-2 text-sm text-text-muted">
+        Your sales rep applied custom pricing
+        {discount > 0
+          ? ` — ${discount.toLocaleString(undefined, { style: 'currency', currency: order.currency })} off`
+          : ''}
+        {expires ? ` · expires ${expires.toLocaleDateString()}` : ''}.
+      </p>
+      {order.quoteNotes && <p className="mt-2 text-sm text-text">{order.quoteNotes}</p>}
+      <Button className="mt-4 w-full py-3 text-base" loading={accepting} onClick={onAccept}>
+        Accept & Convert to Order
+      </Button>
+    </div>
+  );
+}
+
 export function ShowroomOrdersPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { addLines } = useShowroomCart();
   const [returnOrder, setReturnOrder] = useState<PortalOrder | null>(null);
   const { data, isLoading, isError, error, refetch } = useListQuery<PortalOrder>(
     ['portal', 'orders'],
     '/api/v1/portal/orders',
   );
+
+  const acceptQuoteMutation = useMutation({
+    mutationFn: (orderId: string) => acceptPortalQuote(orderId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['portal', 'orders'] });
+    },
+  });
+
+  const readyQuotes = (data ?? []).filter((order) => order.status === 'QUOTE_READY');
 
   const reorderMutation = useMutation({
     mutationFn: async (orderId: string) => {
@@ -146,6 +189,15 @@ export function ShowroomOrdersPage() {
           Reorder past wholesale orders or start a self-serve return
         </p>
       </div>
+
+      {readyQuotes.map((order) => (
+        <QuoteReadyBanner
+          key={order.id}
+          order={order}
+          accepting={acceptQuoteMutation.isPending}
+          onAccept={() => acceptQuoteMutation.mutate(order.id)}
+        />
+      ))}
 
       <ListPageState
         isLoading={isLoading}

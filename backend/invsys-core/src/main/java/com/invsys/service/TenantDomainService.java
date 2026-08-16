@@ -50,7 +50,9 @@ public class TenantDomainService {
         domain.setTenantId(tenantId);
         domain.setDomainName(normalized);
         domain.setVerificationStatus("PENDING");
+        domain.setVerified(false);
         String txtValue = TXT_PREFIX + tenantId;
+        domain.setDnsVerificationToken(txtValue);
         List<Map<String, String>> tokens = new ArrayList<>();
         tokens.add(Map.of(
                 "type", "TXT",
@@ -101,6 +103,7 @@ public class TenantDomainService {
         }
 
         domain.setVerificationStatus("ACTIVE");
+        domain.setVerified(true);
         TenantDomain saved = tenantDomainRepository.save(domain);
         dynamicCorsWhitelist.invalidate();
         return saved;

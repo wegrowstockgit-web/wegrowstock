@@ -21,7 +21,7 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
     await b2bPage.getByRole('button', { name: 'Proceed to checkout' }).click();
     await b2bPage.getByLabel('Your PO number').fill(poNumber);
     await b2bPage.getByRole('button', { name: 'Continue' }).click();
-    await b2bPage.getByRole('button', { name: 'Place order' }).click();
+    await b2bPage.getByRole('button', { name: 'Instant Checkout' }).click();
     await expect(b2bPage.getByText('Order submitted')).toBeVisible();
 
     // --- Step 2: Admin confirms + allocates ---

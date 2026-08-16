@@ -1,7 +1,7 @@
 {
-  "name": "InventorySystem",
-  "short_name": "InvSys",
-  "description": "Multi-tenant Inventory / WMS / Supply Chain",
+  "name": "weGrowStock",
+  "short_name": "weGrowStock",
+  "description": "Multi-tenant WMS & Supply Chain",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

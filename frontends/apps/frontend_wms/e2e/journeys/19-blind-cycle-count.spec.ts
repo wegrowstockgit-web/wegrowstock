@@ -64,7 +64,7 @@ async function prepareCountAt(
     data: {
       variantId,
       locationId,
-      quantity,
+      quantity: Math.max(quantity, 50),
       referenceType: 'E2E_BLIND_COUNT',
     },
   });

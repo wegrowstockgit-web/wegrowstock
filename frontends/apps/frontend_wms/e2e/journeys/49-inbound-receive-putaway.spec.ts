@@ -63,11 +63,13 @@ test.describe('Journey 49: Inbound receive & directed putaway', () => {
       await expect(picker.page.getByTestId('inbound-receive-page')).toBeVisible({ timeout: 20_000 });
       await expect(picker.page.getByTestId('inbound-step-po')).toBeVisible();
 
+      await picker.page.getByTestId('scanner-keyboard-entry').first().click();
       await picker.page.getByTestId('scanner-manual-input').fill(poNumber);
       await picker.page.getByTestId('scanner-manual-input').press('Enter');
       await expect(picker.page.getByTestId('inbound-step-item')).toBeVisible({ timeout: 20_000 });
       await expect(picker.page.getByTestId('inbound-expected-lines')).toContainText(WIDGET_S_SKU);
 
+      await picker.page.getByTestId('scanner-keyboard-entry').first().click();
       await picker.page.getByTestId('scanner-manual-input').fill(WIDGET_S_BARCODE);
       await picker.page.getByTestId('scanner-manual-input').press('Enter');
       await expect(picker.page.getByTestId('inbound-step-qty')).toBeVisible({ timeout: 20_000 });
@@ -82,6 +84,7 @@ test.describe('Journey 49: Inbound receive & directed putaway', () => {
         (r) => r.url().includes('/api/v1/inbound/receive/confirm') && r.request().method() === 'POST',
         { timeout: 30_000 },
       );
+      await picker.page.getByTestId('scanner-keyboard-entry').first().click();
       await picker.page.getByTestId('scanner-manual-input').fill(binCode);
       await picker.page.getByTestId('scanner-manual-input').press('Enter');
       const confirmRes = await confirmWait;

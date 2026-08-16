@@ -40,20 +40,25 @@ public class ShopifyMediaSyncService {
     private final IntegrationSyncLogRepository syncLogRepository;
     private final MediaObjectRepository mediaObjectRepository;
     private final ObjectStorage objectStorage;
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final com.invsys.media.MediaUrlValidator mediaUrlValidator;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
 
     public ShopifyMediaSyncService(ChannelIntegrationRepository channelIntegrationRepository,
                                    IntegrationCredentialRepository credentialRepository,
                                    CredentialVaultService credentialVaultService,
                                    IntegrationSyncLogRepository syncLogRepository,
                                    MediaObjectRepository mediaObjectRepository,
-                                   ObjectStorage objectStorage) {
+                                   ObjectStorage objectStorage,
+                                   com.invsys.media.MediaUrlValidator mediaUrlValidator) {
         this.channelIntegrationRepository = channelIntegrationRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.syncLogRepository = syncLogRepository;
         this.mediaObjectRepository = mediaObjectRepository;
         this.objectStorage = objectStorage;
+        this.mediaUrlValidator = mediaUrlValidator;
     }
 
     public IntegrationSyncLog syncVariantMedia(UUID tenantId, UUID variantId, Map<String, Object> payload) {
@@ -85,7 +90,8 @@ public class ShopifyMediaSyncService {
 
         try {
             String accessToken = resolveAccessToken(integration.get().getCredentialId());
-            String shop = integration.get().getShopIdentifier();
+            String shop = com.invsys.service.ChannelIntegrationService.normalizeShopifyShop(
+                    integration.get().getShopIdentifier());
             String graphqlUrl = "https://" + shop + "/admin/api/" + API_VERSION + "/graphql.json";
 
             byte[] bytes = loadMediaBytes(tenantId, mediaUrl);
@@ -128,6 +134,10 @@ public class ShopifyMediaSyncService {
                 syncLog.setLastError("stagedUploadsCreate missing target: " + truncate(stagedResponse));
                 return syncLogRepository.save(syncLog);
             }
+            mediaUrlValidator.assertHttpsPublicUrl(uploadUrl, "INVALID_UPLOAD_URL",
+                    "Shopify staged upload URL is not allowed");
+            mediaUrlValidator.assertHttpsPublicUrl(resourceUrl, "INVALID_UPLOAD_URL",
+                    "Shopify resource URL is not allowed");
 
             // Step 2: multipart POST to staged bucket (parameters + file)
             String boundary = "----InvSysShopify" + UUID.randomUUID().toString().replace("-", "");
@@ -199,7 +209,8 @@ public class ShopifyMediaSyncService {
                 return in.readAllBytes();
             }
         }
-        URI uri = URI.create(mediaUrl);
+        String safeUrl = mediaUrlValidator.validateAndNormalize(mediaUrl);
+        URI uri = URI.create(safeUrl);
         if (!uri.isAbsolute()) {
             throw new IllegalStateException("Cannot fetch relative media URL without first-party media id: " + mediaUrl);
         }

@@ -1,5 +1,6 @@
 -- =============================================================================
 -- InventorySystem Demo Seed Data
+-- LOCAL / DOCKER ONLY. Never apply this file to shared or production databases.
 -- Populates ALL tables with realistic test data for four tenants.
 --
 -- Usage (after Flyway migrations have run):
@@ -8,7 +9,7 @@
 --
 -- Demo credentials (password for all users): password123
 -- Tenants (commercial tiers for control-plane testing):
---   Demo Corp (ENTERPRISE): CORE + B2B_SHOWROOM + FINTECH + AI_COPILOT
+--   Demo Corp (ENTERPRISE): CORE + B2B_SHOWROOM + FINTECH + AI_COPILOT + RETAIL_POS
 --   Acme Wholesale (BASIC): CORE
 --   Northwind Logistics (INTERMEDIATE): CORE + SHOPIFY + ADVANCED_FULFILLMENT
 --   Pacific Parts Co: seeded via demo_seed_tenants_extra.sql
@@ -50,7 +51,7 @@ ON CONFLICT (tenant_id) DO NOTHING;
 
 INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at) VALUES
     ('a0000000-0000-4000-8000-000000000001', 'ENTERPRISE',
-     '["CORE","B2B_SHOWROOM","FINTECH","AI_COPILOT"]'::jsonb, NOW())
+     '["CORE","B2B_SHOWROOM","FINTECH","AI_COPILOT","RETAIL_POS","MESH_NETWORK"]'::jsonb, NOW())
 ON CONFLICT (tenant_id) DO UPDATE SET
     tier = EXCLUDED.tier,
     enabled_modules = EXCLUDED.enabled_modules,

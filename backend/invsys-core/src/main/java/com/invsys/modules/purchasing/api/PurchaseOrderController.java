@@ -154,6 +154,12 @@ public class PurchaseOrderController {
         return purchaseOrderService.submit(id);
     }
 
+    @PostMapping("/purchase-orders/{id}/confirm")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrder confirm(@PathVariable UUID id) {
+        return purchaseOrderService.confirmOrder(id);
+    }
+
     @PostMapping("/purchase-orders/{id}/mark-in-transit")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public PurchaseOrder markInTransit(@PathVariable UUID id) {
@@ -184,7 +190,7 @@ public class PurchaseOrderController {
                 .toList();
         return new PurchaseOrderDetailResponse(
                 po.getId(), po.getNumber(), supplierName, po.getStatus(), po.getExpectedAt(),
-                po.getDestinationLocationId(), po.getFreightAmount(), po.getDutiesAmount(), lines);
+                po.getDestinationLocationId(), po.getFreightAmount(), po.getDutiesAmount(), po.getNotes(), lines);
     }
 
     @PostMapping("/purchase-orders/lines/{lineId}/receive")
@@ -257,6 +263,7 @@ public class PurchaseOrderController {
             UUID destinationLocationId,
             BigDecimal freightAmount,
             BigDecimal dutiesAmount,
+            String notes,
             List<PurchaseOrderLineDetail> lines
     ) {
     }

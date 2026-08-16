@@ -51,6 +51,8 @@ describe('PageHelpOverlay', () => {
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Who else this affects/i);
     expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Components, columns & statuses/i);
     expect(screen.getByTestId('page-help-statuses')).toHaveTextContent(/ALLOCATED/i);
+    expect(screen.getByTestId('page-help-quick-actions')).toHaveTextContent(/Go to Fulfillment/i);
+    expect(screen.getByTestId('page-help-troubleshooting')).toHaveTextContent(/Unallocated/i);
   });
 
   it('opens inbound receive playbook', async () => {
@@ -63,7 +65,7 @@ describe('PageHelpOverlay', () => {
 
     await user.click(screen.getByTestId('page-help-trigger'));
     await waitFor(() => expect(screen.getByTestId('page-help-drawer')).toBeInTheDocument());
-    expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Scan freight into inventory/i);
+    expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Check in newly arrived inventory/i);
   });
 
   it('shows fallback playbook for unregistered routes', async () => {
@@ -129,7 +131,7 @@ describe('PageHelpOverlay', () => {
     await user.click(screen.getByRole('button', { name: 'Go /products' }));
     await waitFor(() => expect(screen.getByTestId('page-help-panel')).toBeInTheDocument());
     await waitFor(() =>
-      expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Products/i),
+      expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Product Catalog/i),
     );
     expect(screen.getByTestId('page-help-route')).toHaveTextContent('/products');
   });
@@ -169,5 +171,80 @@ describe('PageHelpOverlay', () => {
     );
     expect(screen.getByTestId('page-help-route')).toHaveTextContent('/settings?tab=operations');
     expect(screen.getByTestId('page-help-body').textContent).toMatch(/Audit|adjustment/i);
+  });
+
+  it('navigates from a quick action and closes the overlay', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/sales-orders']}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <PageHelpOverlay />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByTestId('page-help-trigger'));
+    await waitFor(() => expect(screen.getByTestId('page-help-quick-actions')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /Go to Fulfillment/i }));
+    await waitFor(() => expect(screen.queryByTestId('page-help-body')).not.toBeInTheDocument());
+  });
+
+  it('renders Spanish playbook chrome when the profile language is es', async () => {
+    const { default: i18n } = await import('@/lib/i18n');
+    await i18n.changeLanguage('es');
+    const user = userEvent.setup();
+    const view = render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <PageHelpOverlay />
+      </MemoryRouter>,
+    );
+    try {
+      await user.click(screen.getByTestId('page-help-trigger'));
+      await waitFor(() => expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Centro de mando/i));
+      expect(screen.getByTestId('page-help-body')).toHaveTextContent(/Tomar acción/i);
+      expect(screen.getByTestId('page-help-quick-actions')).toHaveTextContent(/Ver mis tareas/i);
+    } finally {
+      view.unmount();
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('translates remaining route playbooks in Spanish and French', async () => {
+    const { default: i18n } = await import('@/lib/i18n');
+    const user = userEvent.setup();
+    try {
+      await i18n.changeLanguage('es');
+      const esView = render(
+        <MemoryRouter initialEntries={['/inventory/ledger']}>
+          <PageHelpOverlay />
+        </MemoryRouter>,
+      );
+      await user.click(screen.getByTestId('page-help-trigger'));
+      await waitFor(() =>
+        expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Libro de inventario/i),
+      );
+      esView.unmount();
+
+      await i18n.changeLanguage('fr');
+      const frView = render(
+        <MemoryRouter initialEntries={['/settings?tab=users']}>
+          <PageHelpOverlay />
+        </MemoryRouter>,
+      );
+      await user.click(screen.getByTestId('page-help-trigger'));
+      await waitFor(() =>
+        expect(screen.getByTestId('page-help-title')).toHaveTextContent(/Utilisateurs/i),
+      );
+      frView.unmount();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 });

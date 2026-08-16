@@ -14,10 +14,10 @@ public class TenantMeshPartner extends TenantScopedEntity {
     @Column(name = "partner_tenant_id", nullable = false)
     private UUID partnerTenantId;
 
-    @Column(name = "supplier_id", nullable = false)
+    @Column(name = "supplier_id")
     private UUID supplierId;
 
-    @Column(name = "customer_id", nullable = false)
+    @Column(name = "customer_id")
     private UUID customerId;
 
     @Column(name = "connection_status", nullable = false)

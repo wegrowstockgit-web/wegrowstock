@@ -4,7 +4,7 @@ import { DENSITY_STYLES, usePreferencesStore } from '@/stores/preferencesStore';
 describe('preferencesStore density', () => {
   beforeEach(() => {
     localStorage.clear();
-    usePreferencesStore.setState({ densityMode: 'cozy' });
+    usePreferencesStore.setState({ densityMode: 'cozy', language: 'en' });
   });
 
   it('defaults to cozy with table-friendly styles', () => {
@@ -21,5 +21,10 @@ describe('preferencesStore density', () => {
     expect(usePreferencesStore.getState().densityMode).toBe('compact');
     expect(DENSITY_STYLES.compact.row).toBe('h-8');
     expect(DENSITY_STYLES.spacious.typography).toBe('text-base');
+  });
+
+  it('persists language preference', () => {
+    usePreferencesStore.getState().setLanguage('es');
+    expect(usePreferencesStore.getState().language).toBe('es');
   });
 });

@@ -196,6 +196,3 @@ export function CameraCapture({
     </div>
   );
 }
-
-/** @deprecated Prefer CameraCapture — kept for existing floor imports. */
-export const WebRtcCamera = CameraCapture;

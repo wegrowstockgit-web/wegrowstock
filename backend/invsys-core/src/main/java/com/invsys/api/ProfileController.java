@@ -74,8 +74,19 @@ public class ProfileController {
                 request.addressPostalCode(),
                 request.addressCountry(),
                 request.mfaEnabled(),
-                request.uiDensityPreference());
+                request.uiDensityPreference(),
+                firstNonBlank(request.localeLanguage(), request.preferredLanguage()));
         return ProfileResponse.from(user);
+    }
+
+    private static String firstNonBlank(String primary, String alias) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        if (alias != null && !alias.isBlank()) {
+            return alias;
+        }
+        return primary != null ? primary : alias;
     }
 
     @PostMapping("/password")
@@ -110,7 +121,9 @@ public class ProfileController {
             String addressPostalCode,
             String addressCountry,
             Boolean mfaEnabled,
-            String uiDensityPreference
+            String uiDensityPreference,
+            String localeLanguage,
+            String preferredLanguage
     ) {
     }
 

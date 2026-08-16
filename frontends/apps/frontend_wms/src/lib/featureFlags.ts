@@ -44,5 +44,6 @@ export const FEATURE_MODULE_FLAGS = {
   sales: import.meta.env.VITE_ENABLE_SALES !== 'false',
   fulfillment: import.meta.env.VITE_ENABLE_FULFILLMENT !== 'false',
   fintech: import.meta.env.VITE_ENABLE_FINTECH !== 'false',
+  mesh: import.meta.env.VITE_ENABLE_MESH !== 'false',
 } as const;
 

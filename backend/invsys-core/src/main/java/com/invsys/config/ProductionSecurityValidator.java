@@ -29,11 +29,14 @@ public class ProductionSecurityValidator implements ApplicationRunner {
             "whsec_mock_secret",
             "shopify_mock_secret",
             "easypost_mock_secret",
+            "accounting_mock_secret",
             "app_user_secret",
             "app_owner_secret",
             "sk_test_mock",
             "easypost_mock_key",
-            "shopify_mock_key"
+            "shopify_mock_key",
+            "invsyssecret",
+            "invsys"
     );
 
     private final Environment environment;
@@ -48,6 +51,10 @@ public class ProductionSecurityValidator implements ApplicationRunner {
     private final boolean publicSignupEnabled;
     private final String shopifyWebhookSecret;
     private final String easyPostWebhookSecret;
+    private final String accountingWebhookSecret;
+    private final String mediaSecretKey;
+    private final String dbPassword;
+    private final boolean cookieSecure;
     private final ObjectProvider<EasyPostGateway> easyPostGateway;
     private final EasyPostProperties easyPostProperties;
 
@@ -61,9 +68,13 @@ public class ProductionSecurityValidator implements ApplicationRunner {
             @Value("${invsys.jwt.private-key-pem:}") String jwtPrivateKey,
             @Value("${invsys.jwt.public-key-pem:}") String jwtPublicKey,
             @Value("${invsys.integration.master-key:}") String integrationMasterKey,
-            @Value("${invsys.security.public-signup-enabled:true}") boolean publicSignupEnabled,
+            @Value("${invsys.security.public-signup-enabled:false}") boolean publicSignupEnabled,
             @Value("${invsys.webhooks.shopify-secret:}") String shopifyWebhookSecret,
             @Value("${invsys.webhooks.easypost-secret:}") String easyPostWebhookSecret,
+            @Value("${invsys.webhooks.accounting-secret:}") String accountingWebhookSecret,
+            @Value("${invsys.media.secret-key:}") String mediaSecretKey,
+            @Value("${spring.datasource.password:}") String dbPassword,
+            @Value("${invsys.security.cookie-secure:true}") boolean cookieSecure,
             ObjectProvider<EasyPostGateway> easyPostGateway,
             EasyPostProperties easyPostProperties) {
         this.environment = environment;
@@ -78,6 +89,10 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         this.publicSignupEnabled = publicSignupEnabled;
         this.shopifyWebhookSecret = shopifyWebhookSecret;
         this.easyPostWebhookSecret = easyPostWebhookSecret;
+        this.accountingWebhookSecret = accountingWebhookSecret;
+        this.mediaSecretKey = mediaSecretKey;
+        this.dbPassword = dbPassword;
+        this.cookieSecure = cookieSecure;
         this.easyPostGateway = easyPostGateway;
         this.easyPostProperties = easyPostProperties;
     }
@@ -94,8 +109,8 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         if (isBlankOrMock(stripePlatformWebhookSecret)) {
             errors.add("invsys.stripe.platform-webhook-secret must be set to a non-mock value");
         }
-        if (isBlankOrMock(stripeSecretKey) || !stripeSecretKey.startsWith("sk_")) {
-            errors.add("STRIPE_SECRET_KEY (invsys.stripe.secret-key) must be a live Stripe secret key");
+        if (isBlankOrMock(stripeSecretKey) || !stripeSecretKey.startsWith("sk_live_")) {
+            errors.add("STRIPE_SECRET_KEY (invsys.stripe.secret-key) must be a live Stripe secret key (sk_live_)");
         }
         if (isBlankOrMock(easyPostApiKey)) {
             errors.add("EASYPOST_API_KEY (invsys.easypost.api-key) must be configured for production");
@@ -115,6 +130,30 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         if (isBlankOrMock(easyPostWebhookSecret)) {
             errors.add("EASYPOST_WEBHOOK_SECRET (invsys.webhooks.easypost-secret) must be set to a non-mock value");
         }
+        if (isBlankOrMock(accountingWebhookSecret)) {
+            errors.add("ACCOUNTING_WEBHOOK_SECRET (invsys.webhooks.accounting-secret) must be set to a non-mock value");
+        }
+        if (isBlankOrMock(mediaSecretKey)) {
+            errors.add("MEDIA_SECRET_KEY must be set to a non-default value");
+        }
+        if (isBlankOrMock(dbPassword)) {
+            errors.add("DB_APP_USER_PASSWORD / DB_APP_OWNER_PASSWORD must not use the committed local default");
+        }
+        String applicationName = environment.getProperty("spring.application.name", "");
+        String dbUsername = environment.getProperty("spring.datasource.username", "");
+        if ("invsys-admin-api".equals(applicationName)) {
+            if (!"app_owner".equals(dbUsername)) {
+                errors.add("Control plane spring.datasource.username must be app_owner");
+            }
+        } else if ("invsys-api".equals(applicationName) && !"app_user".equals(dbUsername)) {
+            errors.add("Data plane spring.datasource.username must be app_user");
+        }
+        if (!cookieSecure) {
+            errors.add("invsys.security.cookie-secure must be true in production");
+        }
+        if (publicSignupEnabled) {
+            errors.add("invsys.security.public-signup-enabled must be false in production");
+        }
         if (easyPostProperties.defaultFromAddress() == null) {
             errors.add("EASYPOST_FROM_STREET1/CITY/STATE/ZIP (invsys.easypost.default-from.*) must be set for live label purchase");
         }
@@ -124,9 +163,6 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         } else if (!(gateway instanceof LiveEasyPostGateway)) {
             errors.add("LiveEasyPostGateway bean required in production (found: "
                     + (gateway == null ? "none" : gateway.getClass().getName()) + ")");
-        }
-        if (publicSignupEnabled) {
-            log.warn("Public signup is enabled in production — set invsys.security.public-signup-enabled=false if unintended");
         }
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Production security check failed: " + String.join("; ", errors));

@@ -23,6 +23,8 @@ export interface User {
   isSuperAdmin?: boolean;
   /** Commercial modules enabled for this tenant. */
   enabledModules?: string[];
+  /** Commercial subscription tier: BASIC, INTERMEDIATE, ENTERPRISE. */
+  tier?: string | null;
 }
 
 export interface LoginRequest {
@@ -366,6 +368,8 @@ export interface PortalCatalogItem {
   primaryMediaUrl?: string | null;
 }
 
+export type AllocationPolicy = 'SHIP_COMPLETE' | 'ALLOW_PARTIAL';
+
 export interface PortalOrder {
   id: string;
   number: string;
@@ -373,6 +377,10 @@ export interface PortalOrder {
   total: number;
   currency: string;
   createdAt: string;
+  allocationPolicy?: AllocationPolicy | string;
+  quoteExpiresAt?: string | null;
+  manualDiscountTotal?: number;
+  quoteNotes?: string | null;
 }
 
 export interface CustomerPriceTier {
@@ -501,6 +509,8 @@ export interface TenantEmailDomain {
   id: string;
   domainName: string;
   verificationStatus: string;
+  isVerified?: boolean;
+  dnsVerificationToken?: string | null;
   dkimTokens: Array<Record<string, string>>;
 }
 
@@ -592,6 +602,7 @@ export interface PurchaseOrder {
   destinationLocationId?: string;
   freightAmount?: number;
   dutiesAmount?: number;
+  notes?: string | null;
 }
 
 export interface PurchaseOrderLineDetail {
@@ -618,6 +629,9 @@ export interface SalesOrder {
   requestedShipDate?: string;
   /** NONE | PARTIAL | INVOICED — from server billing coverage */
   billingStatus?: 'NONE' | 'PARTIAL' | 'INVOICED' | string;
+  allocationPolicy?: AllocationPolicy | string;
+  quoteExpiresAt?: string | null;
+  manualDiscountTotal?: number;
 }
 
 export interface PackLabelResponse {
@@ -675,7 +689,9 @@ export interface SalesOrderLineDetail {
   sku?: string;
   name?: string;
   qtyOrdered: number;
+  qtyAllocated?: number;
   qtyShipped: number;
+  qtyBackordered?: number;
   unitPrice: number;
 }
 
@@ -684,6 +700,10 @@ export interface SalesOrderDetail {
   number: string;
   customerName: string;
   status: string;
+  allocationPolicy?: AllocationPolicy | string;
+  quoteExpiresAt?: string | null;
+  manualDiscountTotal?: number;
+  quoteNotes?: string | null;
   lines: SalesOrderLineDetail[];
 }
 
@@ -964,6 +984,10 @@ export interface SsoConfig {
   samlMetadataUrl?: string | null;
   samlEntityId?: string | null;
   provider?: string;
+  ssoProvider?: string;
+  acsUrl?: string | null;
+  samlCertificate?: string | null;
+  corporateCidrIps?: string[];
 }
 
 export interface InventoryValuationRow {

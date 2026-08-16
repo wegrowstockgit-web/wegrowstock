@@ -8,7 +8,16 @@ import { startMutationQueueReplay } from './offline/mutationQueue';
 import { installGlobalErrorTelemetry } from './lib/errorTelemetry';
 import { registerServiceWorker } from './lib/registerServiceWorker';
 import { installUiActionTracker } from './stores/uiActionTrackerStore';
+import i18n, { normalizeLanguage } from '@/lib/i18n';
+import { usePreferencesStore } from '@/stores/preferencesStore';
 import './styles/index.css';
+
+installGlobalErrorTelemetry();
+installUiActionTracker();
+startMutationQueueReplay();
+registerServiceWorker();
+
+void i18n.changeLanguage(normalizeLanguage(usePreferencesStore.getState().language));
 
 installGlobalErrorTelemetry();
 installUiActionTracker();

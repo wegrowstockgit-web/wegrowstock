@@ -65,7 +65,14 @@ test.describe('Journey 55: Automations & operational market gaps', () => {
       const clockIn = await owner.page.request.post('/api/v1/labor/clock-in', {
         data: {},
       });
-      expect(clockIn.ok(), await clockIn.text()).toBeTruthy();
+      if (clockIn.status() === 409) {
+        const clockOut = await owner.page.request.post('/api/v1/labor/clock-out');
+        expect(clockOut.ok() || clockOut.status() === 409, await clockOut.text()).toBeTruthy();
+        const retry = await owner.page.request.post('/api/v1/labor/clock-in', { data: {} });
+        expect(retry.ok(), await retry.text()).toBeTruthy();
+      } else {
+        expect(clockIn.ok(), await clockIn.text()).toBeTruthy();
+      }
       const me = await owner.page.request.get('/api/v1/labor/me');
       expect(me.ok()).toBeTruthy();
       const status = (await me.json()) as { active?: boolean; currentActivity?: string };

@@ -2,6 +2,10 @@ package com.invsys.api;
 
 import com.invsys.service.InboundReceivingService;
 import com.invsys.service.PutawayStrategyService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,7 +40,7 @@ public class InboundReceiveController {
     }
 
     @PostMapping("/resolve-item")
-    public InboundReceivingService.InboundLineMatch resolveItem(@RequestBody ResolveItemBody body) {
+    public InboundReceivingService.InboundLineMatch resolveItem(@Valid @RequestBody ResolveItemBody body) {
         return inboundReceivingService.resolveItem(body.poId(), body.barcode());
     }
 
@@ -46,7 +50,7 @@ public class InboundReceiveController {
     }
 
     @PostMapping("/confirm")
-    public InboundReceivingService.ConfirmPutawayResult confirm(@RequestBody ConfirmBody body) {
+    public InboundReceivingService.ConfirmPutawayResult confirm(@Valid @RequestBody ConfirmBody body) {
         return inboundReceivingService.confirmPutaway(new InboundReceivingService.ConfirmPutawayRequest(
                 body.lineId(),
                 body.quantity(),
@@ -56,16 +60,19 @@ public class InboundReceiveController {
                 body.tagId()));
     }
 
-    public record ResolveItemBody(UUID poId, String barcode) {
+    public record ResolveItemBody(
+            @NotNull UUID poId,
+            @NotBlank @Size(max = 128) String barcode
+    ) {
     }
 
     public record ConfirmBody(
-            UUID lineId,
-            BigDecimal quantity,
+            @NotNull UUID lineId,
+            @NotNull BigDecimal quantity,
             UUID locationId,
-            String scannedLocationBarcode,
+            @Size(max = 128) String scannedLocationBarcode,
             UUID lotId,
-            String tagId
+            @Size(max = 128) String tagId
     ) {
     }
 }

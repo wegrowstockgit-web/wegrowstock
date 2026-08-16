@@ -1,20 +1,65 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, ShoppingBag } from 'lucide-react';
+import { CreditCard, FileText, ShoppingBag } from 'lucide-react';
+import { createPortalOrder, requestPortalQuote } from '@/api/portal';
 import { apiClient } from '@/api/client';
+import type { AllocationPolicy } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { useShowroomCart } from '@/showroom/useShowroomCart';
 
+function AllocationPreference({
+  value,
+  onChange,
+}: {
+  value: AllocationPolicy;
+  onChange: (next: AllocationPolicy) => void;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium text-text">Allocation preference</legend>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-3">
+        <input
+          type="radio"
+          name="allocation-policy"
+          className="mt-1 accent-accent"
+          checked={value === 'SHIP_COMPLETE'}
+          onChange={() => onChange('SHIP_COMPLETE')}
+        />
+        <span>
+          <span className="block text-sm font-medium text-text">Ship Complete</span>
+          <span className="text-xs text-text-muted">Hold my order until everything is in stock.</span>
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-3">
+        <input
+          type="radio"
+          name="allocation-policy"
+          className="mt-1 accent-accent"
+          checked={value === 'ALLOW_PARTIAL'}
+          onChange={() => onChange('ALLOW_PARTIAL')}
+        />
+        <span>
+          <span className="block text-sm font-medium text-text">Split Shipment</span>
+          <span className="text-xs text-text-muted">Ship available items now, backorder the rest.</span>
+        </span>
+      </label>
+    </fieldset>
+  );
+}
+
 export function ShowroomCheckoutPage() {
   const navigate = useNavigate();
   const { cart, clearCart } = useShowroomCart();
   const [step, setStep] = useState<'review' | 'confirm' | 'done'>('review');
+  const [doneKind, setDoneKind] = useState<'order' | 'quote'>('order');
   const [customerPo, setCustomerPo] = useState('');
   const [shipDate, setShipDate] = useState('');
+  const [quoteNotes, setQuoteNotes] = useState('');
+  const [allocationPolicy, setAllocationPolicy] = useState<AllocationPolicy>('ALLOW_PARTIAL');
 
   const { data: paymentTerms } = useQuery({
     queryKey: ['portal', 'payment-terms'],
@@ -36,20 +81,31 @@ export function ShowroomCheckoutPage() {
     retry: false,
   });
 
+  const checkoutPayload = () => ({
+    lines: cart.map((l) => ({
+      variantId: l.item.id,
+      quantity: l.quantity,
+    })),
+    customerPoNumber: customerPo || undefined,
+    requestedShipDate: shipDate ? new Date(shipDate).toISOString() : undefined,
+    allocationPolicy,
+    quoteNotes: quoteNotes || undefined,
+  });
+
   const placeOrderMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.post<{ id: string; number: string }>('/api/v1/portal/orders', {
-        lines: cart.map((l) => ({
-          variantId: l.item.id,
-          quantity: l.quantity,
-        })),
-        customerPoNumber: customerPo || undefined,
-        requestedShipDate: shipDate ? new Date(shipDate).toISOString() : undefined,
-      });
-      return res.data;
-    },
+    mutationFn: async () => createPortalOrder(checkoutPayload()),
     onSuccess: () => {
       clearCart();
+      setDoneKind('order');
+      setStep('done');
+    },
+  });
+
+  const requestQuoteMutation = useMutation({
+    mutationFn: async () => requestPortalQuote(checkoutPayload()),
+    onSuccess: () => {
+      clearCart();
+      setDoneKind('quote');
       setStep('done');
     },
   });
@@ -58,6 +114,7 @@ export function ShowroomCheckoutPage() {
   const currency = cart[0]?.item.currency ?? 'USD';
   const availableCredit = Number(credit?.availableCredit ?? 0);
   const overCredit = credit != null && subtotal > availableCredit;
+  const pending = placeOrderMutation.isPending || requestQuoteMutation.isPending;
 
   if (cart.length === 0 && step !== 'done') {
     return (
@@ -74,9 +131,13 @@ export function ShowroomCheckoutPage() {
     return (
       <Card className="text-center" padding="lg">
         <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-success" />
-        <h2 className="text-xl font-bold text-text">Order submitted</h2>
+        <h2 className="text-xl font-bold text-text">
+          {doneKind === 'quote' ? 'Quote requested' : 'Order submitted'}
+        </h2>
         <p className="mt-2 text-sm text-text-muted">
-          Your order has been placed and is pending confirmation.
+          {doneKind === 'quote'
+            ? 'A sales rep will review pricing and send a quote you can accept in one click.'
+            : 'Your order has been placed and is pending confirmation.'}
         </p>
         <Button className="mt-6" onClick={() => navigate('/showroom/orders')}>
           View orders
@@ -131,6 +192,20 @@ export function ShowroomCheckoutPage() {
               value={shipDate}
               onChange={(e) => setShipDate(e.target.value)}
             />
+            <AllocationPreference value={allocationPolicy} onChange={setAllocationPolicy} />
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="quote-notes" className="text-sm font-medium text-text">
+                Quote notes
+              </label>
+              <textarea
+                id="quote-notes"
+                value={quoteNotes}
+                onChange={(e) => setQuoteNotes(e.target.value)}
+                placeholder="Optional — terms, target pricing, or delivery notes for your rep"
+                rows={3}
+                className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
           </div>
           <div className="mt-4 flex justify-between font-semibold">
             <span>Subtotal</span>
@@ -162,6 +237,11 @@ export function ShowroomCheckoutPage() {
               <p className="text-sm text-text-muted">Invoiced per your account terms</p>
             </div>
           </div>
+          <p className="mb-4 text-sm text-text-muted">
+            {allocationPolicy === 'SHIP_COMPLETE'
+              ? 'Ship complete: the order holds until every line is in stock.'
+              : 'Split shipment: available lines ship now; the rest is backordered.'}
+          </p>
           {(customerPo || shipDate) && (
             <dl className="mb-4 space-y-1 text-sm">
               {customerPo && (
@@ -189,17 +269,29 @@ export function ShowroomCheckoutPage() {
               This order exceeds your available credit. Reduce the cart or contact AR.
             </p>
           )}
-          <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => setStep('review')}>
-              Back
-            </Button>
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-3">
+              <Button variant="secondary" className="flex-1" onClick={() => setStep('review')}>
+                Back
+              </Button>
+              <Button
+                className="flex-1"
+                loading={placeOrderMutation.isPending}
+                disabled={overCredit || pending}
+                onClick={() => placeOrderMutation.mutate()}
+              >
+                Instant Checkout
+              </Button>
+            </div>
             <Button
-              className="flex-1"
-              loading={placeOrderMutation.isPending}
-              disabled={overCredit}
-              onClick={() => placeOrderMutation.mutate()}
+              variant="secondary"
+              className="w-full"
+              loading={requestQuoteMutation.isPending}
+              disabled={pending}
+              onClick={() => requestQuoteMutation.mutate()}
             >
-              Place order
+              <FileText className="h-4 w-4" />
+              Request Custom Quote
             </Button>
           </div>
         </Card>

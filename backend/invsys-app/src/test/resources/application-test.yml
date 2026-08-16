@@ -44,6 +44,7 @@ invsys:
     access-token-minutes: 15
     terminal-switch-token-minutes: 5
     refresh-token-days: 7
+    allow-ephemeral: true
   media:
     provider: MINIO
     bucket: invsys-media-test
@@ -64,11 +65,12 @@ invsys:
     alert-scan-interval-ms: 3600000
   security:
     public-signup-enabled: true
-    cors-allowed-origins: http://localhost:5173,http://localhost:3000
+    cors-allowed-origins: http://localhost:5173,http://localhost:3000,http://localhost:5175,http://localhost:3003
     cors-include-verified-domains: true
     cors-cache-seconds: 5
     cookie-secure: false
     cookie-same-site: Lax
+    expose-magic-token: true
   redis:
     enabled: false
   actuator:

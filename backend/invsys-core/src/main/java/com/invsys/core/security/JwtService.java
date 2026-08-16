@@ -64,13 +64,17 @@ public class JwtService {
             privateKey = (RSAPrivateKey) PemUtils.readPrivateKey(privatePem);
             publicKey = (RSAPublicKey) PemUtils.readPublicKey(publicPem);
             log.info("JWT keys loaded from configuration (RS256)");
-        } else {
+        } else if (properties.isAllowEphemeral()) {
             log.warn("JWT keys not configured; generating ephemeral RSA keypair for this process");
             KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
             generator.initialize(2048);
             KeyPair pair = generator.generateKeyPair();
             privateKey = (RSAPrivateKey) pair.getPrivate();
             publicKey = (RSAPublicKey) pair.getPublic();
+        } else {
+            throw new IllegalStateException(
+                    "JWT keys are required. Set JWT_PRIVATE_KEY/JWT_PUBLIC_KEY (or key files), "
+                            + "or set invsys.jwt.allow-ephemeral=true for local/test only.");
         }
     }
 
@@ -174,6 +178,9 @@ public class JwtService {
                     .expirationTime(Date.from(now.plusSeconds(ttlSeconds)));
             if (tokenType != null) {
                 builder.claim(CLAIM_TOKEN_TYPE, tokenType);
+            }
+            if (TOKEN_TYPE_IMPERSONATION.equals(tokenType)) {
+                builder.jwtID(UUID.randomUUID().toString());
             }
             if (TOKEN_TYPE_TERMINAL_SWITCH.equals(tokenType)) {
                 // Cryptographic same-tenant bind: reject tokens that hop tenants under verification.

@@ -36,6 +36,7 @@ import type {
   ProductVariant,
 } from '@/api/types';
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
+import { SmartSourcingCard } from '@/features/mesh/SmartSourcingCard';
 import { LaborAnalyticsDashboard } from '@/features/dashboard/LaborAnalyticsDashboard';
 import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
 import { RecentLedgerActivity } from '@/features/inventory/RecentLedgerActivity';
@@ -468,6 +469,12 @@ export function DashboardPage() {
         {canManageOrders && (
           <div className="col-span-12">
             <WorkQueue queue={workQueue} />
+          </div>
+        )}
+
+        {canManageOrders && (
+          <div className="col-span-12">
+            <SmartSourcingCard />
           </div>
         )}
 

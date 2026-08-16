@@ -1,3 +1,5 @@
+export type HardwareStatus = 'CONNECTED' | 'DISCONNECTED' | 'UNSUPPORTED';
+
 export interface HardwareCapabilities {
   isBluetoothSupported: boolean;
   isSerialSupported: boolean;
@@ -19,4 +21,38 @@ export function getHardwareCapabilities(
     isSerialSupported,
     isSupported: isBluetoothSupported || isSerialSupported,
   };
+}
+
+/**
+ * Native DataWedge / Honeywell / Capacitor bridges count as a live hardware path.
+ */
+export function hasNativeScanBridge(
+  win: Window | undefined = typeof window === 'undefined' ? undefined : window,
+): boolean {
+  if (!win) return false;
+  const w = win as Window & {
+    plugins?: { intentShim?: { registerBroadcastReceiver?: unknown } };
+    intentShim?: unknown;
+    Capacitor?: { isNativePlatform?: () => boolean };
+  };
+  if (w.Capacitor?.isNativePlatform?.()) return true;
+  return Boolean(w.plugins?.intentShim?.registerBroadcastReceiver || w.intentShim);
+}
+
+/**
+ * Probe Web Serial / Bluetooth plus native scan bridges.
+ * {@code connected} is true after a confirmed hardware/HID ingest.
+ */
+export function resolveHardwareStatus(
+  nav: Navigator | undefined = typeof navigator === 'undefined' ? undefined : navigator,
+  options: { connected?: boolean; nativeBridge?: boolean } = {},
+): HardwareStatus {
+  if (options.nativeBridge ?? hasNativeScanBridge()) {
+    return 'CONNECTED';
+  }
+  const caps = getHardwareCapabilities(nav);
+  if (!caps.isSupported) {
+    return 'UNSUPPORTED';
+  }
+  return options.connected ? 'CONNECTED' : 'DISCONNECTED';
 }

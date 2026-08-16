@@ -46,7 +46,6 @@ import {
 } from '@/features/fulfillment/ScannerView';
 import {
   PalletBuilder,
-  mintAndPrintLpn,
   packScanOntoLpn,
   type MintedLpn,
 } from '@/features/fulfillment/PalletBuilder';
@@ -359,9 +358,11 @@ export function FulfillmentPage() {
           ? 'ZPL'
           : 'PDF';
       if (label.labelRef) {
-        void executePrint(label.labelRef, format).then((route) => {
-          setLabelMessage((msg) => `${msg} · printed via ${route}`);
-        });
+        void executePrint(label.labelRef, format)
+          .then((route) => {
+            setLabelMessage((msg) => `${msg} · printed via ${route}`);
+          })
+          .catch(() => undefined);
       }
     },
     onError: () => {
@@ -518,7 +519,11 @@ export function FulfillmentPage() {
   const handleMintPallet = async () => {
     setPalletMinting(true);
     try {
-      const minted = await mintAndPrintLpn(warehouse?.id, executePrint);
+      const minted = await apiClient
+        .post<MintedLpn>('/api/v1/inventory/lpns/mint', {
+          locationId: warehouse?.id ?? null,
+        })
+        .then((res) => res.data);
       setActivePallet(minted);
       setPalletItemCount(0);
       setLastPackedSku(null);
@@ -532,6 +537,9 @@ export function FulfillmentPage() {
         },
         ...h.slice(0, 19),
       ]);
+      if (minted.zpl) {
+        void executePrint(minted.zpl, 'ZPL');
+      }
     } catch {
       triggerError();
     } finally {

@@ -21,6 +21,7 @@
         <module>invsys-core</module>
         <module>invsys-chatbot</module>
         <module>invsys-training</module>
+        <module>invsys-pos-api</module>
         <module>invsys-app</module>
         <module>invsys-admin-api</module>
     </modules>
@@ -34,7 +35,7 @@
         <springdoc.version>3.0.3</springdoc.version>
         <!-- CVE-2025-53864 DoS: require nimbus-jose-jwt >= 9.37.4 (10.x line is current) -->
         <nimbus.version>10.4.2</nimbus.version>
-        <spring-modulith.version>2.0.1</spring-modulith.version>
+        <spring-modulith.version>2.1.0</spring-modulith.version>
     </properties>
 
     <dependencyManagement>
@@ -52,6 +53,11 @@
             <dependency>
                 <groupId>com.invsys</groupId>
                 <artifactId>invsys-training</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.invsys</groupId>
+                <artifactId>invsys-pos-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

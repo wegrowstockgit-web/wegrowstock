@@ -4,6 +4,7 @@ import com.invsys.domain.SupplierInvoiceIngestion;
 import com.invsys.modules.purchasing.service.ApOcrIngestionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -59,7 +60,7 @@ public class ApIngestionController {
 
     public record SubmitIngestionRequest(
             @NotNull UUID purchaseOrderId,
-            String documentUrl,
+            @Size(max = 1024) String documentUrl,
             Map<String, Object> extractedData
     ) {
     }

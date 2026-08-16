@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatRouteKnowledgeForChat,
   knowledgeContextKey,
+  playbookI18nKey,
   resolveKnowledgeContext,
   resolveRouteKnowledge,
   ROUTE_KNOWLEDGE,
@@ -52,7 +53,7 @@ describe('RouteKnowledgeRegistry', () => {
 
   it('resolves longest prefix for nested floor receive', () => {
     const inbound = resolveRouteKnowledge('/inbound/receive?po=PO-1');
-    expect(inbound?.title).toBe('Inbound Receive');
+    expect(inbound?.title).toBe('Inbound Receiving');
     expect(inbound?.howToUndo.join(' ')).toMatch(/undo|stock correction|Returns/i);
 
     const returnsReceive = resolveRouteKnowledge('/returns/receive');
@@ -114,7 +115,7 @@ describe('RouteKnowledgeRegistry', () => {
     expect(integrations?.purpose).toMatch(/e-commerce|accounting|storefront/i);
 
     const defaultSettings = resolveKnowledgeContext('/settings', '');
-    expect(defaultSettings?.title).toMatch(/Organization settings|Profile/i);
+    expect(defaultSettings?.title).toMatch(/Tenant Settings|Organization settings|Profile/i);
 
     const profileTab = resolveKnowledgeContext('/settings', '?tab=profile');
     expect(profileTab?.title).toBe('Settings — Profile');
@@ -160,5 +161,39 @@ describe('RouteKnowledgeRegistry', () => {
     expect(resolveKnowledgeContext('/showroom/orders', '')?.title).toBe('B2B Showroom');
     expect(resolveKnowledgeContext('/settings/billing', '')?.title).toBe('Billing');
     expect(resolveKnowledgeContext('/settings/integrations', '')?.title).toBe('Integrations Hub');
+  });
+
+  it('exposes hybrid quick actions and troubleshooting on core WMS routes', () => {
+    const dashboard = resolveRouteKnowledge('/dashboard');
+    expect(dashboard?.quickActions.map((a) => a.route)).toEqual(['/tasks/my-queue', '/dashboard/labor']);
+    expect(dashboard?.description).toMatch(/warehouse operations/i);
+
+    const sales = resolveRouteKnowledge('/sales-orders');
+    expect(sales?.quickActions.some((a) => a.route === '/fulfillment')).toBe(true);
+    expect(sales?.troubleshooting?.[0]?.action.route).toBe('/inventory');
+
+    const chat = formatRouteKnowledgeForChat('/sales-orders', sales);
+    expect(chat).toContain('Quick actions:');
+    expect(chat).toContain('If stuck:');
+  });
+
+  it('assigns a stable i18n key for every registered route', async () => {
+    const en = (await import('@/lib/i18n/locales/en.json')).default as {
+      pageHelp: { playbooks: Record<string, { title?: string }> };
+    };
+    const es = (await import('@/lib/i18n/locales/es.json')).default as {
+      pageHelp: { playbooks: Record<string, { title?: string }> };
+    };
+    const fr = (await import('@/lib/i18n/locales/fr.json')).default as {
+      pageHelp: { playbooks: Record<string, { title?: string }> };
+    };
+    for (const [path, entry] of Object.entries(ROUTE_KNOWLEDGE)) {
+      const key = playbookI18nKey(path, entry.i18nKey);
+      expect(en.pageHelp.playbooks[key]?.title, path).toBeTruthy();
+      expect(es.pageHelp.playbooks[key]?.title, path).toBeTruthy();
+      expect(fr.pageHelp.playbooks[key]?.title, path).toBeTruthy();
+      expect(es.pageHelp.playbooks[key].title).not.toEqual(en.pageHelp.playbooks[key].title);
+      expect(fr.pageHelp.playbooks[key].title).not.toEqual(en.pageHelp.playbooks[key].title);
+    }
   });
 });

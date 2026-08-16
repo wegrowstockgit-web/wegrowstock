@@ -1,5 +1,6 @@
 import { fintechModule } from '@/features/fintech/module';
 import { fulfillmentModule } from '@/features/fulfillment/module';
+import { meshModule } from '@/features/mesh/module';
 import { productsModule } from '@/features/products/module';
 import { purchasingModule } from '@/features/purchasing/module';
 import { salesModule } from '@/features/sales/module';
@@ -15,6 +16,7 @@ export const APP_MODULES: AppModule[] = [
   salesModule,
   fulfillmentModule,
   fintechModule,
+  meshModule,
 ];
 
 registerAppModules(APP_MODULES);

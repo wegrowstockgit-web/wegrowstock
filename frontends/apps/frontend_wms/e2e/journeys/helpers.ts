@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import {
+  completeIdentifierFirstLogin,
   completeScannerPin,
   expect,
   hidScan,
@@ -174,9 +175,7 @@ export async function freshLogin(
     );
   });
   await page.reload();
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await completeIdentifierFirstLogin(page, email, password);
   await expect(page).not.toHaveURL(/\/login/, { timeout: 25_000 });
   await completeScannerPin(page);
   return {
@@ -561,3 +560,13 @@ export async function inviteAndAcceptB2b(
 }
 
 export { completeScannerPin, expect, hidScan };
+
+export async function submitManualBarcode(page: Page, barcode: string): Promise<void> {
+  const input = page.getByTestId('scanner-manual-input');
+  const visible = (await input.count()) > 0 && (await input.first().isVisible());
+  if (!visible) {
+    await page.getByTestId('scanner-keyboard-entry').first().click();
+  }
+  await page.getByTestId('scanner-manual-input').first().fill(barcode);
+  await page.getByTestId('scanner-manual-input').first().press('Enter');
+}

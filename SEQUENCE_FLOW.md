@@ -51,12 +51,15 @@ Frontend mirrors these with `useSessionStore.hasRole`, `ProtectedRoute`, and the
 The office rail (`frontends/apps/frontend_wms/src/components/layout/navConfig.ts` + `Sidebar.tsx`) is a **nested category matrix**: one solo item plus six collapsible parent groups. Every parent and leaf icon is unique (Lucide). Categories expand/collapse locally; on viewports ≤1023px the rail becomes a mobile drawer.
 
 > **Control plane:** Super Admin Day-2 ops live in `frontends/apps/frontend_admin` (not this sidebar) and talk to `invsys-admin-api` on `:8081`. WMS data-plane edge blocks `/api/v1/control-plane/**`. The only WMS touch is login `?impersonateToken=` → `POST /api/v1/auth/impersonation/accept`.
+>
+> **Retail POS:** Cashiers use `frontends/apps/frontend_pos` (`:3003`). Tender writes Dexie `outbox_receipts` immediately. When online, `POST /api/v1/pos/sync-receipts` (`invsys-pos-api`, `@RequireModule(RETAIL_POS)`) enqueues negative `inventory_level_deltas` for the existing flush worker.
 
 | Group | Parent icon | Leaf (route) | Leaf icon | Visible to |
 |-------|-------------|--------------|-----------|------------|
 | *(solo)* | `LayoutDashboard` | Dashboard (`/dashboard`) | — | All office roles |
 | **Inbound** | `DownloadCloud` | Purchase Orders (`/purchase-orders`) | `FileSpreadsheet` | Office roles (not picker) |
 | | | Suppliers (`/suppliers`) | `Factory` | Office roles (not picker) |
+| | | Mesh Network (`/mesh-network`) | `Network` | OWNER, ADMIN (`MESH_NETWORK`) |
 | | | Returns (`/returns`) | `RotateCcw` | OWNER, ADMIN, WAREHOUSE_MANAGER |
 | **Outbound** | `UploadCloud` | Sales Orders (`/sales-orders`) | `ShoppingCart` | Office roles (not picker) |
 | | | Customers (`/customers`) | `Users` | Office roles (not picker) |
@@ -143,8 +146,19 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Shell as AppShell / WarehouseFloorShell
 
-    U->>Login: email + password
-    Login->>Auth: POST /api/v1/auth/login
+    U->>Login: email only (identifier-first)
+    Login->>Auth: GET /api/v1/auth/discovery?email=…
+    Auth-->>Login: tenantId, ssoType, ssoUrl, isPasswordAllowed, companyName
+    alt SSO enforced
+        Login->>U: window.location → ssoUrl (SAML/OIDC)
+    else SSO optional
+        Login->>U: Sign in with company SSO + password alternative
+        U->>Login: password or SSO button
+        Login->>Auth: POST /api/v1/auth/login (password path)
+    else no SSO
+        U->>Login: password (or magic link)
+        Login->>Auth: POST /api/v1/auth/login
+    end
     Auth->>DB: verify BCrypt hash, load roles + warehouse assignments
     Auth->>Jwt: createAccessToken (roles, tenant_id, warehouse_ids)
     Auth->>DB: persist hashed RefreshToken (rotating, ~7d)
@@ -217,7 +231,7 @@ sequenceDiagram
 
 **Role activities:** an office manager drafts and submits POs against approved suppliers; landed cost (freight/customs) is distributed across unit valuations.
 **Cross-role correlation:** the submitted PO becomes the baseline contract that the floor scanner matches when freight arrives (§5.3).
-**Backend hooks:** `PurchaseOrderService`, `LandedCostService`; PO submit appends an `OutboxEvent` (mesh / EDI partners).
+**Backend hooks:** `PurchaseOrderService`, `LandedCostService`, `CrossTenantMeshBridgeService`; PO submit appends an `OutboxEvent` (async mesh CONFIRMED SO / EDI). `POST /purchase-orders/{id}/confirm` submits then synchronously creates an **UNALLOCATED** seller SO when the supplier is a `CONNECTED` mesh partner, and appends `Linked to Mesh Partner Sales Order #SO-…` on the PO.
 
 ```mermaid
 sequenceDiagram
@@ -362,6 +376,41 @@ sequenceDiagram
     end
     DB-->>Mgr: RMA line closed with disposition audit trail
 ```
+
+### 5.6 Mesh Network hub (`/mesh-network`) — OWNER / ADMIN (`MESH_NETWORK`)
+
+**Role activities:** discover products published by other tenants (name / image / seller only), request a connection, approve incoming requests, and publish your own SKUs with a mesh wholesale price.
+**Cross-role correlation:** Approve auto-creates a **Supplier** in the buyer tenant and a **Customer** in the seller tenant, then marks `tenant_mesh_partners` `CONNECTED`. A later PO against that supplier becomes the seller’s sales order (§5.1). The dashboard **Smart sourcing** card (`GET /api/v1/dashboard/mesh-sourcing-suggestions`) offers **Draft PO** when on-hand is below `BinReplenishmentRule.minQuantity` and a connected partner publishes the same SKU or barcode.
+**Backend hooks:** `MeshCatalogController`, `MeshCatalogService`, `CrossTenantMeshBridgeService`, `BootstrapJdbc` (RLS-bypass pairing writes). Settings → Partner Catalog (`/api/v1/settings/mesh/**`) still maps local variants to partner SKUs.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer as Tenant A (buyer OWNER)
+    actor Seller as Tenant B (seller OWNER)
+    participant Hub as MeshNetworkPage
+    participant API as MeshCatalogController
+    participant Bridge as CrossTenantMeshBridgeService
+    participant DB as PostgreSQL
+
+    Seller->>Hub: Shared Catalog — publish SKU + mesh wholesale price
+    Hub->>API: PUT /api/v1/mesh/catalog/{variantId}
+    API->>DB: UPSERT mesh_catalog_listings (published)
+    Buyer->>Hub: Discover grid (no price / stock)
+    Hub->>API: GET /api/v1/mesh/discover
+    Buyer->>Hub: Request Connection
+    Hub->>API: POST /api/v1/mesh/connections/request
+    API->>Bridge: requestConnection(variantId)
+    Bridge->>DB: UPSERT tenant_mesh_partners REQUESTED (null supplier/customer)
+    Seller->>Hub: My Network shows PENDING
+    Seller->>Hub: Approve
+    Hub->>API: POST /api/v1/mesh/connections/{id}/approve
+    Bridge->>DB: INSERT suppliers (buyer) + customers (seller)
+    Bridge->>DB: UPSERT tenant_mesh_partners CONNECTED
+    Note over Buyer,Seller: Later PO confirm → UNALLOCATED SO on seller + PO note
+```
+
+Handshake statuses: buyer sees **REQUESTED**; seller sees the same row as **PENDING**; both see **CONNECTED** after approve. Discover never returns `meshWholesalePrice`, stock, or unpublished listings.
 
 ---
 
@@ -1036,8 +1085,8 @@ Quick index of which sections each role appears in:
 
 | Role | Primary flows |
 |------|---------------|
-| `OWNER` | Login §4.1 · Invoices §6.4 · Reports §10.1 · Settings §10.2 · Fintech (`/settings/fintech`) |
-| `ADMIN` | Login §4.1 · Suppliers §5.2 · Customers/credit §6.3 · Reports §10.1 · Settings §10.2 |
+| `OWNER` | Login §4.1 · Invoices §6.4 · Reports §10.1 · Settings §10.2 · Fintech (`/settings/fintech`) · Mesh Network §5.6 |
+| `ADMIN` | Login §4.1 · Suppliers §5.2 · Customers/credit §6.3 · Reports §10.1 · Settings §10.2 · Mesh Network §5.6 |
 | `WAREHOUSE_MANAGER` | PO lifecycle §5.1 · Cross-dock (office side) §5.4 · Returns approve §5.5 · SO confirm/allocate §6.1 · Waves §6.2 · Variance approval §7.2 · Exceptions resolve §7.4 · RTLS §7.6 · Manufacturing §8.1–8.2 |
 | `PICKER` | Floor PIN §4.2 · Floor receive §5.3 · Cross-dock (floor side) §5.4 · Returns receive §5.5 · Pick/ship §6.2 · Blind counts §7.2 · Replenishments §7.3 · Skip & Flag §7.4 · Terminal §8.3 · Issue supplies §9.1 · Truck §9.2 · Offline queue §12 |
 | `VIEWER` | Login §4.1 · Products (read) §7.1 · Lot trace §7.5 |
@@ -1066,6 +1115,10 @@ sequenceDiagram
 
     Owner->>App: log in → land on /dashboard (§4.1)
     App-->>Owner: live KPIs over SSE (orders, AR, exceptions)
+    opt MESH_NETWORK entitled
+        Owner->>App: Mesh Network discover / approve (§5.6)
+        App-->>Owner: Smart sourcing card when a partner has a low SKU
+    end
     Owner->>App: review Reports — profit / COGS / turns (§10.1)
     Owner->>App: review Invoices & AR aging (§6.4)
     Ext-->>App: Stripe webhook — invoice PAID (§6.4)

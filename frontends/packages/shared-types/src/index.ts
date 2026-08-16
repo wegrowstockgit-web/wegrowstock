@@ -12,6 +12,7 @@ export const APP_MODULES = [
   'MESH_NETWORK',
   'RTLS_TELEMETRY',
   'AI_COPILOT',
+  'RETAIL_POS',
 ] as const;
 
 export type AppModule = (typeof APP_MODULES)[number];
@@ -42,6 +43,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   MESH_NETWORK: 'Mesh Network',
   RTLS_TELEMETRY: 'RTLS Telemetry',
   AI_COPILOT: 'AI Copilot',
+  RETAIL_POS: 'Retail Point of Sale (POS)',
 };
 
 export const MODULE_TIER: Record<AppModule, 1 | 2 | 3> = {
@@ -57,6 +59,7 @@ export const MODULE_TIER: Record<AppModule, 1 | 2 | 3> = {
   MESH_NETWORK: 3,
   RTLS_TELEMETRY: 3,
   AI_COPILOT: 3,
+  RETAIL_POS: 3,
 };
 
 export const TIER_LABELS: Record<CommercialTier, string> = {

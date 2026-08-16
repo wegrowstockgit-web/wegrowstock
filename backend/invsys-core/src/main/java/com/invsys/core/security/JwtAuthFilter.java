@@ -88,6 +88,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             // RS256 + exp/iat + TERMINAL_SWITCH tenant bind enforced inside JwtService.
             JWTClaimsSet claims = jwtService.validateAndParse(token);
+            Object tokenType = claims.getClaim(JwtService.CLAIM_TOKEN_TYPE);
+            if (JwtService.TOKEN_TYPE_IMPERSONATION.equals(tokenType)
+                    || JwtService.TOKEN_TYPE_PLATFORM_ADMIN.equals(tokenType)) {
+                SecurityContextHolder.clearContext();
+                TenantContext.clear();
+                return;
+            }
             UUID userId = UUID.fromString(claims.getSubject());
             UUID tenantId = UUID.fromString((String) claims.getClaim(JwtService.CLAIM_TENANT_ID));
             @SuppressWarnings("unchecked")
@@ -163,9 +170,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/auth/refresh")
                 || path.startsWith("/api/v1/auth/magic-login")
                 || path.startsWith("/api/v1/auth/sso-discover")
+                || path.startsWith("/api/v1/auth/discovery")
                 || path.startsWith("/api/v1/invitations/accept")
                 || path.startsWith("/api/v1/webhooks/")
                 || path.startsWith("/api/v1/public/")
+                || path.equals("/api/v1/showroom/apply")
+                || path.equals("/api/v1/showroom/catalog")
                 || path.startsWith("/oauth2/")
                 || path.startsWith("/login/oauth2/")
                 || path.startsWith("/saml2/")

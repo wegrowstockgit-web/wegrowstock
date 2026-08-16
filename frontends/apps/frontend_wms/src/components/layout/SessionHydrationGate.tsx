@@ -14,6 +14,8 @@ type MeEntitlements = {
   grantedPermissions?: string[];
   isSuperAdmin?: boolean;
   enabledModules?: string[];
+  localeLanguage?: string | null;
+  tier?: string | null;
 };
 
 /**
@@ -51,6 +53,8 @@ export function SessionHydrationGate({ children }: { children: ReactNode }) {
           grantedPermissions: data.grantedPermissions,
           isSuperAdmin: data.isSuperAdmin,
           enabledModules: data.enabledModules?.map(String),
+          localeLanguage: data.localeLanguage,
+          tier: data.tier,
         });
         void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
       } catch {

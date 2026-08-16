@@ -36,6 +36,8 @@ public record MeResponse(
         /** Always false — platform admins live in {@code platform_admins}, not tenant users. */
         boolean isSuperAdmin,
         /** Commercial modules enabled for this tenant. */
-        List<AppModule> enabledModules
+        List<AppModule> enabledModules,
+        /** Commercial subscription tier: BASIC, INTERMEDIATE, or ENTERPRISE. */
+        String tier
 ) {
 }

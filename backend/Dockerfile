@@ -6,6 +6,7 @@ COPY pom.xml .
 COPY invsys-core/pom.xml invsys-core/pom.xml
 COPY invsys-chatbot/pom.xml invsys-chatbot/pom.xml
 COPY invsys-training/pom.xml invsys-training/pom.xml
+COPY invsys-pos-api/pom.xml invsys-pos-api/pom.xml
 COPY invsys-app/pom.xml invsys-app/pom.xml
 COPY invsys-admin-api/pom.xml invsys-admin-api/pom.xml
 # Parent POM lists all modules; stub POM satisfies the reactor without copying admin sources.
@@ -13,6 +14,7 @@ RUN mvn -q dependency:go-offline -pl invsys-app -am || true
 COPY invsys-core invsys-core
 COPY invsys-chatbot invsys-chatbot
 COPY invsys-training invsys-training
+COPY invsys-pos-api invsys-pos-api
 COPY invsys-app invsys-app
 ARG WITH_CHATBOT=true
 ARG WITH_TRAINING=true

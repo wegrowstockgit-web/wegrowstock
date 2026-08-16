@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   ListOrdered,
   MapPin,
+  Network,
   Package,
   RotateCcw,
   Scan,
@@ -86,6 +87,14 @@ export const NAV_MATRIX: {
           label: 'Suppliers',
           icon: Factory,
           hideForPicker: true,
+        },
+        {
+          to: '/mesh-network',
+          label: 'Mesh Network',
+          icon: Network,
+          roles: ['OWNER', 'ADMIN'],
+          hideForPicker: true,
+          hideForViewer: true,
         },
         {
           to: '/mrp',

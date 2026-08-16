@@ -135,6 +135,13 @@ public class TenantSubscriptionService {
         return self.getEnabledModules(tenantId).contains(module);
     }
 
+    @Transactional(readOnly = true)
+    public CommercialTier getCommercialTier(UUID tenantId) {
+        return bootstrapJdbc.findTenantSubscription(tenantId)
+                .map(row -> CommercialTier.fromString(row.tier()))
+                .orElse(CommercialTier.BASIC);
+    }
+
     @CacheEvict(cacheNames = CacheConfig.TENANT_SETTINGS_CACHE, key = "#tenantId")
     @Transactional
     public ControlPlaneTenantView replaceEnabledModules(UUID tenantId, List<AppModule> modules) {

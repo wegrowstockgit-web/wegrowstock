@@ -27,6 +27,9 @@ public class ChannelIntegrationService {
     @Transactional
     public ChannelIntegration connect(String platform, String shopIdentifier) {
         UUID tenantId = TenantContext.requireTenantId();
+        if ("SHOPIFY".equalsIgnoreCase(platform)) {
+            shopIdentifier = normalizeShopifyShop(shopIdentifier);
+        }
         if (repository.findByPlatformAndShopIdentifier(platform, shopIdentifier).isPresent()) {
             throw new ApiException(HttpStatus.CONFLICT, "ALREADY_CONNECTED", "Shop already connected");
         }
@@ -36,6 +39,23 @@ public class ChannelIntegrationService {
         integration.setShopIdentifier(shopIdentifier);
         integration.setStatus("ACTIVE");
         return repository.save(integration);
+    }
+
+    public static String normalizeShopifyShop(String shopIdentifier) {
+        if (shopIdentifier == null || shopIdentifier.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SHOP", "Shopify shop is required");
+        }
+        String shop = shopIdentifier.trim().toLowerCase();
+        shop = shop.replace("https://", "").replace("http://", "");
+        int slash = shop.indexOf('/');
+        if (slash >= 0) {
+            shop = shop.substring(0, slash);
+        }
+        if (!shop.matches("^[a-z0-9][a-z0-9-]*\\.myshopify\\.com$")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SHOP",
+                    "Shopify shop must be {store}.myshopify.com");
+        }
+        return shop;
     }
 
     @Transactional

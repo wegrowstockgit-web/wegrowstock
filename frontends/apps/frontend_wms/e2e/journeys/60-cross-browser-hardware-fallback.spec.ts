@@ -25,7 +25,7 @@ test.describe('Journey 60: Cross-browser hardware fallback + iOS PWA', () => {
       ).toHaveAttribute('content', 'black-translucent');
       await expect(owner.page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute(
         'content',
-        'InvSys WMS',
+        'weGrowStock',
       );
       await expect(owner.page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
         'href',
@@ -40,6 +40,9 @@ test.describe('Journey 60: Cross-browser hardware fallback + iOS PWA', () => {
       );
       await expect(owner.page.getByRole('button', { name: /connect usb scanner/i })).toHaveCount(0);
 
+      const keyboard = owner.page.getByTestId('scanner-keyboard-entry').first();
+      await expect(keyboard).toBeVisible();
+      await keyboard.click();
       const scanFallback = owner.page.getByTestId('hardware-manual-fallback').filter({
         has: owner.page.getByLabel('Manual scan'),
       });

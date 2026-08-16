@@ -2,6 +2,8 @@ package com.invsys.api;
 
 import com.invsys.core.security.SsoProviderCatalog;
 import com.invsys.service.SsoConfigService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -55,29 +57,42 @@ public class SsoConfigController {
     }
 
     @PutMapping
-    public SsoConfigResponse upsert(@RequestBody UpsertSsoRequest request) {
+    public SsoConfigResponse upsert(@Valid @RequestBody UpsertSsoRequest request) {
+        boolean enforce = request.enforceSso() != null ? request.enforceSso() : request.forceSso();
         var view = ssoConfigService.upsert(new SsoConfigService.UpsertRequest(
                 request.issuerUrl(),
                 request.clientId(),
                 request.clientSecret(),
                 request.enabled(),
-                request.forceSso(),
+                enforce,
                 request.protocol(),
                 request.samlMetadataUrl(),
-                request.samlEntityId()
+                request.samlEntityId(),
+                request.ssoProvider(),
+                request.acsUrl(),
+                request.samlCertificate(),
+                request.corporateCidrIps()
         ));
-        return SsoConfigResponse.from(view, ssoProviderCatalog.inferProvider(view.issuerUrl()));
+        String provider = view.ssoProvider() != null && !view.ssoProvider().isBlank()
+                ? view.ssoProvider()
+                : ssoProviderCatalog.inferProvider(view.issuerUrl());
+        return SsoConfigResponse.from(view, provider);
     }
 
     public record UpsertSsoRequest(
-            String issuerUrl,
-            String clientId,
-            String clientSecret,
+            @Size(max = 512) String issuerUrl,
+            @Size(max = 255) String clientId,
+            @Size(max = 2048) String clientSecret,
             boolean enabled,
             boolean forceSso,
-            String protocol,
-            String samlMetadataUrl,
-            String samlEntityId
+            Boolean enforceSso,
+            @Size(max = 16) String protocol,
+            @Size(max = 512) String samlMetadataUrl,
+            @Size(max = 255) String samlEntityId,
+            @Size(max = 32) String ssoProvider,
+            @Size(max = 1024) String acsUrl,
+            String samlCertificate,
+            java.util.List<String> corporateCidrIps
     ) {
     }
 
@@ -90,7 +105,11 @@ public class SsoConfigController {
             String protocol,
             String samlMetadataUrl,
             String samlEntityId,
-            String provider
+            String provider,
+            String ssoProvider,
+            String acsUrl,
+            String samlCertificate,
+            java.util.List<String> corporateCidrIps
     ) {
         static SsoConfigResponse from(SsoConfigService.SsoConfigView view, String provider) {
             return new SsoConfigResponse(
@@ -102,12 +121,17 @@ public class SsoConfigController {
                     view.protocol(),
                     view.samlMetadataUrl(),
                     view.samlEntityId(),
-                    provider
+                    provider,
+                    view.ssoProvider(),
+                    view.acsUrl(),
+                    view.samlCertificate(),
+                    view.corporateCidrIps()
             );
         }
 
         static SsoConfigResponse empty() {
-            return new SsoConfigResponse("", "", false, false, false, "OIDC", null, null, "CUSTOM");
+            return new SsoConfigResponse("", "", false, false, false, "OIDC", null, null, "CUSTOM",
+                    "CUSTOM", null, null, java.util.List.of());
         }
     }
 }

@@ -3,7 +3,7 @@ title: "Inbound Receiving & Procurement SOP"
 slug: "sop-inbound-procurement"
 sourcePath: "docs/sops/01_inbound_and_procurement.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER", "SUPPLIER"]
-routeHints: ["/purchase-orders", "/suppliers", "/inbound/receive", "/supplier-portal", "/dashboard"]
+routeHints: ["/purchase-orders", "/suppliers", "/mesh-network", "/inbound/receive", "/supplier-portal", "/dashboard"]
 ---
 
 # Inbound Receiving & Procurement — Operations Playbook
@@ -68,6 +68,39 @@ This playbook covers buying goods, coordinating supplier delivery dates, receivi
 #### 4. Troubleshooting Common Blockers
 - **Supplier missing on New PO?** Create or restore the supplier under **Suppliers** first.
 - **VIEWER cannot edit?** Expected—ask an Admin or Warehouse Manager.
+
+---
+
+### Mesh Network (discover, connect, publish)
+
+- **Target Audience & Roles:** OWNER and ADMIN when the workspace has **MESH_NETWORK**. Pickers and Viewers do not see this hub.
+- **Route Location:** Inbound → **Mesh Network** (`/mesh-network`). Dashboard **Smart sourcing** card when a connected partner has a low SKU.
+- **Primary Operational Goal:** Find products other tenants published, connect securely, and let a later Purchase Order become their Sales Order without retyping the catalog.
+
+#### 1. Step-by-Step Action Plan
+1. Open **Mesh Network**.
+2. **Discover** — browse other companies’ published products (name, image, seller). Price and stock stay hidden. Click **Request Connection** on a product you want to buy from that seller.
+3. **My Network** — outgoing requests show **REQUESTED**. Incoming requests show **PENDING**. Click **Approve** only if you are the seller and want to trade.
+4. **Shared Catalog** — toggle **Publish to Network** on your own SKUs and enter a **Mesh Wholesale Price**.
+5. After **CONNECTED**, map SKUs under Settings → **Partner Catalog** if the partner’s SKU codes differ from yours.
+6. Create or confirm a Purchase Order against the auto-created mesh Supplier. Confirming a mesh PO writes a note **Linked to Mesh Partner Sales Order #SO-…** on your PO.
+7. If the Dashboard shows **You are running low on [Product]. Your Mesh Partner [Name] has this in stock.**, click **Draft PO**.
+
+#### 2. Correlated Flow & Downstream Ripple Effect
+- **Approve** creates a Supplier on the buyer’s books and a Customer on the seller’s books, then marks the relationship **CONNECTED**.
+- The seller later sees an **UNALLOCATED** (or, after ordinary Submit + outbox, **CONFIRMED**) sales order for the buyer’s PO.
+- Floor receive on the buyer side is unchanged — still **Inbound receive** once freight arrives.
+
+#### 3. Safety, Reversal & Undo Rules
+- Do not approve a connection you do not recognize.
+- Discover never shows another tenant’s price or on-hand.
+- You cannot approve your own outgoing request.
+
+#### 4. Troubleshooting Common Blockers
+- **Mesh Network missing from Inbound?** Your plan may not include **MESH_NETWORK**, or you are not an Owner/Admin.
+- **Discover empty?** No other tenant has published SKUs yet — ask them to use **Shared Catalog**.
+- **Approve missing?** You are looking at an outgoing **REQUESTED** row; only the seller sees **Approve**.
+- **Draft PO opened Purchase Orders but no line?** The SKU must exist in your catalog; Smart sourcing matches your low SKU to a partner listing.
 
 ---
 

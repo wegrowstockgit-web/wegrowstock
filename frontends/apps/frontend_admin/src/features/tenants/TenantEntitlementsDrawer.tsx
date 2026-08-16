@@ -109,7 +109,7 @@ export function TenantEntitlementsDrawer({ tenant, open, onClose }: Props) {
       return impersonateTenant(tenant.tenantId);
     },
     onSuccess: (res) => {
-      const url = buildWmsImpersonationUrl(res.accessToken, res.loginUrl);
+      const url = buildWmsImpersonationUrl(res.handoffCode || res.accessToken, res.loginUrl);
       window.open(url, '_blank', 'noopener,noreferrer');
       toast.success(`Impersonating as ${res.email}`);
     },

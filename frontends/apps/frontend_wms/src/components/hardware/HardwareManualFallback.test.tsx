@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { HardwareManualFallback } from './HardwareManualFallback';
 
 describe('HardwareManualFallback', () => {
-  it('hides connect buttons and shows a typed fallback when APIs are missing', async () => {
+  it('opens keyboard entry then submits a typed scan', async () => {
     const onManualSubmit = vi.fn();
     const user = userEvent.setup();
     render(
@@ -19,7 +19,10 @@ describe('HardwareManualFallback', () => {
 
     expect(screen.queryByRole('button', { name: /connect bluetooth scale/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /connect usb scanner/i })).toBeNull();
-    await user.type(screen.getByLabelText('Manual scan'), 'SKU-99{Enter}');
+    await user.click(screen.getByTestId('scanner-keyboard-entry'));
+    const input = screen.getByTestId('scanner-manual-input');
+    expect(input).toHaveFocus();
+    await user.type(input, 'SKU-99{Enter}');
     expect(onManualSubmit).toHaveBeenCalledWith('SKU-99');
   });
 

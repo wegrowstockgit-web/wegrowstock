@@ -3,6 +3,11 @@ package com.invsys.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.ArrayList;
+import java.util.List;
 import com.invsys.core.common.TenantScopedEntity;
 
 @Entity
@@ -32,6 +37,19 @@ public class TenantSsoConfig extends TenantScopedEntity {
 
     @Column(name = "saml_entity_id")
     private String samlEntityId;
+
+    @Column(name = "sso_provider", nullable = false, length = 32)
+    private String ssoProvider = "CUSTOM";
+
+    @Column(name = "acs_url", length = 1024)
+    private String acsUrl;
+
+    @Column(name = "saml_certificate", columnDefinition = "text")
+    private String samlCertificate;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "corporate_cidr_ips", columnDefinition = "jsonb", nullable = false)
+    private List<String> corporateCidrIps = new ArrayList<>();
 
     public String getIssuerUrl() {
         return issuerUrl;
@@ -95,5 +113,37 @@ public class TenantSsoConfig extends TenantScopedEntity {
 
     public void setSamlEntityId(String samlEntityId) {
         this.samlEntityId = samlEntityId;
+    }
+
+    public String getSsoProvider() {
+        return ssoProvider;
+    }
+
+    public void setSsoProvider(String ssoProvider) {
+        this.ssoProvider = ssoProvider != null && !ssoProvider.isBlank() ? ssoProvider : "CUSTOM";
+    }
+
+    public String getAcsUrl() {
+        return acsUrl;
+    }
+
+    public void setAcsUrl(String acsUrl) {
+        this.acsUrl = acsUrl;
+    }
+
+    public String getSamlCertificate() {
+        return samlCertificate;
+    }
+
+    public void setSamlCertificate(String samlCertificate) {
+        this.samlCertificate = samlCertificate;
+    }
+
+    public List<String> getCorporateCidrIps() {
+        return corporateCidrIps;
+    }
+
+    public void setCorporateCidrIps(List<String> corporateCidrIps) {
+        this.corporateCidrIps = corporateCidrIps != null ? corporateCidrIps : new ArrayList<>();
     }
 }

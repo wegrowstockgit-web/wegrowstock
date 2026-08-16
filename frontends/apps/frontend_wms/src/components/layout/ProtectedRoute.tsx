@@ -40,7 +40,13 @@ export function ProtectedRoute({
   }
 
   if (!authenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return (
+      <Navigate
+        to={b2bOnly ? '/showroom/login' : '/login'}
+        state={{ from: location }}
+        replace
+      />
+    );
   }
 
   const b2bOnlyUser = isExclusiveRole(sessionRoles, 'B2B_CUSTOMER');

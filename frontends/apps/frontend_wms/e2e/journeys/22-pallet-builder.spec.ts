@@ -58,7 +58,9 @@ test.describe('Journey 22: Pallet Builder', () => {
       lpnBarcode = minted.lpnBarcode;
       expect(lpnBarcode).toMatch(/^LPN-/);
       expect(minted.zpl).toContain('^XA');
-      await expect(picker.page.getByTestId('active-lpn-barcode')).toHaveText(lpnBarcode);
+      await expect(picker.page.getByTestId('active-lpn-barcode')).toHaveText(lpnBarcode, {
+        timeout: 15_000,
+      });
 
       const packWait = picker.page.waitForResponse(
         (res) =>

@@ -1,5 +1,6 @@
 package com.invsys.modules.sales.api;
 
+import com.invsys.modules.sales.domain.AllocationPolicy;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.catalog.domain.Product;
 import com.invsys.modules.catalog.domain.ProductVariant;
@@ -140,7 +141,10 @@ public class SalesOrderController {
                         order.getStatus(),
                         order.getChannel(),
                         order.getCreatedAt(),
-                        billingByOrder.getOrDefault(order.getId(), "NONE")))
+                        billingByOrder.getOrDefault(order.getId(), "NONE"),
+                        order.getAllocationPolicy() != null ? order.getAllocationPolicy().name() : AllocationPolicy.ALLOW_PARTIAL.name(),
+                        order.getQuoteExpiresAt(),
+                        order.getManualDiscountTotal()))
                 .toList();
     }
 
@@ -161,6 +165,16 @@ public class SalesOrderController {
         }
         if (request.requestedShipDate() != null) {
             order.setRequestedShipDate(request.requestedShipDate());
+        }
+        if (request.allocationPolicy() != null && !request.allocationPolicy().isBlank()) {
+            try {
+                order.setAllocationPolicy(AllocationPolicy.fromString(request.allocationPolicy()));
+            } catch (IllegalArgumentException ex) {
+                throw new com.invsys.core.common.ApiException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "VALIDATION",
+                        "allocationPolicy must be SHIP_COMPLETE or ALLOW_PARTIAL");
+            }
         }
         order = salesOrderRepository.save(order);
         UUID tenantId = TenantContext.requireTenantId();
@@ -200,8 +214,16 @@ public class SalesOrderController {
         List<SalesOrderLineResponse> lines = lineRepository.findBySalesOrderId(id).stream()
                 .map(this::toLineResponse)
                 .toList();
-        return new SalesOrderDetailResponse(order.getId(), order.getNumber(), customerName,
-                order.getStatus(), lines);
+        return new SalesOrderDetailResponse(
+                order.getId(),
+                order.getNumber(),
+                customerName,
+                order.getStatus(),
+                order.getAllocationPolicy() != null ? order.getAllocationPolicy().name() : AllocationPolicy.ALLOW_PARTIAL.name(),
+                order.getQuoteExpiresAt(),
+                order.getManualDiscountTotal(),
+                order.getQuoteNotes(),
+                lines);
     }
 
     private SalesOrderLineResponse toLineResponse(SalesOrderLine line) {
@@ -212,7 +234,23 @@ public class SalesOrderController {
                 : sku;
         return new SalesOrderLineResponse(
                 line.getId(), line.getVariantId(), sku, name,
-                line.getQtyOrdered(), line.getQtyShipped(), line.getUnitPrice());
+                line.getQtyOrdered(),
+                line.getQtyAllocated(),
+                line.getQtyShipped(),
+                line.getQtyBackordered(),
+                line.getUnitPrice());
+    }
+
+    @PostMapping("/sales-orders/{id}/quote")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public SalesOrder updateQuote(@PathVariable UUID id, @Valid @RequestBody UpdateQuoteRequest request) {
+        List<SalesOrderService.QuoteLinePrice> prices = request.linePrices() == null
+                ? List.of()
+                : request.linePrices().stream()
+                        .map(p -> new SalesOrderService.QuoteLinePrice(p.lineId(), p.unitPrice()))
+                        .toList();
+        return salesOrderService.updateQuotePricing(
+                id, prices, request.manualDiscountTotal(), request.quoteExpiresAt(), request.quoteNotes());
     }
 
     @PostMapping("/sales-orders/{id}/confirm")
@@ -255,8 +293,20 @@ public class SalesOrderController {
             UUID sourceLocationId,
             String customerPoNumber,
             java.time.Instant requestedShipDate,
+            String allocationPolicy,
             List<CreateLineRequest> lines
     ) {
+    }
+
+    public record UpdateQuoteRequest(
+            List<QuoteLinePriceRequest> linePrices,
+            java.math.BigDecimal manualDiscountTotal,
+            java.time.Instant quoteExpiresAt,
+            String quoteNotes
+    ) {
+    }
+
+    public record QuoteLinePriceRequest(UUID lineId, java.math.BigDecimal unitPrice) {
     }
 
     public record CreateLineRequest(@NotNull UUID variantId, @NotNull BigDecimal qtyOrdered, BigDecimal unitPrice) {
@@ -269,7 +319,10 @@ public class SalesOrderController {
             String status,
             String channel,
             java.time.Instant createdAt,
-            String billingStatus
+            String billingStatus,
+            String allocationPolicy,
+            java.time.Instant quoteExpiresAt,
+            java.math.BigDecimal manualDiscountTotal
     ) {
     }
 
@@ -278,6 +331,10 @@ public class SalesOrderController {
             String number,
             String customerName,
             String status,
+            String allocationPolicy,
+            java.time.Instant quoteExpiresAt,
+            java.math.BigDecimal manualDiscountTotal,
+            String quoteNotes,
             List<SalesOrderLineResponse> lines
     ) {
     }
@@ -288,7 +345,9 @@ public class SalesOrderController {
             String sku,
             String name,
             BigDecimal qtyOrdered,
+            BigDecimal qtyAllocated,
             BigDecimal qtyShipped,
+            BigDecimal qtyBackordered,
             BigDecimal unitPrice
     ) {
     }

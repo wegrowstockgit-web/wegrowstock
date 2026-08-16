@@ -13,6 +13,7 @@ set "COMPOSE_ANSI=never"
 set "DOCKER_CLI_HINTS=false"
 set "WMS_FRONTEND=frontends\apps\frontend_wms"
 set "ADMIN_FRONTEND=frontends\apps\frontend_admin"
+set "POS_FRONTEND=frontends\apps\frontend_pos"
 
 if /i "%CMD%"=="help" goto :help
 if /i "%CMD%"=="--help" goto :help
@@ -84,7 +85,7 @@ exit /b 0
 :undeploy
 call :step "Stopping existing stack"
 >> "%DEPLOY_LOG%" echo ===== undeploy %DATE% %TIME% =====
-for %%c in (invsys-web invsys-admin-web invsys-api invsys-admin-api invsys-api-gateway invsys-db invsys-minio invsys-minio-init) do (
+for %%c in (invsys-web invsys-admin-web invsys-pos-web invsys-api invsys-admin-api invsys-api-gateway invsys-db invsys-minio invsys-minio-init) do (
     docker inspect %%c >nul 2>&1
     if not errorlevel 1 (
         docker stop %%c >> "%DEPLOY_LOG%" 2>&1
@@ -359,6 +360,9 @@ echo   Data plane ^(WMS^)
 echo     UI        http://localhost:3000
 echo     API       http://localhost:8080
 echo     Swagger   http://localhost:8080/swagger-ui.html
+echo   Retail POS ^(offline-first register^)
+echo     UI        http://localhost:3003
+echo     API       POST /api/v1/pos/sync-receipts via :8080
 echo   Control plane ^(Super Admin^)
 echo     UI        http://localhost:3002
 echo     API       http://localhost:8081
@@ -445,13 +449,14 @@ popd
 exit /b 0
 
 :clean_frontend
-call :step "Cleaning frontend artifacts (WMS + admin monorepo)"
+call :step "Cleaning frontend artifacts (WMS + admin + POS monorepo)"
 if not exist "%WMS_FRONTEND%\package.json" if not exist "%ADMIN_FRONTEND%\package.json" (
     call :err "No frontend package.json found under frontends\apps. Run from repo root."
     exit /b 1
 )
 call :clean_one_frontend "%WMS_FRONTEND%"
 call :clean_one_frontend "%ADMIN_FRONTEND%"
+call :clean_one_frontend "%POS_FRONTEND%"
 if exist "frontends\node_modules" (
     rmdir /s /q "frontends\node_modules"
     call :ok "Removed frontends\node_modules"
@@ -494,6 +499,7 @@ if exist "ops\demo_seed_tenants_extra.sql" (
 echo.
 call :ok "Seed complete"
 call :info "WMS login:   owner@demo.test / password123"
+call :info "POS register: http://localhost:3003  ^(same tenant login; checkout is offline-first^)"
 call :info "Admin login: owner@demo.test / password123  ^(platform_admins; UI :3002^)"
 call :info "Floor PIN ^(after opening Fulfillment^): 1234"
 call :info "Picker: picker@demo.test / password123"
@@ -517,7 +523,7 @@ echo   --clean-frontend           Shorthand for: deploy --clean-frontend
 echo   down                       Stop and remove containers ^(keeps DB volume^)
 echo   undeploy                   Alias for down
 echo   status                     Compact container status + URLs
-echo   clean-frontend             Remove frontend_wms / frontend_admin caches
+echo   clean-frontend             Remove frontend_wms / frontend_admin / frontend_pos caches
 echo   clean                      Alias for clean-frontend
 echo   seed                       Load demo SQL ^(quiet; errors show log tail^)
 echo   chatbot-enable             Persistently ENABLE chatbot for next deploys
@@ -527,6 +533,7 @@ echo   help                       Show this help
 echo.
 echo Planes:
 echo   Data plane     frontend_wms + invsys-app via gateway :8080
+echo   Retail POS     frontend_pos + invsys-pos-api via gateway :8080 ^(:3003^)
 echo   Control plane  frontend_admin + invsys-admin-api via gateway :8081
 echo                  Tenants, billing, impersonation, RAG ingest, kill-switch,
 echo                  audit, shards, DLQ, telemetry, compliance, reports
