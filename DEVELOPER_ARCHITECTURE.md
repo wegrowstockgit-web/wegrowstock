@@ -57,7 +57,7 @@
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
 2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
 
-**Scale notes (current head V115):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
+**Scale notes (current head V116):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
 
 ---
 
@@ -1072,6 +1072,7 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V113` | `wholesale_applications` |
 | `V114` | Mesh hub handshake + `mesh_catalog_listings` + PO `notes` |
 | `V115` | Home Realm Discovery: domain TXT/`is_verified` + SSO provider/ACS/cert/corporate CIDRs |
+| `V116` | `app_owner` INSERT policy on `tenants` (clone-sandbox / training UAT under FORCE RLS) |
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 

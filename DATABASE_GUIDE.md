@@ -6,7 +6,7 @@ A plain-language map of how InventorySystem stores warehouse data in PostgreSQL 
 
 **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (how the app uses this schema), `USER_GUIDE.md` (day-to-day product use), `README.md` (run the stack).
 
-Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V115**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
+Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V116**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
 
 ---
 
@@ -267,7 +267,7 @@ Property: `invsys.integration.vault-provider`.
 
 ---
 
-## Recent Flyway head (V080–V115)
+## Recent Flyway head (V080–V116)
 
 | Version | Purpose |
 |---------|---------|
@@ -305,6 +305,7 @@ Property: `invsys.integration.vault-provider`.
 | **V113** | `wholesale_applications` + `customers:manage` |
 | **V114** | Mesh hub: `REQUESTED` status, nullable pairing FKs, `mesh_catalog_listings`, `purchase_orders.notes` |
 | **V115** | Home Realm Discovery: domain TXT token + `is_verified`; SSO provider / ACS / cert / corporate CIDRs |
+| **V116** | `app_owner` INSERT policy on `tenants` so Control Plane clone-sandbox / training UAT can provision rows under FORCE RLS |
 
 ---
 
@@ -324,4 +325,4 @@ Property: `invsys.integration.vault-provider`.
 
 Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_*`, `platform_admins`, `platform_admin_refresh_tokens`, `platform_audit_logs`, `platform_compliance_broadcasts`, `platform_knowledge_documents`. Almost everything else is tenant-scoped.
 
-See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V115`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).
+See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V116`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).

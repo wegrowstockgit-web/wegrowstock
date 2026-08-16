@@ -37,6 +37,10 @@ public class AdminSandboxProvisioningService {
     public SandboxCredentials cloneSandbox(UUID sourceTenantId) {
         BootstrapJdbc.TenantSubscriptionRow source = bootstrapJdbc.findTenantSubscription(sourceTenantId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TENANT_NOT_FOUND", "Tenant not found"));
+        if ("SUSPENDED".equalsIgnoreCase(source.status()) || "CLOSED".equalsIgnoreCase(source.status())) {
+            throw new ApiException(HttpStatus.CONFLICT, "TENANT_SUSPENDED",
+                    "Cannot clone a sandbox from a " + source.status() + " tenant");
+        }
 
         UUID existingSandbox = jdbc.query(
                 """
@@ -57,13 +61,7 @@ public class AdminSandboxProvisioningService {
         } else {
             sandboxId = UUID.randomUUID();
             slug = "uat-" + sandboxId.toString().substring(0, 8);
-            jdbc.update("""
-                    INSERT INTO tenants (id, name, slug, status, subscription_status, created_at, updated_at)
-                    VALUES (?, ?, ?, 'ACTIVE', 'ACTIVE', NOW(), NOW())
-                    """,
-                    sandboxId,
-                    source.name() + " (UAT)",
-                    slug);
+            bootstrapJdbc.insertProvisionedTenant(sandboxId, source.name() + " (UAT)", slug);
             bootstrapJdbc.upsertTenantTierAndModules(
                     sandboxId, source.tier(), source.enabledModulesJson());
         }

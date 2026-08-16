@@ -2,11 +2,14 @@ package com.invsys.core.tenancy;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.invsys.core.common.TenantConnectionHelper;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -845,6 +848,27 @@ public class BootstrapJdbc {
                         rs.getString("enabled_modules")))
                         : Optional.empty(),
                 tenantId);
+    }
+
+    /**
+     * Inserts a disposable UAT / training tenant as {@code app_owner}.
+     * Binds {@code app.current_tenant} on the same transaction so FORCE RLS
+     * {@code tenant_isolation} WITH CHECK also passes if the provision policy is missing.
+     */
+    public void insertProvisionedTenant(UUID tenantId, String name, String slug) {
+        jdbc.execute((ConnectionCallback<Void>) connection -> {
+            TenantConnectionHelper.bindTenant(connection, tenantId);
+            try (PreparedStatement ps = connection.prepareStatement("""
+                    INSERT INTO tenants (id, name, slug, status, subscription_status, created_at, updated_at)
+                    VALUES (?, ?, ?, 'ACTIVE', 'ACTIVE', NOW(), NOW())
+                    """)) {
+                ps.setObject(1, tenantId);
+                ps.setString(2, name);
+                ps.setString(3, slug);
+                ps.executeUpdate();
+            }
+            return null;
+        });
     }
 
     public void insertTenantSubscription(UUID tenantId, String tier, String enabledModulesJson) {

@@ -1,5 +1,6 @@
 package com.invsys.training;
 
+import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,9 +20,12 @@ import java.util.UUID;
 public class TrainingSandboxService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final BootstrapJdbc bootstrapJdbc;
 
-    public TrainingSandboxService(@Qualifier("bootstrapDataSource") DataSource bootstrapDataSource) {
+    public TrainingSandboxService(@Qualifier("bootstrapDataSource") DataSource bootstrapDataSource,
+                                  BootstrapJdbc bootstrapJdbc) {
         this.jdbcTemplate = new JdbcTemplate(bootstrapDataSource);
+        this.bootstrapJdbc = bootstrapJdbc;
     }
 
     @Transactional
@@ -41,14 +45,8 @@ public class TrainingSandboxService {
             return existing;
         }
         UUID sandboxId = UUID.randomUUID();
-        jdbcTemplate.update("""
-                INSERT INTO tenants (id, name, slug, status, subscription_status, created_at, updated_at)
-                VALUES (?, ?, ?, 'ACTIVE', 'ACTIVE', now(), now())
-                ON CONFLICT (id) DO NOTHING
-                """,
-                sandboxId,
-                "Training Sandbox",
-                "train-" + sandboxId.toString().substring(0, 8));
+        bootstrapJdbc.insertProvisionedTenant(
+                sandboxId, "Training Sandbox", "train-" + sandboxId.toString().substring(0, 8));
         jdbcTemplate.update("""
                 INSERT INTO training_sandbox_bindings (
                     source_tenant_id, sandbox_tenant_id, created_by, label, active

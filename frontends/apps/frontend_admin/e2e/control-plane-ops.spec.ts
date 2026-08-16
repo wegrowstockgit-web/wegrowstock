@@ -118,4 +118,25 @@ test.describe('Control Plane Phase 4/5 functional', () => {
     await admin.dispose();
     await wms.dispose();
   });
+
+  test('API: clone-sandbox provisions a UAT tenant and one-time key', async () => {
+    const admin = await loginAdminApi();
+    const tenants = await admin.get('/api/v1/control-plane/tenants');
+    expect(tenants.ok()).toBeTruthy();
+    const list = (await tenants.json()) as Array<{ tenantId: string; slug: string; status: string }>;
+    const demo =
+      list.find((t) => t.slug === 'demo-corp' || t.slug === 'demo') ??
+      list.find((t) => t.status === 'ACTIVE');
+    expect(demo).toBeTruthy();
+
+    const headers = await csrfHeaders(admin);
+    const clone = await admin.post(`/api/v1/control-plane/tenants/${demo!.tenantId}/clone-sandbox`, {
+      headers,
+    });
+    expect(clone.ok(), await clone.text()).toBeTruthy();
+    const body = await clone.json();
+    expect(body.sandboxSlug).toMatch(/^uat-/);
+    expect(body.apiKey).toMatch(/^sk_uat_/);
+    await admin.dispose();
+  });
 });
