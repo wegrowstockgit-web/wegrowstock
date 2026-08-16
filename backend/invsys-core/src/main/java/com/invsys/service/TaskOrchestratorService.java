@@ -1,14 +1,14 @@
 package com.invsys.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.inventory.domain.CycleCount;
 import com.invsys.modules.inventory.domain.LicensePlate;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.domain.PickingBatch;
 import com.invsys.domain.PickingTask;
 import com.invsys.domain.WaveReplenishmentTrigger;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.inventory.repository.CycleCountRepository;
 import com.invsys.modules.inventory.repository.LicensePlateRepository;
 import com.invsys.modules.catalog.repository.LocationRepository;

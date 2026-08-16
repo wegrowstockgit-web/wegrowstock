@@ -54,6 +54,7 @@ invsys:
     secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
     path-style-access: ${MEDIA_PATH_STYLE:true}
     create-bucket-if-missing: ${MEDIA_CREATE_BUCKET:true}
+    allow-private-endpoints: ${MEDIA_ALLOW_PRIVATE_ENDPOINTS:true}
   webhooks:
     shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:shopify_mock_secret}
     easypost-secret: ${EASYPOST_WEBHOOK_SECRET:easypost_mock_secret}
@@ -64,6 +65,9 @@ invsys:
     platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:whsec_mock_secret}
   actuator:
     scrape-allowed-cidrs: ${ACTUATOR_SCRAPE_ALLOWED_CIDRS:127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+  admin:
+    login-max-failures: ${ADMIN_LOGIN_MAX_FAILURES:5}
+    login-window-minutes: ${ADMIN_LOGIN_WINDOW_MINUTES:10}
 
 springdoc:
   api-docs:
@@ -78,6 +82,8 @@ management:
         include: health,prometheus
   endpoint:
     health:
+      show-details: when_authorized
+      show-components: when_authorized
       probes:
         enabled: true
   otlp:

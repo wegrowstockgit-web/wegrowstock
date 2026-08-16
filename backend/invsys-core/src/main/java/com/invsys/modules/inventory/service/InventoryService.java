@@ -1,7 +1,8 @@
 package com.invsys.modules.inventory.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.api.InventoryOperations;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.inventory.domain.InventoryLedger;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.modules.inventory.domain.LicensePlate;
@@ -10,7 +11,7 @@ import com.invsys.modules.catalog.domain.Lot;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.domain.TenantSettings;
 import com.invsys.core.integration.OutboxService;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.inventory.repository.InventoryLedgerRepository;
 import com.invsys.modules.inventory.repository.InventoryLevelDeltaFlushRepository;
 import com.invsys.modules.inventory.repository.InventoryLevelRepository;
@@ -40,7 +41,7 @@ import com.invsys.service.PutawayValidationService;
 import com.invsys.service.SerialNumberService;
 
 @Service
-public class InventoryService {
+public class InventoryService implements InventoryOperations {
 
     private final InventoryLedgerRepository ledgerRepository;
     private final InventoryLevelRepository levelRepository;

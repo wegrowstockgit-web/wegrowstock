@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { MODULE_LABELS, TIER_LABELS } from '@invsys/shared-types';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchCommercialReport } from './api';
 
 export function AdminCommercialReports() {
@@ -40,14 +41,12 @@ export function AdminCommercialReports() {
 
   return (
     <div className="space-y-8" data-testid="commercial-reports">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Commercial reports</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Tier distribution, module adoption, and platform GMV trends.
-        </p>
-      </div>
+      <PageHeader
+        title="Commercial reports"
+        description="Tier distribution, module adoption, and platform GMV trends."
+      />
 
-      <section className="rounded-lg border border-border bg-surface-raised p-4">
+      <section className="admin-card p-5">
         <h3 className="mb-4 text-sm font-semibold text-text">Tier distribution</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -68,7 +67,7 @@ export function AdminCommercialReports() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-border bg-surface-raised p-4">
+      <section className="admin-card p-5">
         <h3 className="mb-4 text-sm font-semibold text-text">Module adoption</h3>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -95,7 +94,7 @@ export function AdminCommercialReports() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-border bg-surface-raised p-4">
+      <section className="admin-card p-5">
         <h3 className="mb-4 text-sm font-semibold text-text">GMV by month</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">

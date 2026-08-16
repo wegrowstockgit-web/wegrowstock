@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@invsys/shared-ui';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchAuditLogs } from './api';
 
 export function PlatformAuditTrail() {
@@ -26,12 +27,10 @@ export function PlatformAuditTrail() {
 
   return (
     <div className="space-y-6" data-testid="platform-audit">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Audit trail</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Recent Super Admin mutations across the control plane.
-        </p>
-      </div>
+      <PageHeader
+        title="Audit trail"
+        description="Recent Super Admin mutations across the control plane."
+      />
 
       <Table>
         <TableHeader>

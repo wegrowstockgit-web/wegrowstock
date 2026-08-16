@@ -36,54 +36,82 @@ export function AdminLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-4">
-      <div className="w-full max-w-md rounded-lg border border-border bg-surface-raised p-8 shadow-card">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15 text-accent">
+    <div
+      className="grid min-h-screen bg-surface lg:grid-cols-[minmax(0,1.1fr)_minmax(22rem,28rem)]"
+      data-testid="admin-login-page"
+    >
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-surface-raised px-12 py-12 lg:flex">
+        <div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent/15 text-accent">
             <Shield className="h-5 w-5" aria-hidden />
           </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              InvSys Control Plane
-            </p>
-            <h1 className="text-xl font-semibold tracking-tight">Super Admin sign in</h1>
-          </div>
+          <p className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-text-muted">
+            InvSys Control Plane
+          </p>
+          <h1 className="mt-3 max-w-md text-3xl font-semibold tracking-tight text-text">
+            Super Admin workspace
+          </h1>
+          <p className="mt-3 max-w-md text-sm leading-6 text-text-muted">
+            Manage tenant packaging, billing, compliance, and platform operations from one console.
+          </p>
         </div>
+        <p className="text-xs text-text-muted">admin.invsys.com</p>
+      </aside>
 
-        <form className="space-y-4" onSubmit={handleSubmit} data-testid="admin-login-form">
-          <Input
-            label="Email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-            data-testid="admin-login-email"
-          />
-          <Input
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-            data-testid="admin-login-password"
-          />
-          {error ? (
-            <p className="text-sm text-danger" role="alert" data-testid="admin-login-error">
-              {error}
-            </p>
-          ) : null}
-          <Button
-            type="submit"
-            className="w-full"
-            loading={loginMutation.isPending}
-            data-testid="admin-login-submit"
-          >
-            Sign in
-          </Button>
-        </form>
-      </div>
+      <main className="flex items-center justify-center px-4 py-12 sm:px-8">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15 text-accent">
+              <Shield className="h-5 w-5" aria-hidden />
+            </div>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-text-muted">
+                InvSys Control Plane
+              </p>
+              <h1 className="text-xl font-semibold tracking-tight">Super Admin sign in</h1>
+            </div>
+          </div>
+
+          <div className="hidden lg:block">
+            <h1 className="text-xl font-semibold tracking-tight">Super Admin sign in</h1>
+            <p className="mt-1 text-sm text-text-muted">Use your platform administrator credentials.</p>
+          </div>
+
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit} data-testid="admin-login-form">
+            <Input
+              label="Email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+              data-testid="admin-login-email"
+            />
+            <Input
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+              data-testid="admin-login-password"
+            />
+            {error ? (
+              <p className="text-sm text-danger" role="alert" data-testid="admin-login-error">
+                {error}
+              </p>
+            ) : null}
+            <Button
+              type="submit"
+              className="w-full"
+              loading={loginMutation.isPending}
+              data-testid="admin-login-submit"
+            >
+              Sign in
+            </Button>
+          </form>
+        </div>
+      </main>
     </div>
   );
 }

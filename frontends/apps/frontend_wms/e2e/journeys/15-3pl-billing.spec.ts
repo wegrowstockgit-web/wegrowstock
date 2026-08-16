@@ -11,7 +11,7 @@ import {
 /**
  * Track 15 — 3PL multi-owner SLAs → StorageAccrualWorker → isolated Showroom billing dashboards.
  */
-test.describe.serial('Journey 15: 3PL Multi-Owner Billing Accruals', () => {
+test.describe('Journey 15: 3PL Multi-Owner Billing Accruals', () => {
   test('pallet vs cubic accruals surface on Client A / Client B portals', async ({ browser }) => {
     const admin = await contextForRole(browser, 'admin');
     let clientB: { close: () => Promise<void>; page: import('@playwright/test').Page } | null =

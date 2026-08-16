@@ -9,6 +9,7 @@ export interface PackingScaleReading {
 }
 
 export interface UsePackingScaleResult {
+  isSupported: boolean;
   serialSupported: boolean;
   connected: boolean;
   connecting: boolean;
@@ -141,6 +142,7 @@ export function usePackingScale(): UsePackingScaleResult {
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
+    isSupported: serialSupported,
     serialSupported,
     connected,
     connecting,

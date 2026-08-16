@@ -1,7 +1,7 @@
 package com.invsys.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.domain.Bom;
 import com.invsys.domain.BomLine;
 import com.invsys.domain.BomOperation;
@@ -12,7 +12,7 @@ import com.invsys.modules.catalog.domain.Location;
 import com.invsys.domain.ManufacturingWorkCenter;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.domain.ProductionOrder;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.repository.BomLineRepository;
 import com.invsys.repository.BomOperationRepository;
 import com.invsys.repository.BomOutputRepository;

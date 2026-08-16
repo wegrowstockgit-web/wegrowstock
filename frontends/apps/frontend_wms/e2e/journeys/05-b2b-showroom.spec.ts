@@ -1,12 +1,11 @@
 import { test } from '@playwright/test';
 import { apiJson, contextForRole, expect } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Track 5 — B2B showroom draft order → Admin confirm into allocation engine.
  * Uses browser.newContext() for isolated B2B + Admin sessions.
  */
-test.describe.serial('Journey 05: B2B Showroom → Admin fulfillment', () => {
+test.describe('Journey 05: B2B Showroom → Admin fulfillment', () => {
   test('b2b drafts portal order; admin confirms', async ({ browser }) => {
     test.setTimeout(120_000);
     const b2b = await contextForRole(browser, 'b2b');
@@ -56,12 +55,6 @@ test.describe.serial('Journey 05: B2B Showroom → Admin fulfillment', () => {
       const portalOrder = portalOrders[0];
       expect(portalOrder?.id).toBeTruthy();
 
-      writeJourneyState({
-        salesOrderId: portalOrder!.id,
-        salesOrderNumber: portalOrder!.number,
-        events: [`B2B_DRAFT_ORDER:${portalOrder!.id}:${poNumber}`],
-      });
-
       // --- Admin: Sales Orders desk + confirm ---
       await admin.page.goto('/sales-orders');
       await expect(admin.page.getByRole('heading', { name: 'Sales Orders', exact: true })).toBeVisible({
@@ -85,7 +78,6 @@ test.describe.serial('Journey 05: B2B Showroom → Admin fulfillment', () => {
       );
       expect(after.status).toBe('CONFIRMED');
 
-      writeJourneyState({ events: [`B2B_SO_CONFIRMED:${portalOrder!.id}`] });
     } finally {
       await b2b.close().catch(() => undefined);
       await admin.close().catch(() => undefined);

@@ -13,12 +13,11 @@ import {
   firstSupplierId,
   hidScan,
 } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Track 2 — Manager PO receive ↔ Picker HID scan; SO pick/ship with live office verification.
  */
-test.describe.serial('Journey 02: Procurement → Fulfillment correlation', () => {
+test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
   test('PO receive updates ATP; SO pick ships without manual refresh', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
     const picker = await contextForRole(browser, 'picker');
@@ -46,15 +45,9 @@ test.describe.serial('Journey 02: Procurement → Fulfillment correlation', () =
 
       // Transition to SUBMITTED when API supports it; otherwise keep DRAFT and receive.
       const submitRes = await manager.page.request.post(`/api/v1/purchase-orders/${po.id}/submit`);
-      const poStatusAfterSubmit = submitRes.ok()
-        ? ((await submitRes.json()) as { status?: string }).status ?? 'SUBMITTED'
-        : po.status;
-
-      writeJourneyState({
-        purchaseOrderId: po.id,
-        purchaseOrderNumber: po.number,
-        events: [`PO_CREATED:${po.number}:${poStatusAfterSubmit}`],
-      });
+      if (submitRes.ok()) {
+        await submitRes.json();
+      }
 
       await manager.page.goto('/purchase-orders');
       await expect(manager.page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible({
@@ -129,8 +122,6 @@ test.describe.serial('Journey 02: Procurement → Fulfillment correlation', () =
         expect(atpAfter).toBeGreaterThanOrEqual(atpBefore);
       }
 
-      writeJourneyState({ events: [`PO_RECEIVED:${po.number}`] });
-
       // --- Manager: Sales Order for 50 WIDGET-S ---
       const so = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/sales-orders', {
         method: 'POST',
@@ -166,12 +157,6 @@ test.describe.serial('Journey 02: Procurement → Fulfillment correlation', () =
       expect(waveRes.ok()).toBeTruthy();
       const wave = (await waveRes.json()) as { waveId: string };
       await manager.page.request.post(`/api/v1/picking/waves/${wave.waveId}/release`);
-
-      writeJourneyState({
-        salesOrderId: so.id,
-        salesOrderNumber: so.number,
-        events: [`SO_ALLOCATED:${so.number}`],
-      });
 
       // --- Picker: claim wave + scan pick + ship (Complete Pick analogue) ---
       await picker.page.goto('/fulfillment');
@@ -223,7 +208,6 @@ test.describe.serial('Journey 02: Procurement → Fulfillment correlation', () =
         }, { timeout: 30_000 })
         .toMatch(/SHIPPED|PARTIALLY_SHIPPED|ALLOCATED|PICKING|IN_PROGRESS/);
 
-      writeJourneyState({ events: [`SO_PICKED:${so.number}`] });
     } finally {
       await picker.close();
       await manager.close();

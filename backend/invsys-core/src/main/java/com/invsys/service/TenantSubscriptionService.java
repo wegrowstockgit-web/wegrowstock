@@ -5,7 +5,9 @@ import com.invsys.core.common.ApiException;
 import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.domain.subscription.AppModule;
 import com.invsys.domain.subscription.CommercialTier;
+import com.invsys.domain.subscription.PlatformTierDefinition;
 import com.invsys.domain.subscription.TenantSubscription;
+import com.invsys.repository.PlatformTierDefinitionRepository;
 import com.invsys.repository.TenantSubscriptionRepository;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -27,40 +30,77 @@ public class TenantSubscriptionService {
 
     private final BootstrapJdbc bootstrapJdbc;
     private final TenantSubscriptionRepository tenantSubscriptionRepository;
+    private final PlatformTierDefinitionRepository platformTierDefinitionRepository;
     private final TenantSettingsCacheService tenantSettingsCacheService;
+    private final PlatformTierDefinitionCacheService platformTierDefinitionCacheService;
     private final ApplicationEventPublisher eventPublisher;
     private final TenantSubscriptionService self;
 
     public TenantSubscriptionService(BootstrapJdbc bootstrapJdbc,
                                      TenantSubscriptionRepository tenantSubscriptionRepository,
+                                     PlatformTierDefinitionRepository platformTierDefinitionRepository,
                                      TenantSettingsCacheService tenantSettingsCacheService,
+                                     PlatformTierDefinitionCacheService platformTierDefinitionCacheService,
                                      ApplicationEventPublisher eventPublisher,
                                      @Lazy TenantSubscriptionService self) {
         this.bootstrapJdbc = bootstrapJdbc;
         this.tenantSubscriptionRepository = tenantSubscriptionRepository;
+        this.platformTierDefinitionRepository = platformTierDefinitionRepository;
         this.tenantSettingsCacheService = tenantSettingsCacheService;
+        this.platformTierDefinitionCacheService = platformTierDefinitionCacheService;
         this.eventPublisher = eventPublisher;
         this.self = self;
     }
 
     /**
-     * Commercial tier bundle presets.
-     * BASIC → CORE only; INTERMEDIATE → CORE + Tier-2 add-ons; ENTERPRISE → all modules.
+     * Commercial tier bundle from {@code platform_tier_definitions}. Cached per tier code.
      */
+    @Cacheable(cacheNames = CacheConfig.TIER_DEFINITIONS_CACHE, key = "#tier == null ? 'BASIC' : #tier.name()")
+    @Transactional(readOnly = true)
     public Set<AppModule> getDefaultModulesForTier(CommercialTier tier) {
         CommercialTier resolved = tier != null ? tier : CommercialTier.BASIC;
-        return switch (resolved) {
-            case BASIC -> EnumSet.of(AppModule.CORE);
-            case INTERMEDIATE -> EnumSet.of(
-                    AppModule.CORE,
-                    AppModule.SHOPIFY,
-                    AppModule.ACCOUNTING,
-                    AppModule.ADVANCED_FULFILLMENT,
-                    AppModule.MANUFACTURING,
-                    AppModule.DOCUMENTS,
-                    AppModule.MRP);
-            case ENTERPRISE -> EnumSet.allOf(AppModule.class);
-        };
+        if (platformTierDefinitionRepository == null) {
+            return EnumSet.of(AppModule.CORE);
+        }
+        return platformTierDefinitionRepository.findById(resolved.name())
+                .map(def -> toModuleSet(def.getDefaultModules()))
+                .orElseGet(() -> EnumSet.of(AppModule.CORE));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlatformTierDefinitionView> listTierDefinitions() {
+        if (platformTierDefinitionRepository == null) {
+            return List.of();
+        }
+        return platformTierDefinitionRepository.findAllByOrderByTierCodeAsc().stream()
+                .map(this::toTierView)
+                .toList();
+    }
+
+    @CacheEvict(cacheNames = CacheConfig.TIER_DEFINITIONS_CACHE, allEntries = true)
+    @Transactional
+    public PlatformTierDefinitionView replaceTierDefinition(String tierCode, List<AppModule> modules) {
+        if (tierCode == null || tierCode.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TIER", "tierCode required");
+        }
+        CommercialTier tier;
+        try {
+            tier = CommercialTier.valueOf(tierCode.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Unknown commercial tier");
+        }
+        PlatformTierDefinition definition = platformTierDefinitionRepository.findById(tier.name())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Tier definition not found"));
+        List<AppModule> normalized = normalizeModules(modules);
+        definition.setDefaultModules(normalized.stream().map(Enum::name).toList());
+        platformTierDefinitionRepository.save(definition);
+        if (platformTierDefinitionCacheService != null) {
+            platformTierDefinitionCacheService.evictAll();
+        }
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new PlatformTierDefinitionUpdatedEvent(tier.name()));
+        }
+        return toTierView(definition);
     }
 
     @Transactional(readOnly = true)
@@ -131,7 +171,7 @@ public class TenantSubscriptionService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Tenant not found"));
 
         CommercialTier previousTier = CommercialTier.fromString(current.tier());
-        Set<AppModule> previousDefaults = getDefaultModulesForTier(previousTier);
+        Set<AppModule> previousDefaults = defaultsFor(previousTier);
         Set<AppModule> currentEnabled = new LinkedHashSet<>(parseModules(current.enabledModulesJson()));
 
         Set<AppModule> customOverrides = EnumSet.noneOf(AppModule.class);
@@ -141,7 +181,7 @@ public class TenantSubscriptionService {
             }
         }
 
-        Set<AppModule> next = new LinkedHashSet<>(getDefaultModulesForTier(newTier));
+        Set<AppModule> next = new LinkedHashSet<>(defaultsFor(newTier));
         next.addAll(customOverrides);
         List<AppModule> normalized = normalizeModules(List.copyOf(next));
 
@@ -181,6 +221,39 @@ public class TenantSubscriptionService {
             return;
         }
         tenantSubscriptionRepository.save(TenantSubscription.defaults(tenantId));
+    }
+
+    private Set<AppModule> defaultsFor(CommercialTier tier) {
+        return self != null ? self.getDefaultModulesForTier(tier) : getDefaultModulesForTier(tier);
+    }
+
+    private static Set<AppModule> toModuleSet(List<String> tokens) {
+        EnumSet<AppModule> found = EnumSet.noneOf(AppModule.class);
+        if (tokens != null) {
+            for (String token : tokens) {
+                if (token == null || token.isBlank()) {
+                    continue;
+                }
+                try {
+                    found.add(AppModule.fromString(token));
+                } catch (IllegalArgumentException ignored) {
+                    // skip unknown module tokens
+                }
+            }
+        }
+        if (found.isEmpty()) {
+            found.add(AppModule.CORE);
+        }
+        return found;
+    }
+
+    private PlatformTierDefinitionView toTierView(PlatformTierDefinition definition) {
+        List<AppModule> modules = new ArrayList<>(toModuleSet(definition.getDefaultModules()));
+        return new PlatformTierDefinitionView(
+                definition.getTierCode(),
+                definition.getDisplayName(),
+                modules,
+                definition.getUpdatedAt());
     }
 
     private static List<AppModule> normalizeModules(List<AppModule> modules) {
@@ -261,6 +334,14 @@ public class TenantSubscriptionService {
             String status,
             CommercialTier tier,
             List<AppModule> enabledModules
+    ) {
+    }
+
+    public record PlatformTierDefinitionView(
+            String tierCode,
+            String displayName,
+            List<AppModule> defaultModules,
+            Instant updatedAt
     ) {
     }
 }

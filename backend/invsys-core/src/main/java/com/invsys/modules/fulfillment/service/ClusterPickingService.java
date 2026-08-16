@@ -3,18 +3,18 @@ package com.invsys.modules.fulfillment.service;
 import com.invsys.core.common.ApiException;
 import com.invsys.domain.PickingBatch;
 import com.invsys.domain.PickingTask;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.fulfillment.domain.ClusterToteMapping;
 import com.invsys.modules.fulfillment.domain.PickingWave;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.sales.domain.SalesOrderLine;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.api.AllocationLookup;
 import com.invsys.modules.fulfillment.repository.ClusterToteMappingRepository;
 import com.invsys.modules.fulfillment.repository.PickingWaveRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.repository.PickingBatchRepository;
 import com.invsys.repository.PickingTaskRepository;
-import com.invsys.modules.sales.repository.SalesOrderLineRepository;
+import com.invsys.modules.sales.api.SalesOrderLineLookup;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,16 +37,16 @@ public class ClusterPickingService {
     private final PickingWaveRepository waveRepository;
     private final PickingBatchRepository batchRepository;
     private final PickingTaskRepository taskRepository;
-    private final AllocationRepository allocationRepository;
-    private final SalesOrderLineRepository salesOrderLineRepository;
+    private final AllocationLookup allocationRepository;
+    private final SalesOrderLineLookup salesOrderLineRepository;
     private final ClusterToteMappingRepository clusterToteMappingRepository;
     private final ProductVariantRepository variantRepository;
 
     public ClusterPickingService(PickingWaveRepository waveRepository,
                                  PickingBatchRepository batchRepository,
                                  PickingTaskRepository taskRepository,
-                                 AllocationRepository allocationRepository,
-                                 SalesOrderLineRepository salesOrderLineRepository,
+                                 AllocationLookup allocationRepository,
+                                 SalesOrderLineLookup salesOrderLineRepository,
                                  ClusterToteMappingRepository clusterToteMappingRepository,
                                  ProductVariantRepository variantRepository) {
         this.waveRepository = waveRepository;

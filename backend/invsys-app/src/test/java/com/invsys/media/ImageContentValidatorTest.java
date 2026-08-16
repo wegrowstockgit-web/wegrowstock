@@ -30,6 +30,18 @@ class ImageContentValidatorTest {
     }
 
     @Test
+    void acceptsPdfMagicBytes() {
+        byte[] pdf = "%PDF-1.4 fake-pdf-body".getBytes();
+        assertThat(validator.detectAndValidate(pdf, "application/pdf")).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void acceptsSafeSvg() {
+        byte[] svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".getBytes();
+        assertThat(validator.detectAndValidate(svg, "image/svg+xml")).isEqualTo("image/svg+xml");
+    }
+
+    @Test
     void detectsJpegGifAndWebp() {
         byte[] jpeg = new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
         assertThat(ImageContentValidator.detect(jpeg)).isEqualTo("image/jpeg");

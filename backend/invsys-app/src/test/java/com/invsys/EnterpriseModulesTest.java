@@ -1,6 +1,6 @@
 package com.invsys;
 
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.domain.DemandForecast;
 import com.invsys.domain.EdiTradingPartner;
@@ -15,7 +15,7 @@ import com.invsys.modules.sales.domain.SalesOrderLine;
 import com.invsys.modules.purchasing.domain.Supplier;
 import com.invsys.domain.SupplierInvoiceIngestion;
 import com.invsys.repository.ApMatchingLogRepository;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.fintech.repository.CapitalCreditLineRepository;
 import com.invsys.modules.sales.repository.CustomerRepository;
 import com.invsys.repository.DemandForecastRepository;

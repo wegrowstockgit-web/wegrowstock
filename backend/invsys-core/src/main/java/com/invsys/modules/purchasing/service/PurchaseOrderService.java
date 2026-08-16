@@ -20,7 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.invsys.modules.inventory.service.InventoryService;
+import com.invsys.modules.inventory.api.InventoryOperations;
 import com.invsys.service.CrossDockService;
 import com.invsys.service.UomConversionService;
 
@@ -29,7 +29,7 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderLineRepository lineRepository;
-    private final InventoryService inventoryService;
+    private final InventoryOperations inventoryService;
     private final UomConversionService uomConversionService;
     private final TenantSettingsRepository tenantSettingsRepository;
     private final OutboxService outboxService;
@@ -37,7 +37,7 @@ public class PurchaseOrderService {
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderLineRepository lineRepository,
-                                InventoryService inventoryService,
+                                InventoryOperations inventoryService,
                                 UomConversionService uomConversionService,
                                 TenantSettingsRepository tenantSettingsRepository,
                                 OutboxService outboxService,

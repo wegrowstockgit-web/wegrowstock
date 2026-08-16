@@ -11,6 +11,7 @@ import {
   useToast,
 } from '@invsys/shared-ui';
 import { fetchTenants } from '@/features/tenants/api';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchShards, putShard, type ShardRoute } from './api';
 
 const emptyForm = {
@@ -74,20 +75,18 @@ export function ShardRoutingPanel() {
 
   return (
     <div className="space-y-8" data-testid="shard-routing">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Shard routing</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Map tenants to JDBC / Aurora shard keys for multi-region data planes.
-        </p>
-      </div>
+      <PageHeader
+        title="Shard routing"
+        description="Map tenants to JDBC / Aurora shard keys for multi-region data planes."
+      />
 
-      <section className="space-y-3 rounded-lg border border-border bg-surface-raised p-4">
+      <section className="admin-card space-y-3 p-5">
         <h3 className="text-sm font-semibold text-text">Upsert route</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Tenant</span>
             <select
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={form.tenantId}
               onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
             >
@@ -101,7 +100,7 @@ export function ShardRoutingPanel() {
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Shard key</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={form.shardKey}
               onChange={(e) => setForm((f) => ({ ...f, shardKey: e.target.value }))}
             />
@@ -109,7 +108,7 @@ export function ShardRoutingPanel() {
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Region</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={form.region}
               onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
             />
@@ -117,7 +116,7 @@ export function ShardRoutingPanel() {
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Aurora cluster</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={form.auroraCluster}
               onChange={(e) => setForm((f) => ({ ...f, auroraCluster: e.target.value }))}
             />
@@ -125,7 +124,7 @@ export function ShardRoutingPanel() {
           <label className="block text-sm sm:col-span-2">
             <span className="mb-1 block text-text-muted">JDBC URL</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 font-mono text-sm"
+              className="admin-field font-mono"
               value={form.jdbcUrl}
               onChange={(e) => setForm((f) => ({ ...f, jdbcUrl: e.target.value }))}
             />
@@ -133,7 +132,7 @@ export function ShardRoutingPanel() {
           <label className="block text-sm sm:col-span-2">
             <span className="mb-1 block text-text-muted">Notes</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />

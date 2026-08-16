@@ -25,7 +25,7 @@ import {
  *
  * Uses a fresh zero-OH SKU (seed WIDGET-L is a kit; demo WIDGET-S stock is polluted by prior E2E).
  */
-test.describe.serial('Journey 13: Cross-docking orchestration', () => {
+test.describe('Journey 13: Cross-docking orchestration', () => {
   test('inbound receipt bypasses storage when open backorder exists', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
 

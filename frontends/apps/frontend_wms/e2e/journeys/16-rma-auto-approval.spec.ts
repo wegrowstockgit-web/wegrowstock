@@ -16,7 +16,7 @@ const FIXTURE_PNG = path.join(process.cwd(), 'e2e', 'fixtures', 'pixel.png');
  * Track 16 — Self-serve Auto-RMA: low-value auto-approve vs DAMAGED pending review.
  * Estimates use EasyPostGateway.estimateCheapestRate (rate-only). Docker/dev = MockEasyPostGateway.
  */
-test.describe.serial('Journey 16: Customer Self-Serve Auto-RMA Rules', () => {
+test.describe('Journey 16: Customer Self-Serve Auto-RMA Rules', () => {
   test('auto-approve $50 return; damaged → pending → approve without label', async ({
     browser,
   }) => {

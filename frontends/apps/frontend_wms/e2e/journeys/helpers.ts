@@ -327,6 +327,108 @@ export async function createZeroStockSellableVariant(
 }
 
 /**
+ * Self-contained pick-wave seed: receive stock, create SO, confirm, allocate, generate/release/claim.
+ * Journeys must not read shared files or assume a prior spec already ran.
+ */
+export async function seedAllocatedPickWave(
+  managerPage: Page,
+  pickerPage: Page,
+  opts?: { sku?: string; quantity?: number; numberPrefix?: string },
+): Promise<{
+  salesOrderId: string;
+  salesOrderNumber: string;
+  salesOrderLineId: string;
+  variantId: string;
+  waveId: string;
+}> {
+  const sku = opts?.sku ?? WIDGET_S_SKU;
+  const qty = opts?.quantity ?? 5;
+  const variantId = await findVariantId(managerPage, sku);
+  const customerId = await firstCustomerId(managerPage);
+
+  const receiveRes = await managerPage.request.post('/api/v1/inventory/receive', {
+    data: {
+      variantId,
+      locationId: PICK_BIN_ID,
+      quantity: qty + 50,
+      referenceType: 'E2E_WAVE_TOPUP',
+    },
+  });
+  if (!receiveRes.ok()) {
+    throw new Error(`Wave seed receive failed: ${receiveRes.status()} ${await receiveRes.text()}`);
+  }
+
+  const so = await apiJson<{ id: string; number: string }>(managerPage, '/api/v1/sales-orders', {
+    method: 'POST',
+    body: JSON.stringify({
+      customerId,
+      number: `${opts?.numberPrefix ?? 'SO-WAVE'}-${Date.now()}`,
+      lines: [{ variantId, qtyOrdered: qty, unitPrice: 12.5 }],
+    }),
+  });
+  const confirmRes = await managerPage.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
+  if (!confirmRes.ok()) {
+    throw new Error(`Wave seed confirm failed: ${confirmRes.status()} ${await confirmRes.text()}`);
+  }
+
+  let allocRes = await managerPage.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+  if (allocRes.ok()) {
+    const allocated = (await allocRes.json()) as { status?: string };
+    if (allocated.status === 'BACKORDERED') {
+      await managerPage.request.post('/api/v1/inventory/receive', {
+        data: {
+          variantId,
+          locationId: PICK_BIN_ID,
+          quantity: qty + 50,
+          referenceType: 'E2E_WAVE_TOPUP_RETRY',
+        },
+      });
+      allocRes = await managerPage.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+    }
+  }
+  if (!allocRes.ok()) {
+    throw new Error(`Wave seed allocate failed: ${allocRes.status()} ${await allocRes.text()}`);
+  }
+
+  const detail = await apiJson<{
+    id: string;
+    status: string;
+    number: string;
+    lines: Array<{ id: string }>;
+  }>(managerPage, `/api/v1/sales-orders/${so.id}`);
+  if (!['ALLOCATED', 'PARTIALLY_SHIPPED'].includes(detail.status)) {
+    throw new Error(`Wave seed SO ${so.id} not allocated (status=${detail.status})`);
+  }
+
+  const waveRes = await managerPage.request.post('/api/v1/picking/waves/generate', {
+    headers: { 'Content-Type': 'application/json' },
+    data: {},
+  });
+  if (!waveRes.ok()) {
+    throw new Error(`Wave generate failed: ${waveRes.status()} ${await waveRes.text()}`);
+  }
+  const wave = (await waveRes.json()) as { waveId: string };
+  const releaseRes = await managerPage.request.post(`/api/v1/picking/waves/${wave.waveId}/release`);
+  if (!releaseRes.ok()) {
+    throw new Error(`Wave release failed: ${releaseRes.status()} ${await releaseRes.text()}`);
+  }
+  const claimRes = await pickerPage.request.post(`/api/v1/picking/waves/${wave.waveId}/claim`, {
+    headers: { 'X-Warehouse-Id': WH_01 },
+  });
+  if (!claimRes.ok()) {
+    throw new Error(`Wave claim failed: ${claimRes.status()} ${await claimRes.text()}`);
+  }
+
+  return {
+    salesOrderId: so.id,
+    salesOrderNumber: so.number,
+    salesOrderLineId: detail.lines[0]?.id ?? '',
+    variantId,
+    waveId: wave.waveId,
+  };
+}
+
+/**
  * Create a small shipped SO so RMA journeys have returnable qty (seeded SO may be exhausted).
  */
 export async function createShippedSalesOrder(

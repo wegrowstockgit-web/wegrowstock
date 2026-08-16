@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 
 /**
  * Maps parking context (URL + scan mode / action) into glove-friendly form field descriptors.

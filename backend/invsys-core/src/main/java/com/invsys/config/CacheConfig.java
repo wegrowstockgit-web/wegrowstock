@@ -15,9 +15,10 @@ import org.springframework.context.annotation.Configuration;
 public class CacheConfig {
 
     public static final String TENANT_SETTINGS_CACHE = "TenantSettingsCache";
+    public static final String TIER_DEFINITIONS_CACHE = "TierDefinitionsCache";
 
     @Bean
     public CacheManager cacheManager() {
-        return new ConcurrentMapCacheManager(TENANT_SETTINGS_CACHE);
+        return new ConcurrentMapCacheManager(TENANT_SETTINGS_CACHE, TIER_DEFINITIONS_CACHE);
     }
 }

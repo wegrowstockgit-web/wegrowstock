@@ -1,6 +1,7 @@
 package com.invsys.config;
 
 import com.invsys.core.common.ApiException;
+import com.invsys.core.security.ClientIpResolver;
 import com.invsys.ratelimit.DistributedRateLimiter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -27,16 +28,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Duration WINDOW = Duration.ofMinutes(1);
 
     private final DistributedRateLimiter distributedRateLimiter;
+    private final ClientIpResolver clientIpResolver;
     private final int authLimit;
     private final int terminalPinLimit;
     private final int webhookLimit;
 
     public RateLimitFilter(
             DistributedRateLimiter distributedRateLimiter,
+            ClientIpResolver clientIpResolver,
             @Value("${invsys.rate-limit.auth-per-minute:60}") int authLimit,
             @Value("${invsys.rate-limit.terminal-pin-per-minute:20}") int terminalPinLimit,
             @Value("${invsys.rate-limit.webhook-per-minute:120}") int webhookLimit) {
         this.distributedRateLimiter = distributedRateLimiter;
+        this.clientIpResolver = clientIpResolver;
         this.authLimit = authLimit;
         this.terminalPinLimit = terminalPinLimit;
         this.webhookLimit = webhookLimit;
@@ -51,7 +55,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        String key = "rate:ip:" + pathBucket(path) + ":" + clientKey(request);
+        String key = "rate:ip:" + pathBucket(path) + ":" + clientIpResolver.resolve(request);
         try {
             distributedRateLimiter.tryAcquire(key, limit, 1, WINDOW);
         } catch (ApiException ex) {
@@ -101,11 +105,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return "other";
     }
 
-    private static String clientKey(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr() != null ? request.getRemoteAddr() : "unknown";
-    }
 }

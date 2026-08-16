@@ -68,7 +68,18 @@ public class SecurityConfig {
                         .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                         .permissionsPolicy(p -> p.policy("geolocation=(self), microphone=(), camera=()")))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedEntryPoint))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    String uri = request.getRequestURI();
+                    if (uri != null && uri.startsWith("/actuator")) {
+                        response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+                        response.setContentType("application/problem+json");
+                        response.getWriter().write(
+                                "{\"type\":\"about:blank\",\"title\":\"FORBIDDEN\",\"status\":403,"
+                                        + "\"detail\":\"Actuator scrape not allowed from this address\"}");
+                        return;
+                    }
+                    unauthorizedEntryPoint.commence(request, response, authException);
+                }))
                 .authorizeHttpRequests(auth -> {
                     if (publicSignupEnabled) {
                         auth.requestMatchers("/api/v1/auth/signup").permitAll();

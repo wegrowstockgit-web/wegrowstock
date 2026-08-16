@@ -7,12 +7,11 @@ import {
   expectFulfillmentSurface,
   hidScan,
 } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Full hybrid conflict engine: floor park → human-readable panel → Approve & Re-process.
  */
-test.describe.serial('Journey 09b: Offline conflict metadata resolve', () => {
+test.describe('Journey 09b: Offline conflict metadata resolve', () => {
   test('manager resolves parked conflict via schema-driven form', async ({ browser }) => {
     const picker = await contextForRole(browser, 'picker');
     const manager = await contextForRole(browser, 'manager');
@@ -101,7 +100,6 @@ test.describe.serial('Journey 09b: Offline conflict metadata resolve', () => {
         }, { timeout: 25_000 })
         .toBe(0);
 
-      writeJourneyState({ events: ['OFFLINE_CONFLICT_RESOLVED'] });
     } finally {
       await picker.context.setOffline(false).catch(() => undefined);
       await picker.close();

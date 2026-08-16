@@ -1,7 +1,7 @@
 package com.invsys.modules.fulfillment.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.modules.catalog.domain.ProductVariant;
@@ -14,11 +14,13 @@ import com.invsys.domain.WorkstationSettings;
 import com.invsys.core.integration.OutboxService;
 import com.invsys.integration.easypost.EasyPostGateway;
 import com.invsys.integration.easypost.EasyPostProperties;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
-import com.invsys.modules.sales.repository.CustomerRepository;
+import com.invsys.modules.inventory.api.AllocationLookup;
+import com.invsys.modules.inventory.api.InventoryOperations;
+import com.invsys.modules.inventory.api.LpnOperations;
+import com.invsys.modules.sales.api.CustomerLookup;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
-import com.invsys.modules.sales.repository.SalesOrderLineRepository;
-import com.invsys.modules.sales.repository.SalesOrderRepository;
+import com.invsys.modules.sales.api.SalesOrderLineLookup;
+import com.invsys.modules.sales.api.SalesOrderLookup;
 import com.invsys.modules.fulfillment.repository.ShipmentLineRepository;
 import com.invsys.modules.fulfillment.repository.ShipmentRepository;
 import com.invsys.modules.catalog.repository.ShippingCartonRepository;
@@ -32,8 +34,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.invsys.modules.inventory.service.InventoryService;
-import com.invsys.modules.inventory.service.LpnService;
 import com.invsys.service.CartonizationEngine;
 import com.invsys.service.KitService;
 import com.invsys.service.WorkstationSettingsService;
@@ -43,36 +43,36 @@ public class ShipmentService {
 
     private final ShipmentRepository shipmentRepository;
     private final ShipmentLineRepository shipmentLineRepository;
-    private final SalesOrderRepository salesOrderRepository;
-    private final SalesOrderLineRepository salesOrderLineRepository;
-    private final AllocationRepository allocationRepository;
+    private final SalesOrderLookup salesOrderRepository;
+    private final SalesOrderLineLookup salesOrderLineRepository;
+    private final AllocationLookup allocationRepository;
     private final ProductVariantRepository productVariantRepository;
     private final ShippingCartonRepository shippingCartonRepository;
-    private final InventoryService inventoryService;
-    private final LpnService lpnService;
+    private final InventoryOperations inventoryService;
+    private final LpnOperations lpnService;
     private final OutboxService outboxService;
     private final KitService kitService;
     private final CartonizationEngine cartonizationEngine;
     private final EasyPostGateway easyPostClient;
     private final WorkstationSettingsService workstationSettingsService;
-    private final CustomerRepository customerRepository;
+    private final CustomerLookup customerRepository;
     private final EasyPostProperties easyPostProperties;
 
     public ShipmentService(ShipmentRepository shipmentRepository,
                            ShipmentLineRepository shipmentLineRepository,
-                           SalesOrderRepository salesOrderRepository,
-                           SalesOrderLineRepository salesOrderLineRepository,
-                           AllocationRepository allocationRepository,
+                           SalesOrderLookup salesOrderRepository,
+                           SalesOrderLineLookup salesOrderLineRepository,
+                           AllocationLookup allocationRepository,
                            ProductVariantRepository productVariantRepository,
                            ShippingCartonRepository shippingCartonRepository,
-                           InventoryService inventoryService,
-                           LpnService lpnService,
+                           InventoryOperations inventoryService,
+                           LpnOperations lpnService,
                            OutboxService outboxService,
                            KitService kitService,
                            CartonizationEngine cartonizationEngine,
                            EasyPostGateway easyPostClient,
                            WorkstationSettingsService workstationSettingsService,
-                           CustomerRepository customerRepository,
+                           CustomerLookup customerRepository,
                            EasyPostProperties easyPostProperties) {
         this.shipmentRepository = shipmentRepository;
         this.shipmentLineRepository = shipmentLineRepository;
@@ -164,7 +164,7 @@ public class ShipmentService {
     }
 
     private void shipByLpn(SalesOrder order, Shipment shipment, String lpnBarcode) {
-        LpnService.LpnContents contents = lpnService.contents(lpnBarcode);
+        LpnOperations.LpnContents contents = lpnService.contents(lpnBarcode);
         List<SalesOrderLine> soLines = salesOrderLineRepository.findBySalesOrderId(order.getId());
 
         lpnService.shipLpn(lpnBarcode, order.getId(), shipment.getId());

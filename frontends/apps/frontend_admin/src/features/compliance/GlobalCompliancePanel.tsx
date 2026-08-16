@@ -15,6 +15,7 @@ import {
   createComplianceBroadcast,
   fetchComplianceBroadcasts,
 } from './api';
+import { PageHeader } from '@/features/layout/PageHeader';
 
 export function GlobalCompliancePanel() {
   const toast = useToast();
@@ -76,23 +77,21 @@ export function GlobalCompliancePanel() {
 
   return (
     <div className="space-y-8" data-testid="global-compliance">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Global compliance</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Platform-wide compliance broadcasts (tax schemes, lot rules) pushed to all tenants.
-        </p>
-      </div>
+      <PageHeader
+        title="Global compliance"
+        description="Platform-wide compliance broadcasts (tax schemes, lot rules) pushed to all tenants."
+      />
 
       <form
         onSubmit={onSubmit}
-        className="space-y-3 rounded-lg border border-border bg-surface-raised p-4"
+        className="admin-card space-y-3 p-5"
       >
         <h3 className="text-sm font-semibold text-text">New broadcast</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Category</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               required
@@ -102,7 +101,7 @@ export function GlobalCompliancePanel() {
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Title</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+              className="admin-field"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
@@ -112,7 +111,7 @@ export function GlobalCompliancePanel() {
           <label className="block text-sm sm:col-span-2">
             <span className="mb-1 block text-text-muted">Payload JSON</span>
             <textarea
-              className="min-h-[88px] w-full rounded border border-border bg-surface px-3 py-2 font-mono text-sm"
+              className="admin-field min-h-[88px] h-auto py-2 font-mono"
               value={payloadText}
               onChange={(e) => setPayloadText(e.target.value)}
               data-testid="compliance-payload"

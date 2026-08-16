@@ -118,6 +118,19 @@ class MediaUploadHttpTest extends AbstractIntegrationTest {
                         .content("{\"url\":\"https://127.0.0.1/evil.png\",\"isPrimary\":false}"))
                 .andExpect(status().isBadRequest());
 
+        byte[] elf = new byte[64];
+        elf[0] = 0x7F;
+        elf[1] = 'E';
+        elf[2] = 'L';
+        elf[3] = 'F';
+        MockMultipartFile disguised = new MockMultipartFile(
+                "file", "innocent.png", "image/png", elf);
+        mockMvc.perform(multipart("/api/v1/media/uploads")
+                        .file(disguised)
+                        .param("kind", "EVIDENCE")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isBadRequest());
+
         MockMultipartFile exe = new MockMultipartFile(
                 "file", "payload.exe", "application/octet-stream", "MZ-not-image".getBytes());
         mockMvc.perform(multipart("/api/v1/media/uploads")

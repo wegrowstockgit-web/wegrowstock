@@ -8,14 +8,19 @@ const ADMIN_API = process.env.ADMIN_API_URL ?? 'http://localhost:8081';
 const ADMIN_UI = process.env.ADMIN_UI_URL ?? 'http://localhost:3002';
 const WMS_API = process.env.WMS_API_URL ?? 'http://localhost:8080';
 
+async function csrfHeaders(ctx: Awaited<ReturnType<typeof pwRequest.newContext>>) {
+  const token = (await ctx.storageState()).cookies.find((c) => c.name === 'XSRF-TOKEN')?.value;
+  return token ? { 'X-XSRF-TOKEN': decodeURIComponent(token) } : {};
+}
+
 async function loginAdminApi() {
   const ctx = await pwRequest.newContext({ baseURL: ADMIN_API });
-  const csrf = await ctx.get('/api/v1/control-plane/auth/csrf');
-  expect(csrf.ok()).toBeTruthy();
+  expect((await ctx.get('/api/v1/control-plane/auth/csrf')).ok()).toBeTruthy();
   const login = await ctx.post('/api/v1/control-plane/auth/login', {
     data: { email: 'owner@demo.test', password: 'password123' },
   });
   expect(login.ok(), await login.text()).toBeTruthy();
+  expect((await ctx.get('/api/v1/control-plane/auth/csrf')).ok()).toBeTruthy();
   return ctx;
 }
 
@@ -27,19 +32,22 @@ test.describe('Control Plane Phase 4/5 functional', () => {
     await page.getByRole('button', { name: /sign in|log in/i }).click();
     await expect(page.getByTestId('admin-layout')).toBeVisible({ timeout: 20_000 });
 
-    for (const path of [
-      '/billing',
-      '/copilot/knowledge',
-      '/integrations',
-      '/audit',
-      '/shards',
-      '/operations/dlq',
-      '/telemetry',
-      '/compliance',
-    ]) {
-      await page.goto(`${ADMIN_UI}${path}`);
+    const destinations = [
+      { name: /platform billing/i, testId: 'platform-billing' },
+      { name: /pricing & packaging/i, testId: 'platform-packaging' },
+      { name: /copilot knowledge/i, testId: 'copilot-knowledge' },
+      { name: /webhooks & integrations/i, testId: 'integrations-hub' },
+      { name: /audit trail/i, testId: 'platform-audit' },
+      { name: /shard routing/i, testId: 'shard-routing' },
+      { name: /dead letter queue/i, testId: 'dead-letter-queue' },
+      { name: /concurrency/i, testId: 'concurrency-dashboard' },
+      { name: /global compliance/i, testId: 'global-compliance' },
+    ] as const;
+
+    for (const dest of destinations) {
+      await page.getByRole('link', { name: dest.name }).click();
       await expect(page.getByTestId('admin-layout')).toBeVisible();
-      await expect(page.locator('main')).toBeVisible();
+      await expect(page.getByTestId(dest.testId)).toBeVisible({ timeout: 20_000 });
     }
   });
 
@@ -52,11 +60,19 @@ test.describe('Control Plane Phase 4/5 functional', () => {
     const demo = list.find((t: { slug?: string }) => t.slug === 'demo-corp' || t.slug === 'demo') ?? list[0];
     const tenantId = demo.tenantId as string;
 
-    const imp = await admin.post(`/api/v1/control-plane/tenants/${tenantId}/impersonate`);
+    const headers = await csrfHeaders(admin);
+    const imp = await admin.post(`/api/v1/control-plane/tenants/${tenantId}/impersonate`, {
+      headers,
+    });
     expect(imp.ok(), await imp.text()).toBeTruthy();
     const impBody = await imp.json();
     expect(impBody.accessToken).toBeTruthy();
     expect(impBody.expiresInSeconds).toBe(900);
+
+    const packaging = await admin.get('/api/v1/control-plane/packaging/tiers');
+    expect(packaging.ok()).toBeTruthy();
+    const tiers = (await packaging.json()) as Array<{ tierCode: string; defaultModules: string[] }>;
+    expect(tiers.some((t) => t.tierCode === 'BASIC' && t.defaultModules.includes('CORE'))).toBeTruthy();
 
     const billing = await admin.get('/api/v1/control-plane/billing/overview');
     expect(billing.ok()).toBeTruthy();
@@ -64,6 +80,7 @@ test.describe('Control Plane Phase 4/5 functional', () => {
     expect(bill.estimatedMrr).toBeDefined();
 
     await admin.post(`/api/v1/control-plane/integrations/tenants/${tenantId}/kill-switch`, {
+      headers,
       data: { paused: true, reason: 'e2e' },
     });
 
@@ -74,6 +91,7 @@ test.describe('Control Plane Phase 4/5 functional', () => {
 
     // Suspend → WMS must 403 authenticated calls
     await admin.patch(`/api/v1/control-plane/tenants/${tenantId}/status`, {
+      headers,
       data: { status: 'SUSPENDED' },
     });
 
@@ -89,9 +107,11 @@ test.describe('Control Plane Phase 4/5 functional', () => {
 
     // Restore
     await admin.patch(`/api/v1/control-plane/tenants/${tenantId}/status`, {
+      headers,
       data: { status: 'ACTIVE' },
     });
     await admin.post(`/api/v1/control-plane/integrations/tenants/${tenantId}/kill-switch`, {
+      headers,
       data: { paused: false },
     });
 

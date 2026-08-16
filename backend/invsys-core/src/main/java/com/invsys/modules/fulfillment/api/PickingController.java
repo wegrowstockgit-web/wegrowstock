@@ -1,10 +1,10 @@
 package com.invsys.modules.fulfillment.api;
 
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.domain.PickingTask;
 import com.invsys.modules.catalog.domain.ProductVariant;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.api.AllocationLookup;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.modules.fulfillment.service.PickingService;
@@ -28,13 +28,13 @@ import java.util.UUID;
 public class PickingController {
 
     private final PickingWaveService pickingWaveService;
-    private final AllocationRepository allocationRepository;
+    private final AllocationLookup allocationRepository;
     private final ProductVariantRepository variantRepository;
     private final LocationRepository locationRepository;
     private final PickingService pickingService;
 
     public PickingController(PickingWaveService pickingWaveService,
-                             AllocationRepository allocationRepository,
+                             AllocationLookup allocationRepository,
                              ProductVariantRepository variantRepository,
                              LocationRepository locationRepository,
                              PickingService pickingService) {

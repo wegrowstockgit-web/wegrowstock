@@ -1,5 +1,6 @@
 package com.invsys.api;
 
+import com.invsys.modules.inventory.api.LpnOperations;
 import com.invsys.modules.inventory.domain.InventoryLedger;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.modules.inventory.repository.InventoryLevelRepository;
@@ -80,7 +81,7 @@ public class InventoryController {
 
     @GetMapping("/lpns/{lpnBarcode}")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
-    public LpnService.LpnContents lpnContents(@PathVariable String lpnBarcode) {
+    public LpnOperations.LpnContents lpnContents(@PathVariable String lpnBarcode) {
         return lpnService.contents(lpnBarcode);
     }
 

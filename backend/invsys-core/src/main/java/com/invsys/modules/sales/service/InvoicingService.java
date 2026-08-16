@@ -9,8 +9,8 @@ import com.invsys.domain.Payment;
 import com.invsys.domain.PaymentIntent;
 import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.modules.sales.domain.SalesOrderLine;
-import com.invsys.modules.fulfillment.domain.Shipment;
-import com.invsys.modules.fulfillment.domain.ShipmentLine;
+import com.invsys.modules.sales.api.InvoicePaymentSettledEvent;
+import com.invsys.modules.sales.api.ShipmentInvoiceSource;
 import com.invsys.domain.StripeAccount;
 import com.invsys.domain.TenantSettings;
 import com.invsys.modules.sales.repository.CustomerRepository;
@@ -20,11 +20,10 @@ import com.invsys.repository.PaymentIntentRepository;
 import com.invsys.repository.PaymentRepository;
 import com.invsys.modules.sales.repository.SalesOrderLineRepository;
 import com.invsys.modules.sales.repository.SalesOrderRepository;
-import com.invsys.modules.fulfillment.repository.ShipmentLineRepository;
-import com.invsys.modules.fulfillment.repository.ShipmentRepository;
 import com.invsys.repository.StripeAccountRepository;
 import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.core.tenancy.TenantContext;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +36,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.invsys.documents.DocumentArchivalService;
-import com.invsys.modules.fintech.service.FintechUnderwritingService;
 import com.invsys.service.CreditService;
 import com.invsys.service.DocumentSequenceService;
 import org.slf4j.Logger;
@@ -62,9 +60,8 @@ public class InvoicingService {
     private final StripeConnectGateway stripeGateway;
     private final OutboxService outboxService;
     private final CreditService creditService;
-    private final ShipmentRepository shipmentRepository;
-    private final ShipmentLineRepository shipmentLineRepository;
-    private final FintechUnderwritingService fintechUnderwritingService;
+    private final ShipmentInvoiceSource shipmentInvoiceSource;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<DocumentArchivalService> documentArchivalService;
 
     public InvoicingService(InvoiceRepository invoiceRepository,
@@ -80,9 +77,8 @@ public class InvoicingService {
                             StripeConnectGateway stripeGateway,
                             OutboxService outboxService,
                             CreditService creditService,
-                            ShipmentRepository shipmentRepository,
-                            ShipmentLineRepository shipmentLineRepository,
-                            FintechUnderwritingService fintechUnderwritingService,
+                            ShipmentInvoiceSource shipmentInvoiceSource,
+                            ApplicationEventPublisher eventPublisher,
                             ObjectProvider<DocumentArchivalService> documentArchivalService) {
         this.invoiceRepository = invoiceRepository;
         this.invoiceLineRepository = invoiceLineRepository;
@@ -97,9 +93,8 @@ public class InvoicingService {
         this.stripeGateway = stripeGateway;
         this.outboxService = outboxService;
         this.creditService = creditService;
-        this.shipmentRepository = shipmentRepository;
-        this.shipmentLineRepository = shipmentLineRepository;
-        this.fintechUnderwritingService = fintechUnderwritingService;
+        this.shipmentInvoiceSource = shipmentInvoiceSource;
+        this.eventPublisher = eventPublisher;
         this.documentArchivalService = documentArchivalService;
     }
 
@@ -137,9 +132,9 @@ public class InvoicingService {
     @Transactional
     public Invoice createFromShipment(UUID shipmentId) {
         UUID tenantId = TenantContext.requireTenantId();
-        Shipment shipment = shipmentRepository.findById(shipmentId)
+        ShipmentInvoiceSource.ShipmentRef shipment = shipmentInvoiceSource.findById(shipmentId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Shipment not found"));
-        if (!shipment.getTenantId().equals(tenantId)) {
+        if (!shipment.tenantId().equals(tenantId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Shipment not found");
         }
 
@@ -148,12 +143,12 @@ public class InvoicingService {
                     "Shipment already has invoice " + existing.getNumber());
         });
 
-        SalesOrder order = salesOrderRepository.findById(shipment.getSalesOrderId())
+        SalesOrder order = salesOrderRepository.findById(shipment.salesOrderId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
 
         Map<UUID, BigDecimal> qtyByLine = new HashMap<>();
-        for (ShipmentLine shipmentLine : shipmentLineRepository.findByShipmentId(shipmentId)) {
-            qtyByLine.merge(shipmentLine.getSalesOrderLineId(), shipmentLine.getQuantity(), BigDecimal::add);
+        for (ShipmentInvoiceSource.LineQty shipmentLine : shipmentInvoiceSource.findLines(shipmentId)) {
+            qtyByLine.merge(shipmentLine.salesOrderLineId(), shipmentLine.quantity(), BigDecimal::add);
         }
         if (qtyByLine.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "EMPTY_SHIPMENT", "Shipment has no lines to invoice");
@@ -331,10 +326,11 @@ public class InvoicingService {
         Invoice invoice = invoiceRepository.findById(pi.getInvoiceId()).orElseThrow();
         invoice.setStatus("PAID");
         invoiceRepository.save(invoice);
-        BigDecimal payback = fintechUnderwritingService.applyFactoringPayback(invoice.getId(), pi.getAmount());
+        InvoicePaymentSettledEvent settled = new InvoicePaymentSettledEvent(invoice.getId(), pi.getAmount());
+        eventPublisher.publishEvent(settled);
         outboxService.append("INVOICE", invoice.getId(), "INVOICE_PAID", Map.of(
                 "invoiceId", invoice.getId().toString(),
-                "factoringPayback", payback));
+                "factoringPayback", settled.getFactoringPayback()));
         creditService.replenishCredit(invoice.getCustomerId(), pi.getAmount());
     }
 }

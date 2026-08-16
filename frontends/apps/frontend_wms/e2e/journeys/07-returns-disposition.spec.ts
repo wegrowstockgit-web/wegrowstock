@@ -9,12 +9,11 @@ import {
   expect,
   firstCustomerId,
 } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Track 7 — Admin RMA approve → Picker receive → split RESTOCK / SCRAP disposition.
  */
-test.describe.serial('Journey 07: Advanced RMA & disposition', () => {
+test.describe('Journey 07: Advanced RMA & disposition', () => {
   test('approve RMA, scan receive, restock + scrap with ledger audit', async ({ browser }) => {
     const admin = await contextForRole(browser, 'admin');
     const picker = await contextForRole(browser, 'picker');
@@ -76,10 +75,6 @@ test.describe.serial('Journey 07: Advanced RMA & disposition', () => {
       });
       await admin.page.request.put(`/api/v1/returns/${rma.id}/lines/${scrapLine!.id}`, {
         data: { disposition: 'SCRAP' },
-      });
-
-      writeJourneyState({
-        events: [`RMA_APPROVED:${rma.number}`],
       });
 
       // --- Picker: Returns Receive — scan RMA number (keyboard.type keeps leading 'R') ---
@@ -197,7 +192,6 @@ test.describe.serial('Journey 07: Advanced RMA & disposition', () => {
         `expected RMA disposition evidence (status=${rmaStatus})`,
       ).toBeTruthy();
 
-      writeJourneyState({ events: [`RMA_DISPOSITION:${rma.number}:RESTOCK+SCRAP`] });
     } finally {
       await picker.close();
       await manager.close();

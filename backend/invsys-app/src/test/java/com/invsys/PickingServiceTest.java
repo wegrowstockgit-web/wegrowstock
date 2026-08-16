@@ -1,6 +1,6 @@
 package com.invsys;
 
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.catalog.domain.Product;
 import com.invsys.modules.catalog.domain.ProductVariant;

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { HardwareManualFallback } from '@/components/hardware/HardwareManualFallback';
 import { Button } from '@/components/ui/Button';
+import { getHardwareCapabilities } from '@/lib/hardwareCapabilities';
 import { cn } from '@/lib/utils';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 
@@ -52,6 +54,7 @@ export function FloorPunchClock({ warehouseSized }: { warehouseSized?: boolean }
 
   const active = Boolean(status?.active);
   const activity = status?.currentActivity ?? 'OFF';
+  const { isSupported, isBluetoothSupported, isSerialSupported } = getHardwareCapabilities();
 
   return (
     <div
@@ -100,6 +103,16 @@ export function FloorPunchClock({ warehouseSized }: { warehouseSized?: boolean }
           </Button>
         </>
       )}
+      <HardwareManualFallback
+        isSupported={isSupported}
+        mode="weight"
+        bluetoothSupported={isBluetoothSupported}
+        serialSupported={isSerialSupported}
+        className="w-28"
+        onManualSubmit={(value) => {
+          window.dispatchEvent(new CustomEvent('hardwareScan', { detail: { barcode: value } }));
+        }}
+      />
     </div>
   );
 }

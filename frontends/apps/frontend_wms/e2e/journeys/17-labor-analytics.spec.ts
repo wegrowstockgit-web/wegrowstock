@@ -17,7 +17,7 @@ import {
 /**
  * Track 17 — HID burst picks → backdated 1h shift → Labor Velocity Leaderboard metrics.
  */
-test.describe.serial('Journey 17: Floor Labor Velocity (LMS)', () => {
+test.describe('Journey 17: Floor Labor Velocity (LMS)', () => {
   test('picker burst scans; manager sees Active PPH + Utilization on leaderboard', async ({
     browser,
   }) => {

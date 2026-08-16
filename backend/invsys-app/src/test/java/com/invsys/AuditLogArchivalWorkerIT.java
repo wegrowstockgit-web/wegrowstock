@@ -219,7 +219,7 @@ class AuditLogArchivalWorkerIT extends AbstractIntegrationTest {
     void shouldTriggerAlertOnS3Timeout() throws Exception {
         insertAgedAuditRows(5, 95);
         double failuresBefore = meterRegistry.counter(
-                WmsMetrics.AUDIT_ARCHIVE_FAILURES, "tenant", tenantId.toString()).count();
+                WmsMetrics.AUDIT_ARCHIVE_FAILURES, "tenant", "redacted").count();
 
         // Hard-cut the proxied path the Spring S3Client uses (Toxiproxy chaos)
         s3Proxy.setConnectionCut(true);
@@ -233,7 +233,7 @@ class AuditLogArchivalWorkerIT extends AbstractIntegrationTest {
                     .isEqualTo(5);
 
             assertThat(meterRegistry.counter(
-                    WmsMetrics.AUDIT_ARCHIVE_FAILURES, "tenant", tenantId.toString()).count())
+                    WmsMetrics.AUDIT_ARCHIVE_FAILURES, "tenant", "redacted").count())
                     .as("ops alert counter must increment on archival failure")
                     .isGreaterThan(failuresBefore);
 

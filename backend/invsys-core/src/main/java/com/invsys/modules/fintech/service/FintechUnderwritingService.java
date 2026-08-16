@@ -8,9 +8,11 @@ import com.invsys.modules.sales.domain.Invoice;
 import com.invsys.domain.Payment;
 import com.invsys.modules.fintech.repository.CapitalCreditLineRepository;
 import com.invsys.modules.fintech.repository.FactoredInvoiceRepository;
-import com.invsys.modules.sales.repository.InvoiceRepository;
+import com.invsys.modules.sales.api.InvoiceLookup;
+import com.invsys.modules.sales.api.InvoicePaymentSettledEvent;
 import com.invsys.repository.PaymentRepository;
 import com.invsys.core.tenancy.TenantContext;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,13 +33,13 @@ public class FintechUnderwritingService {
     private static final int GMV_LOOKBACK_DAYS = 30;
     private static final int PAYMENT_LOOKBACK_DAYS = 90;
 
-    private final InvoiceRepository invoiceRepository;
+    private final InvoiceLookup invoiceRepository;
     private final FactoredInvoiceRepository factoredInvoiceRepository;
     private final CapitalCreditLineRepository creditLineRepository;
     private final PaymentRepository paymentRepository;
     private final CapitalGateway capitalGateway;
 
-    public FintechUnderwritingService(InvoiceRepository invoiceRepository,
+    public FintechUnderwritingService(InvoiceLookup invoiceRepository,
                                       FactoredInvoiceRepository factoredInvoiceRepository,
                                       CapitalCreditLineRepository creditLineRepository,
                                       PaymentRepository paymentRepository,
@@ -134,6 +136,11 @@ public class FintechUnderwritingService {
      *
      * @return amount applied to outstanding balance (zero if not factored / already settled)
      */
+    @EventListener
+    public void onInvoicePaymentSettled(InvoicePaymentSettledEvent event) {
+        event.setFactoringPayback(applyFactoringPayback(event.getInvoiceId(), event.getAmount()));
+    }
+
     @Transactional
     public BigDecimal applyFactoringPayback(UUID invoiceId, BigDecimal settlementAmount) {
         UUID tenantId = TenantContext.requireTenantId();

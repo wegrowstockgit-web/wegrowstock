@@ -1,12 +1,13 @@
 package com.invsys.modules.inventory.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.api.LpnOperations;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.modules.inventory.domain.LicensePlate;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.catalog.domain.ProductVariant;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.inventory.repository.InventoryLevelDeltaFlushRepository;
 import com.invsys.modules.inventory.repository.InventoryLevelRepository;
 import com.invsys.modules.inventory.repository.LicensePlateRepository;
@@ -31,7 +32,7 @@ import java.util.UUID;
  * On-the-fly palletization: mint LPNs, pack loose levels onto them, ship by LPN.
  */
 @Service
-public class LpnService {
+public class LpnService implements LpnOperations {
 
     private final LicensePlateRepository licensePlateRepository;
     private final InventoryLevelRepository levelRepository;
@@ -334,30 +335,4 @@ public class LpnService {
     ) {
     }
 
-    public record LpnContents(
-            UUID lpnId,
-            String lpnBarcode,
-            String status,
-            UUID locationId,
-            int lineCount,
-            BigDecimal totalQuantity,
-            List<InventoryLevel> levels
-    ) {
-    }
-
-    public record ShipLpnResult(
-            UUID lpnId,
-            String lpnBarcode,
-            int linesShipped,
-            List<ShippedLpnLine> lines
-    ) {
-    }
-
-    public record ShippedLpnLine(
-            UUID variantId,
-            UUID lotId,
-            BigDecimal quantity,
-            UUID locationId
-    ) {
-    }
 }

@@ -1,13 +1,16 @@
 package com.invsys.modules.fulfillment.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.modules.sales.domain.SalesOrderLine;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
-import com.invsys.modules.inventory.repository.InventoryLevelRepository;
-import com.invsys.modules.sales.repository.SalesOrderLineRepository;
+import com.invsys.modules.inventory.api.AllocationLookup;
+import com.invsys.modules.inventory.api.InventoryLevelLookup;
+import com.invsys.modules.sales.api.AllocateSalesOrderRequested;
+import com.invsys.modules.sales.api.ReleaseSalesOrderAllocationsRequested;
+import com.invsys.modules.sales.api.SalesOrderLineLookup;
 import com.invsys.core.tenancy.TenantContext;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,19 +26,32 @@ import com.invsys.service.KitService;
 @Service
 public class AllocationService {
 
-    private final InventoryLevelRepository levelRepository;
-    private final AllocationRepository allocationRepository;
-    private final SalesOrderLineRepository salesOrderLineRepository;
+    private final InventoryLevelLookup levelRepository;
+    private final AllocationLookup allocationRepository;
+    private final SalesOrderLineLookup salesOrderLineRepository;
     private final KitService kitService;
 
-    public AllocationService(InventoryLevelRepository levelRepository,
-                             AllocationRepository allocationRepository,
-                             SalesOrderLineRepository salesOrderLineRepository,
+    public AllocationService(InventoryLevelLookup levelRepository,
+                             AllocationLookup allocationRepository,
+                             SalesOrderLineLookup salesOrderLineRepository,
                              KitService kitService) {
         this.levelRepository = levelRepository;
         this.allocationRepository = allocationRepository;
         this.salesOrderLineRepository = salesOrderLineRepository;
         this.kitService = kitService;
+    }
+
+    @EventListener
+    public void onAllocateRequested(AllocateSalesOrderRequested event) {
+        for (SalesOrderLine line : salesOrderLineRepository.findBySalesOrderId(event.orderId())) {
+            allocate(line, event.locationIds());
+        }
+    }
+
+    @EventListener
+    public void onReleaseRequested(ReleaseSalesOrderAllocationsRequested event) {
+        salesOrderLineRepository.findBySalesOrderId(event.orderId())
+                .forEach(line -> releaseForLine(line.getId()));
     }
 
     @Transactional

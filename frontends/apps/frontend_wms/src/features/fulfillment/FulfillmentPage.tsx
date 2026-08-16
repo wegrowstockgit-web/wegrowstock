@@ -1194,7 +1194,7 @@ export function FulfillmentPage() {
               )}
 
               <div className="mt-3 space-y-3">
-                {!packingScale.serialSupported && !scale.supported ? (
+                {!packingScale.isSupported && !scale.isSupported ? (
                   <p className="text-sm text-text-muted">
                     Web Serial / Bluetooth unavailable — using carton billable weight, or enter a
                     manual override.

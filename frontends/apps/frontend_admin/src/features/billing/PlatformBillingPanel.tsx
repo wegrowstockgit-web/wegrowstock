@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@invsys/shared-ui';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchBillingOverview } from './api';
 
 export function PlatformBillingPanel() {
@@ -26,14 +27,12 @@ export function PlatformBillingPanel() {
 
   return (
     <div className="space-y-6" data-testid="platform-billing">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Platform billing</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Estimated MRR from commercial tiers and per-tenant usage against plan limits.
-        </p>
-      </div>
+      <PageHeader
+        title="Platform billing"
+        description="Estimated MRR from commercial tiers and per-tenant usage against plan limits."
+      />
 
-      <div className="rounded-lg border border-border bg-surface-raised p-5">
+      <div className="admin-card p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
           Estimated MRR
         </p>

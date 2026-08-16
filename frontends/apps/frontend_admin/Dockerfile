@@ -5,7 +5,7 @@ FROM node:24-alpine AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .browserslistrc ./
 COPY packages packages
 COPY apps/frontend_admin apps/frontend_admin
 

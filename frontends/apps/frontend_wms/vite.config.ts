@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import legacy from '@vitejs/plugin-legacy';
 import fs from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
@@ -12,7 +13,10 @@ export default defineConfig(({ mode }) => {
     env.VITE_ENABLE_CHATBOT === 'false' || fs.existsSync(chatbotDisabledMarker);
 
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      legacy({ targets: ['defaults', 'not IE 11'] }),
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

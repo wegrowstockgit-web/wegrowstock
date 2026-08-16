@@ -44,6 +44,12 @@ public class MediaStorageProperties {
 
     private long evidenceMaxBytes = 10 * 1024 * 1024L;
 
+    /**
+     * When true, custom {@code endpoint} / {@code public-endpoint} may resolve to loopback
+     * or RFC 1918 (MinIO / local tests). Production object storage should leave this false.
+     */
+    private boolean allowPrivateEndpoints = false;
+
     public String getProvider() {
         return provider;
     }
@@ -138,5 +144,13 @@ public class MediaStorageProperties {
 
     public void setEvidenceMaxBytes(long evidenceMaxBytes) {
         this.evidenceMaxBytes = evidenceMaxBytes;
+    }
+
+    public boolean isAllowPrivateEndpoints() {
+        return allowPrivateEndpoints;
+    }
+
+    public void setAllowPrivateEndpoints(boolean allowPrivateEndpoints) {
+        this.allowPrivateEndpoints = allowPrivateEndpoints;
     }
 }

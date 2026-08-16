@@ -8,7 +8,7 @@ import com.invsys.modules.purchasing.domain.PurchaseOrderLine;
 import com.invsys.domain.SupplierInvoiceIngestion;
 import com.invsys.core.integration.OutboxService;
 import com.invsys.repository.ApMatchingLogRepository;
-import com.invsys.modules.inventory.repository.InventoryLedgerRepository;
+import com.invsys.modules.inventory.api.InventoryLedgerLookup;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderRepository;
@@ -41,7 +41,7 @@ public class ApOcrIngestionService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderLineRepository lineRepository;
     private final ProductVariantRepository variantRepository;
-    private final InventoryLedgerRepository inventoryLedgerRepository;
+    private final InventoryLedgerLookup inventoryLedgerRepository;
     private final ApMatchingLogRepository apMatchingLogRepository;
     private final OutboxService outboxService;
 
@@ -49,7 +49,7 @@ public class ApOcrIngestionService {
                                  PurchaseOrderRepository purchaseOrderRepository,
                                  PurchaseOrderLineRepository lineRepository,
                                  ProductVariantRepository variantRepository,
-                                 InventoryLedgerRepository inventoryLedgerRepository,
+                                 InventoryLedgerLookup inventoryLedgerRepository,
                                  ApMatchingLogRepository apMatchingLogRepository,
                                  OutboxService outboxService) {
         this.ingestionRepository = ingestionRepository;

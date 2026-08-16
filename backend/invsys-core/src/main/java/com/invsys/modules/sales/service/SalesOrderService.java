@@ -18,6 +18,7 @@ import com.invsys.metrics.WmsMetrics;
 import com.invsys.core.tenancy.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +30,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import com.invsys.modules.fulfillment.service.AllocationService;
+import com.invsys.modules.sales.api.AllocateSalesOrderRequested;
+import com.invsys.modules.sales.api.ReleaseSalesOrderAllocationsRequested;
 import com.invsys.service.AuditService;
 import com.invsys.service.DocumentSequenceService;
 import com.invsys.service.SoftKitExplosionService;
@@ -39,7 +41,7 @@ public class SalesOrderService {
 
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderLineRepository lineRepository;
-    private final AllocationService allocationService;
+    private final ApplicationEventPublisher eventPublisher;
     private final LocationRepository locationRepository;
     private final OutboxService outboxService;
     private final AuditService auditService;
@@ -52,7 +54,7 @@ public class SalesOrderService {
 
     public SalesOrderService(SalesOrderRepository salesOrderRepository,
                              SalesOrderLineRepository lineRepository,
-                             AllocationService allocationService,
+                             ApplicationEventPublisher eventPublisher,
                              LocationRepository locationRepository,
                              OutboxService outboxService,
                              AuditService auditService,
@@ -64,7 +66,7 @@ public class SalesOrderService {
                              WmsMetrics wmsMetrics) {
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
-        this.allocationService = allocationService;
+        this.eventPublisher = eventPublisher;
         this.locationRepository = locationRepository;
         this.outboxService = outboxService;
         this.auditService = auditService;
@@ -189,8 +191,8 @@ public class SalesOrderService {
                     .stream().map(l -> l.getId()).toList();
             BigDecimal totalOrdered = BigDecimal.ZERO;
             BigDecimal totalAllocated = BigDecimal.ZERO;
+            eventPublisher.publishEvent(new AllocateSalesOrderRequested(orderId, locationIds));
             for (SalesOrderLine line : lineRepository.findBySalesOrderId(orderId)) {
-                allocationService.allocate(line, locationIds);
                 SalesOrderLine refreshed = lineRepository.findById(line.getId()).orElse(line);
                 totalOrdered = totalOrdered.add(refreshed.getQtyOrdered());
                 totalAllocated = totalAllocated.add(
@@ -223,7 +225,7 @@ public class SalesOrderService {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be cancelled");
         }
         String before = order.getStatus();
-        lineRepository.findBySalesOrderId(orderId).forEach(line -> allocationService.releaseForLine(line.getId()));
+        eventPublisher.publishEvent(new ReleaseSalesOrderAllocationsRequested(orderId));
         order.setStatus("CANCELLED");
         order = salesOrderRepository.save(order);
         auditService.record("SALES_ORDER_CANCEL", "SALES_ORDER", order.getId(), Map.of(

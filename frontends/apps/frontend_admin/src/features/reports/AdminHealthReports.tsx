@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@invsys/shared-ui';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchHealthReport } from './api';
 
 export function AdminHealthReports() {
@@ -18,12 +19,10 @@ export function AdminHealthReports() {
 
   return (
     <div className="space-y-8" data-testid="health-reports">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Health reports</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Webhook failures, rate-limit pressure, and ledger growth across tenants.
-        </p>
-      </div>
+      <PageHeader
+        title="Health reports"
+        description="Webhook failures, rate-limit pressure, and ledger growth across tenants."
+      />
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-text">Webhook failures (24h)</h3>

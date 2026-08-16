@@ -11,6 +11,7 @@ import {
   useToast,
 } from '@invsys/shared-ui';
 import { fetchTenants } from '@/features/tenants/api';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchIntegrationTraffic, setIntegrationKillSwitch } from './api';
 
 export function IntegrationsHubPanel() {
@@ -57,20 +58,18 @@ export function IntegrationsHubPanel() {
 
   return (
     <div className="space-y-8" data-testid="integrations-hub">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Webhooks & integrations</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Outbox traffic over the last 24 hours and per-tenant sync kill switches.
-        </p>
-      </div>
+      <PageHeader
+        title="Webhooks & integrations"
+        description="Outbox traffic over the last 24 hours and per-tenant sync kill switches."
+      />
 
-      <section className="space-y-3 rounded-lg border border-border bg-surface-raised p-4">
+      <section className="admin-card space-y-3 p-5">
         <h3 className="text-sm font-semibold text-text">Kill switch</h3>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block text-sm">
             <span className="mb-1 block text-text-muted">Tenant</span>
             <select
-              className="rounded border border-border bg-surface px-3 py-2 text-sm text-text"
+              className="admin-field min-w-[14rem]"
               value={selectedTenantId}
               onChange={(e) => setSelectedTenantId(e.target.value)}
               data-testid="kill-switch-tenant"
@@ -86,7 +85,7 @@ export function IntegrationsHubPanel() {
           <label className="block min-w-[200px] flex-1 text-sm">
             <span className="mb-1 block text-text-muted">Reason (optional)</span>
             <input
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text"
+              className="admin-field"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Incident / maintenance"

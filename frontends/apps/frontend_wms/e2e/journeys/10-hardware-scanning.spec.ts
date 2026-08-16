@@ -72,7 +72,7 @@ async function seedPickableWidgetOrder(browser: Browser): Promise<string> {
  * Tracks 10–12 — HID burst, Zebra/Honeywell Intent, haptic/audio feedback contracts.
  * Feedback spies + intentShim are installed via addInitScript before navigation.
  */
-test.describe.serial('Journey 10–12: Hardware scanning matrix', () => {
+test.describe('Journey 10–12: Hardware scanning matrix', () => {
   test('HID burst without focus; Intent broadcast; haptic/audio contracts', async ({ browser }) => {
     test.setTimeout(120_000);
 

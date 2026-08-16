@@ -3,7 +3,7 @@ package com.invsys.service;
 import com.invsys.modules.fulfillment.api.FulfillmentController.ScanRequest;
 import com.invsys.modules.fulfillment.api.FulfillmentController.ScanResponse;
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.catalog.domain.Product;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.domain.TenantSettings;

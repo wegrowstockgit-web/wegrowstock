@@ -1,11 +1,11 @@
 package com.invsys.modules.fulfillment.service;
 
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.inventory.domain.InventoryLevel;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.domain.WalkableEdge;
-import com.invsys.modules.inventory.repository.InventoryLevelRepository;
+import com.invsys.modules.inventory.api.InventoryLevelLookup;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.repository.WalkableEdgeRepository;
@@ -33,12 +33,12 @@ import java.util.stream.Collectors;
 @Service
 public class PickingService {
 
-    private final InventoryLevelRepository levelRepository;
+    private final InventoryLevelLookup levelRepository;
     private final LocationRepository locationRepository;
     private final WalkableEdgeRepository walkableEdgeRepository;
     private final ProductVariantRepository variantRepository;
 
-    public PickingService(InventoryLevelRepository levelRepository,
+    public PickingService(InventoryLevelLookup levelRepository,
                           LocationRepository locationRepository,
                           WalkableEdgeRepository walkableEdgeRepository,
                           ProductVariantRepository variantRepository) {

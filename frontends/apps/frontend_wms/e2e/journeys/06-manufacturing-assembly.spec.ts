@@ -10,12 +10,11 @@ import {
   findVariantId,
   hidScan,
 } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Track 6 — Manager BOM production order → Picker terminal scan → Complete build → ledger.
  */
-test.describe.serial('Journey 06: Manufacturing BOM → Terminal assembly', () => {
+test.describe('Journey 06: Manufacturing BOM → Terminal assembly', () => {
   test('allocate components, scan recipe, complete build with ASSEMBLY ledger', async ({
     browser,
   }) => {
@@ -48,10 +47,6 @@ test.describe.serial('Journey 06: Manufacturing BOM → Terminal assembly', () =
         { method: 'POST', body: '{}' },
       );
       expect(allocated.status).toMatch(/COMPONENTS_ALLOCATED|WIP/);
-
-      writeJourneyState({
-        events: [`MO_ALLOCATED:${order.number ?? order.id}`],
-      });
 
       // --- Picker: Production Terminal — verify recipe mix via HID ---
       await picker.page.goto('/manufacturing/terminal');
@@ -95,7 +90,6 @@ test.describe.serial('Journey 06: Manufacturing BOM → Terminal assembly', () =
         }, { timeout: 20_000 })
         .toMatch(/COMPLETED|WIP/);
 
-      writeJourneyState({ events: [`MO_ASSEMBLED:${order.id}`] });
     } finally {
       await picker.close();
       await manager.close();

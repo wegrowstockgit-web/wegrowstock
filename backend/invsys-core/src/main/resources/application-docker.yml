@@ -27,8 +27,8 @@ management:
   endpoint:
     health:
       # Scrape CIDRs are IP-gated in Spring Security; expose component details to Prometheus/Grafana.
-      show-details: always
-      show-components: always
+      show-details: when_authorized
+      show-components: when_authorized
     prometheus:
       enabled: true
   # Metrics stay on Prometheus scrape; Tempo is traces-only in this stack.
@@ -77,5 +77,6 @@ invsys:
     secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
     path-style-access: true
     create-bucket-if-missing: true
+    allow-private-endpoints: true
   observability:
     loki-url: ${LOKI_URL:http://loki:3100/loki/api/v1/push}

@@ -1,13 +1,13 @@
 package com.invsys;
 
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.catalog.domain.Product;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.modules.sales.domain.SalesOrderLine;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.sales.repository.CustomerRepository;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductRepository;

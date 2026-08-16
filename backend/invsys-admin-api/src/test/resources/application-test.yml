@@ -46,6 +46,7 @@ invsys:
     region: us-east-1
     path-style-access: true
     create-bucket-if-missing: true
+    allow-private-endpoints: true
   webhooks:
     accounting-secret: accounting_mock_secret
     shopify-secret: shopify_mock_secret

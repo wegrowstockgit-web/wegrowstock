@@ -408,13 +408,17 @@ public class SupportChatService {
             return;
         }
 
+        ChatModel availableModel = null;
+        try {
+            availableModel = chatModel.getIfAvailable();
+        } catch (RuntimeException ignored) {
+            // prototype ChatModel creation can fail when no provider key is configured
+        }
         log.info(
                 "Support chat path=heuristic llm={} chatClientBuilder={} chatModel={} embeddingModel={}",
                 properties.getLlm(),
-                chatClientBuilder.getIfAvailable() != null,
-                chatModel.getIfAvailable() == null
-                        ? "absent"
-                        : chatModel.getIfAvailable().getClass().getSimpleName(),
+                resolveChatClientBuilder() != null,
+                availableModel == null ? "absent" : availableModel.getClass().getSimpleName(),
                 embeddingModel.getClass().getSimpleName());
         HeuristicSupportResult result = HeuristicSupportComposer.compose(
                 question, normalizedRoles, route, retrieved, system, safePageState);

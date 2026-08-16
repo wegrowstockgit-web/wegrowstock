@@ -1,17 +1,17 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlaskConical, UserRoundSearch } from 'lucide-react';
 import {
   APP_MODULES,
   COMMERCIAL_TIERS,
   MODULE_LABELS,
-  MODULE_TIER,
   TIER_LABELS,
   type AppModule,
   type CommercialTier,
   type ControlPlaneTenant,
 } from '@invsys/shared-types';
 import { SlideOutDrawer, useToast } from '@invsys/shared-ui';
+import { fetchTierDefinitions } from '@/features/packaging/api';
 import {
   buildWmsImpersonationUrl,
   cloneSandbox,
@@ -43,7 +43,17 @@ export function TenantEntitlementsDrawer({ tenant, open, onClose }: Props) {
   const [pending, setPending] = useState<AppModule | null>(null);
   const [sandboxKey, setSandboxKey] = useState<string | null>(null);
 
+  const { data: tierDefinitions = [] } = useQuery({
+    queryKey: ['control-plane', 'packaging', 'tiers'],
+    queryFn: fetchTierDefinitions,
+    enabled: open && !!tenant,
+  });
+
   const modules = useMemo(() => new Set(tenant?.enabledModules ?? []), [tenant]);
+  const includedInSelectedTier = useMemo(() => {
+    const row = tierDefinitions.find((t) => t.tierCode === tenant?.tier);
+    return new Set(row?.defaultModules ?? []);
+  }, [tierDefinitions, tenant?.tier]);
 
   const modulesMutation = useMutation({
     mutationFn: (next: AppModule[]) => {
@@ -246,12 +256,17 @@ export function TenantEntitlementsDrawer({ tenant, open, onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium text-text">{MODULE_LABELS[module]}</p>
                       <p className="text-xs text-text-muted">
-                        {module} · Tier {MODULE_TIER[module]}
+                        {module}
+                        {includedInSelectedTier.has(module)
+                          ? ' · Included in Tier'
+                          : enabled
+                            ? ' · Custom Add-on'
+                            : ' · Not in tier'}
                       </p>
                     </div>
-                    <input
+                      <input
                       type="checkbox"
-                      className="h-4 w-4 accent-accent"
+                      className="admin-switch"
                       checked={enabled}
                       disabled={locked || busy}
                       aria-label={`Enable ${MODULE_LABELS[module]}`}

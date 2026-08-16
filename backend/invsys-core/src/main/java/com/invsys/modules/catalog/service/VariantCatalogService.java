@@ -2,11 +2,10 @@ package com.invsys.modules.catalog.service;
 
 import com.invsys.api.dto.VariantListItemResponse;
 import com.invsys.core.common.PageResponse;
-import com.invsys.modules.inventory.domain.InventoryLevel;
+import com.invsys.modules.catalog.api.VariantStockView;
 import com.invsys.modules.catalog.domain.Product;
 import com.invsys.domain.ProductMedia;
 import com.invsys.modules.catalog.domain.ProductVariant;
-import com.invsys.modules.inventory.repository.InventoryLevelRepository;
 import com.invsys.modules.catalog.repository.ProductMediaRepository;
 import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
@@ -25,16 +24,16 @@ public class VariantCatalogService {
 
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
-    private final InventoryLevelRepository levelRepository;
+    private final VariantStockView variantStockView;
     private final ProductMediaRepository productMediaRepository;
 
     public VariantCatalogService(ProductVariantRepository variantRepository,
                                  ProductRepository productRepository,
-                                 InventoryLevelRepository levelRepository,
+                                 VariantStockView variantStockView,
                                  ProductMediaRepository productMediaRepository) {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
-        this.levelRepository = levelRepository;
+        this.variantStockView = variantStockView;
         this.productMediaRepository = productMediaRepository;
     }
 
@@ -45,17 +44,9 @@ public class VariantCatalogService {
         Map<UUID, String> productNames = productRepository.findAll().stream()
                 .collect(Collectors.toMap(Product::getId, Product::getName, (a, b) -> a));
 
-        Map<UUID, BigDecimal> onHandByVariant = levelRepository.findAll().stream()
-                .collect(Collectors.groupingBy(
-                        InventoryLevel::getVariantId,
-                        Collectors.mapping(InventoryLevel::getOnHand,
-                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))));
-
-        Map<UUID, BigDecimal> allocatedByVariant = levelRepository.findAll().stream()
-                .collect(Collectors.groupingBy(
-                        InventoryLevel::getVariantId,
-                        Collectors.mapping(InventoryLevel::getAllocated,
-                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))));
+        VariantStockView.StockTotals stock = variantStockView.totals();
+        Map<UUID, BigDecimal> onHandByVariant = stock.onHandByVariant();
+        Map<UUID, BigDecimal> allocatedByVariant = stock.allocatedByVariant();
 
         String q = query != null ? query.trim().toLowerCase() : "";
 

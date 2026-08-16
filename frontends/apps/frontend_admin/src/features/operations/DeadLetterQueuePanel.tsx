@@ -16,6 +16,7 @@ import {
   retryDeadLetter,
   type DeadLetterDetail,
 } from './api';
+import { PageHeader } from '@/features/layout/PageHeader';
 
 export function DeadLetterQueuePanel() {
   const toast = useToast();
@@ -53,12 +54,10 @@ export function DeadLetterQueuePanel() {
 
   return (
     <div className="space-y-8" data-testid="dead-letter-queue">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Dead letter queue</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Failed outbox events grouped by tenant. Inspect or retry a specific event by ID.
-        </p>
-      </div>
+      <PageHeader
+        title="Dead letter queue"
+        description="Failed outbox events grouped by tenant. Inspect or retry a specific event by ID."
+      />
 
       {groupsQuery.isLoading ? (
         <PageSkeleton label="Loading dead letters…" />
@@ -95,11 +94,11 @@ export function DeadLetterQueuePanel() {
         </Table>
       )}
 
-      <section className="space-y-3 rounded-lg border border-border bg-surface-raised p-4">
+      <section className="admin-card space-y-3 p-5">
         <h3 className="text-sm font-semibold text-text">Inspect / retry event</h3>
         <div className="flex flex-wrap gap-2">
           <input
-            className="min-w-[280px] flex-1 rounded border border-border bg-surface px-3 py-2 font-mono text-sm"
+            className="admin-field min-w-[280px] flex-1 font-mono"
             placeholder="Outbox event UUID"
             value={eventId}
             onChange={(e) => setEventId(e.target.value)}

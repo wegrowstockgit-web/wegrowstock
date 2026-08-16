@@ -1,6 +1,8 @@
 package com.invsys.admin.security;
 
+import com.invsys.config.ActuatorScrapeAuthorizationManager;
 import com.invsys.core.security.UnauthorizedEntryPoint;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -27,11 +29,20 @@ public class AdminSecurityConfig {
 
     private final AdminJwtAuthFilter adminJwtAuthFilter;
     private final UnauthorizedEntryPoint unauthorizedEntryPoint;
+    private final ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager;
+    private final boolean cookieSecure;
+    private final String cookieSameSite;
 
     public AdminSecurityConfig(AdminJwtAuthFilter adminJwtAuthFilter,
-                               UnauthorizedEntryPoint unauthorizedEntryPoint) {
+                               UnauthorizedEntryPoint unauthorizedEntryPoint,
+                               ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager,
+                               @Value("${invsys.security.cookie-secure:true}") boolean cookieSecure,
+                               @Value("${invsys.security.cookie-same-site:Strict}") String cookieSameSite) {
         this.adminJwtAuthFilter = adminJwtAuthFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
+        this.actuatorScrapeAuthorizationManager = actuatorScrapeAuthorizationManager;
+        this.cookieSecure = cookieSecure;
+        this.cookieSameSite = cookieSameSite == null || cookieSameSite.isBlank() ? "Strict" : cookieSameSite;
     }
 
     @Bean
@@ -39,6 +50,11 @@ public class AdminSecurityConfig {
         CookieCsrfTokenRepository csrfRepo = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepo.setCookiePath("/");
         csrfRepo.setHeaderName("X-XSRF-TOKEN");
+        csrfRepo.setCookieCustomizer(cookie -> cookie
+                .path("/")
+                .httpOnly(false)
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite));
 
         // SPA-friendly: expose the raw token to the XSRF-TOKEN cookie (not XOR-masked).
         CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
@@ -50,7 +66,8 @@ public class AdminSecurityConfig {
                         .ignoringRequestMatchers(
                                 "/api/v1/control-plane/auth/login",
                                 "/actuator/health",
-                                "/actuator/health/**"))
+                                "/actuator/health/**",
+                                "/actuator/prometheus"))
                 .cors(cors -> cors.disable())
                 .headers(headers -> headers
                         .contentTypeOptions(c -> {
@@ -58,11 +75,25 @@ public class AdminSecurityConfig {
                         .frameOptions(frame -> frame.deny())
                         .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedEntryPoint))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    String uri = request.getRequestURI();
+                    if (uri != null && uri.startsWith("/actuator")) {
+                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                        response.setContentType("application/problem+json");
+                        response.getWriter().write(
+                                "{\"type\":\"about:blank\",\"title\":\"FORBIDDEN\",\"status\":403,"
+                                        + "\"detail\":\"Actuator scrape not allowed from this address\"}");
+                        return;
+                    }
+                    unauthorizedEntryPoint.commence(request, response, authException);
+                }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/v1/control-plane/auth/csrf").permitAll()
                         .requestMatchers("/api/v1/control-plane/auth/login").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**")
+                        .access(actuatorScrapeAuthorizationManager)
+                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                        .access(actuatorScrapeAuthorizationManager)
                         .requestMatchers("/api/v1/control-plane/**").hasRole("SUPER_ADMIN")
                         .anyRequest().denyAll())
                 .addFilterBefore(adminJwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

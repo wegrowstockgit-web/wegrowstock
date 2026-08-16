@@ -6,15 +6,13 @@ import {
   expectFulfillmentSurface,
   freshLogin,
 } from './helpers';
-import { resetJourneyState, writeJourneyState } from './journeyState';
 
 /**
  * Track 1 — Admin invites a picker; isolated context accepts invite; RBAC walls Surface A.
  * Uses browser.newContext() for independent Admin / Picker sessions.
  */
-test.describe.serial('Journey 01: Onboarding & RBAC boundary', () => {
+test.describe('Journey 01: Onboarding & RBAC boundary', () => {
   test('admin invites picker → accept → Surface B only', async ({ browser }) => {
-    resetJourneyState();
     const pickerEmail = `journey.picker.${Date.now()}@demo.test`;
 
     const admin = await contextForRole(browser, 'admin');
@@ -53,12 +51,6 @@ test.describe.serial('Journey 01: Onboarding & RBAC boundary', () => {
         timeout: 15_000,
       });
 
-
-      writeJourneyState({
-        pickerEmail,
-        inviteTokenHash: inviteBody.tokenHash,
-        events: [`INVITE_CREATED:${inviteBody.tokenHash}`],
-      });
 
       // --- Isolated picker context (no shared cookies) ---
       const pickerCtx = await browser.newContext({
@@ -102,13 +94,7 @@ test.describe.serial('Journey 01: Onboarding & RBAC boundary', () => {
 
         const me = await pickerSession.page.request.get('/api/v1/auth/me');
         if (me.ok()) {
-          const profile = (await me.json()) as { id?: string; userId?: string };
-          writeJourneyState({
-            pickerUserId: profile.id ?? profile.userId,
-            events: [`PICKER_REGISTERED:${pickerEmail}`],
-          });
-        } else {
-          writeJourneyState({ events: [`PICKER_REGISTERED:${pickerEmail}`] });
+          await me.json();
         }
       } finally {
         await pickerSession.close();

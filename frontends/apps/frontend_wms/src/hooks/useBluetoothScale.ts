@@ -8,6 +8,8 @@ export interface BluetoothScaleReading {
 
 export interface UseBluetoothScaleResult {
   supported: boolean;
+  isSupported: boolean;
+  isBluetoothSupported: boolean;
   connected: boolean;
   reading: BluetoothScaleReading | null;
   error: string | null;
@@ -34,8 +36,9 @@ function parseWeightMeasurement(value: DataView): BluetoothScaleReading | null {
 }
 
 export function useBluetoothScale(): UseBluetoothScaleResult {
-  const supported =
-    typeof navigator !== 'undefined' && 'bluetooth' in navigator && navigator.bluetooth != null;
+  const isBluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const supported = isBluetoothSupported && navigator.bluetooth != null;
+  const isSupported = supported;
 
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -53,14 +56,19 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
   }, [device]);
 
   const connect = useCallback(async () => {
-    if (!supported) {
+    if (!isBluetoothSupported || !supported) {
       setError('Web Bluetooth is not available in this browser.');
       return;
     }
     setConnecting(true);
     setError(null);
     try {
-      const selected = await navigator.bluetooth!.requestDevice({
+      const bluetooth = navigator.bluetooth;
+      if (!bluetooth) {
+        setError('Web Bluetooth is not available in this browser.');
+        return;
+      }
+      const selected = await bluetooth.requestDevice({
         filters: [{ services: [WEIGHT_SCALE_SERVICE] }],
         optionalServices: [WEIGHT_SCALE_SERVICE],
       });
@@ -92,12 +100,14 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
     } finally {
       setConnecting(false);
     }
-  }, [supported]);
+  }, [isBluetoothSupported, supported]);
 
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
     supported,
+    isSupported,
+    isBluetoothSupported,
     connected,
     reading,
     error,

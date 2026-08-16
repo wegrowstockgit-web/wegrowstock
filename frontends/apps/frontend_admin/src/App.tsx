@@ -12,6 +12,7 @@ import { ShardRoutingPanel } from '@/features/infrastructure/ShardRoutingPanel';
 import { DeadLetterQueuePanel } from '@/features/operations/DeadLetterQueuePanel';
 import { ConcurrencyDashboard } from '@/features/telemetry/ConcurrencyDashboard';
 import { GlobalCompliancePanel } from '@/features/compliance/GlobalCompliancePanel';
+import { PlatformPackagingPanel } from '@/features/packaging/PlatformPackagingPanel';
 import { useAdminSession } from '@/features/auth/adminSession';
 
 function LoginRoute() {
@@ -30,6 +31,7 @@ export function App() {
         <Route path="/" element={<AdminLayout />}>
           <Route index element={<TenantManager />} />
           <Route path="billing" element={<PlatformBillingPanel />} />
+          <Route path="packaging" element={<PlatformPackagingPanel />} />
           <Route path="copilot/knowledge" element={<CopilotKnowledgeManager />} />
           <Route path="integrations" element={<IntegrationsHubPanel />} />
           <Route path="audit" element={<PlatformAuditTrail />} />

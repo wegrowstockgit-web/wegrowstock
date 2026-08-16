@@ -5,7 +5,7 @@ import { contextForRole, expect } from './helpers';
  * Track 8 — Owner-gated fintech / billing boundaries.
  * Fintech cockpit is OWNER-only; billing remains ADMIN+OWNER; capital drawdown is OWNER-only.
  */
-test.describe.serial('Journey 08: Strict owner-gated financial boundaries', () => {
+test.describe('Journey 08: Strict owner-gated financial boundaries', () => {
   test('admin masked from fintech; owner sees financing cockpit', async ({ browser }) => {
     const admin = await contextForRole(browser, 'admin');
     const owner = await contextForRole(browser, 'owner');

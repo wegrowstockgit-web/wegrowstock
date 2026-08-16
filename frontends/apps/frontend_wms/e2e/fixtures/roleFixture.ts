@@ -18,12 +18,15 @@ function storageStateFor(role: string): string {
 }
 
 /**
- * Isolated context with a fresh API login.
- * Prefer this over cached storageState — refresh tokens rotate and go stale mid-suite.
+ * Isolated browser context + fresh API login for a single test block.
+ * Each fixture invocation opens its own context (no shared cookies/localStorage).
+ * Demo-tenant journeys seed unique SKUs/SOs rather than a new Postgres database —
+ * signup-per-test would drop seed data (WIDGET-S, picker@demo.test) that floor journeys need.
  */
 async function pageForRole(
   browser: Browser,
   role: string,
+  testId?: string,
 ): Promise<{ page: Page; close: () => Promise<void> }> {
   const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
   const email = ROLE_EMAIL[role];
@@ -31,7 +34,10 @@ async function pageForRole(
     throw new Error(`Unknown role fixture: ${role}`);
   }
 
-  const context: BrowserContext = await browser.newContext({ baseURL });
+  const context: BrowserContext = await browser.newContext({
+    baseURL,
+    // Never reuse another test's storageState — isolation is the context itself.
+  });
   const page = await context.newPage();
   installAutoUnlockNavigations(page);
 
@@ -122,7 +128,9 @@ async function pageForRole(
 
   // Keep a copy for debugging / optional reuse; do not rely on it as the sole session source.
   try {
-    await context.storageState({ path: storageStateFor(role) });
+    await context.storageState({
+      path: testId ? path.join(AUTH_DIR, `${role}-${testId}.json`) : storageStateFor(role),
+    });
   } catch {
     // ignore persistence failures
   }
@@ -394,36 +402,36 @@ type RoleFixtures = {
 };
 
 /**
- * Role-authenticated page fixtures with fresh cookies per test.
+ * Role-authenticated page fixtures: new BrowserContext + login per test block.
  */
 export const test = base.extend<RoleFixtures>({
-  ownerPage: async ({ browser }, use) => {
-    const { page, close } = await pageForRole(browser, 'owner');
+  ownerPage: async ({ browser }, use, testInfo) => {
+    const { page, close } = await pageForRole(browser, 'owner', testInfo.testId);
     await use(page);
     await close();
   },
-  adminPage: async ({ browser }, use) => {
-    const { page, close } = await pageForRole(browser, 'admin');
+  adminPage: async ({ browser }, use, testInfo) => {
+    const { page, close } = await pageForRole(browser, 'admin', testInfo.testId);
     await use(page);
     await close();
   },
-  managerPage: async ({ browser }, use) => {
-    const { page, close } = await pageForRole(browser, 'manager');
+  managerPage: async ({ browser }, use, testInfo) => {
+    const { page, close } = await pageForRole(browser, 'manager', testInfo.testId);
     await use(page);
     await close();
   },
-  pickerPage: async ({ browser }, use) => {
-    const { page, close } = await pageForRole(browser, 'picker');
+  pickerPage: async ({ browser }, use, testInfo) => {
+    const { page, close } = await pageForRole(browser, 'picker', testInfo.testId);
     await use(page);
     await close();
   },
-  viewerPage: async ({ browser }, use) => {
-    const { page, close } = await pageForRole(browser, 'viewer');
+  viewerPage: async ({ browser }, use, testInfo) => {
+    const { page, close } = await pageForRole(browser, 'viewer', testInfo.testId);
     await use(page);
     await close();
   },
-  b2bPage: async ({ browser }, use) => {
-    const { page, close } = await pageForRole(browser, 'b2b');
+  b2bPage: async ({ browser }, use, testInfo) => {
+    const { page, close } = await pageForRole(browser, 'b2b', testInfo.testId);
     await use(page);
     await close();
   },

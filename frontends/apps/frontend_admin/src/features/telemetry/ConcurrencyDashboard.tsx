@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageSkeleton, useToast } from '@invsys/shared-ui';
+import { PageHeader } from '@/features/layout/PageHeader';
 import { fetchTenantTelemetry, putTenantRateLimit, type TenantTelemetry } from './api';
 
 function LatencyBar({ label, value, max }: { label: string; value: number; max: number }) {
@@ -35,7 +36,7 @@ function TenantCard({
 
   return (
     <article
-      className="space-y-4 rounded-lg border border-border bg-surface-raised p-4"
+      className="admin-card space-y-4 p-5"
       data-testid={`telemetry-card-${row.slug}`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -117,12 +118,10 @@ export function ConcurrencyDashboard() {
 
   return (
     <div className="space-y-6" data-testid="concurrency-dashboard">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Concurrency</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Per-tenant latency snapshots and distributed rate-limit capacity multipliers.
-        </p>
-      </div>
+      <PageHeader
+        title="Concurrency"
+        description="Per-tenant latency snapshots and distributed rate-limit capacity multipliers."
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {data.map((row) => (

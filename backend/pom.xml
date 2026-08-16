@@ -34,6 +34,7 @@
         <springdoc.version>3.0.3</springdoc.version>
         <!-- CVE-2025-53864 DoS: require nimbus-jose-jwt >= 9.37.4 (10.x line is current) -->
         <nimbus.version>10.4.2</nimbus.version>
+        <spring-modulith.version>2.0.1</spring-modulith.version>
     </properties>
 
     <dependencyManagement>
@@ -71,6 +72,13 @@
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.modulith</groupId>
+                <artifactId>spring-modulith-bom</artifactId>
+                <version>${spring-modulith.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>com.nimbusds</groupId>

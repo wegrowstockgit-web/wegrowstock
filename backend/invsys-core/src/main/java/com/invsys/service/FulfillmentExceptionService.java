@@ -1,11 +1,11 @@
 package com.invsys.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.fulfillment.domain.FulfillmentException;
 import com.invsys.modules.catalog.domain.Lot;
 import com.invsys.domain.PickingTask;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.fulfillment.repository.FulfillmentExceptionRepository;
 import com.invsys.modules.catalog.repository.LotRepository;
 import com.invsys.repository.PickingTaskRepository;

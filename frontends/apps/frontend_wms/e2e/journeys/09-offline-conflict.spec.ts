@@ -7,14 +7,13 @@ import {
   expectFulfillmentSurface,
   hidScan,
 } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Track 9 — Offline mutation that violates a business rule → sync conflict for office review.
  * Receive mode + blind-receiving disabled → 422 on replay → server parks 202 conflict.
  * Uses a fresh SKU with no open SO demand so cross-dock intercept cannot return 200.
  */
-test.describe.serial('Journey 09: Offline Zustand/IndexedDB conflict resolution', () => {
+test.describe('Journey 09: Offline Zustand/IndexedDB conflict resolution', () => {
   test('offline rule-violating scan parks in sync conflicts panel', async ({ browser }) => {
     const picker = await contextForRole(browser, 'picker');
     const manager = await contextForRole(browser, 'manager');
@@ -64,8 +63,6 @@ test.describe.serial('Journey 09: Offline Zustand/IndexedDB conflict resolution'
       // 202 = parked in offline_sync_conflicts; 422/409 = local quarantine / blind-receive rejection
       expect([202, 409, 422], await flushed.text()).toContain(flushed.status());
 
-      writeJourneyState({ events: [`OFFLINE_PICK_REPLAY:${flushed.status()}`] });
-
       await manager.page.goto('/dashboard');
       if (flushed.status() === 202) {
         await expect
@@ -106,7 +103,6 @@ test.describe.serial('Journey 09: Offline Zustand/IndexedDB conflict resolution'
         ).toBeVisible({ timeout: 15_000 });
       }
 
-      writeJourneyState({ events: ['OFFLINE_CONFLICT_VISIBLE'] });
     } finally {
       await picker.context.setOffline(false).catch(() => undefined);
       await picker.close();

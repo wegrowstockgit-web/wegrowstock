@@ -1,23 +1,29 @@
 package com.invsys.admin.service;
 
+import com.invsys.admin.security.AdminLoginAttemptLimiter;
 import com.invsys.config.JwtProperties;
 import com.invsys.core.common.ApiException;
+import com.invsys.core.security.ClientIpResolver;
 import com.invsys.core.security.JwtService;
 import com.invsys.domain.PlatformAdmin;
 import com.invsys.domain.PlatformAdminRefreshToken;
 import com.invsys.repository.PlatformAdminRefreshTokenRepository;
 import com.invsys.repository.PlatformAdminRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -28,28 +34,46 @@ public class AdminAuthService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final PasswordEncoder passwordEncoder;
+    private final AdminLoginAttemptLimiter loginAttemptLimiter;
+    private final ClientIpResolver clientIpResolver;
 
     public AdminAuthService(PlatformAdminRepository platformAdminRepository,
                             PlatformAdminRefreshTokenRepository refreshTokenRepository,
                             JwtService jwtService,
                             JwtProperties jwtProperties,
-                            PasswordEncoder passwordEncoder) {
+                            PasswordEncoder passwordEncoder,
+                            AdminLoginAttemptLimiter loginAttemptLimiter,
+                            ClientIpResolver clientIpResolver) {
         this.platformAdminRepository = platformAdminRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.passwordEncoder = passwordEncoder;
+        this.loginAttemptLimiter = loginAttemptLimiter;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @Transactional
     public AdminSession login(AdminLoginRequest request) {
-        PlatformAdmin admin = platformAdminRepository.findByEmailIgnoreCase(request.email().trim())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
+        String email = request.email() == null ? "" : request.email().trim().toLowerCase(Locale.ROOT);
+        String ip = clientIpResolver.resolve(currentRequest());
+        loginAttemptLimiter.assertAllowed(ip, email);
 
-        if (!admin.isActive() || !passwordEncoder.matches(request.password(), admin.getPasswordHash())) {
+        PlatformAdmin admin = platformAdminRepository.findByEmailIgnoreCase(email).orElse(null);
+        if (admin == null || !admin.isActive() || !passwordEncoder.matches(request.password(), admin.getPasswordHash())) {
+            loginAttemptLimiter.recordFailure(ip, email);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials");
         }
+        loginAttemptLimiter.reset(ip, email);
         return issueSession(admin);
+    }
+
+    private static HttpServletRequest currentRequest() {
+        var attrs = RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof ServletRequestAttributes servlet) {
+            return servlet.getRequest();
+        }
+        return null;
     }
 
     @Transactional(readOnly = true)

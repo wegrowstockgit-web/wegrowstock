@@ -16,6 +16,7 @@ import {
   fetchKnowledgeDocuments,
   ingestKnowledgeDocument,
 } from './api';
+import { PageHeader } from '@/features/layout/PageHeader';
 
 export function CopilotKnowledgeManager() {
   const queryClient = useQueryClient();
@@ -69,12 +70,10 @@ export function CopilotKnowledgeManager() {
 
   return (
     <div className="space-y-6" data-testid="copilot-knowledge">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Copilot knowledge</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Upload platform markdown SOPs into the shared knowledge index for Super Admin copilots.
-        </p>
-      </div>
+      <PageHeader
+        title="Copilot knowledge"
+        description="Upload platform markdown SOPs into the shared knowledge index for Super Admin copilots."
+      />
 
       <div
         role="button"

@@ -2,18 +2,45 @@ package com.invsys.service;
 
 import com.invsys.domain.subscription.AppModule;
 import com.invsys.domain.subscription.CommercialTier;
+import com.invsys.domain.subscription.PlatformTierDefinition;
+import com.invsys.repository.PlatformTierDefinitionRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 
+@ExtendWith(MockitoExtension.class)
 class TenantSubscriptionServiceParseTest {
 
-    private final TenantSubscriptionService service = new TenantSubscriptionService(
-            null, null, null, null, null);
+    @Mock PlatformTierDefinitionRepository tierDefinitionRepository;
+
+    private TenantSubscriptionService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new TenantSubscriptionService(
+                null, null, tierDefinitionRepository, null, null, null, null);
+        lenient().when(tierDefinitionRepository.findById("BASIC")).thenReturn(Optional.of(definition(
+                "BASIC", List.of("CORE"))));
+        lenient().when(tierDefinitionRepository.findById("INTERMEDIATE")).thenReturn(Optional.of(definition(
+                "INTERMEDIATE",
+                List.of("CORE", "SHOPIFY", "ACCOUNTING", "ADVANCED_FULFILLMENT",
+                        "MANUFACTURING", "DOCUMENTS", "MRP"))));
+        lenient().when(tierDefinitionRepository.findById("ENTERPRISE")).thenReturn(Optional.of(definition(
+                "ENTERPRISE",
+                List.of("CORE", "SHOPIFY", "ACCOUNTING", "ADVANCED_FULFILLMENT",
+                        "MANUFACTURING", "DOCUMENTS", "MRP", "B2B_SHOWROOM",
+                        "FINTECH", "MESH_NETWORK", "RTLS_TELEMETRY", "AI_COPILOT"))));
+    }
 
     @Test
     void parseModules_readsJsonArray() {
@@ -47,7 +74,7 @@ class TenantSubscriptionServiceParseTest {
     }
 
     @Test
-    void getDefaultModulesForTier_basicIsCoreOnly() {
+    void getDefaultModulesForTier_readsDatabaseBundle() {
         assertThat(service.getDefaultModulesForTier(CommercialTier.BASIC))
                 .containsExactly(AppModule.CORE);
     }
@@ -70,5 +97,13 @@ class TenantSubscriptionServiceParseTest {
     void getDefaultModulesForTier_enterpriseIsAll() {
         assertThat(service.getDefaultModulesForTier(CommercialTier.ENTERPRISE))
                 .isEqualTo(EnumSet.allOf(AppModule.class));
+    }
+
+    private static PlatformTierDefinition definition(String code, List<String> modules) {
+        PlatformTierDefinition def = new PlatformTierDefinition();
+        def.setTierCode(code);
+        def.setDisplayName(code);
+        def.setDefaultModules(modules);
+        return def;
     }
 }

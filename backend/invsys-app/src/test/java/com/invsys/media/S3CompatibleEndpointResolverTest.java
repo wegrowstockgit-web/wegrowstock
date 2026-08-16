@@ -48,6 +48,28 @@ class S3CompatibleEndpointResolverTest {
     }
 
     @Test
+    void rejectsMetadataAndLoopbackUnlessMinio() {
+        MediaStorageProperties aws = new MediaStorageProperties();
+        aws.setProvider("AWS");
+        aws.setAllowPrivateEndpoints(false);
+        aws.setEndpoint("http://169.254.169.254/latest/meta-data");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> S3CompatibleEndpointResolver.resolve(aws))
+                .isInstanceOf(com.invsys.core.common.ApiException.class);
+
+        MediaStorageProperties loop = new MediaStorageProperties();
+        loop.setProvider("AWS");
+        loop.setAllowPrivateEndpoints(false);
+        loop.setEndpoint("http://127.0.0.1:9000");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> S3CompatibleEndpointResolver.resolve(loop))
+                .isInstanceOf(com.invsys.core.common.ApiException.class);
+
+        MediaStorageProperties minio = new MediaStorageProperties();
+        minio.setProvider("MINIO");
+        minio.setEndpoint("http://127.0.0.1:9000");
+        assertThat(S3CompatibleEndpointResolver.resolve(minio).endpoint()).contains("http://127.0.0.1:9000");
+    }
+
+    @Test
     void explicitEndpointWins() {
         MediaStorageProperties props = new MediaStorageProperties();
         props.setProvider("AWS");

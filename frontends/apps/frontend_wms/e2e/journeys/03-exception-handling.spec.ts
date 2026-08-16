@@ -7,45 +7,25 @@ import {
   contextForRole,
   expect,
   expectFulfillmentSurface,
-  findVariantId,
-  firstCustomerId,
   hidScan,
+  seedAllocatedPickWave,
 } from './helpers';
-import { writeJourneyState } from './journeyState';
 
 /**
  * Track 3 — Floor Skip & Flag → Office Unresolved Exceptions → resolve → re-queue.
  */
-test.describe.serial('Journey 03: Floor exception & resolution loop', () => {
+test.describe('Journey 03: Floor exception & resolution loop', () => {
   test('picker flags barcode; manager resolves; task returns to queue', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
     const picker = await contextForRole(browser, 'picker');
 
     try {
-      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
-      const customerId = await firstCustomerId(manager.page);
-
-      const so = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/sales-orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          customerId,
-          number: `SO-J3-${Date.now()}`,
-          lines: [{ variantId, qtyOrdered: 5, unitPrice: 12.5 }],
-        }),
+      const seeded = await seedAllocatedPickWave(manager.page, picker.page, {
+        sku: WIDGET_S_SKU,
+        quantity: 5,
+        numberPrefix: 'SO-J3',
       });
-      await manager.page.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
-      await manager.page.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
-
-      const waveRes = await manager.page.request.post('/api/v1/picking/waves/generate', {
-        headers: { 'Content-Type': 'application/json' },
-        data: {},
-      });
-      expect(waveRes.ok()).toBeTruthy();
-      const wave = (await waveRes.json()) as { waveId: string };
-      await manager.page.request.post(`/api/v1/picking/waves/${wave.waveId}/release`);
-      await picker.page.request.post(`/api/v1/picking/waves/${wave.waveId}/claim`, {
-        headers: { 'X-Warehouse-Id': WH_01 },
-      });
+      const so = { id: seeded.salesOrderId, number: seeded.salesOrderNumber };
 
       await picker.page.goto('/fulfillment');
       await expectFulfillmentSurface(picker.page);
@@ -108,13 +88,6 @@ test.describe.serial('Journey 03: Floor exception & resolution loop', () => {
         exceptionId = reported.exceptionId ?? reported.id ?? '';
       }
 
-      writeJourneyState({
-        exceptionId,
-        salesOrderId: so.id,
-        salesOrderNumber: so.number,
-        events: [`EXCEPTION_OPEN:${exceptionId || so.number}`],
-      });
-
       // --- Manager: Unresolved Exceptions panel on office dashboard ---
       await manager.page.goto('/dashboard');
       await expect(manager.page.getByTestId('unresolved-exceptions-panel')).toBeVisible({
@@ -148,8 +121,6 @@ test.describe.serial('Journey 03: Floor exception & resolution loop', () => {
           return items.some((i) => i.resolutionStatus === 'RESOLVED');
         }, { timeout: 30_000 })
         .toBeTruthy();
-
-      writeJourneyState({ events: [`EXCEPTION_RESOLVED:${lotNumber}`] });
 
       // --- Picker: item re-enters active picking surface ---
       await picker.page.goto('/fulfillment');

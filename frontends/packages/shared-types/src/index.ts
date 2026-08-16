@@ -64,3 +64,10 @@ export const TIER_LABELS: Record<CommercialTier, string> = {
   INTERMEDIATE: 'Intermediate',
   ENTERPRISE: 'Enterprise',
 };
+
+export type PlatformTierDefinition = {
+  tierCode: CommercialTier;
+  displayName: string;
+  defaultModules: AppModule[];
+  updatedAt: string;
+};

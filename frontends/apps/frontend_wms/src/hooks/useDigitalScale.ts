@@ -13,6 +13,7 @@ export interface DigitalScaleReading {
 
 export interface UseDigitalScaleResult {
   supported: boolean;
+  isSupported: boolean;
   bluetoothSupported: boolean;
   serialSupported: boolean;
   connected: boolean;
@@ -167,6 +168,7 @@ export function useDigitalScale(): UseDigitalScaleResult {
 
   return {
     supported: bluetooth.supported || serialSupported,
+    isSupported: bluetooth.isSupported || serialSupported,
     bluetoothSupported: bluetooth.supported,
     serialSupported,
     connected: serialConnected || bluetooth.connected,

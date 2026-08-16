@@ -65,7 +65,8 @@ public class WmsMetrics {
     }
 
     public void incrementAuditArchiveFailure(java.util.UUID tenantId) {
-        String tag = tenantId == null ? "unknown" : tenantId.toString();
+        // Never emit raw tenant UUIDs — high-cardinality leak in Prometheus.
+        String tag = tenantId == null ? "unknown" : "redacted";
         Counter.builder(AUDIT_ARCHIVE_FAILURES)
                 .description("Cold audit archival upload/purge failures by tenant")
                 .tag("tenant", tag)

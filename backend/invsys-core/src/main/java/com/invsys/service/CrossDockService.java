@@ -1,13 +1,13 @@
 package com.invsys.service;
 
 import com.invsys.core.common.ApiException;
-import com.invsys.modules.fulfillment.domain.Allocation;
+import com.invsys.modules.inventory.domain.Allocation;
 import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.purchasing.domain.PurchaseOrder;
 import com.invsys.modules.purchasing.domain.PurchaseOrderLine;
 import com.invsys.modules.sales.domain.SalesOrder;
 import com.invsys.modules.sales.domain.SalesOrderLine;
-import com.invsys.modules.fulfillment.repository.AllocationRepository;
+import com.invsys.modules.inventory.repository.AllocationRepository;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
