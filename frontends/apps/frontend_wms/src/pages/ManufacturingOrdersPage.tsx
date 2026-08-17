@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DensityToggle } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
@@ -298,6 +299,7 @@ export function ManufacturingOrdersPage() {
   });
 
   return (
+    <TableDensityScope gridId="manufacturing-orders">
     <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -305,7 +307,7 @@ export function ManufacturingOrdersPage() {
           <p className="mt-1 text-sm text-text-muted">Assembly and kitting workflows</p>
         </div>
         <div className="flex gap-3">
-          <DensityToggle />
+          <DensityToggle gridId="manufacturing-orders" />
           <Button variant="secondary" onClick={() => navigate('/manufacturing/terminal')}>
             Production terminal
           </Button>
@@ -355,5 +357,6 @@ export function ManufacturingOrdersPage() {
       <CreateProductionOrderModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <DisassembleModal open={disassembleOpen} onClose={() => setDisassembleOpen(false)} />
     </div>
+    </TableDensityScope>
   );
 }

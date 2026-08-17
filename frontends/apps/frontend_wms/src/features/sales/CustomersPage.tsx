@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 import { CustomerDetail } from '@/features/customers/CustomerDetail';
@@ -320,6 +321,7 @@ export function CustomersPage() {
     useListQuery<Customer>(['customers'], '/api/v1/customers');
 
   return (
+    <TableDensityScope gridId="customers">
     <div
       className="mx-auto flex h-full min-h-[calc(100dvh-var(--header-height))] w-full max-w-7xl flex-col p-4 sm:p-6"
       data-testid="customers-page"
@@ -368,7 +370,7 @@ export function CustomersPage() {
       {tab === 'customers' && (
         <>
           <div className="shrink-0">
-            <DataListToolbar />
+            <DataListToolbar gridId="customers" />
           </div>
 
           <div className="min-h-0 min-w-0 flex-1">
@@ -418,5 +420,6 @@ export function CustomersPage() {
         {peekCustomer ? <CustomerDetail customer={peekCustomer} /> : null}
       </RightPeekDrawer>
     </div>
+    </TableDensityScope>
   );
 }

@@ -241,7 +241,7 @@ export function VirtualizedTable<T>({
 }: VirtualizedTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endReachedLock = useRef(false);
-  const { densityMode, rowPx, styles: densityStyles } = useDensity();
+  const { densityMode, rowPx, styles: densityStyles } = useDensity(gridId);
   const estimatedRowPx = Math.max(DENSITY_ROW_PX[densityMode] ?? rowPx, minRowPx ?? 0);
 
   // Atomic slices — toggling visibility on another grid does not notify us.

@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 
@@ -201,6 +202,7 @@ export function SuppliersPage() {
     useListQuery<Supplier>(['suppliers'], '/api/v1/suppliers');
 
   return (
+    <TableDensityScope gridId="suppliers">
     <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
@@ -215,7 +217,7 @@ export function SuppliersPage() {
         )}
       </div>
 
-      <DataListToolbar />
+      <DataListToolbar gridId="suppliers" />
 
       <ListPageState
         isLoading={isLoading}
@@ -244,5 +246,6 @@ export function SuppliersPage() {
 
       <AddSupplierModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
+    </TableDensityScope>
   );
 }

@@ -16,6 +16,9 @@ export function registerTourDriverDestroy(fn: (() => void) | null): void {
 interface PreferencesState {
   densityMode: DensityMode;
   setDensityMode: (mode: DensityMode) => void;
+  /** Per-grid Cozy/Compact/Spacious overrides. Missing keys fall back to densityMode. */
+  tableDensityById: Record<string, DensityMode>;
+  setTableDensity: (gridId: string, mode: DensityMode) => void;
   language: SupportedLanguage;
   setLanguage: (language: SupportedLanguage) => void;
   /** When true, prompt for interactive driver.js tour after login. */
@@ -83,6 +86,11 @@ export const usePreferencesStore = create<PreferencesState>()(
     (set) => ({
       densityMode: 'cozy',
       setDensityMode: (densityMode) => set({ densityMode }),
+      tableDensityById: {},
+      setTableDensity: (gridId, mode) =>
+        set((state) => ({
+          tableDensityById: { ...state.tableDensityById, [gridId]: mode },
+        })),
       language: 'en',
       setLanguage: (language) => {
         persistLanguage(language);
@@ -148,6 +156,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       name: 'invsys-preferences',
       partialize: (state) => ({
         densityMode: state.densityMode,
+        tableDensityById: state.tableDensityById,
         language: state.language,
         showOnboardingTour: state.showOnboardingTour,
         activeTourId: state.activeTourId,

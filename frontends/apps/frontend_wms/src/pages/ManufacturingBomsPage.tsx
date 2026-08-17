@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { cn } from '@/lib/utils';
@@ -337,6 +338,7 @@ export function ManufacturingBomsPage() {
   });
 
   return (
+    <TableDensityScope gridId="manufacturing-boms">
     <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -351,7 +353,7 @@ export function ManufacturingBomsPage() {
         </Button>
       </div>
 
-      <DataListToolbar />
+      <DataListToolbar gridId="manufacturing-boms" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card padding="none">
@@ -406,5 +408,6 @@ export function ManufacturingBomsPage() {
 
       <CreateBomModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
+    </TableDensityScope>
   );
 }

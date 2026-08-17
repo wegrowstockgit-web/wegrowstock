@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { MediaPicker } from '@/components/ui/MediaPicker';
@@ -861,6 +862,7 @@ export function ProductsPage() {
   }
 
   return (
+    <TableDensityScope gridId="products">
     <div className="flex h-[calc(100dvh-var(--header-height))] max-h-[calc(100dvh-var(--header-height))] min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="mb-0 flex shrink-0 flex-col gap-4 border-b border-border/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -1118,5 +1120,6 @@ export function ProductsPage() {
         )}
       </RightPeekDrawer>
     </div>
+    </TableDensityScope>
   );
 }

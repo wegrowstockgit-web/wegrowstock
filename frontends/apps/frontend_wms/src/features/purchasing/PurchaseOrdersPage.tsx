@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
@@ -748,6 +749,7 @@ export function PurchaseOrdersPage() {
   const peekPo = data?.find((po) => po.id === peekPoId) ?? null;
 
   return (
+    <TableDensityScope gridId="purchase-orders">
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
         <div>
@@ -774,7 +776,7 @@ export function PurchaseOrdersPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar />
+        <DataListToolbar gridId="purchase-orders" />
       </div>
 
       <div
@@ -897,5 +899,6 @@ export function PurchaseOrdersPage() {
         )}
       </RightPeekDrawer>
     </div>
+    </TableDensityScope>
   );
 }

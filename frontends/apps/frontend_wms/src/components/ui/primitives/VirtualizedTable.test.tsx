@@ -63,7 +63,7 @@ describe('VirtualizedTable', () => {
         },
       },
     });
-    usePreferencesStore.setState({ densityMode: 'cozy' });
+    usePreferencesStore.setState({ densityMode: 'cozy', tableDensityById: {} });
   });
 
   it('keeps non-hideable thumb before pinned sku/name (not between name and barcode)', () => {

@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
@@ -477,6 +478,7 @@ export function SalesOrdersPage() {
   ];
 
   return (
+    <TableDensityScope gridId="sales-orders">
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div
         className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4"
@@ -495,7 +497,7 @@ export function SalesOrdersPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar>
+        <DataListToolbar gridId="sales-orders">
           <SavedFilterViews
             className="mb-0"
             storageKey="sales-orders-filters"
@@ -600,6 +602,7 @@ export function SalesOrdersPage() {
         )}
       </RightPeekDrawer>
     </div>
+    </TableDensityScope>
   );
 }
 

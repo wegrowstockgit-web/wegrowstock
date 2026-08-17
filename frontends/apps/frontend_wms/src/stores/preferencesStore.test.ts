@@ -5,7 +5,7 @@ import i18n, { WMS_LANG_STORAGE_KEY } from '@/lib/i18n';
 describe('preferencesStore density', () => {
   beforeEach(() => {
     localStorage.clear();
-    usePreferencesStore.setState({ densityMode: 'cozy', language: 'en' });
+    usePreferencesStore.setState({ densityMode: 'cozy', tableDensityById: {}, language: 'en' });
   });
 
   it('defaults to cozy with table-friendly styles', () => {
@@ -22,6 +22,12 @@ describe('preferencesStore density', () => {
     expect(usePreferencesStore.getState().densityMode).toBe('compact');
     expect(DENSITY_STYLES.compact.row).toBe('h-8');
     expect(DENSITY_STYLES.spacious.typography).toBe('text-base');
+  });
+
+  it('stores per-table density without changing the global default', () => {
+    usePreferencesStore.getState().setTableDensity('purchase-orders', 'compact');
+    expect(usePreferencesStore.getState().tableDensityById['purchase-orders']).toBe('compact');
+    expect(usePreferencesStore.getState().densityMode).toBe('cozy');
   });
 
   it('persists language preference', async () => {

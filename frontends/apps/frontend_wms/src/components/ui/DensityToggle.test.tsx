@@ -11,7 +11,7 @@ const GRID = 'products';
 describe('DensityToggle', () => {
   beforeEach(() => {
     localStorage.clear();
-    usePreferencesStore.setState({ densityMode: 'cozy' });
+    usePreferencesStore.setState({ densityMode: 'cozy', tableDensityById: {} });
     useGridColumnStore.setState({
       layouts: {
         [GRID]: {
@@ -23,7 +23,22 @@ describe('DensityToggle', () => {
     });
   });
 
-  it('switches density mode and persists', () => {
+  it('keeps density on the table gridId and does not change other tables', () => {
+    render(
+      <div>
+        <DensityToggle gridId="purchase-orders" />
+        <DensityToggle gridId="suppliers" />
+      </div>,
+    );
+    const toggles = screen.getAllByTestId('density-toggle');
+    fireEvent.click(toggles[0]);
+    fireEvent.click(screen.getByTestId('density-option-compact'));
+    expect(usePreferencesStore.getState().tableDensityById['purchase-orders']).toBe('compact');
+    expect(usePreferencesStore.getState().tableDensityById.suppliers).toBeUndefined();
+    expect(usePreferencesStore.getState().densityMode).toBe('cozy');
+  });
+
+  it('without a gridId, still updates the global profile default', () => {
     render(<DensityToggle />);
     fireEvent.click(screen.getByTestId('density-toggle'));
     fireEvent.click(screen.getByTestId('density-option-compact'));

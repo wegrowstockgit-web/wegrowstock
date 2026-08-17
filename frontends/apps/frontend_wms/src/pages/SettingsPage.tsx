@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Mail, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { userApi } from '@/api/users';
 import type {
@@ -54,6 +54,7 @@ import { HistoricalArchivesPanel } from '@/features/audit/HistoricalArchivesPane
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '@/stores/preferencesStore';
+import { useClientSort } from '@/hooks/useClientSort';
 import { normalizeLanguage } from '@/lib/i18n';
 
 const TABS = [
@@ -595,6 +596,23 @@ function UsersTab() {
     retry: false,
   });
 
+  const { sort: inviteSort, toggle: toggleInviteSort, sorted: sortedInvites } = useClientSort(
+    pendingInvites,
+    {
+      email: (inv) => inv.email,
+      role: (inv) => (inv.roles?.length ? inv.roles : [inv.role]).join(','),
+      status: () => 'PENDING',
+      expires: (inv) => (inv.expiresAt ? new Date(inv.expiresAt) : null),
+    },
+  );
+
+  const { sort: userSort, toggle: toggleUserSort, sorted: sortedUsers } = useClientSort(users, {
+    user: (u) => u.displayName || u.email,
+    role: (u) => u.roles.join(','),
+    department: (u) => u.corporateDepartment ?? u.department ?? '',
+    status: (u) => u.status,
+  });
+
   const { toast } = useToast();
 
   const deactivateMutation = useMutation({
@@ -642,15 +660,23 @@ function UsersTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Expires</TableHead>
+                    <TableHead sortable sortKey="email" sort={inviteSort} onSort={toggleInviteSort}>
+                      Email
+                    </TableHead>
+                    <TableHead sortable sortKey="role" sort={inviteSort} onSort={toggleInviteSort}>
+                      Role
+                    </TableHead>
+                    <TableHead sortable sortKey="status" sort={inviteSort} onSort={toggleInviteSort}>
+                      Status
+                    </TableHead>
+                    <TableHead sortable sortKey="expires" sort={inviteSort} onSort={toggleInviteSort}>
+                      Expires
+                    </TableHead>
                     <TableHead align="right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pendingInvites.map((inv) => (
+                  {sortedInvites.map((inv) => (
                     <TableRow key={inv.id} data-testid={`pending-invite-${inv.email}`}>
                       <TableCell>
                         <p className="font-medium text-text">{inv.email}</p>
@@ -673,6 +699,7 @@ function UsersTab() {
                           type="button"
                           variant="secondary"
                           size="sm"
+                          className="h-8 shrink-0 whitespace-nowrap"
                           data-testid={`resend-invite-${inv.id}`}
                           loading={
                             resendInvitationMutation.isPending &&
@@ -694,15 +721,23 @@ function UsersTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead sortable sortKey="user" sort={userSort} onSort={toggleUserSort}>
+                  User
+                </TableHead>
+                <TableHead sortable sortKey="role" sort={userSort} onSort={toggleUserSort}>
+                  Role
+                </TableHead>
+                <TableHead sortable sortKey="department" sort={userSort} onSort={toggleUserSort}>
+                  Department
+                </TableHead>
+                <TableHead sortable sortKey="status" sort={userSort} onSort={toggleUserSort}>
+                  Status
+                </TableHead>
                 <TableHead align="right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((u) => {
+              {sortedUsers.map((u) => {
                 const isSelf = u.id === currentUser?.id;
                 const isOwner = u.roles.includes('OWNER');
                 return (
@@ -724,15 +759,17 @@ function UsersTab() {
                       <span className="text-sm">{u.corporateDepartment ?? u.department ?? '—'}</span>
                     </TableCell>
                     <TableCell>{statusChip(u.status)}</TableCell>
-                    <TableCell align="right">
-                      <div className="flex justify-end gap-2">
+                    <TableCell align="right" className="w-px whitespace-nowrap">
+                      <div className="flex flex-nowrap items-center justify-end gap-2">
                         {canManageOrg && (
                           <Button
                             variant="secondary"
                             size="sm"
+                            className="h-8 shrink-0 whitespace-nowrap"
                             data-testid={`edit-access-${u.id}`}
                             onClick={() => setEditUser(u)}
                           >
+                            <Pencil className="h-3.5 w-3.5" aria-hidden />
                             Edit access
                           </Button>
                         )}
@@ -740,6 +777,7 @@ function UsersTab() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 shrink-0 whitespace-nowrap"
                             loading={deactivateMutation.isPending}
                             onClick={() => deactivateMutation.mutate(u.id)}
                           >

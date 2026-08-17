@@ -10,12 +10,16 @@ interface TableProps {
 }
 
 export function Table({ children, className }: TableProps) {
-  const { tableClass } = useDensity();
+  const { tableClass, densityMode } = useDensity();
   return (
     // No overflow here — the page/panel provides the single scrollport.
     // A nested overflow-auto (plus page overflow-auto) caused double scrollbars.
     // Sticky <th> pins to that outer scrollport when this shell stays overflow:visible.
-    <div className="w-full rounded-lg border border-border" data-table-shell="true">
+    <div
+      className="w-full rounded-lg border border-border"
+      data-table-shell="true"
+      data-density={densityMode}
+    >
       <table
         className={cn('w-full border-separate border-spacing-0', tableClass, className)}
       >

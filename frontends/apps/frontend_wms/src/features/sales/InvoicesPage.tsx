@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -240,6 +241,7 @@ export function InvoicesPage() {
   ];
 
   return (
+    <TableDensityScope gridId="invoices">
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -254,7 +256,7 @@ export function InvoicesPage() {
         )}
       </div>
 
-      <DataListToolbar>
+      <DataListToolbar gridId="invoices">
         <SavedFilterViews
           className="mb-0"
           storageKey="invoices-filters"
@@ -353,5 +355,6 @@ export function InvoicesPage() {
         )}
       </RightPeekDrawer>
     </div>
+    </TableDensityScope>
   );
 }

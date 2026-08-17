@@ -4,21 +4,22 @@ import {
   ColumnVisibilityMenu,
   type ColumnVisibilityItem,
 } from '@/components/ui/ColumnVisibilityMenu';
-import {
-  DENSITY_LABELS,
-  DENSITY_MODES,
-  usePreferencesStore,
-  type DensityMode,
-} from '@/stores/preferencesStore';
+import { DENSITY_LABELS, DENSITY_MODES, type DensityMode } from '@/stores/preferencesStore';
+import { useDensity } from '@/hooks/useDensity';
 import { cn } from '@/lib/utils';
 
 /**
  * Top-rail density control for Surface A master grids.
- * Persists via preferencesStore → localStorage.
+ * Pass `gridId` (or wrap the page in TableDensityScope) so the choice stays on that table.
  */
-export function DensityToggle({ className }: { className?: string }) {
-  const densityMode = usePreferencesStore((s) => s.densityMode);
-  const setDensityMode = usePreferencesStore((s) => s.setDensityMode);
+export function DensityToggle({
+  className,
+  gridId,
+}: {
+  className?: string;
+  gridId?: string;
+}) {
+  const { densityMode, setDensityMode } = useDensity(gridId);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -101,7 +102,7 @@ export function DataListToolbar({
   className?: string;
   /** When provided, shows the Column Visibility Toggle menu in the action deck. */
   columnItems?: ColumnVisibilityItem[];
-  /** Local layout key for Zustand persist (one layout per grid). */
+  /** Isolates column layout and Cozy/Compact/Spacious density for this grid. */
   gridId?: string;
   /** Ops-only preset ids for the Columns menu (Show all / Ops only). */
   opsOnlyColumnIds?: readonly string[];
@@ -126,7 +127,7 @@ export function DataListToolbar({
             opsOnlyColumnIds={opsOnlyColumnIds}
           />
         )}
-        <DensityToggle />
+        <DensityToggle gridId={gridId} />
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import {
   Table,
   TableBody,
@@ -214,6 +215,7 @@ export function ExceptionsPage() {
   });
 
   return (
+    <TableDensityScope gridId="exceptions">
     <div className="flex h-full min-h-0 flex-col" data-testid="action-required-hub">
       <div className="flex shrink-0 flex-col gap-4 border-b border-border/60 px-4 py-4 sm:px-6">
         <div>
@@ -264,7 +266,7 @@ export function ExceptionsPage() {
       {activeTab === 'holds' && (
         <>
           <div className="shrink-0 px-4 pt-4 sm:px-6">
-            <DataListToolbar />
+            <DataListToolbar gridId="exceptions" />
           </div>
           <div className="min-h-0 flex-1 overflow-auto" data-list-scrollport="true">
             <ListPageState
@@ -297,5 +299,6 @@ export function ExceptionsPage() {
         </div>
       )}
     </div>
+    </TableDensityScope>
   );
 }

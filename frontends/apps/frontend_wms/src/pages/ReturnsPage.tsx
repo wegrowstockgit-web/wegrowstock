@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/Table';
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DensityToggle } from '@/components/ui/DensityToggle';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -399,6 +400,7 @@ export function ReturnsPage() {
   );
 
   return (
+    <TableDensityScope gridId="returns">
     <div className="p-6">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -438,7 +440,7 @@ export function ReturnsPage() {
           </button>
         ))}
         </div>
-        <DensityToggle />
+        <DensityToggle gridId="returns" />
       </div>
 
       <ListPageState
@@ -525,5 +527,6 @@ export function ReturnsPage() {
         line={inspectLine}
       />
     </div>
+    </TableDensityScope>
   );
 }
