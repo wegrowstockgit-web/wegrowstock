@@ -11,8 +11,9 @@ import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import com.invsys.modules.inventory.domain.InventoryLedger;
 import com.invsys.modules.inventory.domain.InventoryLevel;
-import com.invsys.modules.inventory.repository.InventoryLevelDeltaFlushRepository;
+import com.invsys.modules.inventory.repository.InventoryLedgerRepository;
 import com.invsys.modules.inventory.repository.InventoryLevelRepository;
 import com.invsys.modules.inventory.service.InventoryService;
 import com.invsys.service.InventoryLevelFlushWorker;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -46,8 +48,8 @@ class PosSyncHttpTest extends AbstractIntegrationTest {
     @Autowired ProductVariantRepository variantRepository;
     @Autowired LocationRepository locationRepository;
     @Autowired InventoryService inventoryService;
+    @Autowired InventoryLedgerRepository ledgerRepository;
     @Autowired InventoryLevelRepository levelRepository;
-    @Autowired InventoryLevelDeltaFlushRepository deltaFlushRepository;
     @Autowired InventoryLevelFlushWorker flushWorker;
     @Autowired @Qualifier("bootstrapDataSource") DataSource bootstrapDataSource;
 
@@ -72,16 +74,24 @@ class PosSyncHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.accepted").value(1))
                 .andExpect(jsonPath("$.duplicates").value(0));
 
+        TenantContext.setTenantId(fx.owner.tenantId());
+        List<InventoryLedger> sales = ledgerRepository.findByTenantIdAndReferenceTypeAndReferenceId(
+                fx.owner.tenantId(), "POS_RECEIPT", UUID.fromString(receiptId));
+        assertThat(sales).hasSize(1);
+        assertThat(sales.get(0).getReasonCode()).isEqualTo("POS_SALE");
+        assertThat(sales.get(0).getQuantityDelta()).isEqualByComparingTo("-2");
+        TenantContext.clear();
+
         JdbcTemplate bootstrapJdbc = new JdbcTemplate(bootstrapDataSource);
-        Integer pending = bootstrapJdbc.queryForObject(
+        Integer saleDeltas = bootstrapJdbc.queryForObject(
                 """
                 SELECT COUNT(*) FROM inventory_level_deltas
-                WHERE tenant_id = ? AND variant_id = ? AND applied_at IS NULL AND on_hand_delta < 0
+                WHERE tenant_id = ? AND variant_id = ? AND on_hand_delta < 0
                 """,
                 Integer.class,
                 fx.owner.tenantId(),
                 fx.variant.getId());
-        assertThat(pending).isEqualTo(1);
+        assertThat(saleDeltas).isEqualTo(1);
 
         mockMvc.perform(post("/api/v1/pos/sync-receipts")
                         .header("Authorization", "Bearer " + fx.owner.accessToken())
@@ -131,6 +141,38 @@ class PosSyncHttpTest extends AbstractIntegrationTest {
                                 """.formatted(UUID.randomUUID(), fx.bin.getId(), fx.variant.getId())))
                 .andExpect(status().isPaymentRequired())
                 .andExpect(jsonPath("$.code").value("MODULE_LOCKED"));
+    }
+
+    @Test
+    void catalogSync_returnsSellableVariants() throws Exception {
+        Fixture fx = seedCatalog();
+
+        mockMvc.perform(get("/api/v1/pos/catalog-sync")
+                        .header("Authorization", "Bearer " + fx.owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].variantId").value(fx.variant.getId().toString()))
+                .andExpect(jsonPath("$[0].upc").value("7700222200099"))
+                .andExpect(jsonPath("$[0].sku").value("POS-1"))
+                .andExpect(jsonPath("$[0].name").value("POS Widget"))
+                .andExpect(jsonPath("$[0].retailPrice").value(4.50));
+    }
+
+    @Test
+    void catalogLookup_returnsSingleVariantAnd404ForUnknownUpc() throws Exception {
+        Fixture fx = seedCatalog();
+
+        mockMvc.perform(get("/api/v1/pos/catalog/lookup")
+                        .param("upc", "7700222200099")
+                        .header("Authorization", "Bearer " + fx.owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.variantId").value(fx.variant.getId().toString()))
+                .andExpect(jsonPath("$.upc").value("7700222200099"));
+
+        mockMvc.perform(get("/api/v1/pos/catalog/lookup")
+                        .param("upc", "0000000000000")
+                        .header("Authorization", "Bearer " + fx.owner.accessToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_NOT_FOUND"));
     }
 
     @Test

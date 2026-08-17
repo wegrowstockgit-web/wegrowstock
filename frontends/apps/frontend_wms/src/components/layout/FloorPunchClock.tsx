@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import { HardwareManualFallback } from '@/components/hardware/HardwareManualFallback';
 import { Button } from '@/components/ui/Button';
 import { getHardwareCapabilities } from '@/lib/hardwareCapabilities';
@@ -32,7 +33,7 @@ export function FloorPunchClock({ warehouseSized }: { warehouseSized?: boolean }
   const { data: status } = useQuery({
     queryKey: ['labor', 'me'],
     queryFn: async () => (await apiClient.get<LaborStatus>('/api/v1/labor/me')).data,
-    refetchInterval: 60_000,
+    refetchInterval: refetchIntervalWhileAuthenticated(60_000),
   });
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['labor'] });

@@ -7,7 +7,7 @@ import {
   type ResolvedPosLocale,
 } from './locale';
 import type { TaxRegion } from './tax';
-import { syncManagerPinVault } from '@/offline/pinVault';
+import { clearPinVault, syncManagerPinVault } from '@/offline/pinVault';
 
 export const POS_SESSION_CACHE_KEY = 'pos.session.v1';
 
@@ -154,6 +154,15 @@ export function hasCachedCashierSession(): boolean {
   return Boolean(readCachedSession()?.cashierId);
 }
 
+export function signedOutSession(): PosSessionState {
+  return { ...defaultSessionState(), posEnabled: null };
+}
+
+export function clearPosClientSession(): void {
+  clearCachedSession();
+  clearPinVault();
+}
+
 export async function fetchPosSession(
   fetchImpl: typeof fetch = fetch,
   place = detectPlace(),
@@ -167,10 +176,17 @@ export async function fetchPosSession(
     credentials: 'include',
     headers: { Accept: 'application/json', 'Accept-Language': place.localeTag },
   });
-  // 401 = no/expired cookie. 403 = a WMS (or other) token was sent to the POS API.
+  // 401 = expired/missing POS cookie. 403 = a WMS (or other) token was sent to the POS API.
   if (response.status === 401 || response.status === 403) {
-    clearCachedSession();
-    return { ...defaultSessionState(), posEnabled: null };
+    clearPosClientSession();
+    if (response.status === 401) {
+      try {
+        await fetchImpl('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+      } catch {
+        /* local session is already gone */
+      }
+    }
+    return signedOutSession();
   }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);

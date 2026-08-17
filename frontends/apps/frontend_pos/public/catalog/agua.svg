@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Agua 600ml">
+  <rect width="160" height="160" rx="16" fill="#e0f2fe"/>
+  <rect x="58" y="22" width="44" height="18" rx="6" fill="#7dd3fc"/>
+  <rect x="52" y="38" width="56" height="100" rx="16" fill="#38bdf8"/>
+  <rect x="60" y="50" width="40" height="72" rx="10" fill="#f0f9ff"/>
+  <path d="M70 78h20v28H70z" fill="#0ea5e9"/>
+  <circle cx="80" cy="64" r="7" fill="#bae6fd"/>
+</svg>

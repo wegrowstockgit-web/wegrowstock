@@ -7,17 +7,26 @@ import {
   loadActiveOrderId,
   loadCartDraft,
   logPosEvent,
-  lookupCatalog,
   saveCartDraft,
 } from './db';
-import { DEMO_CATALOG, seedDemoCatalogIfEmpty } from './catalogSeed';
 
 describe('pos db', () => {
-  it('stores catalog, drafts, and outbox receipts', async () => {
-    expect(await seedDemoCatalogIfEmpty()).toBe(DEMO_CATALOG.length);
-    expect(await seedDemoCatalogIfEmpty()).toBe(0);
-    expect(await lookupCatalog('7501234567890')).toMatchObject({ name: 'Agua 600ml' });
-    expect(await lookupCatalog('   ')).toBeUndefined();
+  it('starts with an empty products table until morning sync', async () => {
+    expect(await db.products.count()).toBe(0);
+  });
+
+  it('stores products, drafts, and outbox receipts', async () => {
+    await db.products.put({
+      id: 'v1',
+      upc: '7501234567890',
+      sku: 'AGUA',
+      name: 'Agua 600ml',
+      price: 12.5,
+    });
+    expect(await db.products.where('upc').equals('7501234567890').first()).toMatchObject({
+      name: 'Agua 600ml',
+      sku: 'AGUA',
+    });
 
     await saveCartDraft([{ variantId: '1', upc: '1', name: 'A', unitPrice: 1, qty: 2 }], 'order-1');
     expect(await loadCartDraft()).toHaveLength(1);

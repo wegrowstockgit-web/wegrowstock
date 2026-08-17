@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ClipboardList, FileUp, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type {
   PaginatedResponse,
   ProductVariant,
@@ -547,7 +548,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
     queryKey: ['ap', 'doc-ingestions'],
     queryFn: async () =>
       (await apiClient.get<ApDocIngestion[]>('/api/v1/ap-ingestions')).data,
-    refetchInterval: 3000,
+    refetchInterval: refetchIntervalWhileAuthenticated(3000),
     retry: false,
   });
 

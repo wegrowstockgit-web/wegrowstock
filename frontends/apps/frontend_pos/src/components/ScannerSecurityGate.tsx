@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ScannerPinKeypad } from '@/components/ScannerPinKeypad';
 import { usePosSession } from '@/lib/PosSessionContext';
+import { downloadCatalog } from '@/lib/syncWorker';
 import { seedDemoManagerPinsIfEmpty, validateManagerPin } from '@/offline/pinVault';
 
 export const POS_SHIFT_UNLOCK_KEY = 'pos.shiftUnlocked';
@@ -29,6 +30,11 @@ export function ScannerSecurityGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     seedDemoManagerPinsIfEmpty();
   }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    void downloadCatalog().catch(() => undefined);
+  }, [unlocked]);
 
   useEffect(() => {
     if (pin.length !== 4) return;

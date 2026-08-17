@@ -36,7 +36,11 @@ function RequireGuest({ children }: { children: ReactNode }) {
 }
 
 export function AppRoutes() {
-  useEffect(() => startOutboxPolling(), []);
+  const { isAuthenticated } = usePosSession();
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    return startOutboxPolling();
+  }, [isAuthenticated]);
 
   return (
     <div className="h-full">

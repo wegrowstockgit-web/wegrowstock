@@ -11,4 +11,5 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     List<ProductVariant> findByTenantIdAndProductId(UUID tenantId, UUID productId);
     Optional<ProductVariant> findByTenantIdAndBarcode(UUID tenantId, String barcode);
     Optional<ProductVariant> findByTenantIdAndSku(UUID tenantId, String sku);
+    List<ProductVariant> findByTenantIdAndLifecycleStatus(UUID tenantId, String lifecycleStatus);
 }

@@ -20,4 +20,11 @@ public interface InventoryOperations {
                             BigDecimal unitCost, String serialCode, Map<String, Object> metadata);
 
     InventoryLedger ship(Allocation allocation, BigDecimal quantity);
+
+    /**
+     * Retail register sale. Writes an append-only ledger row ({@code ADJUST} /
+     * {@code POS_SALE}) so the existing ledger trigger queues a negative
+     * {@code inventory_level_deltas} row for the flush worker.
+     */
+    InventoryLedger posSale(UUID variantId, UUID locationId, BigDecimal quantitySold, UUID receiptId);
 }

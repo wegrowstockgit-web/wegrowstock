@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type { Customer, ProductVariant, SalesOrder, SalesOrderDetail, PaginatedResponse, TenantLocation } from '@/api/types';
 import { cn, formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -452,7 +453,7 @@ export function SalesOrdersPage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['sales-orders'],
     queryFn: async () => (await apiClient.get<SalesOrder[]>('/api/v1/sales-orders')).data,
-    refetchInterval: 3_000,
+    refetchInterval: refetchIntervalWhileAuthenticated(3_000),
   });
 
   const { data: peekOrder } = useQuery({
@@ -460,7 +461,7 @@ export function SalesOrdersPage() {
     queryFn: async () =>
       (await apiClient.get<SalesOrderDetail>(`/api/v1/sales-orders/${peekOrderId}`)).data,
     enabled: !!peekOrderId,
-    refetchInterval: peekOrderId ? 3_000 : false,
+    refetchInterval: peekOrderId ? refetchIntervalWhileAuthenticated(3_000) : false,
   });
 
   const filtered = useMemo(() => {

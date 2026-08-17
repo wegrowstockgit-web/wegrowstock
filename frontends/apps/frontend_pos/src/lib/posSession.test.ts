@@ -62,27 +62,31 @@ describe('pos session', () => {
     expect(languageForUi(locked)).toBe('fr');
   });
 
-  it('caches session and treats 401 as offline', async () => {
+  it('signs out on 401/403 instead of keeping a cached cashier', async () => {
     writeCachedSession(demoSession({ companyName: 'Cached' }));
     expect(readCachedSession()?.companyName).toBe('Cached');
     expect(readCachedSession()?.fromCache).toBe(true);
 
-    const unauthorized = await fetchPosSession(
-      vi.fn().mockResolvedValue({ status: 401, ok: false }),
-      place,
-    );
+    const unauthorizedFetch = vi.fn().mockResolvedValue({ status: 401, ok: false });
+    const unauthorized = await fetchPosSession(unauthorizedFetch, place);
     expect(unauthorized.posEnabled).toBeNull();
     expect(unauthorized.cashierId).toBe('');
     expect(readCachedSession()).toBeNull();
+    expect(unauthorizedFetch).toHaveBeenCalledWith(
+      '/api/v1/auth/logout',
+      expect.objectContaining({ method: 'POST' }),
+    );
     expect(defaultSessionState().posEnabled).toBeNull();
 
     writeCachedSession(demoSession({ companyName: 'WmsCookie' }));
-    const forbidden = await fetchPosSession(
-      vi.fn().mockResolvedValue({ status: 403, ok: false }),
-      place,
-    );
+    const forbiddenFetch = vi.fn().mockResolvedValue({ status: 403, ok: false });
+    const forbidden = await fetchPosSession(forbiddenFetch, place);
     expect(forbidden.posEnabled).toBeNull();
     expect(readCachedSession()).toBeNull();
+    expect(forbiddenFetch).not.toHaveBeenCalledWith(
+      '/api/v1/auth/logout',
+      expect.anything(),
+    );
 
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

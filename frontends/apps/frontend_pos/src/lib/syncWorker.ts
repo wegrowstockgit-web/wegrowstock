@@ -1,3 +1,4 @@
+import { mapCatalogItems } from '@/api/client';
 import { db, deleteAuditEvents, deleteOutboxReceipts, type OutboxReceiptRow, type PosAuditEvent } from './db';
 
 export type SyncResult = {
@@ -66,6 +67,24 @@ async function flushReceipts(
   const done = pending.filter((row) => !rejected.has(row.id)).map((row) => row.id);
   await deleteOutboxReceipts(done);
   return { flushed: done.length };
+}
+
+export async function downloadCatalog(fetchImpl: typeof fetch = fetch): Promise<number> {
+  const response = await fetchImpl('/api/v1/pos/catalog-sync', {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const items = mapCatalogItems(await response.json());
+  await db.transaction('rw', db.products, async () => {
+    await db.products.clear();
+    if (items.length > 0) {
+      await db.products.bulkPut(items);
+    }
+  });
+  return items.length;
 }
 
 export async function flushAuditEvents(

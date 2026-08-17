@@ -6,7 +6,7 @@ import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
-import com.invsys.modules.inventory.repository.InventoryLevelDeltaFlushRepository;
+import com.invsys.modules.inventory.api.InventoryOperations;
 import com.invsys.pos.dto.OfflineReceiptDto;
 import com.invsys.pos.dto.OfflineReceiptDto.OfflineReceiptLineDto;
 import com.invsys.pos.dto.PosSyncResponse;
@@ -15,7 +15,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -31,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,7 +39,7 @@ class PosReceiptProcessorTest {
 
     @Mock LocationRepository locationRepository;
     @Mock ProductVariantRepository variantRepository;
-    @Mock InventoryLevelDeltaFlushRepository deltaFlushRepository;
+    @Mock InventoryOperations inventoryOperations;
     @Mock JdbcTemplate tenantJdbc;
 
     private PosReceiptProcessor processor;
@@ -74,7 +72,7 @@ class PosReceiptProcessorTest {
         variant.setPrice(new BigDecimal("12.50"));
 
         processor = new PosReceiptProcessor(
-                locationRepository, variantRepository, deltaFlushRepository, tenantJdbc);
+                locationRepository, variantRepository, inventoryOperations, tenantJdbc);
     }
 
     @AfterEach
@@ -96,9 +94,7 @@ class PosReceiptProcessorTest {
         assertThat(response.accepted()).isEqualTo(1);
         assertThat(response.duplicates()).isZero();
         assertThat(response.rejected()).isEmpty();
-        verify(deltaFlushRepository).enqueueOnHandDelta(
-                eq(tenantId), eq(variantId), eq(storeId), isNull(), isNull(),
-                eq(new BigDecimal("-3")), isNull());
+        verify(inventoryOperations).posSale(eq(variantId), eq(storeId), eq(new BigDecimal("3")), eq(receipt.id()));
     }
 
     @Test
@@ -113,8 +109,7 @@ class PosReceiptProcessorTest {
 
         assertThat(response.duplicates()).isEqualTo(1);
         assertThat(response.accepted()).isZero();
-        verify(deltaFlushRepository, never()).enqueueOnHandDelta(
-                any(), any(), any(), any(), any(), any(), any());
+        verify(inventoryOperations, never()).posSale(any(), any(), any(), any());
     }
 
     @Test
@@ -157,10 +152,7 @@ class PosReceiptProcessorTest {
                 List.of(new OfflineReceiptLineDto(null, "7501234567890", new BigDecimal("2"), null)))));
 
         assertThat(response.accepted()).isEqualTo(1);
-        ArgumentCaptor<BigDecimal> qty = ArgumentCaptor.forClass(BigDecimal.class);
-        verify(deltaFlushRepository).enqueueOnHandDelta(
-                eq(tenantId), eq(variantId), eq(storeId), isNull(), isNull(), qty.capture(), isNull());
-        assertThat(qty.getValue()).isEqualByComparingTo("-2");
+        verify(inventoryOperations).posSale(eq(variantId), eq(storeId), eq(new BigDecimal("2")), any());
     }
 
     @Test

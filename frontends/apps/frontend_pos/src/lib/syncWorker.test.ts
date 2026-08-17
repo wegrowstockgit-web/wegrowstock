@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db, logPosEvent } from './db';
-import { flushOutbox, startOutboxPolling, toAuditSyncPayload, toSyncPayload } from './syncWorker';
+import { flushOutbox, startOutboxPolling, toAuditSyncPayload, toSyncPayload, downloadCatalog } from './syncWorker';
 
 describe('syncWorker', () => {
   afterEach(() => {
@@ -157,5 +157,47 @@ describe('syncWorker', () => {
     stop();
     window.dispatchEvent(new Event('online'));
     expect(flush).toHaveBeenCalledTimes(2);
+  });
+
+  it('replaces the local products cache from catalog-sync', async () => {
+    await db.products.put({
+      id: 'old',
+      upc: '000',
+      sku: 'OLD',
+      name: 'Discontinued',
+      price: 1,
+    });
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          variantId: 'a0000000-0000-4000-8000-000000000701',
+          upc: '7501234567890',
+          sku: 'AGUA',
+          name: 'Agua 600ml',
+          retailPrice: 12.5,
+          imageUrl: '/catalog/agua.svg',
+        },
+      ],
+    });
+    expect(await downloadCatalog(fetchImpl as unknown as typeof fetch)).toBe(1);
+    expect(await db.products.count()).toBe(1);
+    expect(await db.products.get('a0000000-0000-4000-8000-000000000701')).toMatchObject({
+      upc: '7501234567890',
+      price: 12.5,
+    });
+  });
+
+  it('keeps the previous cache when catalog-sync fails', async () => {
+    await db.products.put({
+      id: 'keep',
+      upc: '111',
+      sku: 'KEEP',
+      name: 'Keep',
+      price: 2,
+    });
+    await expect(downloadCatalog(vi.fn().mockResolvedValue({ ok: false, status: 500 }) as unknown as typeof fetch))
+      .rejects.toThrow('HTTP 500');
+    expect(await db.products.get('keep')).toBeTruthy();
   });
 });

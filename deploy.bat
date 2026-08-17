@@ -14,6 +14,13 @@ set "DOCKER_CLI_HINTS=false"
 set "WMS_FRONTEND=frontends\apps\frontend_wms"
 set "ADMIN_FRONTEND=frontends\apps\frontend_admin"
 set "POS_FRONTEND=frontends\apps\frontend_pos"
+set "TARGET="
+
+call :canonicalize_target "%CMD%"
+if defined CANON_TARGET (
+    set "TARGET=!CANON_TARGET!"
+    set "CMD=deploy"
+)
 
 if /i "%CMD%"=="help" goto :help
 if /i "%CMD%"=="--help" goto :help
@@ -241,7 +248,135 @@ call :info "Control plane ^(admin^) is independent of this toggle."
 echo.
 exit /b 0
 
+:canonicalize_target
+:: Maps aliases to a canonical target name. Empty = full stack.
+set "CANON_TARGET="
+if /i "%~1"=="pos" set "CANON_TARGET=pos"
+if /i "%~1"=="frontend-pos" set "CANON_TARGET=pos"
+if /i "%~1"=="frontend_pos" set "CANON_TARGET=pos"
+if /i "%~1"=="wms" set "CANON_TARGET=wms"
+if /i "%~1"=="frontend" set "CANON_TARGET=wms"
+if /i "%~1"=="frontend-wms" set "CANON_TARGET=wms"
+if /i "%~1"=="frontend_wms" set "CANON_TARGET=wms"
+if /i "%~1"=="web" set "CANON_TARGET=wms"
+if /i "%~1"=="admin" set "CANON_TARGET=admin"
+if /i "%~1"=="frontend-admin" set "CANON_TARGET=admin"
+if /i "%~1"=="frontend_admin" set "CANON_TARGET=admin"
+if /i "%~1"=="frontends" set "CANON_TARGET=frontends"
+if /i "%~1"=="ui" set "CANON_TARGET=frontends"
+if /i "%~1"=="spa" set "CANON_TARGET=frontends"
+if /i "%~1"=="backend" set "CANON_TARGET=backend"
+if /i "%~1"=="api" set "CANON_TARGET=backend"
+if /i "%~1"=="wms-api" set "CANON_TARGET=backend"
+if /i "%~1"=="app" set "CANON_TARGET=backend"
+if /i "%~1"=="admin-api" set "CANON_TARGET=admin-api"
+if /i "%~1"=="backend-admin" set "CANON_TARGET=admin-api"
+if /i "%~1"=="gateway" set "CANON_TARGET=gateway"
+if /i "%~1"=="api-gateway" set "CANON_TARGET=gateway"
+if /i "%~1"=="apis" set "CANON_TARGET=apis"
+if /i "%~1"=="backends" set "CANON_TARGET=apis"
+if /i "%~1"=="all" set "CANON_TARGET="
+exit /b 0
+
+:pick_deploy_target
+if defined TARGET exit /b 0
+for %%a in (%*) do (
+    set "ARG=%%~a"
+    if /i not "!ARG!"=="deploy" if /i not "!ARG:~0,2!"=="--" (
+        if not defined TARGET (
+            call :canonicalize_target "!ARG!"
+            if defined CANON_TARGET set "TARGET=!CANON_TARGET!"
+            if not defined CANON_TARGET (
+                call :err "Unknown deploy target: !ARG!"
+                call :info "Try: pos  wms  admin  frontends  backend  admin-api  gateway  apis"
+                exit /b 1
+            )
+        )
+    )
+)
+exit /b 0
+
+:resolve_deploy_target
+set "SERVICES="
+set "TARGET_LABEL="
+set "WAIT_CONTAINERS="
+set "CLEAN_DIRS="
+set "NEED_CHATBOT="
+if /i "%TARGET%"=="pos" (
+    set "SERVICES=frontend-pos"
+    set "TARGET_LABEL=Retail POS UI (:3003)"
+    set "CLEAN_DIRS=%POS_FRONTEND%"
+)
+if /i "%TARGET%"=="wms" (
+    set "SERVICES=frontend"
+    set "TARGET_LABEL=WMS UI (:3000)"
+    set "CLEAN_DIRS=%WMS_FRONTEND%"
+    set "NEED_CHATBOT=1"
+)
+if /i "%TARGET%"=="admin" (
+    set "SERVICES=frontend-admin"
+    set "TARGET_LABEL=Admin UI (:3002)"
+    set "CLEAN_DIRS=%ADMIN_FRONTEND%"
+)
+if /i "%TARGET%"=="frontends" (
+    set "SERVICES=frontend frontend-admin frontend-pos"
+    set "TARGET_LABEL=All frontends (WMS + admin + POS)"
+    set "CLEAN_DIRS=%WMS_FRONTEND% %ADMIN_FRONTEND% %POS_FRONTEND%"
+    set "NEED_CHATBOT=1"
+)
+if /i "%TARGET%"=="backend" (
+    set "SERVICES=backend"
+    set "TARGET_LABEL=WMS API (invsys-api / :8080)"
+    set "WAIT_CONTAINERS=invsys-api"
+    set "NEED_CHATBOT=1"
+)
+if /i "%TARGET%"=="admin-api" (
+    set "SERVICES=backend-admin"
+    set "TARGET_LABEL=Admin API (invsys-admin-api / :8081)"
+    set "WAIT_CONTAINERS=invsys-admin-api"
+)
+if /i "%TARGET%"=="gateway" (
+    set "SERVICES=api-gateway"
+    set "TARGET_LABEL=API gateway (:8080 / :8081)"
+    set "WAIT_CONTAINERS=invsys-api-gateway"
+)
+if /i "%TARGET%"=="apis" (
+    set "SERVICES=backend backend-admin api-gateway"
+    set "TARGET_LABEL=WMS API + Admin API + gateway"
+    set "WAIT_CONTAINERS=invsys-api invsys-admin-api invsys-api-gateway"
+    set "NEED_CHATBOT=1"
+)
+if not defined SERVICES (
+    call :err "Could not resolve deploy target: %TARGET%"
+    exit /b 1
+)
+exit /b 0
+
+:wait_named_health
+:: %~1 container  %~2 retries
+set "WAIT_NAME=%~1"
+set /a WAIT_RETRIES=%~2
+:wait_named_loop
+set "WAIT_HEALTH=unknown"
+for /f "usebackq delims=" %%s in (`docker inspect --format="{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" %WAIT_NAME% 2^>nul`) do set "WAIT_HEALTH=%%s"
+if /i "!WAIT_HEALTH!"=="healthy" (
+    call :ok "%WAIT_NAME% is healthy"
+    exit /b 0
+)
+echo     ... %WAIT_NAME%: !WAIT_HEALTH!  ^(!WAIT_RETRIES! checks left^)
+set /a WAIT_RETRIES-=1
+if !WAIT_RETRIES! leq 0 (
+    call :warn "%WAIT_NAME% health timed out — check: docker compose logs --tail 80"
+    exit /b 0
+)
+timeout /t 5 /nobreak >nul
+goto :wait_named_loop
+
 :deploy
+call :pick_deploy_target %*
+if errorlevel 1 exit /b 1
+if defined TARGET goto :deploy_partial
+
 call :banner "InventorySystem deploy"
 call :require_docker
 if errorlevel 1 exit /b 1
@@ -353,6 +488,111 @@ call :info "Next:  deploy.bat seed     ^(demo users / password123^)"
 call :info "       deploy.bat status"
 call :info "Chatbot: deploy.bat chatbot-enable / chatbot-disable"
 echo.
+exit /b 0
+
+:deploy_partial
+call :resolve_deploy_target
+if errorlevel 1 exit /b 1
+call :banner "InventorySystem deploy (%TARGET_LABEL%)"
+call :require_docker
+if errorlevel 1 exit /b 1
+call :ok "Docker is available"
+call :info "Target: %TARGET%  services: %SERVICES%"
+call :info "Existing stack is left running; only these images are rebuilt."
+
+call :apply_chatbot_env %*
+if defined NEED_CHATBOT (
+    if /i "!CHATBOT_MODE!"=="disabled" (
+        call :info "Chatbot: DISABLED"
+    ) else (
+        call :info "Chatbot: ENABLED"
+    )
+    call :sync_frontend_chatbot_bridge
+)
+
+if /i "%~1"=="--clean-frontend" call :clean_target_frontends
+if /i "%~2"=="--clean-frontend" call :clean_target_frontends
+if /i "%~3"=="--clean-frontend" call :clean_target_frontends
+if /i "%~4"=="--clean-frontend" call :clean_target_frontends
+
+(
+    echo ===== deploy %TARGET% %DATE% %TIME% =====
+    echo services=%SERVICES%
+) > "%DEPLOY_LOG%"
+
+call :step "Building %SERVICES% (quiet — details in log)"
+call :info "Log file: %DEPLOY_LOG%"
+docker compose build --quiet %SERVICES% >> "%DEPLOY_LOG%" 2>&1
+if errorlevel 1 (
+    call :fail_with_log "Image build failed for %SERVICES%."
+    exit /b 1
+)
+call :ok "Images built"
+
+call :step "Recreating %SERVICES%"
+docker compose up -d --no-deps --quiet-pull %SERVICES% >> "%DEPLOY_LOG%" 2>&1
+if errorlevel 1 (
+    call :fail_with_log "Failed to start %SERVICES%."
+    exit /b 1
+)
+call :ok "Containers updated"
+
+if defined WAIT_CONTAINERS (
+    for %%c in (%WAIT_CONTAINERS%) do (
+        call :step "Waiting for %%c health"
+        call :wait_named_health %%c 24
+    )
+)
+
+call :banner "Partial deploy complete"
+call :print_target_endpoints
+echo.
+call :print_status_table
+echo.
+exit /b 0
+
+:clean_target_frontends
+if not defined CLEAN_DIRS exit /b 0
+for %%d in (%CLEAN_DIRS%) do call :clean_one_frontend "%%d"
+exit /b 0
+
+:print_target_endpoints
+if /i "%TARGET%"=="pos" (
+    echo   Retail POS  http://localhost:3003
+    exit /b 0
+)
+if /i "%TARGET%"=="wms" (
+    echo   WMS UI      http://localhost:3000
+    exit /b 0
+)
+if /i "%TARGET%"=="admin" (
+    echo   Admin UI    http://localhost:3002
+    exit /b 0
+)
+if /i "%TARGET%"=="frontends" (
+    echo   WMS UI      http://localhost:3000
+    echo   Admin UI    http://localhost:3002
+    echo   Retail POS  http://localhost:3003
+    exit /b 0
+)
+if /i "%TARGET%"=="backend" (
+    echo   WMS API     http://localhost:8080
+    exit /b 0
+)
+if /i "%TARGET%"=="admin-api" (
+    echo   Admin API   http://localhost:8081
+    exit /b 0
+)
+if /i "%TARGET%"=="gateway" (
+    echo   Gateway     http://localhost:8080  and  :8081
+    exit /b 0
+)
+if /i "%TARGET%"=="apis" (
+    echo   WMS API     http://localhost:8080
+    echo   Admin API   http://localhost:8081
+    exit /b 0
+)
+call :print_endpoints
 exit /b 0
 
 :print_endpoints
@@ -514,13 +754,24 @@ echo.
 echo Usage: deploy.bat [command] [options]
 echo.
 echo Commands:
-echo   deploy                     Rebuild and start the stack ^(quiet console^)
+echo   deploy                     Rebuild and start the full stack ^(quiet console^)
+echo   deploy ^<target^>            Rebuild only one plane ^(does not stop the rest^)
 echo   deploy --clean-frontend    Clean frontend artifacts, then deploy
 echo   deploy --no-chatbot        Deploy without Support Co-Pilot ^(WMS api + web^)
 echo   deploy --with-chatbot      Deploy with Support Co-Pilot ^(overrides marker^)
 echo   --no-chatbot               Shorthand for: deploy --no-chatbot
 echo   --with-chatbot             Shorthand for: deploy --with-chatbot
 echo   --clean-frontend           Shorthand for: deploy --clean-frontend
+echo.
+echo Targets ^(also valid as the first argument, e.g. deploy.bat pos^):
+echo   pos / frontend-pos         Retail POS UI  invsys-pos-web  :3003
+echo   wms / frontend / web       WMS UI         invsys-web      :3000
+echo   admin / frontend-admin     Admin UI       invsys-admin-web :3002
+echo   frontends / ui             All three SPAs
+echo   backend / api / wms-api    WMS API        invsys-api      :8080
+echo   admin-api / backend-admin  Admin API      invsys-admin-api :8081
+echo   gateway / api-gateway      Nginx gateway  :8080 / :8081
+echo   apis / backends            WMS API + Admin API + gateway
 echo   down                       Stop and remove containers ^(keeps DB volume^)
 echo   undeploy                   Alias for down
 echo   status                     Compact container status + URLs
@@ -548,6 +799,11 @@ echo On failure, the last 40 lines of .deploy-last.log are printed.
 echo.
 echo Examples:
 echo   deploy.bat
+echo   deploy.bat pos
+echo   deploy.bat deploy wms
+echo   deploy.bat deploy backend
+echo   deploy.bat deploy apis
+echo   deploy.bat deploy frontends
 echo   deploy.bat --no-chatbot
 echo   deploy.bat deploy --clean-frontend
 echo   deploy.bat chatbot-disable

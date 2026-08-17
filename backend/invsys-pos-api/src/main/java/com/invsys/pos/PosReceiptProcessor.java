@@ -6,7 +6,7 @@ import com.invsys.modules.catalog.domain.Location;
 import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
-import com.invsys.modules.inventory.repository.InventoryLevelDeltaFlushRepository;
+import com.invsys.modules.inventory.api.InventoryOperations;
 import com.invsys.pos.dto.OfflineReceiptDto;
 import com.invsys.pos.dto.OfflineReceiptDto.OfflineReceiptLineDto;
 import com.invsys.pos.dto.PosSyncResponse;
@@ -25,42 +25,48 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Converts offline POS receipts into {@link InventoryLevelDelta} events and
- * appends them to the existing async inventory flush queue.
+ * Converts offline POS receipts into WMS ledger {@code POS_SALE} rows.
+ * The ledger insert trigger queues negative {@code inventory_level_deltas}
+ * for {@link com.invsys.service.InventoryLevelFlushWorker}.
  */
 @Service
 public class PosReceiptProcessor {
 
     private final LocationRepository locationRepository;
     private final ProductVariantRepository variantRepository;
-    private final InventoryLevelDeltaFlushRepository deltaFlushRepository;
+    private final InventoryOperations inventoryOperations;
     private final JdbcTemplate tenantJdbc;
 
     @Autowired
     public PosReceiptProcessor(
             LocationRepository locationRepository,
             ProductVariantRepository variantRepository,
-            InventoryLevelDeltaFlushRepository deltaFlushRepository,
+            InventoryOperations inventoryOperations,
             DataSource dataSource) {
         this.locationRepository = locationRepository;
         this.variantRepository = variantRepository;
-        this.deltaFlushRepository = deltaFlushRepository;
+        this.inventoryOperations = inventoryOperations;
         this.tenantJdbc = new JdbcTemplate(dataSource);
     }
 
     PosReceiptProcessor(
             LocationRepository locationRepository,
             ProductVariantRepository variantRepository,
-            InventoryLevelDeltaFlushRepository deltaFlushRepository,
+            InventoryOperations inventoryOperations,
             JdbcTemplate tenantJdbc) {
         this.locationRepository = locationRepository;
         this.variantRepository = variantRepository;
-        this.deltaFlushRepository = deltaFlushRepository;
+        this.inventoryOperations = inventoryOperations;
         this.tenantJdbc = tenantJdbc;
     }
 
     @Transactional
     public PosSyncResponse sync(List<OfflineReceiptDto> receipts) {
+        return processReceipts(receipts);
+    }
+
+    @Transactional
+    public PosSyncResponse processReceipts(List<OfflineReceiptDto> receipts) {
         UUID tenantId = TenantContext.requireTenantId();
         int accepted = 0;
         int duplicates = 0;
@@ -108,15 +114,10 @@ public class PosReceiptProcessor {
         if (!tryClaim(tenantId, receipt)) {
             return false;
         }
-        for (InventoryLevelDelta delta : deltas) {
-            deltaFlushRepository.enqueueOnHandDelta(
-                    delta.tenantId(),
-                    delta.variantId(),
-                    delta.locationId(),
-                    delta.lotId(),
-                    delta.lpnId(),
-                    delta.onHandDelta(),
-                    delta.ownerCustomerId());
+        for (int i = 0; i < receipt.lines().size(); i++) {
+            OfflineReceiptLineDto line = receipt.lines().get(i);
+            InventoryLevelDelta delta = deltas.get(i);
+            inventoryOperations.posSale(delta.variantId(), store.getId(), line.quantity(), receipt.id());
         }
         return true;
     }

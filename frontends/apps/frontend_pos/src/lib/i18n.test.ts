@@ -11,10 +11,14 @@ describe('pos i18n', () => {
 
   it('interpolates cashier copy in all three languages', () => {
     expect(translate('en', 'register.unknownUpc', { upc: '000' })).toBe('Unknown UPC 000');
+    expect(translate('en', 'register.unknownUpcOffline', { upc: '000' })).toBe('Unknown UPC (Offline) 000');
     expect(translate('es', 'register.scanFirst')).toContain('artículo');
     expect(translate('fr', 'locked.title')).toContain('POS');
     expect(translate('en', 'login.submit')).toBe('Sign In');
     expect(translate('en', 'register.voidConfirm')).toContain('Void Transaction');
     expect(translate('es', 'register.voidConfirm')).toMatch(/anular/i);
+    expect(translate('en', 'register.itemsCount', { n: '3' })).toBe('3 items');
+    expect(translate('es', 'register.changeDue')).toBe('Cambio');
+    expect(translate('en', 'register.empty')).toContain('Scan a barcode');
   });
 });

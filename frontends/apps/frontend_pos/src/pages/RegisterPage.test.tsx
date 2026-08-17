@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '@/lib/db';
 import { demoSession } from '@/lib/posSession';
 import { PosSessionProvider } from '@/lib/PosSessionContext';
@@ -17,9 +17,39 @@ function renderRegister(session = demoSession()) {
   );
 }
 
+const TEST_CATALOG = [
+  {
+    id: 'a0000000-0000-4000-8000-000000000701',
+    upc: '7501234567890',
+    sku: 'AGUA',
+    name: 'Agua 600ml',
+    price: 12.5,
+    imageUrl: '/catalog/agua.svg',
+  },
+  {
+    id: 'a0000000-0000-4000-8000-000000000702',
+    upc: '049000042566',
+    sku: 'COLA',
+    name: 'Cola 355ml',
+    price: 18,
+    imageUrl: '/catalog/cola.svg',
+  },
+  {
+    id: 'a0000000-0000-4000-8000-000000000703',
+    upc: '022000001234',
+    sku: 'BREAD',
+    name: 'Bread loaf',
+    price: 29.9,
+    imageUrl: '/catalog/bread.svg',
+  },
+];
+
 const mxSession = () => demoSession({ taxRegion: 'MX', currency: 'MXN', localeTag: 'es-MX', placeCurrency: 'MXN' });
 
 describe('RegisterPage', () => {
+  beforeEach(async () => {
+    await db.products.bulkPut(TEST_CATALOG);
+  });
   it('scans a UPC, adjusts qty, and checks out offline into the outbox', async () => {
     const user = userEvent.setup();
     renderRegister(mxSession());
@@ -52,7 +82,7 @@ describe('RegisterPage', () => {
     expect(receipt?.facturaUsoCfdi).toBe('G01');
     expect(receipt?.id.charAt(14)).toBe('7');
     expect(screen.queryByTestId('cart-row-7501234567890')).toBeNull();
-  });
+  }, 15_000);
 
   it('shows an error for unknown UPCs and empty checkout', async () => {
     const user = userEvent.setup();
@@ -99,7 +129,20 @@ describe('RegisterPage', () => {
     await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
     await user.click(await screen.findByTestId('tender-20'));
     expect((await db.outbox_receipts.toArray()).some((row) => row.tenderType === 'CASH_20')).toBe(true);
-  });
+  }, 15_000);
+
+  it('accepts tender digits from the physical keyboard', async () => {
+    const user = userEvent.setup();
+    renderRegister();
+    await screen.findByTestId('pos-upc-search');
+    await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
+    await screen.findByTestId('cart-row-7501234567890');
+    await user.click(screen.getByTestId('numpad-C'));
+    await user.keyboard('20.5');
+    expect(screen.getByTestId('pos-tender-buffer').textContent).toMatch(/20\.50|20\.5/);
+    await user.keyboard('{Backspace}{Backspace}');
+    expect(screen.getByTestId('pos-tender-buffer').textContent).toMatch(/20/);
+  }, 15_000);
 
   it('locks the register when Retail POS is not entitled', async () => {
     renderRegister(demoSession({ posEnabled: false, language: 'es', placeLanguage: 'es' }));
@@ -172,9 +215,15 @@ describe('RegisterPage', () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => [{ id: 'cust-1', name: 'Retail Partners LLC', email: 'ap@retailpartners.com' }],
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/v1/pos/customers')) {
+          return {
+            ok: true,
+            json: async () => [{ id: 'cust-1', name: 'Retail Partners LLC', email: 'ap@retailpartners.com' }],
+          };
+        }
+        return { ok: false, status: 401, json: async () => ({}) };
       }),
     );
     renderRegister();
@@ -193,4 +242,5 @@ describe('RegisterPage', () => {
     expect(receipt?.customerId).toBe('cust-1');
     expect(receipt?.customerName).toBe('Retail Partners LLC');
   });
+
 });

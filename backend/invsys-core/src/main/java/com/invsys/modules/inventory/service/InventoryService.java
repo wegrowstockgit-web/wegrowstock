@@ -693,6 +693,30 @@ public class InventoryService implements InventoryOperations {
         return entry;
     }
 
+    @Override
+    @Transactional
+    public InventoryLedger posSale(UUID variantId, UUID locationId, BigDecimal quantitySold, UUID receiptId) {
+        if (quantitySold == null || quantitySold.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QTY", "Line quantity must be greater than zero.");
+        }
+        ProductVariant variant = serialNumberService.requireVariant(variantId);
+        ResolvedLot resolved = resolveLot(variant, null, null, null);
+        BigDecimal delta = quantitySold.negate();
+        validateNegative(delta, variantId, locationId, resolved.lotId());
+        return appendMovement(
+                "ADJUST",
+                variantId,
+                locationId,
+                resolved.lotId(),
+                delta,
+                "POS_SALE",
+                "POS_RECEIPT",
+                receiptId,
+                null,
+                null,
+                null);
+    }
+
     /**
      * Floor pick ADJUST against an allocation hold. Validates {@code on_hand} (not available)
      * because reserved qty already has available=0.

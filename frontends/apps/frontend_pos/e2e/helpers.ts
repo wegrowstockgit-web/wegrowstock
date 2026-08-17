@@ -61,6 +61,52 @@ export async function mockPosAuthApis(page: Page): Promise<void> {
       ]),
     });
   });
+  const catalog = [
+    {
+      variantId: 'a0000000-0000-4000-8000-000000000701',
+      upc: '7501234567890',
+      sku: 'AGUA',
+      name: 'Agua 600ml',
+      retailPrice: 12.5,
+      imageUrl: '/catalog/agua.svg',
+    },
+    {
+      variantId: 'a0000000-0000-4000-8000-000000000702',
+      upc: '049000042566',
+      sku: 'COLA',
+      name: 'Cola 355ml',
+      retailPrice: 18,
+      imageUrl: '/catalog/cola.svg',
+    },
+    {
+      variantId: 'a0000000-0000-4000-8000-000000000703',
+      upc: '022000001234',
+      sku: 'BREAD',
+      name: 'Bread loaf',
+      retailPrice: 29.9,
+      imageUrl: '/catalog/bread.svg',
+    },
+  ];
+  await page.route('**/api/v1/pos/catalog-sync', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(catalog),
+    });
+  });
+  await page.route('**/api/v1/pos/catalog/lookup**', async (route) => {
+    const upc = new URL(route.request().url()).searchParams.get('upc');
+    const item = catalog.find((row) => row.upc === upc);
+    if (!item) {
+      await route.fulfill({ status: 404, contentType: 'application/json', body: '{"code":"VARIANT_NOT_FOUND"}' });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(item),
+    });
+  });
 }
 
 async function enterShiftPin(page: Page): Promise<void> {

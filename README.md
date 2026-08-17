@@ -16,6 +16,7 @@ On Windows, prefer the repo helper from the project root (quiet console; full lo
 
 ```bat
 deploy.bat deploy              Rem build images, start stack, wait for API health
+deploy.bat pos                 Rem rebuild only the retail POS UI (:3003)
 deploy.bat seed                Rem load demo users / catalog (password123)
 deploy.bat status              Rem container status + URLs
 deploy.bat down                Rem stop containers (keeps DB volume)
@@ -32,6 +33,13 @@ chmod +x deploy.sh
 | Command | What it does |
 |---------|----------------|
 | `deploy.bat` / `deploy.bat deploy` | Rebuild and start the full stack |
+| `deploy.bat pos` / `deploy.bat deploy pos` | Rebuild only `frontend-pos` (`invsys-pos-web` :3003) |
+| `deploy.bat deploy wms` | Rebuild only the WMS SPA (`invsys-web` :3000) |
+| `deploy.bat deploy admin` | Rebuild only the admin SPA (`invsys-admin-web` :3002) |
+| `deploy.bat deploy frontends` | Rebuild WMS + admin + POS SPAs |
+| `deploy.bat deploy backend` | Rebuild only the WMS API (`invsys-api`) |
+| `deploy.bat deploy admin-api` | Rebuild only the admin API (`invsys-admin-api`) |
+| `deploy.bat deploy apis` | Rebuild WMS API + admin API + gateway |
 | `deploy.bat --no-chatbot` | Same as `deploy --no-chatbot` (flag-only first arg is valid) |
 | `deploy.bat deploy --clean-frontend` | Wipe `frontends/` app `node_modules`/`dist` first, then deploy |
 | `deploy.bat seed` | Apply `ops/demo_seed.sql` (+ extra tenants if present) |

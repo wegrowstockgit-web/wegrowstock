@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, PackageOpen, X } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type { ReplenishmentTask } from '@/api/types';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +12,7 @@ export function ReplenishmentBadge({ onOpen }: { onOpen: () => void }) {
     queryKey: ['warehouse', 'replenishments'],
     queryFn: async () =>
       (await apiClient.get<ReplenishmentTask[]>('/api/v1/warehouse/replenishments')).data,
-    refetchInterval: 30_000,
+    refetchInterval: refetchIntervalWhileAuthenticated(30_000),
   });
 
   if (tasks.length === 0) return null;

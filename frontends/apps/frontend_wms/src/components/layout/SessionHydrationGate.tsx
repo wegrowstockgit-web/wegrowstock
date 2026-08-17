@@ -1,7 +1,8 @@
 import { useEffect, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 import { useSessionHydrated, useIsAuthenticated, useSessionStore } from '@/stores/session';
-import { apiClient } from '@/api/client';
+import { apiClient, endSessionOnAuthFailure } from '@/api/client';
 
 type MeEntitlements = {
   userId: string;
@@ -57,8 +58,13 @@ export function SessionHydrationGate({ children }: { children: ReactNode }) {
           tier: data.tier,
         });
         void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      } catch {
-        // keep prior session; next poll / SSE reconnect will retry
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          // Cookies expired (idle access TTL or refresh revoked). Do not keep polling /me.
+          await endSessionOnAuthFailure();
+          return;
+        }
+        // Transient network errors: keep the local session and retry on the next poll / SSE.
       }
     };
 

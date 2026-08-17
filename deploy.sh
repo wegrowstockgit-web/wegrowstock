@@ -10,6 +10,36 @@ if [[ "$CMD" == "--no-chatbot" || "$CMD" == "--with-chatbot" || "$CMD" == "--cle
   CMD="deploy"
 fi
 
+canonicalize_target() {
+  case "${1:-}" in
+    pos|frontend-pos|frontend_pos) echo pos ;;
+    wms|frontend|frontend-wms|frontend_wms|web) echo wms ;;
+    admin|frontend-admin|frontend_admin) echo admin ;;
+    frontends|ui|spa) echo frontends ;;
+    backend|api|wms-api|app) echo backend ;;
+    admin-api|backend-admin) echo admin-api ;;
+    gateway|api-gateway) echo gateway ;;
+    apis|backends) echo apis ;;
+    all|"") echo "" ;;
+    *) echo "" ;;
+  esac
+}
+
+is_known_target() {
+  case "${1:-}" in
+    pos|frontend-pos|frontend_pos|wms|frontend|frontend-wms|frontend_wms|web|admin|frontend-admin|frontend_admin|frontends|ui|spa|backend|api|wms-api|app|admin-api|backend-admin|gateway|api-gateway|apis|backends|all)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if is_known_target "$CMD"; then
+  TARGET="$(canonicalize_target "$CMD")"
+  CMD="deploy"
+else
+  TARGET=""
+fi
+
 DEPLOY_LOG="$ROOT/.deploy-last.log"
 export COMPOSE_ANSI="${COMPOSE_ANSI:-never}"
 export DOCKER_CLI_HINTS="${DOCKER_CLI_HINTS:-false}"
@@ -183,7 +213,157 @@ wait_health() {
   warn "$label health timed out — check: docker compose logs ${container/invsys-/} --tail 80"
 }
 
+pick_deploy_target() {
+  if [[ -n "${TARGET:-}" ]]; then
+    return 0
+  fi
+  local arg
+  for arg in "$@"; do
+    [[ "$arg" == --* || "$arg" == "deploy" ]] && continue
+    if ! is_known_target "$arg"; then
+      err "Unknown deploy target: $arg"
+      info "Try: pos  wms  admin  frontends  backend  admin-api  gateway  apis"
+      exit 1
+    fi
+    TARGET="$(canonicalize_target "$arg")"
+    return 0
+  done
+}
+
+resolve_deploy_target() {
+  SERVICES=""
+  TARGET_LABEL=""
+  WAIT_CONTAINERS=()
+  CLEAN_DIRS=()
+  NEED_CHATBOT=0
+  case "$TARGET" in
+    pos)
+      SERVICES="frontend-pos"
+      TARGET_LABEL="Retail POS UI (:3003)"
+      CLEAN_DIRS=("$POS_FRONTEND")
+      ;;
+    wms)
+      SERVICES="frontend"
+      TARGET_LABEL="WMS UI (:3000)"
+      CLEAN_DIRS=("$WMS_FRONTEND")
+      NEED_CHATBOT=1
+      ;;
+    admin)
+      SERVICES="frontend-admin"
+      TARGET_LABEL="Admin UI (:3002)"
+      CLEAN_DIRS=("$ADMIN_FRONTEND")
+      ;;
+    frontends)
+      SERVICES="frontend frontend-admin frontend-pos"
+      TARGET_LABEL="All frontends (WMS + admin + POS)"
+      CLEAN_DIRS=("$WMS_FRONTEND" "$ADMIN_FRONTEND" "$POS_FRONTEND")
+      NEED_CHATBOT=1
+      ;;
+    backend)
+      SERVICES="backend"
+      TARGET_LABEL="WMS API (invsys-api / :8080)"
+      WAIT_CONTAINERS=(invsys-api)
+      NEED_CHATBOT=1
+      ;;
+    admin-api)
+      SERVICES="backend-admin"
+      TARGET_LABEL="Admin API (invsys-admin-api / :8081)"
+      WAIT_CONTAINERS=(invsys-admin-api)
+      ;;
+    gateway)
+      SERVICES="api-gateway"
+      TARGET_LABEL="API gateway (:8080 / :8081)"
+      WAIT_CONTAINERS=(invsys-api-gateway)
+      ;;
+    apis)
+      SERVICES="backend backend-admin api-gateway"
+      TARGET_LABEL="WMS API + Admin API + gateway"
+      WAIT_CONTAINERS=(invsys-api invsys-admin-api invsys-api-gateway)
+      NEED_CHATBOT=1
+      ;;
+    *)
+      err "Could not resolve deploy target: $TARGET"
+      exit 1
+      ;;
+  esac
+}
+
+print_target_endpoints() {
+  case "$TARGET" in
+    pos) echo "  Retail POS  http://localhost:3003" ;;
+    wms) echo "  WMS UI      http://localhost:3000" ;;
+    admin) echo "  Admin UI    http://localhost:3002" ;;
+    frontends)
+      echo "  WMS UI      http://localhost:3000"
+      echo "  Admin UI    http://localhost:3002"
+      echo "  Retail POS  http://localhost:3003"
+      ;;
+    backend) echo "  WMS API     http://localhost:8080" ;;
+    admin-api) echo "  Admin API   http://localhost:8081" ;;
+    gateway) echo "  Gateway     http://localhost:8080  and  :8081" ;;
+    apis)
+      echo "  WMS API     http://localhost:8080"
+      echo "  Admin API   http://localhost:8081"
+      ;;
+    *) print_endpoints ;;
+  esac
+}
+
+cmd_deploy_partial() {
+  resolve_deploy_target
+  banner "InventorySystem deploy ($TARGET_LABEL)"
+  require_docker
+  ok "Docker is available"
+  info "Target: $TARGET  services: $SERVICES"
+  info "Existing stack is left running; only these images are rebuilt."
+  apply_chatbot_env "$@"
+  if (( NEED_CHATBOT )); then
+    if [[ "$CHATBOT_MODE" == "disabled" ]]; then
+      info "Chatbot: DISABLED"
+    else
+      info "Chatbot: ENABLED"
+    fi
+    sync_one_frontend_chatbot "$WMS_FRONTEND"
+  fi
+  for arg in "$@"; do
+    if [[ "$arg" == "--clean-frontend" ]]; then
+      for dir in "${CLEAN_DIRS[@]}"; do
+        clean_one_frontend "$dir"
+      done
+    fi
+  done
+  {
+    echo "===== deploy $TARGET $(date) ====="
+    echo "services=$SERVICES"
+  } > "$DEPLOY_LOG"
+  step "Building $SERVICES (quiet — details in log)"
+  info "Log file: $DEPLOY_LOG"
+  # shellcheck disable=SC2086
+  docker compose build --quiet $SERVICES >> "$DEPLOY_LOG" 2>&1 || fail_with_log "Image build failed for $SERVICES."
+  ok "Images built"
+  step "Recreating $SERVICES"
+  # shellcheck disable=SC2086
+  docker compose up -d --no-deps --quiet-pull $SERVICES >> "$DEPLOY_LOG" 2>&1 || fail_with_log "Failed to start $SERVICES."
+  ok "Containers updated"
+  local container
+  for container in "${WAIT_CONTAINERS[@]+"${WAIT_CONTAINERS[@]}"}"; do
+    step "Waiting for $container health"
+    wait_health "$container" "$container" 24
+  done
+  banner "Partial deploy complete"
+  print_target_endpoints
+  echo
+  print_status_table
+  echo
+}
+
 cmd_deploy() {
+  pick_deploy_target "$@"
+  if [[ -n "${TARGET:-}" ]]; then
+    cmd_deploy_partial "$@"
+    return
+  fi
+
   banner "InventorySystem deploy"
   require_docker
   ok "Docker is available"
@@ -331,7 +511,8 @@ InventorySystem deploy helper (macOS / Linux)
 Usage: ./deploy.sh [command] [options]
 
 Commands:
-  deploy                     Rebuild and start the stack (quiet console)
+  deploy                     Rebuild and start the full stack (quiet console)
+  deploy <target>            Rebuild only one plane (does not stop the rest)
   deploy --clean-frontend    Clean frontend artifacts, then deploy
   deploy --no-chatbot        Deploy without Support Co-Pilot (WMS api + web)
   deploy --with-chatbot      Deploy with Support Co-Pilot (overrides marker)
@@ -344,6 +525,16 @@ Commands:
   chatbot-disable            Persistently DISABLE chatbot for next deploys
   chatbot-status             Show whether chatbot is enabled or disabled
   help                       Show this help
+
+Targets (also valid as the first argument, e.g. ./deploy.sh pos):
+  pos / frontend-pos         Retail POS UI  invsys-pos-web  :3003
+  wms / frontend / web       WMS UI         invsys-web      :3000
+  admin / frontend-admin     Admin UI       invsys-admin-web :3002
+  frontends / ui             All three SPAs
+  backend / api / wms-api    WMS API        invsys-api      :8080
+  admin-api / backend-admin  Admin API      invsys-admin-api :8081
+  gateway / api-gateway      Nginx gateway  :8080 / :8081
+  apis / backends            WMS API + Admin API + gateway
 
 Planes:
   Data plane     frontend_wms + invsys-app via gateway :8080

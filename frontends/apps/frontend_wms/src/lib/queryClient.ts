@@ -1,5 +1,6 @@
 import { MutationCache, QueryClient } from '@tanstack/react-query';
 import axios from 'axios';
+import { useSessionStore } from '@/stores/session';
 import {
   problemDetailsOf,
   quarantineFailedMutation,
@@ -27,6 +28,24 @@ function mutationMetaAsQueued(mutation: {
   };
 }
 
+export function isUnauthorizedError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 401;
+}
+
+export function retryUnlessUnauthorized(failureCount: number, error: unknown): boolean {
+  if (isUnauthorizedError(error)) return false;
+  return failureCount < 1;
+}
+
+/** Live lists must not keep polling after a 401 or any hard error. */
+export function refetchIntervalWhileAuthenticated(ms: number) {
+  return (query: { state: { status: string } }) => {
+    if (!useSessionStore.getState().authenticated) return false;
+    if (query.state.status === 'error') return false;
+    return ms;
+  };
+}
+
 /**
  * Shared TanStack Query client — offlineFirst by default for floor scanners.
  * Persisted via PersistQueryClientProvider (IndexedDB / idb-keyval).
@@ -37,7 +56,7 @@ export const queryClient = new QueryClient({
       networkMode: 'offlineFirst',
       staleTime: 60_000,
       gcTime: 24 * 60 * 60 * 1000,
-      retry: 1,
+      retry: retryUnlessUnauthorized,
       refetchOnWindowFocus: true,
     },
     mutations: {

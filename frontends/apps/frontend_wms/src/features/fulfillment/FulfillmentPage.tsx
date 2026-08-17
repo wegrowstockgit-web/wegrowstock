@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ScanLine, Scale, Settings2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type {
   FulfillmentScanResponse,
   CartonizePreviewResponse,
@@ -429,7 +430,7 @@ export function FulfillmentPage() {
       return res.data;
     },
     enabled: batchMode,
-    refetchInterval: batchMode ? 10_000 : false,
+    refetchInterval: batchMode ? refetchIntervalWhileAuthenticated(10_000) : false,
     retry: false,
   });
 

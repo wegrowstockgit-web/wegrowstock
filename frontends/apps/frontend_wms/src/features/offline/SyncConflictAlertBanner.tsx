@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import { Button } from '@/components/ui/Button';
 import type { ServerSyncConflict } from '@/features/offline/syncConflictTypes';
 
@@ -18,7 +19,7 @@ export function SyncConflictAlertBanner() {
         })
       ).data,
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: refetchIntervalWhileAuthenticated(60_000),
   });
 
   if (data.length === 0) return null;

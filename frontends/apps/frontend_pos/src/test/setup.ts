@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await db.catalog_cache.clear();
+  await db.products.clear();
   await db.cart_drafts.clear();
   await db.outbox_receipts.clear();
   await db.audit_events.clear();

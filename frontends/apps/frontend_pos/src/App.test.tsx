@@ -9,6 +9,7 @@ import { seedDemoManagerPinsIfEmpty } from '@/offline/pinVault';
 
 vi.mock('@/lib/syncWorker', () => ({
   startOutboxPolling: () => () => undefined,
+  downloadCatalog: async () => 0,
 }));
 
 describe('App', () => {

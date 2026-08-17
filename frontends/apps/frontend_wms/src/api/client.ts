@@ -17,11 +17,23 @@ export const apiClient = axios.create({
 });
 
 let refreshPromise: Promise<boolean> | null = null;
+let endingSession = false;
+
+/** Drop the persisted “logged in” flag when cookies are gone so the SPA leaves protected routes. */
+export async function endSessionOnAuthFailure(): Promise<void> {
+  if (endingSession) return;
+  endingSession = true;
+  try {
+    useSessionStore.getState().clearSession();
+    queryClient.clear();
+    await clearQueryCache();
+  } finally {
+    endingSession = false;
+  }
+}
 
 async function handleAuthFailure(): Promise<void> {
-  useSessionStore.getState().clearSession();
-  queryClient.clear();
-  await clearQueryCache();
+  await endSessionOnAuthFailure();
 }
 
 async function refreshAccessToken(): Promise<boolean> {
@@ -179,18 +191,20 @@ apiClient.interceptors.response.use(
       _retry?: boolean;
     };
 
-    if (
-      isAuthFailure(error.response?.status) &&
-      originalRequest &&
-      !originalRequest._retry &&
-      isProtectedApiRequest(originalRequest.url) &&
-      !originalRequest.url?.includes('/api/v1/auth/refresh')
-    ) {
-      originalRequest._retry = true;
-      const ok = await singleFlightRefresh();
-      if (ok) {
-        return apiClient(originalRequest);
+    if (isAuthFailure(error.response?.status) && originalRequest) {
+      const onRefreshEndpoint = originalRequest.url?.includes('/api/v1/auth/refresh') === true;
+      if (
+        !originalRequest._retry &&
+        !onRefreshEndpoint &&
+        isProtectedApiRequest(originalRequest.url)
+      ) {
+        originalRequest._retry = true;
+        const ok = await singleFlightRefresh();
+        if (ok) {
+          return apiClient(originalRequest);
+        }
       }
+      // Refresh failed, retry still 401, or this was the refresh call itself — leave the app.
       await handleAuthFailure();
     }
 

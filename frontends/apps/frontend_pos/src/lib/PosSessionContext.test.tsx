@@ -70,4 +70,25 @@ describe('PosSessionProvider', () => {
       expect(screen.getByTestId('probe-copy')).toHaveTextContent('Añadir');
     });
   });
+
+  it('sends a cached cashier to login when the session API returns 403', async () => {
+    writeCachedSession(demoSession({ cashierId: 'cashier-1' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: async () => ({}),
+      }),
+    );
+    render(
+      <PosSessionProvider>
+        <Probe />
+      </PosSessionProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('probe-hydrated')).toHaveTextContent('true');
+      expect(screen.getByTestId('probe-auth')).toHaveTextContent('false');
+    });
+  });
 });

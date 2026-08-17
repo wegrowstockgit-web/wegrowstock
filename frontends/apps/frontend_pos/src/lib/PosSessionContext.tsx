@@ -5,6 +5,7 @@ import {
   fetchPosSession,
   hasCachedCashierSession,
   readCachedSession,
+  signedOutSession,
   type PosSessionState,
 } from './posSession';
 import { translate, type PosLanguage, type PosMessageKey } from './i18n';
@@ -43,8 +44,14 @@ export function PosSessionProvider({
       const next = await fetchPosSession();
       setSession(next);
     } catch {
-      const cached = readCachedSession();
-      if (cached) setSession(cached);
+      // Network / 5xx: keep a cached cashier so the register still works offline.
+      // Auth failures are handled inside fetchPosSession (cache already cleared).
+      if (!hasCachedCashierSession()) {
+        setSession(signedOutSession());
+      } else {
+        const cached = readCachedSession();
+        if (cached) setSession(cached);
+      }
     } finally {
       setHydrated(true);
     }

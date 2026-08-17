@@ -7,6 +7,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  THESIS: Light cashier register aligned with admin indigo, not a dark forest console.
+  OWN-WORLD: Slate paper #f8fafc, white raised, ink #0f172a, accent #6366f1, semantic cash/card/void.
+  STORY: Scan or tap a photo tile; every purchased line stays on screen with a large image, qty, and void.
+  FIRST VIEWPORT: Header + scan + photo speed tiles + photo cart left; light pay console right.
+  FORM: Square/Toast retail cart + speed menu, admin tokens inverted for store lighting.
+*/
+
+:root {
+  --pos-surface: #f8fafc;
+  --pos-raised: #ffffff;
+  --pos-ink: #0f172a;
+  --pos-muted: #475569;
+  --pos-border: #e2e8f0;
+  --pos-accent: #6366f1;
+  --pos-accent-hover: #4f46e5;
+  --pos-accent-soft: #eef2ff;
+  --pos-success: #16a34a;
+  --pos-success-soft: #dcfce7;
+  --pos-warning: #d97706;
+  --pos-danger: #dc2626;
+  --pos-danger-soft: #fee2e2;
+  --pos-cash: #f59e0b;
+}
+
 @layer base {
   html,
   body,
@@ -16,15 +41,23 @@
   }
 
   body {
-    font-family: Inter, system-ui, sans-serif;
-    background: #0b1220;
-    color: #0f172a;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    background: var(--pos-surface);
+    color: var(--pos-ink);
     -webkit-font-smoothing: antialiased;
   }
 
   button,
   input {
     font: inherit;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  a:focus-visible {
+    outline: 3px solid var(--pos-accent);
+    outline-offset: 2px;
   }
 }
 
@@ -34,8 +67,8 @@
     height: 100dvh;
     flex-direction: column;
     overflow: hidden;
-    background: #dce3ee;
-    color: #0f172a;
+    background: var(--pos-surface);
+    color: var(--pos-ink);
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
       env(safe-area-inset-left);
   }
@@ -45,16 +78,17 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    border-bottom: 1px solid #c5d0de;
-    background: #f7f9fc;
-    padding: 0.65rem 1rem;
+    background: var(--pos-raised);
+    border-bottom: 1px solid var(--pos-border);
+    color: var(--pos-ink);
+    padding: 0.7rem 1rem;
   }
 
   .pos-brand {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 800;
     letter-spacing: -0.02em;
   }
@@ -64,25 +98,45 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.72rem;
-    color: #475569;
+    font-weight: 600;
+    color: var(--pos-muted);
+  }
+
+  .pos-count {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.92rem;
+    font-weight: 800;
+    white-space: nowrap;
   }
 
   .pos-chip {
     border-radius: 999px;
-    background: #e2e8f0;
-    padding: 0.35rem 0.7rem;
+    padding: 0.4rem 0.75rem;
     font-size: 0.72rem;
-    font-weight: 700;
-    color: #0f172a;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .pos-chip.is-live {
+    background: var(--pos-success-soft);
+    color: #166534;
+  }
+
+  .pos-chip.is-offline {
+    background: #fef3c7;
+    color: #92400e;
   }
 
   .pos-signin {
     min-height: 44px;
-    border-radius: 0.55rem;
-    background: #0b1220;
+    border-radius: 0.5rem;
+    background: var(--pos-accent);
     padding: 0 0.9rem;
     font-size: 0.85rem;
-    font-weight: 700;
+    font-weight: 800;
     color: #fff;
   }
 
@@ -102,33 +156,38 @@
     min-height: 0;
     flex: 1 1 42%;
     flex-direction: column;
-    background: #f7f9fc;
+    background: var(--pos-surface);
   }
 
   .pos-cart-tools {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.55rem 0.85rem 0;
+    padding: 0.65rem 0.85rem 0;
   }
 
   .pos-add-customer,
   .pos-clear-customer {
     min-height: 44px;
-    border-radius: 0.55rem;
+    border-radius: 0.5rem;
     padding: 0 0.85rem;
     font-size: 0.85rem;
     font-weight: 800;
   }
 
   .pos-add-customer {
-    background: #0b1220;
+    background: var(--pos-accent);
     color: #fff;
   }
 
+  .pos-add-customer:hover {
+    background: var(--pos-accent-hover);
+  }
+
   .pos-clear-customer {
-    background: #e2e8f0;
-    color: #0f172a;
+    background: var(--pos-raised);
+    border: 1px solid var(--pos-border);
+    color: var(--pos-ink);
   }
 
   .pos-quick-tenders {
@@ -144,17 +203,17 @@
 
   .pos-factura-btn {
     min-height: 44px;
-    border-radius: 0.55rem;
+    border-radius: 0.5rem;
     background: #fef3c7;
     padding: 0 0.75rem;
     font-size: 0.78rem;
     font-weight: 800;
-    color: #78350f;
+    color: #92400e;
   }
 
   .pos-factura-btn.is-active {
-    background: #10b981;
-    color: #052e1c;
+    background: var(--pos-success-soft);
+    color: #166534;
   }
 
   .pos-customer-list {
@@ -177,12 +236,12 @@
   }
 
   .pos-customer-list button:hover {
-    background: #e2e8f0;
+    background: var(--pos-accent-soft);
   }
 
   .pos-customer-list span {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--pos-muted);
   }
 
   .pos-void-card label {
@@ -197,7 +256,8 @@
   .pos-void-card select {
     height: 2.75rem;
     border-radius: 0.5rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--pos-border);
+    background: var(--pos-raised);
     padding: 0 0.7rem;
   }
 
@@ -205,8 +265,8 @@
     display: flex;
     align-items: center;
     gap: 0.65rem;
-    border-bottom: 1px solid #d5deea;
-    background: #eef3f8;
+    border-bottom: 1px solid var(--pos-border);
+    background: var(--pos-raised);
     padding: 0.7rem 0.85rem;
   }
 
@@ -214,29 +274,38 @@
     height: 3.25rem;
     min-height: 44px;
     flex: 1;
-    border-radius: 0.7rem;
-    border: 2px solid #0b1220;
-    background: #fff;
+    border-radius: 0.5rem;
+    border: 2px solid var(--pos-border);
+    background: var(--pos-raised);
     padding: 0 0.9rem;
     font-size: 1.25rem;
     letter-spacing: 0.04em;
+    color: var(--pos-ink);
     outline: none;
   }
 
+  .pos-scan-input::placeholder {
+    color: var(--pos-muted);
+  }
+
   .pos-scan-input:focus {
-    border-color: #1d4ed8;
-    box-shadow: 0 0 0 3px rgb(29 78 216 / 0.18);
+    border-color: var(--pos-accent);
+    box-shadow: 0 4px 12px rgb(99 102 241 / 0.18);
   }
 
   .pos-scan-add {
     height: 3.25rem;
     min-width: 5.5rem;
-    border-radius: 0.7rem;
-    background: #0b1220;
+    border-radius: 0.5rem;
+    background: var(--pos-accent);
     padding: 0 1.1rem;
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 800;
     color: #fff;
+  }
+
+  .pos-scan-add:hover {
+    background: var(--pos-accent-hover);
   }
 
   .pos-scan-add:active {
@@ -244,77 +313,137 @@
   }
 
   .pos-error {
-    background: #fef2f2;
+    background: var(--pos-danger-soft);
     padding: 0.55rem 1rem;
     font-size: 0.9rem;
-    font-weight: 600;
-    color: #b91c1c;
+    font-weight: 700;
+    color: var(--pos-danger);
+  }
+
+  .pos-thumb img {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
   }
 
   .pos-cart-scroll {
     min-height: 0;
     flex: 1;
     overflow: auto;
+    padding: 0.35rem 0.35rem 0.6rem;
   }
 
   .pos-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0 0.4rem;
     text-align: left;
   }
 
   .pos-table thead {
     position: sticky;
     top: 0;
-    background: #0b1220;
-    color: #fff;
+    z-index: 1;
+    background: var(--pos-surface);
+    color: var(--pos-muted);
   }
 
   .pos-table th {
-    padding: 0.7rem 0.85rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
+  .pos-table tbody tr {
+    background: var(--pos-raised);
+    box-shadow: 0 1px 3px rgb(15 23 42 / 0.08);
+  }
+
+  .pos-table tbody tr.is-fresh {
+    box-shadow: 0 4px 12px rgb(99 102 241 / 0.18);
+    outline: 2px solid var(--pos-accent);
+  }
+
   .pos-table td {
-    border-bottom: 1px solid #e2e8f0;
-    padding: 0.7rem 0.85rem;
+    padding: 0.7rem 0.7rem;
+    vertical-align: middle;
+  }
+
+  .pos-table td:first-child {
+    border-radius: 0.75rem 0 0 0.75rem;
+  }
+
+  .pos-table td:last-child {
+    border-radius: 0 0.75rem 0.75rem 0;
+  }
+
+  .pos-col-upc,
+  .pos-col-unit {
+    display: none;
+  }
+
+  .pos-table tbody tr:has(.pos-empty) {
+    background: transparent;
+    box-shadow: none;
   }
 
   .pos-empty {
     padding: 3.5rem 1rem;
     text-align: center;
     font-size: 1.05rem;
-    color: #64748b;
+    font-weight: 600;
+    color: var(--pos-muted);
+    background: transparent;
+    box-shadow: none;
   }
 
   .pos-item {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
+    gap: 0.85rem;
   }
 
   .pos-thumb {
     display: flex;
-    height: 2.75rem;
-    width: 2.75rem;
+    height: 4.75rem;
+    width: 4.75rem;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 0.55rem;
-    background: #e2e8f0;
-    font-size: 0.7rem;
+    border-radius: 0.65rem;
+    background: var(--pos-accent-soft);
+    font-size: 0.8rem;
     font-weight: 800;
-    color: #334155;
+    color: var(--pos-accent);
+  }
+
+  .pos-item-copy {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
   }
 
   .pos-item-name {
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 1.05rem;
+    font-weight: 800;
     overflow-wrap: anywhere;
+  }
+
+  .pos-item-meta {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--pos-muted);
+  }
+
+  .pos-line-amt {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1rem;
+    font-weight: 800;
   }
 
   .pos-qty {
@@ -327,20 +456,28 @@
   .pos-qty button {
     height: 2.75rem;
     width: 2.75rem;
-    border-radius: 0.55rem;
-    background: #e2e8f0;
+    border-radius: 0.5rem;
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
     font-size: 1.4rem;
     font-weight: 800;
+    color: var(--pos-ink);
+  }
+
+  .pos-qty button:hover {
+    background: var(--pos-accent-soft);
   }
 
   .pos-qty-plus {
-    background: #0b1220 !important;
-    color: #fff;
+    background: var(--pos-accent) !important;
+    border-color: var(--pos-accent) !important;
+    color: #fff !important;
   }
 
   .pos-qty span {
     min-width: 1.6ch;
     text-align: center;
+    font-variant-numeric: tabular-nums;
     font-size: 1.15rem;
     font-weight: 800;
   }
@@ -350,8 +487,9 @@
     min-height: 0;
     flex: 1 1 58%;
     flex-direction: column;
-    background: #0b1220;
-    color: #fff;
+    background: var(--pos-raised);
+    color: var(--pos-ink);
+    border-top: 1px solid var(--pos-border);
     padding-bottom: 0.4rem;
   }
 
@@ -368,14 +506,18 @@
     font-weight: 800;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--pos-muted);
   }
 
   .pos-tax {
     display: flex;
-    border-radius: 0.6rem;
-    background: #1e293b;
-    padding: 0.2rem;
+    border-radius: 0.5rem;
+    background: var(--pos-accent-soft);
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--pos-accent-hover);
   }
 
   .pos-tax button {
@@ -384,12 +526,12 @@
     padding: 0 0.75rem;
     font-size: 0.8rem;
     font-weight: 700;
-    color: #cbd5e1;
+    color: var(--pos-muted);
   }
 
   .pos-tax button.is-active {
-    background: #fff;
-    color: #0b1220;
+    background: var(--pos-raised);
+    color: var(--pos-ink);
   }
 
   .pos-totals {
@@ -405,39 +547,90 @@
     font-size: 1rem;
   }
 
+  .pos-totals dt {
+    color: var(--pos-muted);
+  }
+
+  .pos-totals dd {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+
   .pos-tax-line {
-    color: #cbd5e1;
+    color: var(--pos-muted);
     font-size: 0.92rem;
   }
 
   .pos-grand {
     align-items: flex-end;
-    border-top: 1px solid #334155;
-    padding-top: 0.65rem;
+    border-top: 2px solid var(--pos-border);
+    margin-top: 0.2rem;
+    padding-top: 0.7rem;
   }
 
   .pos-grand dt {
     font-size: 0.72rem;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--pos-accent);
   }
 
   .pos-grand dd {
     font-variant-numeric: tabular-nums;
-    font-size: clamp(1.8rem, 6vw, 3.6rem);
+    font-size: 3rem;
     font-weight: 800;
     line-height: 0.95;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.03em;
+    color: var(--pos-ink);
+  }
+
+  .pos-buffer-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.15rem 1rem 0.1rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--pos-muted);
   }
 
   .pos-buffer {
-    padding: 0 1rem;
-    text-align: right;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 1.5rem;
-    color: #fbbf24;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    text-transform: none;
+    color: var(--pos-warning);
+  }
+
+  .pos-change {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0.2rem 0.8rem 0.15rem;
+    border-radius: 0.5rem;
+    background: var(--pos-success-soft);
+    padding: 0.45rem 0.7rem;
+    color: #166534;
+  }
+
+  .pos-change span {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .pos-change strong {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.45rem;
+    font-weight: 800;
   }
 
   .pos-numpad {
@@ -449,21 +642,29 @@
 
   .pos-numpad button {
     min-height: 48px;
-    border-radius: 0.6rem;
-    background: #1e293b;
+    border-radius: 0.5rem;
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
     font-size: 1.35rem;
     font-weight: 800;
+    color: var(--pos-ink);
+  }
+
+  .pos-numpad button:hover {
+    background: var(--pos-accent-soft);
   }
 
   .pos-numpad button:active {
-    background: #334155;
     transform: scale(0.97);
   }
 
   .pos-backspace {
     grid-column: span 3;
     min-height: 44px !important;
+    background: var(--pos-ink) !important;
+    border-color: var(--pos-ink) !important;
     font-size: 1rem !important;
+    color: #fff !important;
   }
 
   .pos-actions {
@@ -476,7 +677,7 @@
 
   .pos-actions button {
     min-height: 52px;
-    border-radius: 0.7rem;
+    border-radius: 0.5rem;
     font-size: 1rem;
     font-weight: 800;
   }
@@ -486,24 +687,39 @@
   }
 
   .pos-exact {
-    grid-column: span 2;
-    background: #10b981;
-    color: #052e1c;
-  }
-
-  .pos-cash {
-    background: #fbbf24;
-    color: #422006;
-  }
-
-  .pos-card {
-    background: #3b82f6;
+    background: var(--pos-success);
     color: #fff;
   }
 
+  .pos-exact:hover {
+    background: #15803d;
+  }
+
+  .pos-cash {
+    background: var(--pos-cash);
+    color: #1c1917;
+  }
+
+  .pos-cash:hover {
+    background: #fbbf24;
+  }
+
+  .pos-card {
+    background: var(--pos-accent);
+    color: #fff;
+  }
+
+  .pos-card:hover {
+    background: var(--pos-accent-hover);
+  }
+
   .pos-void {
-    background: #7f1d1d;
-    color: #fecaca;
+    background: var(--pos-danger);
+    color: #fff;
+  }
+
+  .pos-void:hover:not(:disabled) {
+    background: #b91c1c;
   }
 
   .pos-void:disabled {
@@ -512,12 +728,14 @@
 
   .pos-remove {
     min-height: 44px;
-    border-radius: 0.55rem;
-    background: #fee2e2;
+    border-radius: 0.5rem;
+    background: var(--pos-danger-soft);
     padding: 0 0.65rem;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 800;
-    color: #7f1d1d;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--pos-danger);
     white-space: nowrap;
   }
 
@@ -528,7 +746,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgb(11 18 32 / 0.88);
+    background: rgb(15 23 42 / 0.55);
     padding: 1rem;
   }
 
@@ -536,10 +754,11 @@
     width: min(26rem, 100%);
     display: grid;
     gap: 0.7rem;
-    border-radius: 1.1rem;
-    background: #f7f9fc;
+    border-radius: 0.75rem;
+    background: var(--pos-raised);
     padding: 1.4rem 1.2rem 1.2rem;
-    color: #0f172a;
+    color: var(--pos-ink);
+    box-shadow: 0 18px 40px rgb(15 23 42 / 0.18);
   }
 
   .pos-void-card h1 {
@@ -549,15 +768,24 @@
     letter-spacing: -0.03em;
   }
 
+  .pos-void-card > button {
+    min-height: 48px;
+    border-radius: 0.5rem;
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
+    font-weight: 800;
+    color: var(--pos-ink);
+  }
+
   .pos-void-body {
-    color: #334155;
+    color: var(--pos-muted);
     line-height: 1.45;
   }
 
   .pos-void-error {
     font-size: 0.88rem;
     font-weight: 700;
-    color: #b91c1c;
+    color: var(--pos-danger);
   }
 
   .pos-void-actions {
@@ -568,16 +796,18 @@
 
   .pos-void-actions button {
     min-height: 48px;
-    border-radius: 0.65rem;
+    border-radius: 0.5rem;
     font-weight: 800;
   }
 
   .pos-void-cancel {
-    background: #e2e8f0;
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
+    color: var(--pos-ink);
   }
 
   .pos-void-yes {
-    background: #7f1d1d;
+    background: var(--pos-danger);
     color: #fff;
   }
 
@@ -603,7 +833,7 @@
   .pos-pin-copy p {
     margin-top: 0.2rem;
     font-size: 0.82rem;
-    color: #475569;
+    color: var(--pos-muted);
   }
 
   .pos-pin-dots {
@@ -620,16 +850,16 @@
   }
 
   .pos-pin-dots span[data-filled='true'] {
-    background: #0b1220;
-    border-color: #0b1220;
+    background: var(--pos-accent);
+    border-color: var(--pos-accent);
   }
 
   .pos-pin-dots.is-error span {
-    border-color: #b91c1c;
+    border-color: var(--pos-danger);
   }
 
   .pos-pin-dots.is-error span[data-filled='true'] {
-    background: #b91c1c;
+    background: var(--pos-danger);
   }
 
   .pos-pin-grid {
@@ -641,15 +871,17 @@
 
   .pos-pin-grid button {
     min-height: 52px;
-    border-radius: 0.7rem;
-    background: #e2e8f0;
+    border-radius: 0.5rem;
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
     font-size: 1.4rem;
     font-weight: 800;
+    color: var(--pos-ink);
   }
 
   .pos-pin-grid button:active:not(:disabled) {
     transform: scale(0.97);
-    background: #0b1220;
+    background: var(--pos-accent);
     color: #fff;
   }
 
@@ -660,14 +892,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #059669;
+    background: var(--pos-success);
     color: #fff;
   }
 
   .pos-success p {
     padding: 0 1.5rem;
     text-align: center;
-    font-size: clamp(2rem, 8vw, 4rem);
+    font-size: 2.75rem;
     font-weight: 800;
     letter-spacing: -0.03em;
   }
@@ -679,16 +911,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgb(11 18 32 / 0.92);
+    background: rgb(15 23 42 / 0.55);
     padding: 1.25rem;
   }
 
   .pos-locked-card {
     width: min(32rem, 100%);
-    border-radius: 1.1rem;
-    background: #f7f9fc;
+    border-radius: 0.75rem;
+    background: var(--pos-raised);
     padding: 1.6rem 1.4rem;
-    color: #0f172a;
+    color: var(--pos-ink);
   }
 
   .pos-locked-card h1 {
@@ -699,7 +931,7 @@
   }
 
   .pos-locked-card p {
-    color: #334155;
+    color: var(--pos-muted);
     line-height: 1.5;
   }
 
@@ -708,10 +940,10 @@
     min-height: 44px;
     align-items: center;
     margin-top: 1rem;
-    border-radius: 0.6rem;
-    background: #0b1220;
+    border-radius: 0.5rem;
+    background: var(--pos-accent);
     padding: 0 1rem;
-    font-weight: 700;
+    font-weight: 800;
     color: #fff;
   }
 
@@ -720,8 +952,7 @@
     min-height: 100dvh;
     align-items: center;
     justify-content: center;
-    background:
-      radial-gradient(circle at top, #1e293b, #0b1220 55%);
+    background: var(--pos-surface);
     padding: 1.25rem;
   }
 
@@ -729,11 +960,16 @@
     width: min(26rem, 100%);
     display: grid;
     gap: 0.85rem;
-    border-radius: 1.1rem;
-    background: #111827;
-    padding: 1.6rem 1.4rem 1.5rem;
-    color: #fff;
-    box-shadow: 0 18px 40px rgb(0 0 0 / 0.28);
+    border-radius: 0.75rem;
+    background: var(--pos-raised);
+    border: 1px solid var(--pos-border);
+    padding: 1.7rem 1.45rem 1.5rem;
+    color: var(--pos-ink);
+    box-shadow: 0 18px 40px rgb(15 23 42 / 0.08);
+  }
+
+  .pos-login-card .pos-kicker {
+    color: var(--pos-accent);
   }
 
   .pos-login-card h1 {
@@ -744,7 +980,7 @@
 
   .pos-login-copy {
     font-size: 0.9rem;
-    color: #94a3b8;
+    color: var(--pos-muted);
   }
 
   .pos-login-card label {
@@ -756,28 +992,34 @@
 
   .pos-login-card input {
     height: 3rem;
-    border-radius: 0.6rem;
-    border: 0;
+    border-radius: 0.5rem;
+    border: 2px solid var(--pos-border);
+    background: var(--pos-raised);
     padding: 0 0.8rem;
-    color: #0f172a;
+    color: var(--pos-ink);
   }
 
   .pos-login-card input:focus {
-    outline: 2px solid #3b82f6;
+    outline: 3px solid var(--pos-accent);
     outline-offset: 1px;
   }
 
   .pos-login-error {
     font-size: 0.88rem;
-    color: #fca5a5;
+    font-weight: 700;
+    color: var(--pos-danger);
   }
 
   .pos-login-card button {
     height: 3rem;
-    border-radius: 0.65rem;
-    background: #10b981;
+    border-radius: 0.5rem;
+    background: var(--pos-accent);
     font-weight: 800;
-    color: #052e1c;
+    color: #fff;
+  }
+
+  .pos-login-card button:hover:not(:disabled) {
+    background: var(--pos-accent-hover);
   }
 
   .pos-login-card button:disabled {
@@ -796,12 +1038,13 @@
 
   .pos-cart {
     flex: 1.65 1 0;
-    border-right: 1px solid #c5d0de;
   }
 
   .pos-tender {
     flex: 1 1 0;
     max-width: 28rem;
+    border-top: 0;
+    border-left: 1px solid var(--pos-border);
   }
 
   .pos-numpad button {
@@ -811,6 +1054,10 @@
   .pos-grand dd {
     font-size: 3.4rem;
   }
+
+  .pos-success p {
+    font-size: 3.5rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -818,7 +1065,8 @@
   .pos-scan-add,
   .pos-numpad button,
   .pos-actions button,
-  .pos-login-card button {
+  .pos-login-card button,
+  .pos-pin-grid button {
     transform: none !important;
   }
 }

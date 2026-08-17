@@ -1,4 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { useAdminSession } from '@/features/auth/adminSession';
+import { queryClient } from '@/lib/queryClient';
 
 const MUTATING = new Set(['post', 'put', 'patch', 'delete']);
 
@@ -37,6 +39,21 @@ function isCsrfFailure(error: AxiosError): boolean {
   return /csrf|xsrf/i.test(blob);
 }
 
+function isProtectedAdminRequest(url?: string): boolean {
+  if (!url) return false;
+  return (
+    url.includes('/api/v1/control-plane/') &&
+    !url.includes('/api/v1/control-plane/auth/login') &&
+    !url.includes('/api/v1/control-plane/auth/csrf')
+  );
+}
+
+/** Drop the in-memory admin flag so the layout sends the user back to /login. */
+export function endAdminSessionOnAuthFailure(): void {
+  useAdminSession.getState().clear();
+  queryClient.clear();
+}
+
 /**
  * Control-plane Axios client.
  * Cookie session + CSRF: Spring CookieCsrfTokenRepository writes {@code XSRF-TOKEN};
@@ -57,13 +74,16 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const config = error.config as (InternalAxiosRequestConfig & { _csrfRetry?: boolean }) | undefined;
-    if (!config || config._csrfRetry || !isCsrfFailure(error)) {
-      return Promise.reject(error);
+    if (config && !config._csrfRetry && isCsrfFailure(error)) {
+      config._csrfRetry = true;
+      await ensureCsrfCookie();
+      applyCsrfHeader(config);
+      return apiClient.request(config);
     }
-    config._csrfRetry = true;
-    await ensureCsrfCookie();
-    applyCsrfHeader(config);
-    return apiClient.request(config);
+    if (error.response?.status === 401 && isProtectedAdminRequest(config?.url)) {
+      endAdminSessionOnAuthFailure();
+    }
+    return Promise.reject(error);
   },
 );
 

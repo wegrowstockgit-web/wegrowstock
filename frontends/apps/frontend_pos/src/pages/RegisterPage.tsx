@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { VoidConfirmModal } from '@/components/VoidConfirmModal';
+import { lookupScannedUpc, UNKNOWN_UPC_OFFLINE } from '@/hooks/useBarcodeScanner';
 import {
   clearCartDraft,
   enqueueReceipt,
   loadActiveOrderId,
   loadCartDraft,
   logPosEvent,
-  lookupCatalog,
   saveCartDraft,
   type CartLine,
 } from '@/lib/db';
-import { seedDemoCatalogIfEmpty } from '@/lib/catalogSeed';
+import { downloadCatalog } from '@/lib/syncWorker';
 import { cartTotals, formatMoney, lineTotal } from '@/lib/tax';
 import { uuidv7 } from '@/lib/uuidv7';
 import { cashPresets } from '@/lib/locale';
@@ -35,9 +35,11 @@ type PosCustomer = { id: string; name: string; email?: string | null };
 
 export function RegisterPage() {
   const searchRef = useRef<HTMLInputElement>(null);
+  const lastLineRef = useRef<HTMLTableRowElement>(null);
   const { session, t } = usePosSession();
   const [query, setQuery] = useState('');
   const [lines, setLines] = useState<CartLine[]>([]);
+  const [lastTouchedUpc, setLastTouchedUpc] = useState('');
   const [tenderBuffer, setTenderBuffer] = useState('');
   const [scanError, setScanError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -59,7 +61,11 @@ export function RegisterPage() {
     let cancelled = false;
     void (async () => {
       seedDemoManagerPinsIfEmpty();
-      await seedDemoCatalogIfEmpty();
+      try {
+        await downloadCatalog();
+      } catch {
+        /* Register stays usable on the last local cache (or empty until online). */
+      }
       const draft = await loadCartDraft();
       const draftOrderId = await loadActiveOrderId();
       if (!cancelled) {
@@ -78,6 +84,10 @@ export function RegisterPage() {
     if (!ready) return;
     void saveCartDraft(lines, orderId || undefined);
   }, [lines, orderId, ready]);
+
+  useEffect(() => {
+    lastLineRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [lines]);
 
   useEffect(() => {
     if (!customerOpen) return;
@@ -120,32 +130,39 @@ export function RegisterPage() {
   const addUpc = async (raw: string) => {
     const upc = raw.trim();
     if (!upc) return;
-    const item = await lookupCatalog(upc);
-    if (!item) {
-      setScanError(t('register.unknownUpc', { upc }));
+    try {
+      const item = await lookupScannedUpc(upc);
+      setScanError('');
+      ensureOrderId();
+      setLastTouchedUpc(item.upc);
+      setLines((prev) => {
+        const existing = prev.find((line) => line.variantId === item.id);
+        if (existing) {
+          return prev.map((line) =>
+            line.variantId === item.id ? { ...line, qty: line.qty + 1 } : line,
+          );
+        }
+        return [
+          ...prev,
+          {
+            variantId: item.id,
+            upc: item.upc,
+            name: item.name,
+            unitPrice: item.price,
+            qty: 1,
+            imageUrl: item.imageUrl,
+          },
+        ];
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      setScanError(
+        message === UNKNOWN_UPC_OFFLINE
+          ? t('register.unknownUpcOffline', { upc })
+          : t('register.unknownUpc', { upc }),
+      );
       return;
     }
-    setScanError('');
-    ensureOrderId();
-    setLines((prev) => {
-      const existing = prev.find((line) => line.variantId === item.id);
-      if (existing) {
-        return prev.map((line) =>
-          line.variantId === item.id ? { ...line, qty: line.qty + 1 } : line,
-        );
-      }
-      return [
-        ...prev,
-        {
-          variantId: item.id,
-          upc: item.upc,
-          name: item.name,
-          unitPrice: item.unitPrice,
-          qty: 1,
-          imageUrl: item.imageUrl,
-        },
-      ];
-    });
     setQuery('');
     searchRef.current?.focus();
   };
@@ -187,6 +204,7 @@ export function RegisterPage() {
     setFacturaRfc('');
     setFacturaUso('G03');
     setFacturaSaved(false);
+    setLastTouchedUpc('');
     void clearCartDraft();
   };
 
@@ -206,7 +224,7 @@ export function RegisterPage() {
     searchRef.current?.focus();
   };
 
-  const pressKey = (key: string) => {
+  const pressKey = useCallback((key: string) => {
     if (key === 'C') {
       setTenderBuffer('');
       return;
@@ -220,7 +238,20 @@ export function RegisterPage() {
       if (prev === '0' && key !== '.') return key;
       return `${prev}${key}`;
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (locked || voidOpen || customerOpen || facturaOpen) return;
+      const mapped = mapTenderKey(event);
+      if (!mapped) return;
+      if (shouldIgnoreTenderKey(event)) return;
+      event.preventDefault();
+      pressKey(mapped);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [locked, voidOpen, customerOpen, facturaOpen, pressKey]);
 
   const completeSale = async (tenderType: string, amount: number) => {
     if (locked) return;
@@ -254,6 +285,9 @@ export function RegisterPage() {
   };
 
   const parsedTender = Number.parseFloat(tenderBuffer || '0');
+  const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
+  const changeDue = parsedTender > totals.grandTotal ? parsedTender - totals.grandTotal : 0;
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   const taxLabel = taxRegion === 'MX' ? t('register.taxMx') : t('register.taxUs');
   const mismatch =
     session.posEnabled &&
@@ -266,6 +300,7 @@ export function RegisterPage() {
     if (!q) return true;
     return `${row.name} ${row.email ?? ''}`.toLowerCase().includes(q);
   });
+  const photoFor = (line: CartLine) => line.imageUrl || '';
 
   return (
     <div className="pos-shell" data-testid="register-page">
@@ -292,17 +327,16 @@ export function RegisterPage() {
         <div className="min-w-0">
           <p className="pos-brand">{session.companyName || 'weGrowStock'}</p>
           <p className="pos-meta">
-            {session.language.toUpperCase()} · {session.currency}
+            {t('register.lane')} · {session.language.toUpperCase()} · {session.currency}
             {session.tenantBaseCurrency && session.tenantBaseCurrency !== session.currency
               ? ` · ${session.tenantBaseCurrency}@${session.liveExchangeRate}`
               : ''}
             {mismatch ? ` · ${mismatch}` : ''}
           </p>
         </div>
-        <span className="pos-chip" data-testid="pos-connection">
-          {typeof navigator !== 'undefined' && navigator.onLine === false
-            ? t('register.offline')
-            : t('register.online')}
+        <p className="pos-count">{t('register.itemsCount', { n: String(itemCount) })}</p>
+        <span className={`pos-chip${offline ? ' is-offline' : ' is-live'}`} data-testid="pos-connection">
+          {offline ? t('register.offline') : t('register.online')}
         </span>
       </header>
 
@@ -365,8 +399,8 @@ export function RegisterPage() {
               <thead>
                 <tr>
                   <th>{t('register.item')}</th>
-                  <th className="hidden sm:table-cell">{t('register.upc')}</th>
-                  <th className="text-right">{t('register.unitPrice')}</th>
+                  <th className="pos-col-upc">{t('register.upc')}</th>
+                  <th className="pos-col-unit">{t('register.unitPrice')}</th>
                   <th className="text-center">{t('register.qty')}</th>
                   <th className="text-right">{t('register.lineTotal')}</th>
                   <th className="text-right">{t('register.removeShort')}</th>
@@ -380,22 +414,35 @@ export function RegisterPage() {
                     </td>
                   </tr>
                 ) : (
-                  lines.map((line) => (
-                    <tr key={line.variantId} data-testid={`cart-row-${line.upc}`}>
+                  lines.map((line, index) => {
+                    const photo = photoFor(line);
+                    const isLast = index === lines.length - 1;
+                    return (
+                    <tr
+                      key={line.variantId}
+                      ref={isLast ? lastLineRef : undefined}
+                      className={line.upc === lastTouchedUpc ? 'is-fresh' : undefined}
+                      data-testid={`cart-row-${line.upc}`}
+                    >
                       <td>
                         <div className="pos-item">
                           <div className="pos-thumb">
-                            {line.imageUrl ? (
-                              <img src={line.imageUrl} alt="" className="h-full w-full object-cover" />
+                            {photo ? (
+                              <img src={photo} alt="" />
                             ) : (
                               line.name.slice(0, 2).toUpperCase()
                             )}
                           </div>
-                          <span className="pos-item-name">{line.name}</span>
+                          <div className="pos-item-copy">
+                            <span className="pos-item-name">{line.name}</span>
+                            <span className="pos-item-meta">
+                              {line.upc} · {t('register.qtyEach', { qty: String(line.qty), price: money(line.unitPrice) })}
+                            </span>
+                          </div>
                         </div>
                       </td>
-                      <td className="hidden font-mono text-sm text-slate-500 sm:table-cell">{line.upc}</td>
-                      <td className="text-right font-mono">{money(line.unitPrice)}</td>
+                      <td className="pos-col-upc">{line.upc}</td>
+                      <td className="pos-col-unit">{money(line.unitPrice)}</td>
                       <td>
                         <div className="pos-qty">
                           <button
@@ -416,7 +463,7 @@ export function RegisterPage() {
                           </button>
                         </div>
                       </td>
-                      <td className="text-right font-mono font-semibold">{money(lineTotal(line.unitPrice, line.qty))}</td>
+                      <td className="pos-line-amt">{money(lineTotal(line.unitPrice, line.qty))}</td>
                       <td className="text-right">
                         <button
                           type="button"
@@ -425,18 +472,26 @@ export function RegisterPage() {
                           aria-label={t('register.remove', { name: line.name })}
                           onClick={() => removeLine(line)}
                         >
-                          🗑️ {t('register.removeShort')}
+                          {t('register.removeShort')}
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </section>
 
-        <aside className="pos-tender">
+        <aside
+          className="pos-tender"
+          onMouseDown={() => {
+            if (document.activeElement === searchRef.current) {
+              searchRef.current?.blur();
+            }
+          }}
+        >
           <div className="pos-tender-head">
             <p className="pos-kicker">{t('register.checkout')}</p>
             {mxLocale ? (
@@ -470,9 +525,18 @@ export function RegisterPage() {
             </div>
           </dl>
 
-          <p className="pos-buffer" data-testid="pos-tender-buffer">
-            {tenderBuffer ? money(parsedTender) : '—'}
-          </p>
+          <div className="pos-buffer-row">
+            <span>{t('register.tendered')}</span>
+            <p className="pos-buffer" data-testid="pos-tender-buffer">
+              {tenderBuffer ? money(parsedTender) : '—'}
+            </p>
+          </div>
+          {changeDue > 0 ? (
+            <p className="pos-change" data-testid="pos-change-due">
+              <span>{t('register.changeDue')}</span>
+              <strong>{money(changeDue)}</strong>
+            </p>
+          ) : null}
 
           <div className="pos-numpad" data-testid="pos-numpad">
             {NUMPAD.map((key) => (
@@ -636,4 +700,27 @@ export function RegisterPage() {
       />
     </div>
   );
+}
+
+function mapTenderKey(event: KeyboardEvent): string | null {
+  if (event.key === 'Backspace') return '⌫';
+  if (event.key === 'Delete' || event.key === 'Escape') return 'C';
+  if (event.key === '.' || event.key === ',') return '.';
+  if (/^[0-9]$/.test(event.key)) return event.key;
+  if (event.code === 'NumpadDecimal') return '.';
+  return null;
+}
+
+function shouldIgnoreTenderKey(event: KeyboardEvent): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.closest('[data-testid="void-confirm-modal"], [data-testid="pos-customer-modal"], [data-testid="pos-factura-modal"]')) {
+    return true;
+  }
+  const field = target.closest('input, textarea, select');
+  if (!field) return false;
+  if (field.id === 'pos-upc-search') {
+    return !event.code.startsWith('Numpad');
+  }
+  return true;
 }

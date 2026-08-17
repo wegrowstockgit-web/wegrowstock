@@ -142,3 +142,31 @@ describe('apiClient warehouse header', () => {
     expect(config.url).toContain('/support/chat');
   });
 });
+
+describe('apiClient 401 session teardown', () => {
+  function rejectedHandler() {
+    const handlers = (
+      apiClient.interceptors.response as unknown as {
+        handlers: Array<{ rejected?: (error: unknown) => Promise<unknown> }>;
+      }
+    ).handlers;
+    return handlers.find((h) => h.rejected)?.rejected;
+  }
+
+  beforeEach(() => {
+    sessionState.clearSession.mockReset();
+  });
+
+  it('clears the local session when a retried request is still 401', async () => {
+    const rejected = rejectedHandler();
+    await expect(
+      rejected?.({
+        message: 'Unauthorized',
+        isAxiosError: true,
+        response: { status: 401, headers: {} },
+        config: { url: '/api/v1/sales-orders', _retry: true },
+      }),
+    ).rejects.toBeTruthy();
+    expect(sessionState.clearSession).toHaveBeenCalled();
+  });
+});

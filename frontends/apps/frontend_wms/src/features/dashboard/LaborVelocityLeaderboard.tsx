@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { apiClient } from '@/api/client';
+import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type { LaborVelocityResponse, LaborVelocityOperator } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import {
@@ -69,7 +70,7 @@ function useLaborVelocity() {
     queryFn: async () =>
       (await apiClient.get<LaborVelocityResponse>('/api/v1/dashboard/labor-velocity')).data,
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: refetchIntervalWhileAuthenticated(60_000),
   });
 }
 

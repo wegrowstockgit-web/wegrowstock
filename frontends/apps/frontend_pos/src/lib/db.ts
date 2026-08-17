@@ -5,11 +5,12 @@ export type TaxRegion = 'US' | 'MX';
 
 export type PosAuditEventType = 'LINE_VOID' | 'TX_VOID' | 'NO_SALE' | 'PRICE_OVERRIDE';
 
-export type CatalogCacheRow = {
+export type PosProduct = {
   id: string;
   upc: string;
+  sku: string;
   name: string;
-  unitPrice: number;
+  price: number;
   imageUrl?: string;
 };
 
@@ -62,7 +63,7 @@ export type PosAuditEvent = {
 };
 
 export class PosDatabase extends Dexie {
-  catalog_cache!: Table<CatalogCacheRow, string>;
+  products!: Table<PosProduct, string>;
   cart_drafts!: Table<CartDraftRow, string>;
   outbox_receipts!: Table<OutboxReceiptRow, string>;
   audit_events!: Table<PosAuditEvent, string>;
@@ -82,6 +83,13 @@ export class PosDatabase extends Dexie {
     });
     this.version(3).stores({
       catalog_cache: 'id, upc, name',
+      cart_drafts: 'id, updatedAt',
+      outbox_receipts: 'id, createdAt, storeLocationId',
+      audit_events: 'id, timestamp, eventType, orderId',
+    });
+    this.version(4).stores({
+      catalog_cache: null,
+      products: 'id, upc, sku, name, price, imageUrl',
       cart_drafts: 'id, updatedAt',
       outbox_receipts: 'id, createdAt, storeLocationId',
       audit_events: 'id, timestamp, eventType, orderId',
@@ -129,10 +137,4 @@ export async function logPosEvent(event: Omit<PosAuditEvent, 'id'>): Promise<Pos
 export async function deleteAuditEvents(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await db.audit_events.bulkDelete(ids);
-}
-
-export function lookupCatalog(upc: string): Promise<CatalogCacheRow | undefined> {
-  const key = upc.trim();
-  if (!key) return Promise.resolve(undefined);
-  return db.catalog_cache.where('upc').equals(key).first();
 }
