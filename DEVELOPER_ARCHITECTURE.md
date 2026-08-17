@@ -57,7 +57,7 @@
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
 2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
 
-**Scale notes (current head V120):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
+**Scale notes (current head V121):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
 
 ---
 
@@ -660,7 +660,7 @@ Floor:      /fulfillment, cycle-counts, manufacturing/terminal, returns/receive,
 Floor home: exclusive PICKER users land on /fulfillment
 ```
 
-Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/mesh-network` (`MESH_NETWORK`, OWNER/ADMIN), `/import` (not in sidebar — Products **Import** button), `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings` (Admin → Organization), `/settings/fintech` (OWNER).
+Key office routes: `/dashboard`, `/products`, `/purchase-orders`, `/sales-orders`, `/mesh-network` (`MESH_NETWORK`, OWNER/ADMIN), `/import` (not in sidebar — Products **Import** button), `/exceptions`, `/manufacturing/*`, `/returns`, `/reports`, `/rtls`, `/settings` (Admin → Organization; **Retail POS** tab at `?tab=retailPos` when OWNER/ADMIN **and** `RETAIL_POS`), `/settings/fintech` (OWNER).
 
 **Do not** wrap floor routes in `AppShell` — that regresses glove-friendly hit targets and dual-surface design.
 
@@ -753,7 +753,7 @@ PIN material: `offline/pinVault` + IndexedDB verifier. E2E hook: `window.__INVSY
 | `compliance/LotTraceView` | Genealogy UI |
 | `modules/chatbot` (optional) | `ChatbotHost`, tours, FAB, training sandbox, route knowledge |
 | `lib/chatbot/active` | Generated bridge — stub when module disabled/absent |
-| `settings/*` | Integrations, carriers, accounting, warehouse map |
+| `settings/*` | Integrations, carriers, accounting, warehouse map, `PosSettingsPanel` (`/settings?tab=retailPos`) |
 
 ### 8.7 Design system & products grid
 
@@ -1078,6 +1078,12 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V115` | Home Realm Discovery: domain TXT/`is_verified` + SSO provider/ACS/cert/corporate CIDRs |
 | `V116` | `app_owner` INSERT policy on `tenants` (clone-sandbox / training UAT under FORCE RLS) |
 | `V117` | ENTERPRISE `tenant_subscriptions` backfill for `B2B_SHOWROOM` + `MESH_NETWORK` |
+| `V118` | Retail POS roles `RETAIL_CASHIER` / `RETAIL_MANAGER` + `pos.operate` / `pos.supervise` |
+| `V119` | `refresh_tokens.app_context` — POS/WMS JWT audience survives refresh |
+| `V120` | `invitations.additional_roles` — multi-role invites |
+| `V121` | `roles.network_access_level` (LAN / ANY) |
+
+Retail POS **WMS settings** (receipt header/footer, `pos_default_currency` USD/MXN, CFDI, blind closeout) are JSONB keys on existing `tenant_settings.settings` — no extra Flyway column. `GET|PATCH|PUT /api/v1/settings` (`SettingsController` / `TenantSettingsDto`) validate currency and 2000-char receipt text. The WMS tab is gated in `posSettingsAccess.canConfigureRetailPos` (OWNER/ADMIN **and** explicit `RETAIL_POS`; empty modules do not unlock).
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 

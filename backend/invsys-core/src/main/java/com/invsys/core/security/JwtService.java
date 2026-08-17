@@ -40,6 +40,8 @@ public class JwtService {
     public static final String CLAIM_TENANT_ID = "tenant_id";
     /** Login surface sandbox: {@code POS} or {@code WMS}. Missing claim = unrestricted (legacy). */
     public static final String CLAIM_APP_CONTEXT = "app_context";
+    /** True when the session completed WebAuthn for off-network MFA. */
+    public static final String CLAIM_MFA_VERIFIED = "mfa_verified";
     /** Bound session tenant for TERMINAL_SWITCH — must equal {@code tenant_id}. */
     public static final String CLAIM_BIND_TENANT_ID = "bind_tenant_id";
     public static final String TOKEN_TYPE_TERMINAL_SWITCH = "TERMINAL_SWITCH";
@@ -108,7 +110,19 @@ public class JwtService {
                                       List<UUID> warehouseIds,
                                       String appContext) {
         return generateAccessToken(
-                userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L, null, appContext);
+                userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L,
+                null, appContext, false);
+    }
+
+    public String generateAccessToken(UUID userId,
+                                      UUID tenantId,
+                                      List<String> roles,
+                                      List<UUID> warehouseIds,
+                                      String appContext,
+                                      boolean mfaVerified) {
+        return generateAccessToken(
+                userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L,
+                null, appContext, mfaVerified);
     }
 
     /**
@@ -152,7 +166,8 @@ public class JwtService {
                 warehouseIds,
                 properties.getTerminalSwitchTokenMinutes() * 60L,
                 TOKEN_TYPE_TERMINAL_SWITCH,
-                null);
+                null,
+                false);
     }
 
     /**
@@ -168,7 +183,8 @@ public class JwtService {
                 warehouseIds,
                 IMPERSONATION_TTL_SECONDS,
                 TOKEN_TYPE_IMPERSONATION,
-                "WMS");
+                "WMS",
+                false);
     }
 
     private String generateAccessToken(UUID userId,
@@ -177,7 +193,8 @@ public class JwtService {
                                        List<UUID> warehouseIds,
                                        long ttlSeconds,
                                        String tokenType,
-                                       String appContext) {
+                                       String appContext,
+                                       boolean mfaVerified) {
         try {
             Instant now = Instant.now();
             List<String> warehouseClaim = warehouseIds == null
@@ -195,6 +212,9 @@ public class JwtService {
             }
             if (appContext != null && !appContext.isBlank()) {
                 builder.claim(CLAIM_APP_CONTEXT, appContext.trim());
+            }
+            if (mfaVerified) {
+                builder.claim(CLAIM_MFA_VERIFIED, true);
             }
             if (TOKEN_TYPE_IMPERSONATION.equals(tokenType)) {
                 builder.jwtID(UUID.randomUUID().toString());
@@ -258,6 +278,11 @@ public class JwtService {
         }
         String appContext = value.toString().trim();
         return appContext.isEmpty() ? null : appContext;
+    }
+
+    public boolean extractMfaVerified(String token) {
+        Object value = validateAndParse(token).getClaim(CLAIM_MFA_VERIFIED);
+        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     /**

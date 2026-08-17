@@ -13,7 +13,7 @@ describe('pos i18n', () => {
     expect(translate('en', 'register.unknownUpc', { upc: '000' })).toBe('Unknown UPC 000');
     expect(translate('es', 'register.scanFirst')).toContain('artículo');
     expect(translate('fr', 'locked.title')).toContain('POS');
-    expect(translate('en', 'register.success')).toBe('SUCCESS - NEXT CUSTOMER');
+    expect(translate('en', 'login.submit')).toBe('Sign In');
     expect(translate('en', 'register.voidConfirm')).toContain('Void Transaction');
     expect(translate('es', 'register.voidConfirm')).toMatch(/anular/i);
   });

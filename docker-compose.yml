@@ -33,6 +33,22 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local-only SMTP catcher (never used in production). Demo tenant SMTP points here.
+  mailpit:
+    image: axllent/mailpit:v1.27.10
+    container_name: invsys-mailpit
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8025/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
   # Transaction-mode multiplexer in front of Postgres (protects against connection storms).
   # Explicit ini/userlist avoids edoburu auth_user/auth_query defaults that break JDBC auth.
   pgbouncer:
@@ -243,6 +259,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
       loki:
         condition: service_started
       tempo:

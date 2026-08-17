@@ -530,4 +530,5 @@ described in §2.5. This is a **P0** because it silently weakens several other c
 - Dependencies current; `nimbus-jose-jwt` pinned for CVE-2025-53864.
 - JWT PEMs gitignored (not committed).
 - JWT audience scoping: `app_context` claim (`POS`/`WMS`) set from login `targetApp`, persisted on refresh tokens (V119), and enforced in `JwtAuthFilter` — POS tokens are confined to `/api/v1/pos/**` + `/api/v1/auth/**`, WMS tokens are barred from `/api/v1/pos/**` (403). Blocks token portability for multi-role users.
+- Retail POS WMS settings (`GET|PATCH|PUT /api/v1/settings` `pos_*` keys) are `@PreAuthorize` OWNER/ADMIN. The **Settings → Retail POS** tab additionally requires an explicit `RETAIL_POS` module (empty `enabledModules` does not unlock). Currency is restricted to USD/MXN; receipt text is capped at 2000 characters.
 - Additive multi-role RBAC with last-owner protection: role replacement (`UserManagementService.applyRolesChange`) refuses to strip the final `OWNER`.

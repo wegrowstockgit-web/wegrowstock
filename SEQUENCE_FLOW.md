@@ -56,7 +56,7 @@ The office rail (`frontends/apps/frontend_wms/src/components/layout/navConfig.ts
 
 > **Control plane:** Super Admin Day-2 ops live in `frontends/apps/frontend_admin` (not this sidebar) and talk to `invsys-admin-api` on `:8081`. WMS data-plane edge blocks `/api/v1/control-plane/**`. The only WMS touch is login `?impersonateToken=` → `POST /api/v1/auth/impersonation/accept`.
 >
-> **Retail POS:** Cashiers use `frontends/apps/frontend_pos` (`:3003`). Tender writes Dexie `outbox_receipts` immediately. When online, `POST /api/v1/pos/sync-receipts` (`invsys-pos-api`, `@RequireModule(RETAIL_POS)`) enqueues negative `inventory_level_deltas` for the existing flush worker.
+> **Retail POS:** Cashiers use `frontends/apps/frontend_pos` (`:3003`). Tender writes Dexie `outbox_receipts` immediately. When online, `POST /api/v1/pos/sync-receipts` (`invsys-pos-api`, `@RequireModule(RETAIL_POS)`) enqueues negative `inventory_level_deltas` for the existing flush worker. Owners/Admins configure receipt text, USD/MXN, CFDI 4.0, and blind closeout on WMS **Settings → Retail POS** (`/settings?tab=retailPos`) — see §10.2.
 
 | Group | Parent icon | Leaf (route) | Leaf icon | Visible to |
 |-------|-------------|--------------|-----------|------------|
@@ -87,6 +87,7 @@ The office rail (`frontends/apps/frontend_wms/src/components/layout/navConfig.ts
 - `/import` — reached via the **Import** button on Products (also direct URL).
 - `/inbound/receive`, `/manufacturing/terminal`, `/returns/receive` — Surface B floor routes rendered inside `WarehouseFloorShell` (no corporate sidebar, glove-friendly hit targets, PIN idle lock).
 - `/settings/fintech` — OWNER-only, linked from Organization settings.
+- `/settings?tab=retailPos` — OWNER/ADMIN **and** `RETAIL_POS`; hidden otherwise (see §10.2).
 - `/showroom/*` and `/supplier-portal/po/:token` — external portal layouts.
 
 **Tour anchors** live on key leaves (`nav-purchase-orders`, `nav-sales-orders`, `nav-products`) so the driver.js tours can highlight expanded menu entries. E2E helpers `expandNavCategory` / `clickNavLink` (`e2e/fixtures/nav.ts`) mirror the grouping.
@@ -841,7 +842,9 @@ sequenceDiagram
 ### 10.2 Organization settings (`/settings`) — OWNER / ADMIN
 
 **Cross-role correlation:** global tenant rules (blind receiving, adjustment limits, scanner options) instantly govern all floor behavior; every alteration is trigger-audited.
-**Backend hooks:** `SettingsController` → `TenantSettings` (JSON), append-only `audit_log` trigger (V085), `AuditLogArchivalWorker` (cold S3 archive).
+**Backend hooks:** `SettingsController` → `TenantSettings` (JSON), `TenantSettingsDto` (Retail POS keys), append-only `audit_log` trigger (V085), `AuditLogArchivalWorker` (cold S3 archive).
+
+The **Retail POS** tab (`PosSettingsPanel`, `?tab=retailPos`) renders only when `canConfigureRetailPos` is true: role is OWNER or ADMIN **and** `enabledModules` includes `RETAIL_POS`. Warehouse managers are blocked from `/settings` entirely. Tenants without the addon (e.g. Acme) open Organization but never see the tab. Keys live in `tenant_settings.settings` JSONB: `pos_receipt_header`, `pos_receipt_footer` (max 2000 chars), `pos_default_currency` (`USD`/`MXN`), `pos_require_blind_closeout`, `pos_enable_cfdi_invoicing`. `PUT` and `PATCH /api/v1/settings` share `SettingsService.patchSettings`.
 
 ```mermaid
 sequenceDiagram
@@ -857,6 +860,14 @@ sequenceDiagram
     DB->>DB: trigger → INSERT audit_log (actor + JSON diff, partitioned)
     DB-->>UI: 200 OK — rule live for every floor scanner immediately
     Note over DB: aged audit rows cold-archive to S3/MinIO as gzip JSONL;<br/>purge only after confirmed 2xx upload
+    Owner->>UI: open Retail POS tab (RETAIL_POS entitled)
+    UI->>Set: GET /api/v1/settings
+    Set-->>UI: pos_* defaults (USD, CFDI off, blind closeout off)
+    Owner->>UI: save MXN / CFDI / receipt text / blind closeout
+    UI->>Set: PATCH /api/v1/settings (pos_* keys)
+    Set->>Set: TenantSettingsDto.applyPatch (currency + length)
+    Set->>DB: UPDATE tenant_settings.settings JSONB
+    DB-->>UI: 200 OK — register prefs persist for the tenant
 ```
 
 ---
@@ -1090,12 +1101,14 @@ Quick index of which sections each role appears in:
 
 | Role | Primary flows |
 |------|---------------|
-| `OWNER` | Login §4.1 · Invoices §6.4 · Reports §10.1 · Settings §10.2 · Fintech (`/settings/fintech`) · Mesh Network §5.6 |
-| `ADMIN` | Login §4.1 · Suppliers §5.2 · Customers/credit §6.3 · Reports §10.1 · Settings §10.2 · Mesh Network §5.6 |
+| `OWNER` | Login §4.1 · Invoices §6.4 · Reports §10.1 · Settings §10.2 (incl. Retail POS tab when entitled) · Fintech (`/settings/fintech`) · Mesh Network §5.6 |
+| `ADMIN` | Login §4.1 · Suppliers §5.2 · Customers/credit §6.3 · Reports §10.1 · Settings §10.2 (incl. Retail POS tab when entitled) · Mesh Network §5.6 |
 | `WAREHOUSE_MANAGER` | PO lifecycle §5.1 · Cross-dock (office side) §5.4 · Returns approve §5.5 · SO confirm/allocate §6.1 · Waves §6.2 · Variance approval §7.2 · Exceptions resolve §7.4 · RTLS §7.6 · Manufacturing §8.1–8.2 |
 | `PICKER` | Floor PIN §4.2 · Floor receive §5.3 · Cross-dock (floor side) §5.4 · Returns receive §5.5 · Pick/ship §6.2 · Blind counts §7.2 · Replenishments §7.3 · Skip & Flag §7.4 · Terminal §8.3 · Issue supplies §9.1 · Truck §9.2 · Offline queue §12 |
 | `VIEWER` | Login §4.1 · Products (read) §7.1 · Lot trace §7.5 |
 | `B2B_CUSTOMER` | Showroom §11.1 |
+| `RETAIL_CASHIER` | Register (`frontend_pos`) — consumes WMS Retail POS prefs from §10.2; cannot open `/settings` |
+| `RETAIL_MANAGER` | Register voids/overrides — same settings consumption as cashier; cannot open `/settings` |
 | `SUPPLIER` | Supplier portal §11.2 |
 | `SUPER_ADMIN` | Control plane (separate app) · Impersonation §4.1a · Tenant suspend / billing / RAG / kill-switch / audit / shards / DLQ |
 | *All roles* | Request pipeline §3 · Copilot §13 *(when chatbot module enabled)* · Onboarding tour §14 *(same gate)* |

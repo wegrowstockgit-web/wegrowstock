@@ -1,29 +1,39 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
-import { App } from './App';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { App, AppRoutes } from './App';
+import { demoSession } from '@/lib/posSession';
+import { PosSessionProvider } from '@/lib/PosSessionContext';
+import { lockShift, unlockShift } from '@/components/ScannerSecurityGate';
+import { seedDemoManagerPinsIfEmpty } from '@/offline/pinVault';
 
 vi.mock('@/lib/syncWorker', () => ({
   startOutboxPolling: () => () => undefined,
 }));
 
 describe('App', () => {
-  it('renders the register at /', async () => {
+  afterEach(() => {
+    lockShift();
+  });
+
+  it('sends unauthenticated visitors to full-screen login', async () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     );
-    expect(await screen.findByTestId('register-page')).toBeTruthy();
+    expect(await screen.findByTestId('pos-login')).toBeTruthy();
+    expect(screen.queryByTestId('register-page')).toBeNull();
+    expect(screen.queryByTestId('pos-signin')).toBeNull();
   });
 
-  it('redirects /register to the register page', async () => {
+  it('redirects /register to login when there is no session', async () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <App />
       </MemoryRouter>,
     );
-    expect(await screen.findByTestId('register-page')).toBeTruthy();
+    expect(await screen.findByTestId('pos-login')).toBeTruthy();
   });
 
   it('shows a fallback for unknown routes', () => {
@@ -35,12 +45,39 @@ describe('App', () => {
     expect(screen.getByText('Back to register')).toBeTruthy();
   });
 
-  it('renders login', () => {
+  it('renders login', async () => {
     render(
       <MemoryRouter initialEntries={['/login']}>
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId('pos-login')).toBeTruthy();
+    expect(await screen.findByTestId('pos-login')).toBeTruthy();
+  });
+
+  it('requires a shift PIN before the register renders', async () => {
+    lockShift();
+    seedDemoManagerPinsIfEmpty();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <PosSessionProvider initial={demoSession()} disableFetch>
+          <AppRoutes />
+        </PosSessionProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId('pos-pin-gate')).toBeTruthy();
+    expect(screen.queryByTestId('register-page')).toBeNull();
+  });
+
+  it('renders the register after the shift is unlocked', async () => {
+    seedDemoManagerPinsIfEmpty();
+    unlockShift();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <PosSessionProvider initial={demoSession()} disableFetch>
+          <AppRoutes />
+        </PosSessionProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId('register-page')).toBeTruthy();
   });
 });

@@ -5,10 +5,12 @@ import com.invsys.core.security.dto.MeResponse;
 import com.invsys.domain.subscription.AppModule;
 import com.invsys.pos.dto.PosSessionResponse;
 import com.invsys.repository.TenantRepository;
+import com.invsys.service.CurrencyService;
 import com.invsys.service.SettingsService;
 import com.invsys.service.TenantSubscriptionService;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 @Service
@@ -18,16 +20,19 @@ public class PosSessionService {
     private final SettingsService settingsService;
     private final TenantSubscriptionService tenantSubscriptionService;
     private final TenantRepository tenantRepository;
+    private final CurrencyService currencyService;
 
     public PosSessionService(
             AuthService authService,
             SettingsService settingsService,
             TenantSubscriptionService tenantSubscriptionService,
-            TenantRepository tenantRepository) {
+            TenantRepository tenantRepository,
+            CurrencyService currencyService) {
         this.authService = authService;
         this.settingsService = settingsService;
         this.tenantSubscriptionService = tenantSubscriptionService;
         this.tenantRepository = tenantRepository;
+        this.currencyService = currencyService;
     }
 
     public PosSessionResponse currentSession(String acceptLanguage, String timezone, String placeLanguage, String placeCurrency) {
@@ -44,9 +49,13 @@ public class PosSessionService {
         String inferredPlaceCurrency = PosLocaleResolver.inferPlaceCurrency(acceptLanguage, timezone);
         String detectedPlaceCurrency = firstNonBlank(
                 PosLocaleResolver.normalizeCurrency(placeCurrency), inferredPlaceCurrency);
-        String wmsCurrency = posEnabled ? stringValue(settings.get("currency")) : null;
-        String currency = PosLocaleResolver.resolveCurrency(wmsCurrency, detectedPlaceCurrency);
-        String currencySource = PosLocaleResolver.currencySource(wmsCurrency, detectedPlaceCurrency);
+        String wmsCurrency = stringValue(settings.get("currency"));
+        String tenantBaseCurrency = firstNonBlank(
+                PosLocaleResolver.normalizeCurrency(wmsCurrency), PosLocaleResolver.DEFAULT_CURRENCY);
+        String entitledWms = posEnabled ? wmsCurrency : null;
+        String currency = PosLocaleResolver.resolveDisplayCurrency(detectedPlaceCurrency, entitledWms);
+        String currencySource = PosLocaleResolver.displayCurrencySource(detectedPlaceCurrency, entitledWms);
+        BigDecimal liveExchangeRate = currencyService.quoteOrOne(tenantBaseCurrency, currency);
 
         String resolvedTimezone = firstNonBlank(
                 timezone, me.timezonePreference(), stringValue(settings.get("timezone")));
@@ -75,7 +84,9 @@ public class PosSessionService {
                 resolvedTimezone,
                 companyName,
                 me.userId(),
-                me.tenantId());
+                me.tenantId(),
+                tenantBaseCurrency,
+                liveExchangeRate);
     }
 
     private static String stringValue(Object value) {

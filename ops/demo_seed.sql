@@ -14,10 +14,16 @@
 --   Owner users on ENTERPRISE (owner@demo.test and any other ENTERPRISE owner) do.
 --   Acme Wholesale (BASIC): CORE
 --   Northwind Logistics (INTERMEDIATE): CORE + SHOPIFY + ADVANCED_FULFILLMENT
---   Pacific Parts Co: seeded via demo_seed_tenants_extra.sql
+--   Pacific Parts Co (BASIC): CORE — seeded via demo_seed_tenants_extra.sql
 -- Super Admin (platform_admins): owner@demo.test / password123 via admin.invsys.com
 -- WMS Demo Owner (users): owner@demo.test / password123 via app.invsys.com (tenant user, not platform admin)
 -- Picker LBAC (Demo Corp): WH-01 Main Warehouse only (cannot select WH-02)
+-- Role coverage (every tenant): OWNER, ADMIN, WAREHOUSE_MANAGER, PICKER, VIEWER,
+--   B2B_CUSTOMER, RETAIL_CASHIER, RETAIL_MANAGER, SUPPLIER
+-- POS-only (cannot WMS): cashier@*.test, retailmgr@*.test  — register at :3003
+--   Only Demo Corp has RETAIL_POS; other tenants login to assert posEnabled=false
+-- Vendor portal: supplier@*.test (mapped to the primary supplier)
+-- POS manager override PIN: warehouse manager 1234, retail manager 5678
 -- =============================================================================
 
 BEGIN;
@@ -48,8 +54,23 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
     ('a0000000-0000-4000-8000-000000000010', 'a0000000-0000-4000-8000-000000000001',
-     '{"company_name":"Demo Corp","currency":"USD","timezone":"America/New_York","allow_negative_inventory":false,"barcode_prefix":"","barcode_suffix":"","default_reorder_point":10,"default_reorder_qty":50,"invoice_number_format":"INV-{YYYY}-{seq:5}","platform_fee_percent":0.4,"payment_terms_days":30}'::jsonb)
+     '{"company_name":"Demo Corp","currency":"USD","timezone":"America/New_York","allow_negative_inventory":false,"barcode_prefix":"","barcode_suffix":"","default_reorder_point":10,"default_reorder_qty":50,"invoice_number_format":"INV-{YYYY}-{seq:5}","platform_fee_percent":0.4,"payment_terms_days":30,"smtp_host":"mailpit","smtp_port":1025,"smtp_from":"noreply@demo.test","smtp_auth":false}'::jsonb)
 ON CONFLICT (tenant_id) DO NOTHING;
+
+UPDATE tenant_settings
+SET settings = settings || jsonb_build_object(
+    'smtp_host', 'mailpit',
+    'smtp_port', 1025,
+    'smtp_from', 'noreply@demo.test',
+    'smtp_auth', false
+)
+WHERE tenant_id = 'a0000000-0000-4000-8000-000000000001';
+
+INSERT INTO currency_rates (id, from_currency, to_currency, rate, as_of) VALUES
+    ('a0000000-0000-4000-8000-00000000c001', 'USD', 'MXN', 18.500000, NOW())
+ON CONFLICT (from_currency, to_currency) DO UPDATE SET
+    rate = EXCLUDED.rate,
+    as_of = EXCLUDED.as_of;
 
 INSERT INTO tenant_subscriptions (tenant_id, tier, enabled_modules, updated_at) VALUES
     ('a0000000-0000-4000-8000-000000000001', 'ENTERPRISE',
@@ -67,14 +88,18 @@ ON CONFLICT (email) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     active = TRUE;
 
-INSERT INTO roles (id, tenant_id, code) VALUES
-    ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000001', 'OWNER'),
-    ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000001', 'ADMIN'),
-    ('a0000000-0000-4000-8000-000000000103', 'a0000000-0000-4000-8000-000000000001', 'WAREHOUSE_MANAGER'),
-    ('a0000000-0000-4000-8000-000000000104', 'a0000000-0000-4000-8000-000000000001', 'PICKER'),
-    ('a0000000-0000-4000-8000-000000000105', 'a0000000-0000-4000-8000-000000000001', 'VIEWER'),
-    ('a0000000-0000-4000-8000-000000000106', 'a0000000-0000-4000-8000-000000000001', 'B2B_CUSTOMER')
-ON CONFLICT (tenant_id, code) DO NOTHING;
+INSERT INTO roles (id, tenant_id, code, network_access_level) VALUES
+    ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000001', 'OWNER', 'MFA_OUTSIDE_NETWORK'),
+    ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000001', 'ADMIN', 'MFA_OUTSIDE_NETWORK'),
+    ('a0000000-0000-4000-8000-000000000103', 'a0000000-0000-4000-8000-000000000001', 'WAREHOUSE_MANAGER', 'MFA_OUTSIDE_NETWORK'),
+    ('a0000000-0000-4000-8000-000000000104', 'a0000000-0000-4000-8000-000000000001', 'PICKER', 'STRICT_INTERNAL'),
+    ('a0000000-0000-4000-8000-000000000105', 'a0000000-0000-4000-8000-000000000001', 'VIEWER', 'MFA_OUTSIDE_NETWORK'),
+    ('a0000000-0000-4000-8000-000000000106', 'a0000000-0000-4000-8000-000000000001', 'B2B_CUSTOMER', 'ROAMING'),
+    ('a0000000-0000-4000-8000-000000000107', 'a0000000-0000-4000-8000-000000000001', 'RETAIL_CASHIER', 'STRICT_INTERNAL'),
+    ('a0000000-0000-4000-8000-000000000108', 'a0000000-0000-4000-8000-000000000001', 'RETAIL_MANAGER', 'MFA_OUTSIDE_NETWORK'),
+    ('a0000000-0000-4000-8000-000000000109', 'a0000000-0000-4000-8000-000000000001', 'SUPPLIER', 'ROAMING')
+ON CONFLICT (tenant_id, code) DO UPDATE SET
+    network_access_level = EXCLUDED.network_access_level;
 
 INSERT INTO users (id, tenant_id, email, password_hash, display_name, status) VALUES
     ('a0000000-0000-4000-8000-000000000201', 'a0000000-0000-4000-8000-000000000001', 'owner@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Demo Owner', 'ACTIVE'),
@@ -82,7 +107,10 @@ INSERT INTO users (id, tenant_id, email, password_hash, display_name, status) VA
     ('a0000000-0000-4000-8000-000000000203', 'a0000000-0000-4000-8000-000000000001', 'manager@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Warehouse Manager', 'ACTIVE'),
     ('a0000000-0000-4000-8000-000000000204', 'a0000000-0000-4000-8000-000000000001', 'picker@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Floor Picker', 'ACTIVE'),
     ('a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000001', 'viewer@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Read Only User', 'ACTIVE'),
-    ('a0000000-0000-4000-8000-000000000206', 'a0000000-0000-4000-8000-000000000001', 'b2b@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'B2B Buyer', 'ACTIVE')
+    ('a0000000-0000-4000-8000-000000000206', 'a0000000-0000-4000-8000-000000000001', 'b2b@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'B2B Buyer', 'ACTIVE'),
+    ('a0000000-0000-4000-8000-000000000207', 'a0000000-0000-4000-8000-000000000001', 'cashier@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Retail Cashier', 'ACTIVE'),
+    ('a0000000-0000-4000-8000-000000000208', 'a0000000-0000-4000-8000-000000000001', 'retailmgr@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Retail Manager', 'ACTIVE'),
+    ('a0000000-0000-4000-8000-000000000209', 'a0000000-0000-4000-8000-000000000001', 'supplier@demo.test', '$2a$10$ahiY2Lk.l8HTqZTO0gMhO.W/cqEDtYSE0uQrfxqhL9Ewl0Oee8sSu', 'Global Parts Vendor', 'ACTIVE')
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES
@@ -93,6 +121,45 @@ INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES
     ('a0000000-0000-4000-8000-000000000305', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000105'),
     ('a0000000-0000-4000-8000-000000000306', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000206', 'a0000000-0000-4000-8000-000000000106')
 ON CONFLICT (user_id, role_id) DO NOTHING;
+
+-- Look up retail/supplier roles by code: V118 may have created RETAIL_* with random UUIDs.
+INSERT INTO user_roles (id, tenant_id, user_id, role_id)
+SELECT v.id, u.tenant_id, u.id, r.id
+FROM (VALUES
+    ('a0000000-0000-4000-8000-000000000307'::uuid, 'a0000000-0000-4000-8000-000000000207'::uuid, 'RETAIL_CASHIER'),
+    ('a0000000-0000-4000-8000-000000000308'::uuid, 'a0000000-0000-4000-8000-000000000208'::uuid, 'RETAIL_MANAGER'),
+    ('a0000000-0000-4000-8000-000000000309'::uuid, 'a0000000-0000-4000-8000-000000000209'::uuid, 'SUPPLIER')
+) AS v(id, user_id, role_code)
+JOIN users u ON u.id = v.user_id
+JOIN roles r ON r.tenant_id = u.tenant_id AND r.code = v.role_code
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
+INSERT INTO role_permissions (tenant_id, role_id, permission_key, granted)
+SELECT r.tenant_id, r.id, p.permission_key,
+       CASE
+           WHEN r.code IN ('OWNER', 'ADMIN') THEN TRUE
+           WHEN r.code IN ('WAREHOUSE_MANAGER', 'RETAIL_MANAGER') THEN TRUE
+           WHEN r.code = 'RETAIL_CASHIER' THEN p.permission_key = 'pos.operate'
+           ELSE FALSE
+       END
+FROM roles r
+CROSS JOIN (VALUES ('pos.operate'), ('pos.supervise')) AS p(permission_key)
+WHERE r.tenant_id = 'a0000000-0000-4000-8000-000000000001'
+  AND r.code IN (
+      'OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER',
+      'RETAIL_CASHIER', 'RETAIL_MANAGER'
+  )
+ON CONFLICT (tenant_id, role_id, permission_key) DO UPDATE
+    SET granted = EXCLUDED.granted,
+        updated_at = NOW();
+
+-- POS manager override PINs (unique per tenant). Floor shift PIN stays browser-local.
+UPDATE users
+SET terminal_pin_hash = encode(digest(tenant_id::text || ':1234', 'sha256'), 'hex')
+WHERE id = 'a0000000-0000-4000-8000-000000000203';
+UPDATE users
+SET terminal_pin_hash = encode(digest(tenant_id::text || ':5678', 'sha256'), 'hex')
+WHERE id = 'a0000000-0000-4000-8000-000000000208';
 
 INSERT INTO refresh_tokens (id, tenant_id, user_id, token_hash, expires_at) VALUES
     ('a0000000-0000-4000-8000-000000000401', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000201',
@@ -142,7 +209,11 @@ INSERT INTO user_warehouses (id, tenant_id, user_id, location_id) VALUES
     ('a0000000-0000-4000-8000-000000000352', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000203', 'a0000000-0000-4000-8000-000000000601'),
     ('a0000000-0000-4000-8000-000000000353', 'a0000000-0000-4000-8000-000000000001',
-     'a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000601')
+     'a0000000-0000-4000-8000-000000000205', 'a0000000-0000-4000-8000-000000000601'),
+    ('a0000000-0000-4000-8000-000000000354', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000207', 'a0000000-0000-4000-8000-000000000601'),
+    ('a0000000-0000-4000-8000-000000000355', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000208', 'a0000000-0000-4000-8000-000000000601')
 ON CONFLICT (user_id, location_id) DO NOTHING;
 
 INSERT INTO products (id, tenant_id, sku_root, name, description) VALUES
@@ -214,6 +285,11 @@ ON CONFLICT DO NOTHING;
 INSERT INTO customer_user_mappings (id, tenant_id, customer_id, user_id) VALUES
     ('a0000000-0000-4000-8000-000000000551', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000001102', 'a0000000-0000-4000-8000-000000000206')
+ON CONFLICT (user_id) DO NOTHING;
+
+INSERT INTO supplier_user_mappings (id, tenant_id, supplier_id, user_id) VALUES
+    ('a0000000-0000-4000-8000-000000000571', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000001001', 'a0000000-0000-4000-8000-000000000209')
 ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO customer_credit_lines (id, tenant_id, customer_id, credit_limit, available_credit, status) VALUES
@@ -482,12 +558,12 @@ INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
      '{"company_name":"Acme Wholesale","currency":"USD","timezone":"America/Chicago","allow_negative_inventory":false,"platform_fee_percent":0.4}'::jsonb)
 ON CONFLICT (tenant_id) DO NOTHING;
 
-INSERT INTO roles (id, tenant_id, code) VALUES
-    ('b0000000-0000-4000-8000-000000000101', 'b0000000-0000-4000-8000-000000000001', 'OWNER'),
-    ('b0000000-0000-4000-8000-000000000102', 'b0000000-0000-4000-8000-000000000001', 'ADMIN'),
-    ('b0000000-0000-4000-8000-000000000103', 'b0000000-0000-4000-8000-000000000001', 'WAREHOUSE_MANAGER'),
-    ('b0000000-0000-4000-8000-000000000104', 'b0000000-0000-4000-8000-000000000001', 'PICKER'),
-    ('b0000000-0000-4000-8000-000000000105', 'b0000000-0000-4000-8000-000000000001', 'VIEWER')
+INSERT INTO roles (id, tenant_id, code, network_access_level) VALUES
+    ('b0000000-0000-4000-8000-000000000101', 'b0000000-0000-4000-8000-000000000001', 'OWNER', 'MFA_OUTSIDE_NETWORK'),
+    ('b0000000-0000-4000-8000-000000000102', 'b0000000-0000-4000-8000-000000000001', 'ADMIN', 'MFA_OUTSIDE_NETWORK'),
+    ('b0000000-0000-4000-8000-000000000103', 'b0000000-0000-4000-8000-000000000001', 'WAREHOUSE_MANAGER', 'MFA_OUTSIDE_NETWORK'),
+    ('b0000000-0000-4000-8000-000000000104', 'b0000000-0000-4000-8000-000000000001', 'PICKER', 'STRICT_INTERNAL'),
+    ('b0000000-0000-4000-8000-000000000105', 'b0000000-0000-4000-8000-000000000001', 'VIEWER', 'MFA_OUTSIDE_NETWORK')
 ON CONFLICT (tenant_id, code) DO NOTHING;
 
 INSERT INTO users (id, tenant_id, email, password_hash, display_name, status) VALUES

@@ -24,21 +24,12 @@ describe('navConfig B2B and mesh activation', () => {
     expect(inboundMesh).toBe(false);
   });
 
-  it('exposes B2B RFQ and showroom onboarding under Outbound', () => {
+  it('keeps a single Sales Orders and Customers leaf under Outbound', () => {
     const outbound = NAV_MATRIX.categories.find((group) => group.id === 'outbound');
-    expect(outbound?.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          to: '/sales/orders',
-          labelKey: 'nav.salesOrdersRfq',
-          modules: ['B2B_SHOWROOM'],
-        }),
-        expect.objectContaining({
-          to: '/sales/customers',
-          labelKey: 'nav.showroomOnboarding',
-          modules: ['B2B_SHOWROOM'],
-        }),
-      ]),
-    );
+    const paths = outbound?.items.map((item) => item.to) ?? [];
+    expect(paths).toContain('/sales-orders');
+    expect(paths).toContain('/customers');
+    expect(paths).not.toContain('/sales/orders');
+    expect(paths).not.toContain('/sales/customers');
   });
 });

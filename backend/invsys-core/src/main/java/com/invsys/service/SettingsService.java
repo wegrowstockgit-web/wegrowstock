@@ -1,5 +1,6 @@
 package com.invsys.service;
 
+import com.invsys.api.dto.TenantSettingsDto;
 import com.invsys.domain.TenantSettings;
 import com.invsys.core.integration.OutboxService;
 import com.invsys.repository.TenantSettingsRepository;
@@ -54,6 +55,7 @@ public class SettingsService {
             }
             settings.getSettings().putAll(patch);
             applyTypedColumns(settings, patch);
+            TenantSettingsDto.applyPatch(settings.getSettings(), patch);
         }
         repository.save(settings);
         // Invalidate now; @PostUpdate also evicts after commit so we never re-warm in-tx.
@@ -83,6 +85,7 @@ public class SettingsService {
         map.put("max_auto_adjust_value", settings.getMaxAutoAdjustValue());
         map.put("rma_auto_approve_max_value", settings.getRmaAutoApproveMaxValue());
         map.put("predictive_replenishment_enabled", settings.isPredictiveReplenishmentEnabled());
+        TenantSettingsDto.fromSettingsMap(settings.getSettings()).writeTo(map);
         return map;
     }
 

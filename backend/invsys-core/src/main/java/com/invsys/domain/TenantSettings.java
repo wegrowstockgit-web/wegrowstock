@@ -123,7 +123,72 @@ public class TenantSettings extends TenantScopedEntity {
         defaults.put("costing_method", "MOVING_AVERAGE");
         defaults.put("platform_fee_percent", 0.4);
         defaults.put("payment_terms_days", 30);
+        defaults.put("pos_receipt_header", "");
+        defaults.put("pos_receipt_footer", "");
+        defaults.put("pos_default_currency", "USD");
+        defaults.put("pos_require_blind_closeout", false);
+        defaults.put("pos_enable_cfdi_invoicing", false);
         ts.setSettings(defaults);
         return ts;
+    }
+
+    public String getPosReceiptHeader() {
+        return stringSetting("pos_receipt_header", "");
+    }
+
+    public void setPosReceiptHeader(String posReceiptHeader) {
+        settings.put("pos_receipt_header", posReceiptHeader != null ? posReceiptHeader : "");
+    }
+
+    public String getPosReceiptFooter() {
+        return stringSetting("pos_receipt_footer", "");
+    }
+
+    public void setPosReceiptFooter(String posReceiptFooter) {
+        settings.put("pos_receipt_footer", posReceiptFooter != null ? posReceiptFooter : "");
+    }
+
+    public String getPosDefaultCurrency() {
+        return stringSetting("pos_default_currency", "USD");
+    }
+
+    public void setPosDefaultCurrency(String posDefaultCurrency) {
+        settings.put("pos_default_currency", posDefaultCurrency != null ? posDefaultCurrency : "USD");
+    }
+
+    public Boolean getPosRequireBlindCloseout() {
+        return boolSetting("pos_require_blind_closeout", false);
+    }
+
+    public void setPosRequireBlindCloseout(Boolean posRequireBlindCloseout) {
+        settings.put("pos_require_blind_closeout", Boolean.TRUE.equals(posRequireBlindCloseout));
+    }
+
+    public Boolean getPosEnableCfdiInvoicing() {
+        return boolSetting("pos_enable_cfdi_invoicing", false);
+    }
+
+    public void setPosEnableCfdiInvoicing(Boolean posEnableCfdiInvoicing) {
+        settings.put("pos_enable_cfdi_invoicing", Boolean.TRUE.equals(posEnableCfdiInvoicing));
+    }
+
+    private String stringSetting(String key, String fallback) {
+        Object raw = settings.get(key);
+        if (raw == null) {
+            return fallback;
+        }
+        String value = String.valueOf(raw);
+        return value.isBlank() ? fallback : value;
+    }
+
+    private boolean boolSetting(String key, boolean fallback) {
+        Object raw = settings.get(key);
+        if (raw == null) {
+            return fallback;
+        }
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(String.valueOf(raw));
     }
 }

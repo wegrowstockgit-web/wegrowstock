@@ -1,3 +1,5 @@
+import { formatPosMoney } from './utils';
+
 export type TaxRegion = 'US' | 'MX';
 
 export const TAX_RATES: Record<TaxRegion, number> = {
@@ -21,11 +23,7 @@ export function cartTotals(lines: Array<{ unitPrice: number; qty: number }>, reg
 }
 
 export function formatMoney(amount: number, currency = 'USD', locale?: string): string {
-  const resolved = locale ?? (currency === 'MXN' ? 'es-MX' : 'en-US');
-  return new Intl.NumberFormat(resolved, {
-    style: 'currency',
-    currency,
-  }).format(amount);
+  return formatPosMoney(amount, currency, locale);
 }
 
 export function roundMoney(value: number): number {

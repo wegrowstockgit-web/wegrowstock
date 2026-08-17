@@ -30,8 +30,8 @@ describe('RolePermissionsMatrix', () => {
     vi.mocked(apiClient.get).mockResolvedValue({
       data: {
         roles: [
-          { id: 'r-admin', name: 'ADMIN' },
-          { id: 'r-picker', name: 'PICKER' },
+          { id: 'r-admin', name: 'ADMIN', networkAccessLevel: 'MFA_OUTSIDE_NETWORK' },
+          { id: 'r-picker', name: 'PICKER', networkAccessLevel: 'STRICT_INTERNAL' },
         ],
         permissionKeys: ['inventory:cost:view', 'so:discount:override'],
         grants: [
@@ -40,6 +40,7 @@ describe('RolePermissionsMatrix', () => {
           { roleId: 'r-admin', permissionKey: 'so:discount:override', granted: false },
           { roleId: 'r-picker', permissionKey: 'so:discount:override', granted: false },
         ],
+        allowedCidrBlocks: ['10.0.0.0/8'],
       },
     } as never);
     vi.mocked(apiClient.patch).mockResolvedValue({ data: {} } as never);
@@ -60,6 +61,39 @@ describe('RolePermissionsMatrix', () => {
         roleId: 'r-picker',
         permissionKey: 'inventory:cost:view',
         granted: true,
+      });
+    });
+  });
+
+  it('patches network access level and CIDR allowlist', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        roles: [{ id: 'r-picker', name: 'PICKER', networkAccessLevel: 'STRICT_INTERNAL' }],
+        permissionKeys: ['inventory:cost:view'],
+        grants: [{ roleId: 'r-picker', permissionKey: 'inventory:cost:view', granted: false }],
+        allowedCidrBlocks: [],
+      },
+    } as never);
+    vi.mocked(apiClient.patch).mockResolvedValue({ data: {} } as never);
+
+    wrap(<RolePermissionsMatrix />);
+    expect(await screen.findByTestId('corporate-ip-allowlist')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('network-access-PICKER'), {
+      target: { value: 'ROAMING' },
+    });
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledWith('/api/v1/settings/permissions/network-access', {
+        roleId: 'r-picker',
+        networkAccessLevel: 'ROAMING',
+      });
+    });
+
+    fireEvent.change(screen.getByTestId('cidr-input'), { target: { value: '10.0.0.0/8' } });
+    fireEvent.click(screen.getByTestId('cidr-add'));
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledWith('/api/v1/settings/permissions/allowed-cidrs', {
+        allowedCidrBlocks: ['10.0.0.0/8'],
       });
     });
   });

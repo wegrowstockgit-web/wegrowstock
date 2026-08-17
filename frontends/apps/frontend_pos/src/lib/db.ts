@@ -44,6 +44,10 @@ export type OutboxReceiptRow = {
   tenderAmount: number;
   lines: OutboxReceiptLine[];
   createdAt: number;
+  customerId?: string;
+  customerName?: string;
+  facturaRfc?: string;
+  facturaUsoCfdi?: string;
 };
 
 export type PosAuditEvent = {
@@ -71,6 +75,12 @@ export class PosDatabase extends Dexie {
       outbox_receipts: 'id, createdAt, storeLocationId',
     });
     this.version(2).stores({
+      catalog_cache: 'id, upc, name',
+      cart_drafts: 'id, updatedAt',
+      outbox_receipts: 'id, createdAt, storeLocationId',
+      audit_events: 'id, timestamp, eventType, orderId',
+    });
+    this.version(3).stores({
       catalog_cache: 'id, upc, name',
       cart_drafts: 'id, updatedAt',
       outbox_receipts: 'id, createdAt, storeLocationId',

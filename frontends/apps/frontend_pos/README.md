@@ -20,9 +20,10 @@ pnpm --filter frontend_pos build
 | **Session scope** | Login sends `targetApp: POS`, so the JWT carries an `app_context=POS` claim: the register session works only on `/api/v1/pos/**` + auth (WMS APIs return 403), and vice versa for WMS tokens. |
 | **Demo login** | `owner@demo.test` / `password123` (optional — checkout is local) |
 | **Language** | English / Español / Français from WMS **Settings → Profile → Workspace language**, then the cashier profile, then the browser locale where the register is opened |
-| **Currency** | WMS **base currency** is authoritative for tenders. The register also detects local currency/tax from the browser locale and timezone, and shows a hint if they differ |
+| **Currency** | WMS **Settings → Retail POS** default currency (`pos_default_currency`: USD or MXN) is the register preference. Workspace base currency remains the WMS catalog/tender authority. The register also detects local currency/tax from the browser locale and timezone, and shows a hint if they differ |
+| **WMS config** | Owners/Admins set receipt header/footer, CFDI 4.0, and blind closeout in WMS **Settings → Retail POS** (`/settings?tab=retailPos`). That tab is hidden unless `RETAIL_POS` is entitled. |
 
-Checkout writes Dexie `outbox_receipts` immediately and never waits on the network. A background worker flushes the outbox when `navigator.onLine` is true. Language and currency from WMS are applied only when Retail POS is enabled for that tenant.
+Checkout writes Dexie `outbox_receipts` immediately and never waits on the network. A background worker flushes the outbox when `navigator.onLine` is true. Language and POS prefs from WMS are applied only when Retail POS is enabled for that tenant.
 
 ## Manager overrides & audit (offline-capable)
 

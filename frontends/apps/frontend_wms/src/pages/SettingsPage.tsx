@@ -20,6 +20,8 @@ import type {
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { RoleMultiSelect } from '@/features/settings/RoleMultiSelect';
 import { formatRoleLabel, requireAtLeastOneRole } from '@/features/settings/roleAssignment';
+import { PosSettingsPanel } from '@/features/settings/PosSettingsPanel';
+import { canConfigureRetailPos } from '@/features/settings/posSettingsAccess';
 import { cn } from '@/lib/utils';
 import { TenantSecuritySettings } from '@/pages/TenantSecuritySettings';
 import { useSessionStore } from '@/stores/session';
@@ -60,6 +62,7 @@ const TABS = [
   { id: 'warehouses', labelKey: 'settings.tabs.warehouses' },
   { id: 'inventory', labelKey: 'settings.tabs.inventory' },
   { id: 'documents', labelKey: 'settings.tabs.documents' },
+  { id: 'retailPos', labelKey: 'settings.tabs.retailPos' },
   { id: 'security', labelKey: 'settings.tabs.security' },
   { id: 'reconciliation', labelKey: 'settings.tabs.reconciliation' },
   { id: 'accounting', labelKey: 'settings.tabs.accounting' },
@@ -2031,15 +2034,22 @@ export function SettingsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isOwner = useSessionStore((s) => s.user?.roles?.includes('OWNER') ?? false);
+  const sessionUser = useSessionStore((s) => s.user);
+  const showRetailPos = canConfigureRetailPos(sessionUser?.roles, sessionUser?.enabledModules);
+  const visibleTabs = TABS.filter((tab) => tab.id !== 'retailPos' || showRetailPos);
   const tabParam = searchParams.get('tab');
-  const initialTab = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : 'profile';
+  const initialTab = visibleTabs.some((tab) => tab.id === tabParam) ? (tabParam as TabId) : 'profile';
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
   useEffect(() => {
-    if (TABS.some((t) => t.id === tabParam)) {
+    if (tabParam === 'retailPos' && !showRetailPos) {
+      setActiveTab('profile');
+      return;
+    }
+    if (TABS.some((tab) => tab.id === tabParam) && (tabParam !== 'retailPos' || showRetailPos)) {
       setActiveTab(tabParam as TabId);
     }
-  }, [tabParam]);
+  }, [tabParam, showRetailPos]);
 
   const selectTab = (tab: TabId) => {
     setActiveTab(tab);
@@ -2075,11 +2085,12 @@ export function SettingsPage() {
             shellClassName="settings-shell__nav shrink-0 lg:col-span-3 lg:h-full xl:col-span-2"
             className="flex h-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:pb-6"
           >
-            {TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => selectTab(tab.id)}
+                data-testid={`settings-tab-${tab.id}`}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
                 className={cn(
                   'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors lg:w-full lg:whitespace-normal',
@@ -2127,6 +2138,7 @@ export function SettingsPage() {
             {activeTab === 'warehouses' && <WarehousesTab />}
             {activeTab === 'inventory' && <InventoryRulesTab />}
             {activeTab === 'documents' && <DocumentsTab />}
+            {activeTab === 'retailPos' && showRetailPos && <PosSettingsPanel />}
             {activeTab === 'security' && <SecuritySsoTab />}
             {activeTab === 'reconciliation' && <ReconciliationTab />}
             {activeTab === 'accounting' && <AccountingSync />}

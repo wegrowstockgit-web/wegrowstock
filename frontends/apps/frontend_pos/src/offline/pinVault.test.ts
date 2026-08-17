@@ -67,5 +67,10 @@ describe('pinVault', () => {
     expect(validateManagerPin('2468')).toBe('kept');
     await syncManagerPinVault(vi.fn().mockResolvedValue({ ok: false, status: 401 }));
     expect(validateManagerPin('2468')).toBe('kept');
+    await syncManagerPinVault(vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ tenantId: DEMO_TENANT_ID, managers: [] }),
+    }));
+    expect(validateManagerPin('2468')).toBe('kept');
   });
 });

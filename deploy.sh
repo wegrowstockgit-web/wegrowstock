@@ -128,6 +128,7 @@ print_endpoints() {
     Host hint Host: admin.invsys.com on gateway :8081
   Observability / data
     Grafana   http://localhost:3001   (admin / admin)
+    Mailpit   http://localhost:8025   (SMTP 1025, demo tenant only)
     Postgres  localhost:5432
     PgBouncer localhost:6432
 EOF

@@ -906,6 +906,27 @@
           "0": "Líneas de malla sin mapear pueden crear pedidos DRAFT de excepción."
         }
       },
+      "settings_tab_retailPos": {
+        "title": "Ajustes — POS minorista",
+        "description": "Texto del recibo, moneda de caja, facturación CFDI y cierre ciego.",
+        "purpose": "Configura el complemento POS: marca del recibo, moneda, CFDI mexicano y cierre ciego de turno.",
+        "markdown": "Elige moneda y CFDI, edita encabezado y pie del recibo, luego guarda. Los cajeros lo toman en el siguiente inicio de sesión.",
+        "dataOrigin": "Ajustes de POS minorista que mantienen los administradores.",
+        "flow": {
+          "0": "Elige la moneda predeterminada y si la facturación CFDI 4.0 está activa.",
+          "1": "Edita el encabezado y el pie impresos en el cobro.",
+          "2": "Activa el cierre ciego si el cajero debe contar sin ver el total esperado.",
+          "3": "Guarda: la siguiente sesión de POS lee los ajustes."
+        },
+        "reversals": {
+          "0": "Edita de nuevo y guarda; el papel ya impreso no se versiona.",
+          "1": "Desactivar CFDI no anula facturas ya emitidas desde la caja."
+        },
+        "correlations": {
+          "0": "Solo los inquilinos con el módulo POS ven esta pestaña.",
+          "1": "El cierre ciego es una regla de caja, distinta de los conteos ciegos de almacén."
+        }
+      },
       "settings_tab_operations": {
         "title": "Ajustes — Operaciones",
         "description": "Reglas de piso: recepción ciega, límites de ajuste, opciones de escáner, más el registro de auditoría.",
@@ -1124,6 +1145,7 @@
       "warehouses": "Almacenes",
       "inventory": "Reglas de inventario",
       "documents": "Documentos",
+      "retailPos": "POS minorista",
       "security": "Seguridad y SSO",
       "reconciliation": "Conciliación",
       "accounting": "Sincronización contable",
@@ -1138,6 +1160,27 @@
       "integrationsHub": "Centro de integraciones",
       "billing": "Facturación",
       "fintech": "Flujo de caja y financiamiento"
+    },
+    "retailPos": {
+      "localizationTitle": "Localización y cumplimiento",
+      "localizationDescription": "Moneda del registro y facturación CFDI de México.",
+      "defaultCurrency": "Moneda predeterminada",
+      "enableCfdi": "Habilitar facturación CFDI 4.0 (México)",
+      "enableCfdiHint": "Los cajeros pueden capturar RFC y Uso de CFDI en el cobro.",
+      "receiptTitle": "Configuración de recibo",
+      "receiptDescription": "Encabezado y pie impresos en cada recibo de POS.",
+      "receiptHeader": "Encabezado del recibo",
+      "receiptHeaderPlaceholder": "Nombre de la tienda, dirección, RFC",
+      "receiptFooter": "Pie del recibo",
+      "receiptFooterPlaceholder": "Política de devoluciones, mensaje de agradecimiento",
+      "securityTitle": "Seguridad y prevención de pérdidas",
+      "securityDescription": "Controles de cierre de turno que reducen diferencias de caja.",
+      "blindCloseout": "Exigir cierre ciego al final del turno",
+      "blindCloseoutHint": "El cajero cuenta el efectivo sin ver el total esperado del cajón.",
+      "save": "Guardar ajustes de POS",
+      "saved": "Ajustes de POS minorista guardados",
+      "saveFailed": "No se pudieron guardar los ajustes de POS",
+      "loading": "Cargando…"
     }
   },
   "mesh": {

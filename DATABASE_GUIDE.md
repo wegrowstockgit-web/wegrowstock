@@ -6,7 +6,7 @@ A plain-language map of how InventorySystem stores warehouse data in PostgreSQL 
 
 **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (how the app uses this schema), `USER_GUIDE.md` (day-to-day product use), `README.md` (run the stack).
 
-Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V120**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
+Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V121**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA. Retail POS register prefs are JSONB keys on `tenant_settings.settings` (no dedicated migration).
 
 ---
 
@@ -78,7 +78,7 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 | Table | Purpose |
 |-------|---------|
 | `tenants` | Company workspace (`status` includes `ACTIVE` / `SUSPENDED`) |
-| `tenant_settings` | Currency, negative-stock rules, barcode masks, density prefs, … |
+| `tenant_settings` | Currency, negative-stock rules, barcode masks, density prefs, plus Retail POS JSONB keys (`pos_receipt_header`, `pos_receipt_footer`, `pos_default_currency`, `pos_require_blind_closeout`, `pos_enable_cfdi_invoicing`) — no extra Flyway columns |
 | `tenant_subscriptions` | Commercial **tier** + `enabled_modules` JSON (**V104** / **V105**) — control-plane writable via `app_owner` |
 | `tenant_domains` | Verified corporate domains (CORS / email / Home Realm Discovery). **V115** adds `dns_verification_token` + `is_verified` |
 | `tenant_sso_configs` | SAML / OIDC enterprise login. **V115** adds `sso_provider`, `acs_url`, `saml_certificate`, `corporate_cidr_ips` |
@@ -267,7 +267,7 @@ Property: `invsys.integration.vault-provider`.
 
 ---
 
-## Recent Flyway head (V080–V120)
+## Recent Flyway head (V080–V121)
 
 | Version | Purpose |
 |---------|---------|
@@ -310,6 +310,7 @@ Property: `invsys.integration.vault-provider`.
 | **V118** | Retail POS roles `RETAIL_CASHIER` / `RETAIL_MANAGER` seeded per tenant (widened `roles_code_check`); grants `pos.operate` / `pos.supervise` permission keys |
 | **V119** | `refresh_tokens.app_context` — POS/WMS JWT audience scoping survives refresh rotation |
 | **V120** | `invitations.additional_roles` — multi-role invites assign every role on accept |
+| **V121** | `roles.network_access_level` (LAN / ANY) — not POS settings; those stay in `tenant_settings.settings` JSONB |
 
 ---
 
@@ -329,4 +330,4 @@ Property: `invsys.integration.vault-provider`.
 
 Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_*`, `platform_admins`, `platform_admin_refresh_tokens`, `platform_audit_logs`, `platform_compliance_broadcasts`, `platform_knowledge_documents`. Almost everything else is tenant-scoped.
 
-See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V120`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).
+See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V121`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).

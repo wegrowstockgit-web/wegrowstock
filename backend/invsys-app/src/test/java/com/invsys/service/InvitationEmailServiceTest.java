@@ -1,12 +1,12 @@
 package com.invsys.service;
 
+import com.invsys.mail.TenantMailSender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import jakarta.mail.internet.MimeMessage;
@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class InvitationEmailServiceTest {
 
-    @Mock ObjectProvider<JavaMailSender> mailSenderProvider;
+    @Mock TenantMailSender tenantMailSender;
     @Mock JavaMailSender mailSender;
     @Mock MimeMessage mimeMessage;
 
@@ -27,8 +27,7 @@ class InvitationEmailServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(mailSenderProvider.getIfAvailable()).thenReturn(mailSender);
-        service = new InvitationEmailService(mailSenderProvider, "noreply@invsys.local", "http://localhost:3000/");
+        service = new InvitationEmailService(tenantMailSender, "http://localhost:3000/");
     }
 
     @Test
@@ -49,6 +48,8 @@ class InvitationEmailServiceTest {
 
     @Test
     void sendInvitationUsesMimeMessageHelper() throws Exception {
+        when(tenantMailSender.current()).thenReturn(mailSender);
+        when(tenantMailSender.fromAddress()).thenReturn("noreply@invsys.local");
         when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
         boolean ok = service.sendInvitation("user@example.com", "http://localhost:3000/invite/t");
         assertThat(ok).isTrue();
@@ -59,11 +60,10 @@ class InvitationEmailServiceTest {
     }
 
     @Test
-    void sendInvitationWithoutSmtpStillSucceedsForDev() {
-        when(mailSenderProvider.getIfAvailable()).thenReturn(null);
-        InvitationEmailService noSmtp = new InvitationEmailService(
-                mailSenderProvider, "noreply@invsys.local", "http://localhost:3000");
-        assertThat(noSmtp.sendInvitation("user@example.com", "http://localhost:3000/invite/t")).isTrue();
+    void sendInvitationWithoutSmtpFails() {
+        when(tenantMailSender.current()).thenReturn(null);
+        InvitationEmailService noSmtp = new InvitationEmailService(tenantMailSender, "http://localhost:3000");
+        assertThat(noSmtp.sendInvitation("user@example.com", "http://localhost:3000/invite/t")).isFalse();
     }
 
     @Test
@@ -80,13 +80,12 @@ class InvitationEmailServiceTest {
     }
 
     @Test
-    void sendWholesaleWelcomeWithoutSmtpSucceeds() {
-        when(mailSenderProvider.getIfAvailable()).thenReturn(null);
-        InvitationEmailService noSmtp = new InvitationEmailService(
-                mailSenderProvider, "noreply@invsys.local", "http://localhost:3000");
+    void sendWholesaleWelcomeWithoutSmtpFails() {
+        when(tenantMailSender.current()).thenReturn(null);
+        InvitationEmailService noSmtp = new InvitationEmailService(tenantMailSender, "http://localhost:3000");
         assertThat(noSmtp.sendWholesaleWelcome("buyer@example.com",
-                "http://localhost:3000/showroom/login?magic=abc")).isTrue();
+                "http://localhost:3000/showroom/login?magic=abc")).isFalse();
         assertThat(noSmtp.sendMagicLink("buyer@example.com",
-                "http://localhost:3000/login?magic=abc")).isTrue();
+                "http://localhost:3000/login?magic=abc")).isFalse();
     }
 }

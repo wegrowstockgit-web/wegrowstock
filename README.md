@@ -75,9 +75,10 @@ Without a key, the chatbot module forces `spring.ai.model.*=none` and `SUPPORT_A
 | **Control plane** (Super Admin) | UI | http://localhost:3002 |
 | | Admin API gateway | http://localhost:8081 (`Host: admin.invsys.com`) |
 | Observability | Grafana | http://localhost:3001 (admin / admin) |
+| Dev SMTP | Mailpit | http://localhost:8025 (SMTP `mailpit:1025` inside Compose) |
 | Data | Postgres | `localhost:5432` — runtime `app_user` / Flyway `app_owner` |
 
-Containers: `invsys-web` (WMS SPA), `invsys-admin-web` (admin SPA), `invsys-pos-web` (retail POS SPA), `invsys-api` (WMS Spring Boot + `invsys-pos-api`), `invsys-admin-api` (control-plane Spring Boot :8081), `invsys-api-gateway`, `invsys-db` (Postgres 16).
+Containers: `invsys-web` (WMS SPA), `invsys-admin-web` (admin SPA), `invsys-pos-web` (retail POS SPA), `invsys-api` (WMS Spring Boot + `invsys-pos-api`), `invsys-admin-api` (control-plane Spring Boot :8081), `invsys-api-gateway`, `invsys-db` (Postgres 16), `invsys-mailpit` (local SMTP catcher).
 
 Copy `.env.example` → `.env` when overriding JWT keys, webhook secrets, or DB credentials. Dev JWT PEMs live under `ops/jwt/` (generated automatically on first `deploy.bat deploy` if missing).
 
@@ -125,6 +126,7 @@ Password for every account below: **password123**.
 | Demo Corp | `demo-corp` | **ENTERPRISE** | CORE, B2B_SHOWROOM, FINTECH, AI_COPILOT, RETAIL_POS, MESH_NETWORK |
 | Acme Wholesale | `acme-wholesale` | **BASIC** | CORE |
 | Northwind Logistics | `northwind-logistics` | **INTERMEDIATE** | CORE, SHOPIFY, ADVANCED_FULFILLMENT |
+| Pacific Parts Co | `pacific-parts` | **BASIC** | CORE |
 
 WMS office login for Demo Corp owner remains **owner@demo.test** / **password123** on http://localhost:3000 — that is a *tenant* user row, separate from the platform admin row with the same email.
 
@@ -138,6 +140,13 @@ WMS office login for Demo Corp owner remains **owner@demo.test** / **password123
 | PICKER | Nav-hidden; login lands on fulfillment | Yes (primary) | Prompted on first floor visit |
 | VIEWER | Read-only office | No floor routes | Never |
 | B2B_CUSTOMER | Showroom only | No | Never |
+| RETAIL_CASHIER | No WMS — POS register only (`:3003`) | No | Register PIN **1234** (device vault) |
+| RETAIL_MANAGER | No WMS — POS supervise / voids | No | Register PIN **1234**; override PIN **5678** |
+| SUPPLIER | Vendor ASN portal | No | Never |
+
+Only **Demo Corp** has the `RETAIL_POS` module. Cashier/retail-manager logins on Acme, Northwind, and Pacific succeed the auth gate but the register stays locked (`posEnabled=false`).
+
+**POS manager override PIN** (server `terminal_pin_hash`, unique per tenant): warehouse manager **1234**, retail manager **5678**.
 
 Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cycle-counts`, `/manufacturing/terminal`, `/returns/receive`, `/issue-supplies`, `/replenishments`, `/field/*`.
 
@@ -147,10 +156,13 @@ Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cyc
 |-------|------|-------------------|-----------|
 | owner@demo.test | OWNER | All (WH-01, WH-02) | Yes — use **1234** on floor |
 | admin@demo.test | ADMIN | All | Yes — use **1234** on floor |
-| manager@demo.test | WAREHOUSE_MANAGER | WH-01 only | Yes — use **1234** on floor |
+| manager@demo.test | WAREHOUSE_MANAGER | WH-01 only | Yes — use **1234** on floor (POS override **1234**) |
 | picker@demo.test | PICKER | WH-01 only | Yes — use **1234** on floor |
 | viewer@demo.test | VIEWER | WH-01 only | No (office only) |
-| b2b@demo.test | B2B_CUSTOMER | Showroom portal | No (showroom only) |
+| b2b@demo.test | B2B_CUSTOMER | Showroom (Metro Distributors) | No (showroom only) |
+| cashier@demo.test | RETAIL_CASHIER | POS only (`:3003`) | Register PIN **1234** |
+| retailmgr@demo.test | RETAIL_MANAGER | POS only (`:3003`) | Override PIN **5678** |
+| supplier@demo.test | SUPPLIER | Vendor portal (Global Parts Inc) | No |
 
 #### Acme Wholesale (`acme-wholesale`) — RLS isolation + full roles
 
@@ -158,10 +170,13 @@ Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cyc
 |-------|------|-------------------|-----------|
 | owner@acme.test | OWNER | All (Acme Central, Acme West) | Yes — **1234** on floor |
 | admin@acme.test | ADMIN | All | Yes — **1234** on floor |
-| manager@acme.test | WAREHOUSE_MANAGER | WH-01 only | Yes — **1234** on floor |
+| manager@acme.test | WAREHOUSE_MANAGER | WH-01 only | Yes — **1234** on floor (POS override **1234**) |
 | picker@acme.test | PICKER | WH-01 only | Yes — **1234** on floor |
 | viewer@acme.test | VIEWER | WH-01 only | No |
 | b2b@acme.test | B2B_CUSTOMER | Showroom | No |
+| cashier@acme.test | RETAIL_CASHIER | POS login, `posEnabled=false` | Register PIN **1234** |
+| retailmgr@acme.test | RETAIL_MANAGER | POS login, `posEnabled=false` | Override PIN **5678** |
+| supplier@acme.test | SUPPLIER | Vendor portal (Acme Supplier) | No |
 
 #### Northwind Logistics (`northwind-logistics`) — 3 DCs
 
@@ -169,10 +184,13 @@ Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cyc
 |-------|------|-------------------|-----------|
 | owner@northwind.test | OWNER | All (SEA, CHI, ATL) | Yes — **1234** on floor |
 | admin@northwind.test | ADMIN | All | Yes — **1234** on floor |
-| manager@northwind.test | WAREHOUSE_MANAGER | WH-SEA + WH-CHI | Yes — **1234** on floor |
+| manager@northwind.test | WAREHOUSE_MANAGER | WH-SEA + WH-CHI | Yes — **1234** on floor (POS override **1234**) |
 | picker@northwind.test | PICKER | WH-SEA only | Yes — **1234** on floor |
 | viewer@northwind.test | VIEWER | WH-SEA only | No |
 | b2b@northwind.test | B2B_CUSTOMER | Showroom | No |
+| cashier@northwind.test | RETAIL_CASHIER | POS login, `posEnabled=false` | Register PIN **1234** |
+| retailmgr@northwind.test | RETAIL_MANAGER | POS login, `posEnabled=false` | Override PIN **5678** |
+| supplier@northwind.test | SUPPLIER | Vendor portal (Cascadia Containers) | No |
 
 #### Pacific Parts Co (`pacific-parts`) — single DC hierarchy
 
@@ -180,13 +198,18 @@ Floor routes that arm PIN setup / idle lock: `/fulfillment`, `/inbound/*`, `/cyc
 |-------|------|-------------------|-----------|
 | owner@pacific.test | OWNER | WH-PDX | Yes — **1234** on floor |
 | admin@pacific.test | ADMIN | WH-PDX | Yes — **1234** on floor |
-| manager@pacific.test | WAREHOUSE_MANAGER | WH-PDX | Yes — **1234** on floor |
+| manager@pacific.test | WAREHOUSE_MANAGER | WH-PDX | Yes — **1234** on floor (POS override **1234**) |
 | picker@pacific.test | PICKER | WH-PDX | Yes — **1234** on floor |
 | viewer@pacific.test | VIEWER | WH-PDX | No |
 | b2b@pacific.test | B2B_CUSTOMER | Showroom | No |
+| cashier@pacific.test | RETAIL_CASHIER | POS login, `posEnabled=false` | Register PIN **1234** |
+| retailmgr@pacific.test | RETAIL_MANAGER | POS login, `posEnabled=false` | Override PIN **5678** |
+| supplier@pacific.test | SUPPLIER | Vendor portal (Oregon Precision Metals) | No |
 
 Quick login (office, no PIN): http://localhost:3000 — enter **owner@demo.test**, **Continue**, then **password123**. Identifier-first Home Realm Discovery hides the password until the email (or warehouse IP) is resolved.  
-Retail POS register: http://localhost:3003 (same tenant login; checkout is offline-first).  
+Retail POS register: http://localhost:3003 — **cashier@demo.test** / **password123**, then register PIN **1234**. Voids: warehouse manager PIN **1234** or **retailmgr@demo.test** override **5678**.  
+WMS POS config (Demo Corp only): http://localhost:3000/settings?tab=retailPos as **owner@demo.test** — receipt text, USD/MXN, CFDI, blind closeout. Acme/Northwind/Pacific owners do not see that tab.  
+Vendor portal: **supplier@demo.test** / **password123** on http://localhost:3000.  
 Super Admin portal: http://localhost:3002 (`admin.invsys.com`) — **owner@demo.test** / **password123** via `platform_admins` (control-plane cookies).  
 Floor smoke (PIN **1234** after first open): same password, then open **Fulfillment** or sign in as **picker@demo.test**.
 
@@ -227,9 +250,9 @@ InventorySystem is split into independently deployable planes:
 | **Retail POS** | Offline-first store registers | `invsys-pos-api` (on `invsys-app`) | `frontends/apps/frontend_pos` | `:3003` / Vite `:5175` — syncs via `:8080` |
 | **Control plane** | Super Admin ops: entitlements, billing, impersonation, RAG, kill-switch, audit, shards, DLQ, telemetry, compliance | `invsys-admin-api` (:8081) | `frontends/apps/frontend_admin` | `admin.invsys.com` / `:8081` — admin JWT cookies (`invsys_admin_*`, SameSite=Strict) |
 
-Shared engine: `invsys-core` (entities, Flyway through `V120`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
+Shared engine: `invsys-core` (entities, Flyway through `V121`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
 
-- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V120`), RS256 JWT, virtual threads, Actuator/Prometheus
+- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V121`), RS256 JWT, virtual threads, Actuator/Prometheus
 - **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels` (optional `lpn_id` for palletized stock); control-plane writes use `app_owner` / BootstrapJdbc
 - **Commercial entitlements:** `tenant_subscriptions` + `@RequireModule` (e.g. FINTECH → 402 `MODULE_LOCKED`)
 - **Tenant suspend:** `tenants.status = SUSPENDED` → WMS `SuspendedTenantAccessFilter` returns **403** immediately
@@ -237,7 +260,7 @@ Shared engine: `invsys-core` (entities, Flyway through `V120`, `TenantSubscripti
 - **Realtime:** SSE `GET /api/v1/dashboard/stream` + `useDashboardStream` (replaces office polling intervals)
 - **Frontend (WMS):** React 19.2, TypeScript, Vite, Tailwind (Surface A office / Surface B warehouse), TanStack Query + persist, Zustand, Lucide — **no** control-plane UI (login accepts `?impersonateToken=` only)
 - **Frontend (Admin):** Login, tenants (impersonate / suspend / sandbox), billing, Copilot knowledge, integrations kill-switch, audit trail, shards, DLQ, concurrency throttling, global compliance, commercial + health reports. Sell **Retail Point of Sale (POS)** as an Enterprise addon.
-- **Frontend (POS):** Split-pane register (cart + tender). Checkout writes Dexie `outbox_receipts` immediately; `invsys-pos-api` converts receipts into `inventory_level_deltas` for the async WMS flush worker.
+- **Frontend (POS):** Split-pane register (cart + tender). Checkout writes Dexie `outbox_receipts` immediately; `invsys-pos-api` converts receipts into `inventory_level_deltas` for the async WMS flush worker. Receipt header/footer, default currency (USD/MXN), CFDI 4.0, and blind closeout are configured in WMS **Settings → Retail POS** (OWNER/ADMIN + `RETAIL_POS`).
 - **Surfaces (WMS):** Office shell, warehouse floor ops, B2B showroom (`/showroom`), Mesh Network hub (`/mesh-network`, `MESH_NETWORK`)
 - **Digital Twin / LPNs / GS1 / Offline / Tenancy / LBAC / Integrations:** unchanged data-plane capabilities (see `DEVELOPER_ARCHITECTURE.md`)
 
@@ -363,7 +386,8 @@ Portal, money & platform (data plane):
 - `/api/v1/fintech/**` — Capital / underwriting cockpit (OWNER-gated; `@RequireModule(FINTECH)`)
 - `/api/v1/ap-ingestions/**` — Supplier invoice OCR/ingest
 - `/api/v1/webhooks/**` + public webhook receivers — Stripe, Shopify, EasyPost
-- `/api/v1/settings`, users, invitations, SSO, account mappings, tax rates, shipping credentials — invites and `PUT /api/v1/users/{id}/roles` accept **multiple roles** (additive RBAC; union of permissions)
+- `GET|PATCH|PUT /api/v1/settings` — tenant JSONB prefs; Retail POS keys (`pos_receipt_header`, `pos_receipt_footer`, `pos_default_currency` USD/MXN, `pos_require_blind_closeout`, `pos_enable_cfdi_invoicing`) are OWNER/ADMIN. The WMS **Settings → Retail POS** tab (`/settings?tab=retailPos`) is shown only when the tenant has `RETAIL_POS`
+- users, invitations, SSO, account mappings, tax rates, shipping credentials — invites and `PUT /api/v1/users/{id}/roles` accept **multiple roles** (additive RBAC; union of permissions)
 - `POST /api/v1/pos/sync-receipts` — Offline POS receipt batch (`@RequireModule(RETAIL_POS)`); enqueues `inventory_level_deltas`
 - `GET /api/v1/pos/managers/sync-pins`, `GET /api/v1/pos/manager-overrides`, `POST /api/v1/pos/audit-sync` — Register manager PIN vault, void-override lookup, offline audit-event batch (`RETAIL_POS`)
 

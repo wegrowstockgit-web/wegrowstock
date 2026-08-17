@@ -1117,7 +1117,7 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
       { label: 'Manage Users', route: '/settings/roles', icon: 'Shield' },
     ],
     purpose:
-      'Tenant-wide configuration hub — profile defaults, users, warehouses, inventory rules, documents, security, reconciliation, accounting, integrations, partner mesh, operations, sync conflicts, and cost centers.',
+      'Tenant-wide configuration hub — profile defaults, users, warehouses, inventory rules, documents, Retail POS, security, reconciliation, accounting, integrations, partner mesh, operations, sync conflicts, and cost centers.',
     flow: [
       'Open the tab that matches the change you need (Operations for floor rules, Users for roles and warehouse access).',
       'Save — audit_log records the actor and JSON diff.',
@@ -1134,7 +1134,7 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
     components: [
       {
         name: 'Settings tabs',
-        description: 'Profile, Users, Warehouses, Inventory, Documents, Security, Reconciliation, Accounting, Integrations, Mesh, Operations, Sync Conflicts, Cost Centers.',
+        description: 'Profile, Users, Warehouses, Inventory, Documents, Retail POS, Security, Reconciliation, Accounting, Integrations, Mesh, Operations, Sync Conflicts, Cost Centers.',
         dataOrigin: 'Company settings your administrators maintain.',
       },
       {
@@ -1291,6 +1291,44 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
         name: 'Document templates',
         description: 'Printable layout and numbering controls.',
         dataOrigin: 'Printable labels and document templates.',
+      },
+    ],
+  },
+
+  '/settings?tab=retailPos': {
+    title: 'Settings — Retail POS',
+    purpose:
+      'Configure the Retail POS addon — receipt branding, default currency, Mexican CFDI, and shift-end blind closeout.',
+    rolePermissions: ['OWNER', 'ADMIN'],
+    flow: [
+      'Choose the register default currency and whether CFDI 4.0 invoicing is on.',
+      'Edit the receipt header and footer printed at checkout.',
+      'Toggle blind closeout if cashiers must count the drawer without seeing the expected total.',
+      'Save — the next POS session reads the updated tenant settings.',
+    ],
+    reversals: [
+      'Edit the fields again and save; receipt text is not versioned on paper already printed.',
+      'Turning off CFDI does not void invoices already issued from the register.',
+    ],
+    correlations: [
+      'Only tenants with the Retail POS module see this tab.',
+      'Blind closeout is a register guardrail, separate from warehouse blind cycle counts.',
+    ],
+    components: [
+      {
+        name: 'Localization & Compliance',
+        description: 'Default register currency (USD or MXN) and CFDI 4.0 facturación toggle.',
+        dataOrigin: 'Retail POS settings your administrators maintain.',
+      },
+      {
+        name: 'Receipt Configuration',
+        description: 'Header and footer printed on every POS receipt.',
+        dataOrigin: 'Store name, address, tax ID, and return-policy copy you enter here.',
+      },
+      {
+        name: 'Security & Loss Prevention',
+        description: 'Blind closeout forces cashiers to count cash without seeing the expected drawer total.',
+        dataOrigin: 'Shift-end register policy for this company.',
       },
     ],
   },

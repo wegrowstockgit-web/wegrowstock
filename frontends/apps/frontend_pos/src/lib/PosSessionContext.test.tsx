@@ -4,11 +4,14 @@ import { PosSessionProvider, usePosSession } from './PosSessionContext';
 import { demoSession } from './posSession';
 
 function Probe() {
-  const { session, t } = usePosSession();
+  const { session, t, isAuthenticated, hydrated } = usePosSession();
   return (
     <div>
       <span data-testid="probe-lang">{session.language}</span>
       <span data-testid="probe-copy">{t('register.add')}</span>
+      <span data-testid="probe-auth">{String(isAuthenticated)}</span>
+      <span data-testid="probe-hydrated">{String(hydrated)}</span>
+      <span data-testid="probe-base">{session.tenantBaseCurrency}</span>
     </div>
   );
 }
@@ -22,6 +25,8 @@ describe('PosSessionProvider', () => {
     );
     expect(screen.getByTestId('probe-lang')).toHaveTextContent('fr');
     expect(screen.getByTestId('probe-copy')).toHaveTextContent('Ajouter');
+    expect(screen.getByTestId('probe-auth')).toHaveTextContent('true');
+    expect(screen.getByTestId('probe-hydrated')).toHaveTextContent('true');
   });
 
   it('loads a live session when the API is entitled', async () => {

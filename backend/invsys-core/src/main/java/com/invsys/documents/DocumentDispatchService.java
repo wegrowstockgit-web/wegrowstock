@@ -3,6 +3,7 @@ package com.invsys.documents;
 import com.invsys.core.common.ApiException;
 import com.invsys.core.tenancy.TenantContext;
 import com.invsys.domain.Tenant;
+import com.invsys.mail.TenantMailSender;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.sales.domain.Invoice;
 import com.invsys.modules.sales.repository.CustomerRepository;
@@ -11,8 +12,6 @@ import com.invsys.repository.TenantRepository;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -30,8 +29,7 @@ public class DocumentDispatchService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentDispatchService.class);
 
-    private final JavaMailSender mailSender;
-    private final String fromAddress;
+    private final TenantMailSender tenantMailSender;
     private final InvoiceRepository invoiceRepository;
     private final CustomerRepository customerRepository;
     private final TenantRepository tenantRepository;
@@ -39,16 +37,14 @@ public class DocumentDispatchService {
     private final DocumentArchivalService archivalService;
 
     public DocumentDispatchService(
-            ObjectProvider<JavaMailSender> mailSenderProvider,
-            @Value("${invsys.alerts.from-email:noreply@invsys.local}") String fromAddress,
+            TenantMailSender tenantMailSender,
             InvoiceRepository invoiceRepository,
             CustomerRepository customerRepository,
             TenantRepository tenantRepository,
             InvoiceDocumentBuilder invoiceDocumentBuilder,
             DocumentArchivalService archivalService
     ) {
-        this.mailSender = mailSenderProvider.getIfAvailable();
-        this.fromAddress = fromAddress;
+        this.tenantMailSender = tenantMailSender;
         this.invoiceRepository = invoiceRepository;
         this.customerRepository = customerRepository;
         this.tenantRepository = tenantRepository;
@@ -106,15 +102,16 @@ public class DocumentDispatchService {
         if (to == null || to.isBlank() || pdf == null || pdf.length == 0) {
             return false;
         }
+        JavaMailSender mailSender = tenantMailSender.current();
         if (mailSender == null) {
-            log.info("SMTP not configured — invoice email logged to={} subject={} bytes={}",
+            log.warn("SMTP not configured — invoice email not sent to={} subject={} bytes={}",
                     to, subject, pdf.length);
-            return true;
+            return false;
         }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress);
+            helper.setFrom(tenantMailSender.fromAddress());
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(textBody, false);

@@ -146,4 +146,16 @@ public class TenantSsoConfig extends TenantScopedEntity {
     public void setCorporateCidrIps(List<String> corporateCidrIps) {
         this.corporateCidrIps = corporateCidrIps != null ? corporateCidrIps : new ArrayList<>();
     }
+
+    /**
+     * Internal-network CIDRs for conditional access. Same store as {@link #corporateCidrIps}
+     * so Home Realm Discovery and the access gateway share one allowlist.
+     */
+    public List<String> getAllowedCidrBlocks() {
+        return getCorporateCidrIps();
+    }
+
+    public void setAllowedCidrBlocks(List<String> allowedCidrBlocks) {
+        setCorporateCidrIps(allowedCidrBlocks);
+    }
 }

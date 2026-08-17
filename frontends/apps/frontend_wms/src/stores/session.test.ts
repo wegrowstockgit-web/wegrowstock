@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import {
   freezeUser,
   isExclusiveRole,
   permissionsInclude,
   rolesInclude,
+  useCanConfigureRetailPos,
   useSessionStore,
 } from './session';
 
@@ -11,6 +13,7 @@ describe('session integrity', () => {
   beforeEach(() => {
     useSessionStore.setState({
       authenticated: false,
+      mfaVerified: false,
       user: null,
       primarySession: null,
       lastRequestId: null,
@@ -95,5 +98,51 @@ describe('session integrity', () => {
       tenantId: 't',
     });
     expect(Object.isFrozen(frozen.warehouseIds)).toBe(true);
+  });
+
+  it('records mfaVerified on login and clears it on logout', () => {
+    useSessionStore.getState().setSessionFromLogin(
+      {
+        tenantId: 't1',
+        userId: 'u1',
+        roles: ['OWNER'],
+        warehouseIds: [],
+        grantedPermissions: [],
+      },
+      'owner@demo.test',
+      'Owner',
+      true,
+    );
+    expect(useSessionStore.getState().mfaVerified).toBe(true);
+    useSessionStore.getState().clearSession();
+    expect(useSessionStore.getState().mfaVerified).toBe(false);
+  });
+
+  it('exposes enabledModules and gates Retail POS configuration', () => {
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u-pos',
+      email: 'owner@demo.test',
+      displayName: 'Owner',
+      roles: ['OWNER'],
+      tenantId: 't1',
+      enabledModules: ['CORE', 'RETAIL_POS'],
+    });
+    expect(useSessionStore.getState().hasModule('RETAIL_POS')).toBe(true);
+    expect(useSessionStore.getState().user?.enabledModules).toEqual(['CORE', 'RETAIL_POS']);
+    const entitled = renderHook(() => useCanConfigureRetailPos());
+    expect(entitled.result.current).toBe(true);
+    entitled.unmount();
+
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u-basic',
+      email: 'owner@acme.test',
+      displayName: 'Owner',
+      roles: ['OWNER'],
+      tenantId: 't2',
+      enabledModules: ['CORE'],
+    });
+    const locked = renderHook(() => useCanConfigureRetailPos());
+    expect(locked.result.current).toBe(false);
+    locked.unmount();
   });
 });

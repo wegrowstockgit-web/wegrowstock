@@ -40,6 +40,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     static final String ATTR_APP_CONTEXT = "invsys.app_context";
     static final String ATTR_TOKEN_BOUND = "invsys.jwt_bound";
+    public static final String ATTR_MFA_VERIFIED = "invsys.mfa_verified";
     private static final String POS_API_PREFIX = "/api/v1/pos/";
     private static final String AUTH_API_PREFIX = "/api/v1/auth/";
 
@@ -120,6 +121,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (appContextClaim != null && !appContextClaim.toString().isBlank()) {
                 request.setAttribute(ATTR_APP_CONTEXT, appContextClaim.toString().trim());
             }
+            Object mfaClaim = claims.getClaim(JwtService.CLAIM_MFA_VERIFIED);
+            request.setAttribute(ATTR_MFA_VERIFIED,
+                    Boolean.TRUE.equals(mfaClaim) || "true".equalsIgnoreCase(String.valueOf(mfaClaim)));
             request.setAttribute(ATTR_TOKEN_BOUND, Boolean.TRUE);
 
             TenantContext.setTenantId(tenantId);

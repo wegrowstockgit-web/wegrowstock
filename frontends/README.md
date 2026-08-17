@@ -6,7 +6,7 @@ Decoupled **Control Plane** / **Data Plane** UIs under this pnpm workspace.
 |---------|------|-------|-----------------|
 | `apps/frontend_wms` | Tenant WMS (data plane) | `:3000` / Vite `:5173` | `app.invsys.com` |
 | `apps/frontend_admin` | Super Admin portal (tenants, billing, RAG, kill-switch, audit, shards, DLQ, telemetry, compliance) | `:3002` / Vite `:5174` | `admin.invsys.com` |
-| `apps/frontend_pos` | Offline-first retail POS register | `:3003` / Vite `:5175` | store / kiosk |
+| `apps/frontend_pos` | Offline-first retail POS register (receipt/CFDI/closeout prefs come from WMS Settings → Retail POS) | `:3003` / Vite `:5175` | store / kiosk |
 | `packages/shared-types` | `AppModule`, `CommercialTier`, `ControlPlaneTenant` | — | — |
 | `packages/shared-ui` | Shared Button / Table / Modal / Drawer / Input | — | — |
 

@@ -25,11 +25,13 @@ interface TerminalSwitchPayload {
 interface SessionState {
   /** Cookie-authenticated session flag — JWTs never live in JS. */
   authenticated: boolean;
+  /** True when this session completed WebAuthn for off-network MFA. */
+  mfaVerified: boolean;
   user: Readonly<User> | null;
   lastRequestId: string | null;
   /** Profile snapshot while a short-lived terminal PIN cookie is active. */
   primarySession: Readonly<PrimarySessionSnapshot> | null;
-  setSessionFromLogin: (session: SessionResponse, email: string, displayName?: string) => void;
+  setSessionFromLogin: (session: SessionResponse, email: string, displayName?: string, mfaVerified?: boolean) => void;
   setAvatarUrl: (avatarUrl: string | null) => void;
   applyMeProfile: (profile: {
     userId: string;
@@ -112,13 +114,15 @@ export const useSessionStore = create<SessionState>()(
   persist(
     (set, get) => ({
       authenticated: false,
+      mfaVerified: false,
       user: null,
       lastRequestId: null,
       primarySession: null,
 
-      setSessionFromLogin: (session, email, displayName) =>
+      setSessionFromLogin: (session, email, displayName, mfaVerified = false) =>
         set({
           authenticated: true,
+          mfaVerified: mfaVerified === true,
           primarySession: null,
           user: freezeUser({
             id: session.userId,
@@ -221,6 +225,7 @@ export const useSessionStore = create<SessionState>()(
       clearSession: () =>
         set({
           authenticated: false,
+          mfaVerified: false,
           user: null,
           primarySession: null,
         }),
@@ -254,6 +259,7 @@ export const useSessionStore = create<SessionState>()(
       name: 'invsys-session',
       partialize: (state) => ({
         authenticated: state.authenticated,
+        mfaVerified: state.mfaVerified,
         user: state.user,
         primarySession: state.primarySession,
       }),
@@ -289,6 +295,13 @@ export function useSessionWarehouseIds(): readonly string[] {
 
 export function useEnabledModules(): readonly string[] {
   return useSessionStore((s) => s.user?.enabledModules ?? EMPTY_MODULES);
+}
+
+/** Retail POS settings tab: OWNER/ADMIN and an explicit RETAIL_POS module. */
+export function useCanConfigureRetailPos(): boolean {
+  const roles = useSessionStore((s) => s.user?.roles ?? EMPTY_ROLES);
+  const modules = useSessionStore((s) => s.user?.enabledModules ?? EMPTY_MODULES);
+  return rolesInclude(roles, 'OWNER', 'ADMIN') && modules.includes('RETAIL_POS');
 }
 
 export function useIsSuperAdmin(): boolean {

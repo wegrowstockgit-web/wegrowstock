@@ -15,9 +15,7 @@ export const salesModule = defineModule({
   ],
   navItems: [
     { to: '/sales-orders', label: 'Sales Orders', moduleId: 'sales' },
-    { to: '/sales/orders', label: 'RFQs', moduleId: 'sales' },
     { to: '/customers', label: 'Customers', moduleId: 'sales' },
-    { to: '/sales/customers', label: 'Showroom onboarding', moduleId: 'sales' },
     { to: '/invoices', label: 'Invoices', moduleId: 'sales' },
   ],
 });

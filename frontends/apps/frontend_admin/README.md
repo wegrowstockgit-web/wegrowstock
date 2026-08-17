@@ -22,7 +22,7 @@ Commercial tenants seeded for entitlement testing:
 
 | Tenant | Tier | Modules |
 |--------|------|---------|
-| Demo Corp | ENTERPRISE | CORE, B2B_SHOWROOM, FINTECH, AI_COPILOT, RETAIL_POS, MESH_NETWORK |
+| Demo Corp | ENTERPRISE | CORE, B2B_SHOWROOM, FINTECH, AI_COPILOT, RETAIL_POS, MESH_NETWORK — entitling `RETAIL_POS` also unlocks WMS **Settings → Retail POS** for that tenant’s Owner/Admin |
 | Acme Wholesale | BASIC | CORE |
 | Northwind Logistics | INTERMEDIATE | CORE, SHOPIFY, ADVANCED_FULFILLMENT |
 

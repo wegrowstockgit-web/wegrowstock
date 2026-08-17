@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { db } from '@/lib/db';
 import { demoSession } from '@/lib/posSession';
 import { PosSessionProvider } from '@/lib/PosSessionContext';
@@ -17,10 +17,12 @@ function renderRegister(session = demoSession()) {
   );
 }
 
+const mxSession = () => demoSession({ taxRegion: 'MX', currency: 'MXN', localeTag: 'es-MX', placeCurrency: 'MXN' });
+
 describe('RegisterPage', () => {
   it('scans a UPC, adjusts qty, and checks out offline into the outbox', async () => {
     const user = userEvent.setup();
-    renderRegister();
+    renderRegister(mxSession());
 
     const search = await screen.findByTestId('pos-upc-search');
     await user.type(search, '7501234567890');
@@ -30,7 +32,10 @@ describe('RegisterPage', () => {
     await user.click(screen.getByLabelText('Increase Agua 600ml'));
     expect(screen.getByTestId('qty-7501234567890').textContent).toBe('2');
 
-    await user.click(screen.getByTestId('tax-MX'));
+    await user.click(screen.getByTestId('solicitar-factura'));
+    await user.type(screen.getByTestId('pos-factura-rfc'), 'XAXX010101000');
+    await user.selectOptions(screen.getByTestId('pos-factura-uso'), 'G01');
+    await user.click(screen.getByTestId('pos-factura-save'));
     await user.click(screen.getByTestId('numpad-5'));
     await user.click(screen.getByTestId('numpad-0'));
     expect(screen.getByTestId('pos-tender-buffer').textContent).toMatch(/50/);
@@ -43,6 +48,8 @@ describe('RegisterPage', () => {
     const receipt = await db.outbox_receipts.toCollection().first();
     expect(receipt?.lines[0]?.quantity).toBe(2);
     expect(receipt?.taxRegion).toBe('MX');
+    expect(receipt?.facturaRfc).toBe('XAXX010101000');
+    expect(receipt?.facturaUsoCfdi).toBe('G01');
     expect(receipt?.id.charAt(14)).toBe('7');
     expect(screen.queryByTestId('cart-row-7501234567890')).toBeNull();
   });
@@ -85,13 +92,13 @@ describe('RegisterPage', () => {
     await user.click(screen.getByTestId('numpad-.'));
     await user.click(screen.getByTestId('numpad-backspace'));
     await user.click(screen.getByTestId('numpad-C'));
-    await user.click(screen.getByTestId('tender-50'));
+    await user.click(screen.getByTestId('tender-next-dollar'));
     expect(await screen.findByTestId('pos-success-overlay')).toBeTruthy();
     const first = await db.outbox_receipts.toCollection().first();
-    expect(first?.tenderType).toBe('CASH_50');
+    expect(first?.tenderType).toBe('CASH_NEXT_DOLLAR');
     await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
-    await user.click(await screen.findByTestId('tender-100'));
-    expect((await db.outbox_receipts.toArray()).some((row) => row.tenderType === 'CASH_100')).toBe(true);
+    await user.click(await screen.findByTestId('tender-20'));
+    expect((await db.outbox_receipts.toArray()).some((row) => row.tenderType === 'CASH_20')).toBe(true);
   });
 
   it('locks the register when Retail POS is not entitled', async () => {
@@ -159,5 +166,31 @@ describe('RegisterPage', () => {
     renderRegister(demoSession({ language: 'es', localeTag: 'es-MX', currency: 'MXN' }));
     expect(await screen.findByTestId('pos-upc-add')).toHaveTextContent('Añadir');
     expect(screen.getByTestId('tender-exact')).toHaveTextContent(/Efectivo/i);
+  });
+
+  it('attaches a CRM customer to the ticket', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [{ id: 'cust-1', name: 'Retail Partners LLC', email: 'ap@retailpartners.com' }],
+      }),
+    );
+    renderRegister();
+    await screen.findByTestId('pos-upc-search');
+    await user.click(screen.getByTestId('pos-add-customer'));
+    expect(await screen.findByTestId('pos-customer-modal')).toBeTruthy();
+    await user.click(await screen.findByTestId('pos-customer-cust-1'));
+    expect(screen.getByTestId('pos-add-customer')).toHaveTextContent('Retail Partners LLC');
+
+    await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
+    await user.click(screen.getByTestId('tender-exact'));
+    await waitFor(async () => {
+      expect(await db.outbox_receipts.count()).toBe(1);
+    });
+    const receipt = await db.outbox_receipts.toCollection().first();
+    expect(receipt?.customerId).toBe('cust-1');
+    expect(receipt?.customerName).toBe('Retail Partners LLC');
   });
 });

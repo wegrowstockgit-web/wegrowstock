@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { LoginPage } from '@/pages/LoginPage';
+import { ScannerSecurityGate } from '@/components/ScannerSecurityGate';
 import { startOutboxPolling } from '@/lib/syncWorker';
 import { PosSessionProvider, usePosSession } from '@/lib/PosSessionContext';
 
@@ -16,15 +17,49 @@ function Fallback() {
   );
 }
 
-function AppRoutes() {
+function BootSplash() {
+  return <div className="pos-login-shell" data-testid="pos-boot" />;
+}
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { hydrated, isAuthenticated } = usePosSession();
+  if (!hydrated) return <BootSplash />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RequireGuest({ children }: { children: ReactNode }) {
+  const { hydrated, isAuthenticated } = usePosSession();
+  if (!hydrated) return <BootSplash />;
+  if (isAuthenticated) return <Navigate to="/" replace />;
+  return children;
+}
+
+export function AppRoutes() {
   useEffect(() => startOutboxPolling(), []);
 
   return (
     <div className="h-full">
       <Routes>
-        <Route path="/" element={<RegisterPage />} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <ScannerSecurityGate>
+                <RegisterPage />
+              </ScannerSecurityGate>
+            </RequireAuth>
+          }
+        />
         <Route path="/register" element={<Navigate to="/" replace />} />
-        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/login"
+          element={
+            <RequireGuest>
+              <LoginPage />
+            </RequireGuest>
+          }
+        />
         <Route path="*" element={<Fallback />} />
       </Routes>
     </div>

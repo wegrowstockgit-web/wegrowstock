@@ -3,7 +3,7 @@ title: "B2B Showroom & Commercial Finance SOP"
 slug: "sop-b2b-showroom-fintech"
 sourcePath: "docs/sops/05_b2b_showroom_and_fintech.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "B2B_CUSTOMER", "VIEWER"]
-routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/mesh-network", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations"]
+routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/mesh-network", "/settings", "/settings?tab=retailPos", "/settings/billing", "/settings/fintech", "/settings/integrations"]
 ---
 
 # B2B Showroom & Commercial Finance — Operations Playbook
@@ -156,7 +156,7 @@ Wholesale buyers shop the Showroom; Owners manage billing, financing, and integr
 4. **Billing** — subscription/plan matters for Owners.
 5. **Cash Flow & Financing** (Owner) — review financing / factoring style options your organization enabled; follow on-screen connects/confirms only.
 6. **Integrations** / Integrations Hub — connect accounting or channel apps; respect **LIVE** badges when a connection is healthy.
-7. Other tabs as needed: **Warehouses**, **Inventory Rules**, **Documents**, **Security & SSO**, **Reconciliation**, **Accounting Sync**, **Operations**, **Sync Conflicts**, **Cost Centers & Requisitions**, **Partner Catalog** (SKU mapping after a Mesh Network connection). Cross-tenant discover/handshake lives on **Inbound → Mesh Network**.
+7. Other tabs as needed: **Warehouses**, **Inventory Rules**, **Documents**, **Retail POS** (addon — see below), **Security & SSO**, **Reconciliation**, **Accounting Sync**, **Operations**, **Sync Conflicts**, **Cost Centers & Requisitions**, **Partner Catalog** (SKU mapping after a Mesh Network connection). Cross-tenant discover/handshake lives on **Inbound → Mesh Network**.
 8. Save each tab using its on-screen save/confirm controls before leaving.
 
 #### 2. Correlated Flow & Downstream Ripple Effect
@@ -173,3 +173,31 @@ Wholesale buyers shop the Showroom; Owners manage billing, financing, and integr
 - **Fintech page forbidden?** Owner-only.
 - **Invite missing OWNER role?** Owners are not created from the standard invite list—follow your provisioning process.
 - **Sync Conflicts tab in Settings?** Same decisions as **Exceptions → Sync Conflicts**: **Discard Transaction** vs **Approve & Re-process**.
+- **Retail POS tab missing?** The workspace must include the `RETAIL_POS` addon, and you must be Owner or Admin. Warehouse managers cannot open Organization settings.
+
+### Settings: Retail POS
+
+- **Target Audience & Roles:** OWNER or ADMIN, and only when the tenant subscription includes `RETAIL_POS`.
+- **Route Location:** **Settings → Retail POS** (`/settings?tab=retailPos`)
+- **Primary Operational Goal:** Configure register receipts, regional compliance, and shift-end loss-prevention before cashiers open the store app.
+
+#### 1. Step-by-Step Action Plan
+1. Confirm Super Admin entitled **Retail POS** for this tenant (Demo Corp in local seed; Acme/Northwind/Pacific do not have it).
+2. Sign in as Owner or Admin and open **Admin → Organization → Retail POS**.
+3. **Localization & Compliance** — set default currency to **USD** or **MXN**; turn on **Enable CFDI 4.0 Facturación (Mexico)** when Mexican electronic invoicing is required.
+4. **Receipt Configuration** — enter header (store name, address, tax ID) and footer (return policy, thank-you). Each field is limited to 2000 characters.
+5. **Security & Loss Prevention** — enable **Require Blind Closeout at Shift End** so cashiers count cash without seeing the expected drawer total.
+6. **Save POS settings**. Reload the page to confirm the values persisted.
+
+#### 2. Correlated Flow & Downstream Ripple Effect
+- These prefs persist in `tenant_settings.settings` (`pos_*` keys) via `PATCH /api/v1/settings`.
+- Cashiers still sign in on the register (`:3003`). Without the addon the register stays locked (`posEnabled=false`).
+- Changing currency or CFDI here does not rewrite historical WMS invoices.
+
+#### 3. Safety, Reversal & Undo Rules
+- Unsupported currencies (anything other than USD/MXN) are rejected (`POS_CURRENCY_UNSUPPORTED`).
+- Warehouse managers and cashiers cannot change these settings from the register.
+
+#### 4. Troubleshooting Common Blockers
+- **Tab not in the left nav?** Check role (Owner/Admin) and entitlements (`RETAIL_POS`).
+- **Save failed?** Receipt text over 2000 characters, or a stale session — re-login as Owner/Admin.

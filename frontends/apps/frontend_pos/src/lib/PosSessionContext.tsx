@@ -5,6 +5,8 @@ import { translate, type PosLanguage, type PosMessageKey } from './i18n';
 type PosSessionContextValue = {
   session: PosSessionState;
   language: PosLanguage;
+  hydrated: boolean;
+  isAuthenticated: boolean;
   t: (key: PosMessageKey, vars?: Record<string, string>) => string;
   refresh: () => Promise<void>;
 };
@@ -23,15 +25,21 @@ export function PosSessionProvider({
   const [session, setSession] = useState<PosSessionState>(
     () => initial ?? readCachedSession() ?? defaultSessionState(),
   );
+  const [hydrated, setHydrated] = useState(() => Boolean(initial) || disableFetch);
 
   const refresh = async () => {
-    if (disableFetch) return;
+    if (disableFetch) {
+      setHydrated(true);
+      return;
+    }
     try {
       const next = await fetchPosSession();
       setSession(next);
     } catch {
       const cached = readCachedSession();
       if (cached) setSession(cached);
+    } finally {
+      setHydrated(true);
     }
   };
 
@@ -51,10 +59,12 @@ export function PosSessionProvider({
     return {
       session,
       language,
+      hydrated,
+      isAuthenticated: Boolean(session.cashierId),
       t: (key, vars) => translate(language, key, vars),
       refresh,
     };
-  }, [session]);
+  }, [session, hydrated]);
 
   return <PosSessionContext.Provider value={value}>{children}</PosSessionContext.Provider>;
 }
@@ -67,6 +77,8 @@ export function usePosSession(): PosSessionContextValue {
   return {
     session,
     language,
+    hydrated: true,
+    isAuthenticated: Boolean(session.cashierId),
     t: (key, vars) => translate(language, key, vars),
     refresh: async () => undefined,
   };

@@ -77,6 +77,7 @@ public class TenantProvisioningService {
             Role role = new Role();
             role.setTenantId(tenantId);
             role.setCode(code);
+            role.setNetworkAccessLevel(com.invsys.domain.NetworkAccessLevel.defaultForRole(code));
             roles.add(roleRepository.save(role));
         }
         rolePermissionService.seedBaselineForTenant(tenantId, roles);

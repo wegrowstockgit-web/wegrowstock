@@ -421,7 +421,7 @@ The numbered phases above delivered the tenant WMS. What shipped after that, and
 | Track | What it is |
 |-------|------------|
 | Dual plane | `invsys-app` + `frontend_wms` (`:8080` / `:3000`) vs `invsys-admin-api` + `frontend_admin` (`:8081` / `:3002`) |
-| Retail POS | `invsys-pos-api` + `frontend_pos` (`:3003`) — offline Dexie outbox, `RETAIL_POS` Enterprise addon, async `inventory_level_deltas` |
+| Retail POS | `invsys-pos-api` + `frontend_pos` (`:3003`) — offline Dexie outbox, `RETAIL_POS` Enterprise addon, async `inventory_level_deltas`. WMS **Settings → Retail POS** (`PosSettingsPanel`) is OWNER/ADMIN + module-gated; prefs persist in `tenant_settings.settings` JSONB via `GET\|PATCH\|PUT /api/v1/settings` |
 | Super Admin identity | `platform_admins` (V106) — not `users.is_super_admin` |
 | Entitlements | `tenant_subscriptions` (V104/V105) + `@RequireModule` on WMS APIs |
 | Control-plane Day-2 | Impersonation (15-min WMS JWT), suspend, billing estimates, RAG ingest, integration kill-switch, `platform_audit_logs`, shard routing, DLQ retry, rate-limit multipliers, sandbox clone, compliance broadcasts (V107–V108) |

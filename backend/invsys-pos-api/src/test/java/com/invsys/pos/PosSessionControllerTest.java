@@ -38,10 +38,11 @@ class PosSessionControllerTest {
         when(sessionService.currentSession(eq("es-MX"), eq("America/Mexico_City"), eq("es"), eq("MXN")))
                 .thenReturn(new PosSessionResponse(
                         true, "RETAIL_POS", "ENTERPRISE", "es", "ORGANIZATION",
-                        "USD", "WMS", "es", "MXN", "es-MX", "MX",
+                        "MXN", "PLACE", "es", "MXN", "es-MX", "MX",
                         "America/Mexico_City", "Demo Corp",
                         java.util.UUID.fromString("a0000000-0000-4000-8000-000000000201"),
-                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001")));
+                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001"),
+                        "USD", java.math.BigDecimal.ONE));
 
         mockMvc.perform(get("/api/v1/pos/session")
                         .header("Accept-Language", "es-MX")
@@ -51,9 +52,10 @@ class PosSessionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.posEnabled").value(true))
                 .andExpect(jsonPath("$.language").value("es"))
-                .andExpect(jsonPath("$.currency").value("USD"))
+                .andExpect(jsonPath("$.currency").value("MXN"))
                 .andExpect(jsonPath("$.placeCurrency").value("MXN"))
-                .andExpect(jsonPath("$.taxRegionHint").value("MX"));
+                .andExpect(jsonPath("$.taxRegionHint").value("MX"))
+                .andExpect(jsonPath("$.tenantBaseCurrency").value("USD"));
     }
 
     @Test
@@ -64,7 +66,8 @@ class PosSessionControllerTest {
                         "USD", "DEFAULT", null, "USD", "en-US", "US",
                         null, "",
                         java.util.UUID.fromString("a0000000-0000-4000-8000-000000000201"),
-                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001")));
+                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001"),
+                        "USD", java.math.BigDecimal.ONE));
 
         mockMvc.perform(get("/api/v1/pos/session"))
                 .andExpect(status().isOk())

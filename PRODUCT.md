@@ -8,7 +8,7 @@ product
 
 Two distinct user groups inside each tenant company:
 
-- **Office staff (Surface A):** owners, admins, and managers working at a desk on a laptop or desktop in normal lighting. They manage products, purchase/sales orders, invoices, customers, suppliers, the cross-tenant **Mesh Network** marketplace, manufacturing, returns, and settings. Their job: keep inventory accurate, orders flowing, and money reconciled.
+- **Office staff (Surface A):** owners, admins, and managers working at a desk on a laptop or desktop in normal lighting. They manage products, purchase/sales orders, invoices, customers, suppliers, the cross-tenant **Mesh Network** marketplace, manufacturing, returns, and settings. When the tenant has the **Retail POS** addon, owners and admins also configure register receipts, USD/MXN, CFDI 4.0, and blind closeout under **Settings → Retail POS**. Their job: keep inventory accurate, orders flowing, and money reconciled.
 - **Warehouse operators (Surface B):** pickers and warehouse managers on the floor, often with a handheld scanner or tablet, in bright/variable warehouse lighting, sometimes wearing gloves. Their job: scan, pick, pack, receive, count — fast, with minimal reading.
 - **Retail cashiers (POS):** store associates on a touch register (Oxxo / Walmart-style split pane). Checkout must feel instant and work with the network down; sales drain store inventory later through the WMS async delta queue. Sold as the **Retail Point of Sale (POS)** Enterprise addon.
 - **B2B customers (portal):** wholesale buyers invited by the tenant, browsing a showroom catalog and placing orders. They never see internal tooling.

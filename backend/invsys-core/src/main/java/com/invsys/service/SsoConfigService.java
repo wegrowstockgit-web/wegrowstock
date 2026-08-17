@@ -87,6 +87,26 @@ public class SsoConfigService {
         return toView(repository.save(config));
     }
 
+    @Transactional
+    public List<String> replaceAllowedCidrs(List<String> cidrs) {
+        UUID tenantId = TenantContext.requireTenantId();
+        TenantSsoConfig config = repository.findByTenantId(tenantId).orElseGet(() -> {
+            TenantSsoConfig created = new TenantSsoConfig();
+            created.setTenantId(tenantId);
+            created.setIssuerUrl("conditional-access://local");
+            created.setClientId("conditional-access");
+            created.setEncryptedClientSecret(
+                    credentialVaultService.encrypt("conditional-access".getBytes(StandardCharsets.UTF_8)));
+            created.setEnabled(false);
+            created.setForceSso(false);
+            created.setProtocol("OIDC");
+            created.setSsoProvider("CUSTOM");
+            return created;
+        });
+        config.setAllowedCidrBlocks(CorporateCidrMatcher.normalizeOrReject(cidrs));
+        return repository.save(config).getAllowedCidrBlocks();
+    }
+
     public Optional<ResolvedSsoConfig> resolve(UUID tenantId) {
         return repository.findByTenantId(tenantId)
                 .filter(TenantSsoConfig::isEnabled)

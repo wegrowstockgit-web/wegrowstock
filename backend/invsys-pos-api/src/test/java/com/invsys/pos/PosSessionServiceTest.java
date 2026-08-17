@@ -15,12 +15,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,11 +32,12 @@ class PosSessionServiceTest {
     @Mock SettingsService settingsService;
     @Mock TenantSubscriptionService tenantSubscriptionService;
     @Mock TenantRepository tenantRepository;
+    @Mock com.invsys.service.CurrencyService currencyService;
 
     @InjectMocks PosSessionService service;
 
     @Test
-    void currentSession_appliesOrganizationLanguageAndWmsCurrencyWhenPosEnabled() {
+    void currentSession_appliesOrganizationLanguageAndPlaceDisplayCurrencyWhenPosEnabled() {
         UUID tenantId = UUID.randomUUID();
         when(authService.currentUser()).thenReturn(me(tenantId, "fr", "ENTERPRISE"));
         when(tenantSubscriptionService.isModuleEnabled(tenantId, AppModule.RETAIL_POS)).thenReturn(true);
@@ -42,6 +45,7 @@ class PosSessionServiceTest {
                 "locale_language", "es",
                 "currency", "EUR",
                 "timezone", "Europe/Paris"));
+        when(currencyService.quoteOrOne("EUR", "MXN")).thenReturn(new BigDecimal("18.5000"));
         Tenant tenant = new Tenant();
         tenant.setName("Demo Corp");
         when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -51,8 +55,10 @@ class PosSessionServiceTest {
         assertThat(session.posEnabled()).isTrue();
         assertThat(session.language()).isEqualTo("es");
         assertThat(session.languageSource()).isEqualTo("ORGANIZATION");
-        assertThat(session.currency()).isEqualTo("EUR");
-        assertThat(session.currencySource()).isEqualTo("WMS");
+        assertThat(session.currency()).isEqualTo("MXN");
+        assertThat(session.currencySource()).isEqualTo("PLACE");
+        assertThat(session.tenantBaseCurrency()).isEqualTo("EUR");
+        assertThat(session.liveExchangeRate()).isEqualByComparingTo("18.5000");
         assertThat(session.placeCurrency()).isEqualTo("MXN");
         assertThat(session.taxRegionHint()).isEqualTo("MX");
         assertThat(session.companyName()).isEqualTo("Demo Corp");
@@ -71,6 +77,7 @@ class PosSessionServiceTest {
                 "locale_language", "es",
                 "currency", "EUR"));
         when(tenantRepository.findById(tenantId)).thenReturn(Optional.empty());
+        when(currencyService.quoteOrOne("EUR", "MXN")).thenReturn(BigDecimal.ONE);
 
         PosSessionResponse session = service.currentSession("es-MX", null, null, null);
 
@@ -91,6 +98,7 @@ class PosSessionServiceTest {
         when(tenantSubscriptionService.getCommercialTier(tenantId)).thenReturn(CommercialTier.ENTERPRISE);
         when(settingsService.getSettings()).thenReturn(Map.of());
         when(tenantRepository.findById(tenantId)).thenReturn(Optional.empty());
+        when(currencyService.quoteOrOne("USD", "GBP")).thenReturn(new BigDecimal("0.7800"));
 
         PosSessionResponse session = service.currentSession("en-GB", "Europe/London", null, null);
 
@@ -98,6 +106,8 @@ class PosSessionServiceTest {
         assertThat(session.languageSource()).isEqualTo("USER");
         assertThat(session.currency()).isEqualTo("GBP");
         assertThat(session.currencySource()).isEqualTo("PLACE");
+        assertThat(session.tenantBaseCurrency()).isEqualTo("USD");
+        assertThat(session.liveExchangeRate()).isEqualByComparingTo("0.7800");
         assertThat(session.tier()).isEqualTo("ENTERPRISE");
         assertThat(session.timezone()).isEqualTo("Europe/London");
     }

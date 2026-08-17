@@ -39,6 +39,6 @@ VITE_ENABLE_MESH=true  # omit or false to drop /mesh-network at build time
 
 ## Not in this app
 
-Control-plane Super Admin UI lives in `../frontend_admin` and talks to `invsys-admin-api` on `:8081`. Retail POS lives in `../frontend_pos` (`:3003` / Vite `:5175`) and syncs through the same data-plane API.
+Control-plane Super Admin UI lives in `../frontend_admin` and talks to `invsys-admin-api` on `:8081`. Retail POS lives in `../frontend_pos` (`:3003` / Vite `:5175`) and syncs through the same data-plane API. When the tenant has `RETAIL_POS`, OWNER/ADMIN see **Settings → Retail POS** (`PosSettingsPanel`, `/settings?tab=retailPos`) for receipt header/footer, USD/MXN, CFDI 4.0, and blind closeout (`PATCH /api/v1/settings`). Playwright: `e2e/journeys/65-retail-pos-settings.spec.ts`.
 
 This app has **no** admin routes. The only control-plane touch is login: `?impersonateToken=` is exchanged with `POST /api/v1/auth/impersonation/accept` (15-minute support God Mode JWT minted by the admin API).

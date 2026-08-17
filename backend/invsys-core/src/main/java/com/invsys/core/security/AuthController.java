@@ -84,7 +84,7 @@ public class AuthController {
         String ip = clientIpResolver.resolve(httpRequest);
         loginAttemptLimiter.assertAllowed(ip, request.email());
         try {
-            TokenResponse tokens = authService.login(request);
+            TokenResponse tokens = authService.login(request, ip);
             AuthService.assertTargetAppAccess(request.targetApp(), tokens);
             SessionResponse session = issueSession(tokens, response);
             loginAttemptLimiter.reset(ip, request.email());

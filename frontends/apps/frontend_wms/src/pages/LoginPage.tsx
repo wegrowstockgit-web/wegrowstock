@@ -11,6 +11,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { BrandLogo } from '@/components/layout/BrandLogo';
 import { nextHrdStep, resolveSsoHref, type HrdResponse, type HrdStep } from '@/lib/hrd';
+import { readTerminalPasskey } from '@/lib/terminalPasskey';
+import {
+  completeMfaAssertion,
+  isMfaRequiredTitle,
+  type MfaChallengeBody,
+} from '@/features/settings/networkAccess';
 
 interface MeResponse {
   userId: string;
@@ -39,6 +45,8 @@ export function LoginPage() {
   const [magicSent, setMagicSent] = useState(false);
   const [step, setStep] = useState<HrdStep>('email');
   const [realm, setRealm] = useState<HrdResponse | null>(null);
+  const [mfaChallenge, setMfaChallenge] = useState<MfaChallengeBody | null>(null);
+  const [mfaBusy, setMfaBusy] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('sso') === '1') {
@@ -79,7 +87,8 @@ export function LoginPage() {
       return res.data;
     },
     onSuccess: async (data) => {
-      setSessionFromLogin(data, email);
+      setSessionFromLogin(data, email, undefined, Boolean(mfaChallenge));
+      setMfaChallenge(null);
       try {
         const me = await apiClient.get<MeResponse>('/api/v1/auth/me');
         applyMeProfile(me.data);
@@ -92,10 +101,15 @@ export function LoginPage() {
         data.roles.length > 0 && data.roles.every((role) => role === 'PICKER');
       navigate(b2bOnly ? '/showroom/catalog' : pickerOnly ? '/fulfillment' : '/dashboard');
     },
-    onError: (err: AxiosError<{ title?: string; detail?: string; ssoAuthorizationUrl?: string }>) => {
+    onError: (err: AxiosError<MfaChallengeBody & { detail?: string; ssoAuthorizationUrl?: string }>) => {
       const body = err.response?.data;
       if (body?.title === 'SSO_REQUIRED' && body.ssoAuthorizationUrl) {
         window.location.href = resolveSsoHref(body.ssoAuthorizationUrl, import.meta.env.VITE_API_URL ?? '');
+        return;
+      }
+      if (isMfaRequiredTitle(body?.title)) {
+        setError('');
+        setMfaChallenge(body ?? { title: 'MFA_REQUIRED_FOR_EXTERNAL_ACCESS' });
         return;
       }
       setError('Invalid email or password. Try owner@demo.test / password123');
@@ -183,8 +197,30 @@ export function LoginPage() {
     loginMutation.mutate({ email, password, targetApp: 'WMS' });
   };
 
-  const showPassword = step === 'password' || step === 'sso-optional';
-  const showSso = step === 'sso-optional' && Boolean(realm?.ssoUrl);
+  const runMfaChallenge = async () => {
+    if (!mfaChallenge) return;
+    setMfaBusy(true);
+    setError('');
+    try {
+      const stored = readTerminalPasskey();
+      const assertion = await completeMfaAssertion(mfaChallenge, stored);
+      loginMutation.mutate({
+        email,
+        password,
+        targetApp: 'WMS',
+        mfaCredentialId: assertion.mfaCredentialId,
+        mfaChallenge: assertion.mfaChallenge,
+        mfaSignature: assertion.mfaSignature,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Passkey required for off-network access');
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const showPassword = !mfaChallenge && (step === 'password' || step === 'sso-optional');
+  const showSso = !mfaChallenge && step === 'sso-optional' && Boolean(realm?.ssoUrl);
 
   return (
     <div className="flex min-h-screen">
@@ -266,6 +302,24 @@ export function LoginPage() {
                 />
               ) : null}
 
+              {mfaChallenge ? (
+                <div className="space-y-3" data-testid="login-mfa-challenge">
+                  <p className="text-sm text-white/80">
+                    This role requires a passkey when you are off the corporate network.
+                  </p>
+                  <Button
+                    type="button"
+                    className="w-full border-0 bg-[#55ACEE] text-white shadow-[0_0_24px_rgba(85,172,238,0.45)] hover:bg-[#4a9de0]"
+                    size="lg"
+                    data-testid="login-mfa-submit"
+                    loading={mfaBusy || loginMutation.isPending}
+                    onClick={() => void runMfaChallenge()}
+                  >
+                    Continue with passkey
+                  </Button>
+                </div>
+              ) : null}
+
               {error && (
                 <p
                   role="alert"
@@ -290,7 +344,7 @@ export function LoginPage() {
                 >
                   {t('login.continue')}
                 </Button>
-              ) : (
+              ) : mfaChallenge ? null : (
                 <>
                   <Button
                     type="submit"
@@ -324,6 +378,7 @@ export function LoginPage() {
                       setRealm(null);
                       setPassword('');
                       setError('');
+                      setMfaChallenge(null);
                     }}
                   >
                     {t('login.changeEmail')}

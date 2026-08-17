@@ -25,6 +25,7 @@ afterEach(async () => {
   await db.outbox_receipts.clear();
   await db.audit_events.clear();
   localStorage.removeItem(POS_SESSION_CACHE_KEY);
+  sessionStorage.removeItem('pos.shiftUnlocked');
   clearPinVault();
   vi.unstubAllGlobals();
 });

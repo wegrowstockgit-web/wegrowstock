@@ -27,6 +27,8 @@ export type PosSessionDto = {
   companyName?: string;
   cashierId?: string | null;
   tenantId?: string | null;
+  tenantBaseCurrency?: string | null;
+  liveExchangeRate?: number | null;
 };
 
 export type PosSessionState = ResolvedPosLocale & {
@@ -35,6 +37,8 @@ export type PosSessionState = ResolvedPosLocale & {
   tier: string;
   cashierId: string;
   tenantId: string;
+  tenantBaseCurrency: string;
+  liveExchangeRate: number;
   fromCache: boolean;
 };
 
@@ -47,6 +51,8 @@ export function defaultSessionState(): PosSessionState {
     tier: '',
     cashierId: '',
     tenantId: '',
+    tenantBaseCurrency: offline.currency,
+    liveExchangeRate: 1,
     fromCache: false,
   };
 }
@@ -67,6 +73,8 @@ export function demoSession(overrides: Partial<PosSessionState> = {}): PosSessio
     tier: 'ENTERPRISE',
     cashierId: 'a0000000-0000-4000-8000-000000000201',
     tenantId: 'a0000000-0000-4000-8000-000000000001',
+    tenantBaseCurrency: 'USD',
+    liveExchangeRate: 1,
     fromCache: false,
     ...overrides,
   };
@@ -109,6 +117,12 @@ export function applySessionDto(dto: PosSessionDto, place = detectPlace()): PosS
     tier: dto.tier ?? '',
     cashierId: dto.cashierId ?? '',
     tenantId: dto.tenantId ?? '',
+    tenantBaseCurrency: (dto.tenantBaseCurrency || currency).toUpperCase(),
+    liveExchangeRate: (() => {
+      const raw = dto.liveExchangeRate;
+      const parsed = typeof raw === 'number' ? raw : Number(raw);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    })(),
     fromCache: false,
   };
 }

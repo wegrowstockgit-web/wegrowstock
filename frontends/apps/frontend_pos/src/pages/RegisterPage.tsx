@@ -12,9 +12,10 @@ import {
   type CartLine,
 } from '@/lib/db';
 import { seedDemoCatalogIfEmpty } from '@/lib/catalogSeed';
-import { cartTotals, formatMoney, lineTotal, type TaxRegion } from '@/lib/tax';
+import { cartTotals, formatMoney, lineTotal } from '@/lib/tax';
 import { uuidv7 } from '@/lib/uuidv7';
 import { cashPresets } from '@/lib/locale';
+import { nextDollarAmount } from '@/lib/utils';
 import { usePosSession } from '@/lib/PosSessionContext';
 import { seedDemoManagerPinsIfEmpty } from '@/offline/pinVault';
 
@@ -23,22 +24,36 @@ const DEMO_STORE_ID =
 
 const NUMPAD = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const;
 
+const CFDI_USOS = [
+  { code: 'G01', label: 'G01 — Adquisición de mercancías' },
+  { code: 'G03', label: 'G03 — Gastos en general' },
+  { code: 'S01', label: 'S01 — Sin efectos fiscales' },
+  { code: 'D01', label: 'D01 — Honorarios médicos' },
+] as const;
+
+type PosCustomer = { id: string; name: string; email?: string | null };
+
 export function RegisterPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const { session, t } = usePosSession();
   const [query, setQuery] = useState('');
   const [lines, setLines] = useState<CartLine[]>([]);
-  const [taxRegion, setTaxRegion] = useState<TaxRegion>(session.taxRegion);
   const [tenderBuffer, setTenderBuffer] = useState('');
   const [scanError, setScanError] = useState('');
   const [success, setSuccess] = useState(false);
   const [ready, setReady] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [voidOpen, setVoidOpen] = useState(false);
+  const [customer, setCustomer] = useState<PosCustomer | null>(null);
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customers, setCustomers] = useState<PosCustomer[]>([]);
+  const [facturaOpen, setFacturaOpen] = useState(false);
+  const [facturaRfc, setFacturaRfc] = useState('');
+  const [facturaUso, setFacturaUso] = useState<(typeof CFDI_USOS)[number]['code']>('G03');
+  const [facturaSaved, setFacturaSaved] = useState(false);
 
-  useEffect(() => {
-    setTaxRegion(session.taxRegion);
-  }, [session.taxRegion]);
+  const taxRegion = session.taxRegion;
 
   useEffect(() => {
     let cancelled = false;
@@ -64,14 +79,36 @@ export function RegisterPage() {
     void saveCartDraft(lines, orderId || undefined);
   }, [lines, orderId, ready]);
 
+  useEffect(() => {
+    if (!customerOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/v1/pos/customers', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) return;
+        const rows = (await response.json()) as PosCustomer[];
+        if (!cancelled && Array.isArray(rows)) setCustomers(rows);
+      } catch {
+        /* Offline register still completes sales without CRM. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerOpen]);
+
   const totals = useMemo(() => cartTotals(lines, taxRegion), [lines, taxRegion]);
   const currency = session.currency;
   const locale = session.localeTag;
   const money = (amount: number) => formatMoney(amount, currency, locale);
   const presets = cashPresets(currency);
   const locked = session.posEnabled === false;
-
+  const nextDollar = nextDollarAmount(totals.grandTotal);
   const cashierId = session.cashierId || 'offline-cashier';
+  const mxLocale = taxRegion === 'MX';
 
   const ensureOrderId = (current = orderId) => {
     if (current) return current;
@@ -141,6 +178,18 @@ export function RegisterPage() {
     });
   };
 
+  const resetTicket = () => {
+    setLines([]);
+    setOrderId('');
+    setTenderBuffer('');
+    setScanError('');
+    setCustomer(null);
+    setFacturaRfc('');
+    setFacturaUso('G03');
+    setFacturaSaved(false);
+    void clearCartDraft();
+  };
+
   const voidTransaction = (managerId: string) => {
     if (!managerId) return;
     const activeOrderId = orderId || uuidv7();
@@ -152,12 +201,8 @@ export function RegisterPage() {
       valueVoided: totals.grandTotal,
       managerOverrideId: managerId,
     });
-    setLines([]);
-    setOrderId('');
-    setTenderBuffer('');
-    setScanError('');
+    resetTicket();
     setVoidOpen(false);
-    void clearCartDraft();
     searchRef.current?.focus();
   };
 
@@ -196,13 +241,13 @@ export function RegisterPage() {
         unitPrice: line.unitPrice,
       })),
       createdAt: Date.now(),
+      customerId: customer?.id,
+      customerName: customer?.name,
+      facturaRfc: facturaSaved ? facturaRfc.trim().toUpperCase() : undefined,
+      facturaUsoCfdi: facturaSaved ? facturaUso : undefined,
     };
     await enqueueReceipt(receipt);
-    setLines([]);
-    setOrderId('');
-    setTenderBuffer('');
-    setScanError('');
-    void clearCartDraft();
+    resetTicket();
     setSuccess(true);
     window.setTimeout(() => setSuccess(false), 900);
     searchRef.current?.focus();
@@ -212,10 +257,15 @@ export function RegisterPage() {
   const taxLabel = taxRegion === 'MX' ? t('register.taxMx') : t('register.taxUs');
   const mismatch =
     session.posEnabled &&
-    session.placeCurrency &&
-    session.placeCurrency !== session.currency
-      ? t('register.currencyMismatch', { wms: session.currency, place: session.placeCurrency })
+    session.tenantBaseCurrency &&
+    session.tenantBaseCurrency !== session.currency
+      ? t('register.currencyMismatch', { wms: session.tenantBaseCurrency, place: session.currency })
       : '';
+  const filteredCustomers = customers.filter((row) => {
+    const q = customerQuery.trim().toLowerCase();
+    if (!q) return true;
+    return `${row.name} ${row.email ?? ''}`.toLowerCase().includes(q);
+  });
 
   return (
     <div className="pos-shell" data-testid="register-page">
@@ -233,11 +283,7 @@ export function RegisterPage() {
       ) : null}
 
       {success ? (
-        <div
-          className="pos-success"
-          data-testid="pos-success-overlay"
-          role="status"
-        >
+        <div className="pos-success" data-testid="pos-success-overlay" role="status">
           <p>{t('register.success')}</p>
         </div>
       ) : null}
@@ -247,23 +293,41 @@ export function RegisterPage() {
           <p className="pos-brand">{session.companyName || 'weGrowStock'}</p>
           <p className="pos-meta">
             {session.language.toUpperCase()} · {session.currency}
+            {session.tenantBaseCurrency && session.tenantBaseCurrency !== session.currency
+              ? ` · ${session.tenantBaseCurrency}@${session.liveExchangeRate}`
+              : ''}
             {mismatch ? ` · ${mismatch}` : ''}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="pos-chip" data-testid="pos-connection">
-            {typeof navigator !== 'undefined' && navigator.onLine === false
-              ? t('register.offline')
-              : t('register.online')}
-          </span>
-          <Link to="/login" className="pos-signin" data-testid="pos-signin">
-            {t('register.signIn')}
-          </Link>
-        </div>
+        <span className="pos-chip" data-testid="pos-connection">
+          {typeof navigator !== 'undefined' && navigator.onLine === false
+            ? t('register.offline')
+            : t('register.online')}
+        </span>
       </header>
 
       <div className="pos-body">
         <section className="pos-cart">
+          <div className="pos-cart-tools">
+            <button
+              type="button"
+              className="pos-add-customer"
+              data-testid="pos-add-customer"
+              onClick={() => setCustomerOpen(true)}
+            >
+              {customer ? customer.name : t('register.addCustomer')}
+            </button>
+            {customer ? (
+              <button
+                type="button"
+                className="pos-clear-customer"
+                data-testid="pos-clear-customer"
+                onClick={() => setCustomer(null)}
+              >
+                {t('register.clearCustomer')}
+              </button>
+            ) : null}
+          </div>
           <form
             className="pos-scan"
             onSubmit={(event) => {
@@ -375,19 +439,20 @@ export function RegisterPage() {
         <aside className="pos-tender">
           <div className="pos-tender-head">
             <p className="pos-kicker">{t('register.checkout')}</p>
-            <div className="pos-tax" data-testid="tax-region">
-              {(['US', 'MX'] as const).map((region) => (
-                <button
-                  key={region}
-                  type="button"
-                  data-testid={`tax-${region}`}
-                  className={taxRegion === region ? 'is-active' : ''}
-                  onClick={() => setTaxRegion(region)}
-                >
-                  {region === 'US' ? t('register.taxUsShort') : t('register.taxMxShort')}
-                </button>
-              ))}
-            </div>
+            {mxLocale ? (
+              <button
+                type="button"
+                data-testid="solicitar-factura"
+                className={`pos-factura-btn${facturaSaved ? ' is-active' : ''}`}
+                onClick={() => setFacturaOpen(true)}
+              >
+                {t('register.solicitarFactura')}
+              </button>
+            ) : (
+              <div className="pos-tax" data-testid="tax-region">
+                {taxRegion}
+              </div>
+            )}
           </div>
 
           <dl className="pos-totals">
@@ -420,7 +485,7 @@ export function RegisterPage() {
             </button>
           </div>
 
-          <div className="pos-actions">
+          <div className="pos-quick-tenders" data-testid="pos-quick-tenders">
             <button
               type="button"
               data-testid="tender-exact"
@@ -431,28 +496,23 @@ export function RegisterPage() {
             </button>
             <button
               type="button"
+              data-testid="tender-next-dollar"
+              className="pos-cash"
+              onClick={() => void completeSale('CASH_NEXT_DOLLAR', nextDollar)}
+            >
+              {t('register.nextDollar')}
+            </button>
+            <button
+              type="button"
               data-testid="tender-20"
               className="pos-cash"
               onClick={() => void completeSale(`CASH_${presets[0]}`, presets[0])}
             >
               {money(presets[0])}
             </button>
-            <button
-              type="button"
-              data-testid="tender-50"
-              className="pos-cash"
-              onClick={() => void completeSale(`CASH_${presets[1]}`, presets[1])}
-            >
-              {money(presets[1])}
-            </button>
-            <button
-              type="button"
-              data-testid="tender-100"
-              className="pos-cash"
-              onClick={() => void completeSale(`CASH_${presets[2]}`, presets[2])}
-            >
-              {money(presets[2])}
-            </button>
+          </div>
+
+          <div className="pos-actions">
             <button
               type="button"
               data-testid="tender-card"
@@ -473,6 +533,93 @@ export function RegisterPage() {
           </div>
         </aside>
       </div>
+
+      {customerOpen ? (
+        <div className="pos-void-overlay" data-testid="pos-customer-modal" role="dialog" aria-modal="true">
+          <div className="pos-void-card">
+            <h1>{t('register.addCustomer')}</h1>
+            <input
+              data-testid="pos-customer-search"
+              className="pos-scan-input"
+              placeholder={t('register.customerSearch')}
+              value={customerQuery}
+              onChange={(event) => setCustomerQuery(event.target.value)}
+            />
+            <ul className="pos-customer-list">
+              {filteredCustomers.length === 0 ? (
+                <li className="pos-empty">{t('register.noCustomers')}</li>
+              ) : (
+                filteredCustomers.map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      data-testid={`pos-customer-${row.id}`}
+                      onClick={() => {
+                        setCustomer(row);
+                        setCustomerOpen(false);
+                        setCustomerQuery('');
+                      }}
+                    >
+                      {row.name}
+                      {row.email ? <span>{row.email}</span> : null}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+            <button type="button" data-testid="pos-customer-cancel" onClick={() => setCustomerOpen(false)}>
+              {t('register.facturaCancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {facturaOpen ? (
+        <div className="pos-void-overlay" data-testid="pos-factura-modal" role="dialog" aria-modal="true">
+          <div className="pos-void-card">
+            <h1>{t('register.facturaTitle')}</h1>
+            <label>
+              {t('register.facturaRfc')}
+              <input
+                data-testid="pos-factura-rfc"
+                value={facturaRfc}
+                autoCapitalize="characters"
+                onChange={(event) => setFacturaRfc(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('register.facturaUso')}
+              <select
+                data-testid="pos-factura-uso"
+                value={facturaUso}
+                onChange={(event) => setFacturaUso(event.target.value as (typeof CFDI_USOS)[number]['code'])}
+              >
+                {CFDI_USOS.map((uso) => (
+                  <option key={uso.code} value={uso.code}>
+                    {uso.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="pos-void-actions">
+              <button type="button" data-testid="pos-factura-cancel" onClick={() => setFacturaOpen(false)}>
+                {t('register.facturaCancel')}
+              </button>
+              <button
+                type="button"
+                data-testid="pos-factura-save"
+                disabled={facturaRfc.trim().length < 12}
+                onClick={() => {
+                  setFacturaSaved(true);
+                  setFacturaOpen(false);
+                }}
+              >
+                {t('register.facturaSave')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <VoidConfirmModal
         open={voidOpen}

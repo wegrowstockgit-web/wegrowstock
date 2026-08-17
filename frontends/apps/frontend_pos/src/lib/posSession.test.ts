@@ -33,6 +33,8 @@ describe('pos session', () => {
         currencySource: 'WMS',
         placeCurrency: 'MXN',
         taxRegionHint: 'MX',
+        tenantBaseCurrency: 'EUR',
+        liveExchangeRate: 18.5,
         companyName: 'Demo',
       },
       place,
@@ -41,6 +43,8 @@ describe('pos session', () => {
     expect(enabled.currency).toBe('EUR');
     expect(enabled.placeCurrency).toBe('MXN');
     expect(enabled.taxRegion).toBe('MX');
+    expect(enabled.tenantBaseCurrency).toBe('EUR');
+    expect(enabled.liveExchangeRate).toBe(18.5);
 
     const locked = applySessionDto(
       {

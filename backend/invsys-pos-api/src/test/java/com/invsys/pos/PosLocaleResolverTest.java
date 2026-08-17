@@ -29,11 +29,13 @@ class PosLocaleResolverTest {
     }
 
     @Test
-    void resolveCurrency_wmsWinsOverPlace() {
-        assertThat(PosLocaleResolver.resolveCurrency("EUR", "MXN")).isEqualTo("EUR");
+    void resolveCurrency_placeWinsForDisplay() {
+        assertThat(PosLocaleResolver.resolveCurrency("EUR", "MXN")).isEqualTo("MXN");
+        assertThat(PosLocaleResolver.resolveDisplayCurrency("MXN", "EUR")).isEqualTo("MXN");
         assertThat(PosLocaleResolver.resolveCurrency(null, "gbp")).isEqualTo("GBP");
         assertThat(PosLocaleResolver.resolveCurrency("nope", null)).isEqualTo("USD");
-        assertThat(PosLocaleResolver.currencySource("USD", "MXN")).isEqualTo("WMS");
+        assertThat(PosLocaleResolver.currencySource("USD", "MXN")).isEqualTo("PLACE");
+        assertThat(PosLocaleResolver.displayCurrencySource(null, "USD")).isEqualTo("WMS");
         assertThat(PosLocaleResolver.currencySource(null, "MXN")).isEqualTo("PLACE");
         assertThat(PosLocaleResolver.currencySource("12", "nope")).isEqualTo("DEFAULT");
         assertThat(PosLocaleResolver.normalizeCurrency("mxn")).isEqualTo("MXN");

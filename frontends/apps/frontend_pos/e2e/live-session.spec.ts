@@ -19,7 +19,13 @@ test('signed-in register reads POS entitlement, language, and currency from WMS'
   await page.goto('/login');
   await page.getByTestId('pos-login-email').fill('owner@demo.test');
   await page.getByTestId('pos-login-password').fill('password123');
-  await page.getByRole('button', { name: /open register|abrir caja|ouvrir la caisse/i }).click();
+  await page.getByRole('button', { name: /sign in|iniciar sesión|connexion/i }).click();
+
+  await expect(page.getByTestId('pos-pin-gate')).toBeVisible();
+  await page.getByTestId('scanner-pin-digit-1').click();
+  await page.getByTestId('scanner-pin-digit-2').click();
+  await page.getByTestId('scanner-pin-digit-3').click();
+  await page.getByTestId('scanner-pin-digit-4').click();
 
   await expect(page.getByTestId('register-page')).toBeVisible();
   const locked = page.getByTestId('pos-locked');
@@ -35,6 +41,10 @@ test('signed-in register reads POS entitlement, language, and currency from WMS'
     expect(body).toHaveProperty('posEnabled');
     expect(['en', 'es', 'fr']).toContain(body.language);
     expect(String(body.currency)).toMatch(/^[A-Z]{3}$/);
+    if (body.tenantBaseCurrency != null) {
+      expect(String(body.tenantBaseCurrency)).toMatch(/^[A-Z]{3}$/);
+      expect(body.liveExchangeRate).toBeTruthy();
+    }
     if (body.posEnabled) {
       await expect(search).toBeVisible();
       await expect(page.getByTestId('pos-grand-total')).toBeVisible();

@@ -16,7 +16,7 @@ You will use three kinds of screens:
 |---------|-----|----------------|
 | **Office** | Owners, admins, managers, viewers | Laptop / desktop browser |
 | **Warehouse floor** | Pickers, warehouse managers on the dock | Phone, tablet, or rugged scanner |
-| **Retail POS** | Store cashiers (Enterprise addon) | Touch register — `http://localhost:3003`. Language follows **Organization → Company preferences** (English / Español / Français). Money follows the workspace base currency; the register also detects where it was opened for tax and a local-currency hint. If Retail POS is not on the tenant or tier, the register stays locked. |
+| **Retail POS** | Store cashiers (Enterprise addon) | Touch register — `http://localhost:3003`. Language follows **Organization → Company preferences** (English / Español / Français). Receipt header/footer, default register currency (USD or MXN), Mexican CFDI 4.0, and blind shift closeout are set by an Owner or Admin under **Organization → Retail POS** (`/settings?tab=retailPos`). That tab appears only when the workspace has the Retail POS addon. If the addon is off, the register stays locked. |
 | **B2B showroom** | Your wholesale customers | Browser (catalog + checkout only) |
 | **Super Admin portal** | InvSys platform operators only | Laptop — `http://localhost:3002` (`admin.invsys.com`) |
 
@@ -101,6 +101,16 @@ Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emai
 4. Invitee opens the email link (`/invite/...`), sets a password, and joins with **all** the roles you picked. You can change a person's roles later from the same Users list — each role shows as its own badge.
 
 > Even when someone holds both office and register roles (e.g. Warehouse Manager + Retail Cashier), each sign-in is locked to the app it started in: a POS register session can't call office APIs and vice versa.
+
+### 3a. Configure Retail POS (addon)
+
+If your plan includes **Retail POS**, an Owner or Admin opens **Admin → Organization → Retail POS** and sets:
+
+- **Localization & Compliance** — default currency (USD or MXN) and **Enable CFDI 4.0 Facturación (Mexico)**
+- **Receipt Configuration** — header (store name, address, tax ID) and footer (return policy, thank-you)
+- **Security & Loss Prevention** — **Require Blind Closeout at Shift End** (cashiers count the drawer without seeing the expected total)
+
+Warehouse managers and other floor roles cannot open Organization settings. Tenants without the addon never see the tab.
 
 ### 4. Secure the scanners (PIN)
 
@@ -214,7 +224,7 @@ Pinned columns (usually **SKU** and **Name**) stay visible when you scroll sidew
 | **Returns** | Approve RMAs; floor receives dispositions |
 | **Reports** | Profit, COGS, inventory analytics (**Admin**) |
 | **RTLS map** | Live tag map when enabled (**Admin**) |
-| **Organization / Settings** | Warehouses, inventory rules, users, integrations, documents, SSO |
+| **Organization / Settings** | Warehouses, inventory rules, users, integrations, documents, SSO, and **Retail POS** (addon: receipts, USD/MXN, CFDI, blind closeout) |
 
 ### Guided tour & support assistant (optional)
 

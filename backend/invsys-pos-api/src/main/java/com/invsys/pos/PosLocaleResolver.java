@@ -7,9 +7,10 @@ import java.util.Locale;
  * Resolves POS language and currency from WMS organization settings, the cashier
  * profile, and the place the register is opened (browser locale / timezone).
  *
- * <p>When Retail POS is entitled, WMS organization language and base currency win.
- * Place detection still drives tax-region hints and is the fallback when WMS
- * has not configured a value.
+ * <p>When Retail POS is entitled, WMS organization language still wins. Display
+ * currency follows the register place (Mexico → MXN + IVA, USA → USD). The WMS
+ * {@code currency} setting is returned separately as {@code tenantBaseCurrency}
+ * with a live FX quote to the display currency.
  */
 public final class PosLocaleResolver {
 
@@ -73,27 +74,35 @@ public final class PosLocaleResolver {
     }
 
     /**
-     * WMS company currency is authoritative. Place currency is only used when
-     * the workspace has not configured one.
+     * WMS company currency is the tenant base (books). Display currency prefers
+     * the register place (Mexico → MXN, USA → USD).
      */
     public static String resolveCurrency(String wms, String place) {
-        String configured = normalizeCurrency(wms);
-        if (configured != null) {
-            return configured;
-        }
+        return resolveDisplayCurrency(place, wms);
+    }
+
+    public static String resolveDisplayCurrency(String place, String wms) {
         String detected = normalizeCurrency(place);
         if (detected != null) {
             return detected;
+        }
+        String configured = normalizeCurrency(wms);
+        if (configured != null) {
+            return configured;
         }
         return DEFAULT_CURRENCY;
     }
 
     public static String currencySource(String wms, String place) {
-        if (normalizeCurrency(wms) != null) {
-            return "WMS";
-        }
+        return displayCurrencySource(place, wms);
+    }
+
+    public static String displayCurrencySource(String place, String wms) {
         if (normalizeCurrency(place) != null) {
             return "PLACE";
+        }
+        if (normalizeCurrency(wms) != null) {
+            return "WMS";
         }
         return "DEFAULT";
     }

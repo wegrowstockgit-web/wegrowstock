@@ -1,9 +1,9 @@
 package com.invsys.service;
 
+import com.invsys.mail.TenantMailSender;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -17,16 +17,13 @@ public class InvitationEmailService {
 
     private static final Logger log = LoggerFactory.getLogger(InvitationEmailService.class);
 
-    private final JavaMailSender mailSender;
-    private final String fromAddress;
+    private final TenantMailSender tenantMailSender;
     private final String frontendUrl;
 
     public InvitationEmailService(
-            ObjectProvider<JavaMailSender> mailSenderProvider,
-            @Value("${invsys.alerts.from-email:noreply@invsys.local}") String fromAddress,
+            TenantMailSender tenantMailSender,
             @Value("${invsys.frontend-url:http://localhost:3000}") String frontendUrl) {
-        this.mailSender = mailSenderProvider.getIfAvailable();
-        this.fromAddress = fromAddress;
+        this.tenantMailSender = tenantMailSender;
         this.frontendUrl = frontendUrl.endsWith("/")
                 ? frontendUrl.substring(0, frontendUrl.length() - 1)
                 : frontendUrl;
@@ -91,14 +88,15 @@ public class InvitationEmailService {
             return false;
         }
         String html = renderActionHtml(actionUrl, heading, body, cta, expiryNote);
+        JavaMailSender mailSender = tenantMailSender.current();
         if (mailSender == null) {
-            log.info("SMTP not configured — email accepted for {} ({})", redactEmail(toEmail), subject);
-            return true;
+            log.warn("SMTP not configured — email not sent to {} ({})", redactEmail(toEmail), subject);
+            return false;
         }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress);
+            helper.setFrom(tenantMailSender.fromAddress());
             helper.setTo(toEmail.trim());
             helper.setSubject(subject);
             helper.setText(plainTextFallback(actionUrl, body, expiryNote), html);

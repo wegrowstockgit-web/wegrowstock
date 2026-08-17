@@ -49,5 +49,10 @@ class JwtAppContextClaimTest {
 
         String legacy = jwtService.generateAccessToken(userId, tenantId, List.of("OWNER"), List.of());
         assertThat(jwtService.extractAppContext(legacy)).isNull();
+        assertThat(jwtService.extractMfaVerified(legacy)).isFalse();
+
+        String mfa = jwtService.generateAccessToken(userId, tenantId, List.of("OWNER"), List.of(), "WMS", true);
+        assertThat(jwtService.extractMfaVerified(mfa)).isTrue();
+        assertThat(jwtService.validateAndParse(mfa).getClaim(JwtService.CLAIM_MFA_VERIFIED)).isEqualTo(true);
     }
 }

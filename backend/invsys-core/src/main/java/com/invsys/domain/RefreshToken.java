@@ -30,6 +30,9 @@ public class RefreshToken extends TenantScopedEntity {
     @Column(name = "app_context", length = 16)
     private String appContext;
 
+    @Column(name = "mfa_verified", nullable = false)
+    private boolean mfaVerified;
+
     public UUID getUserId() {
         return userId;
     }
@@ -76,5 +79,13 @@ public class RefreshToken extends TenantScopedEntity {
 
     public void setAppContext(String appContext) {
         this.appContext = appContext;
+    }
+
+    public boolean isMfaVerified() {
+        return mfaVerified;
+    }
+
+    public void setMfaVerified(boolean mfaVerified) {
+        this.mfaVerified = mfaVerified;
     }
 }

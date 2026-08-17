@@ -1,19 +1,28 @@
 import { expect, test } from '@playwright/test';
+import { mockPosAuthApis, signInAndUnlockRegister } from './helpers';
 
 test('POS login posts targetApp POS for the cross-app gate', async ({ page }) => {
   const loginPosted = page.waitForRequest(
     (request) => request.url().includes('/api/v1/auth/login') && request.method() === 'POST',
   );
+  await mockPosAuthApis(page);
   await page.goto('/login');
   await page.getByTestId('pos-login-email').fill('owner@demo.test');
   await page.getByTestId('pos-login-password').fill('password123');
-  await page.getByRole('button', { name: /open register|abrir caja|ouvrir la caisse/i }).click();
+  await page.getByRole('button', { name: /sign in|iniciar sesión|connexion/i }).click();
   const request = await loginPosted;
   expect(request.postDataJSON().targetApp).toBe('POS');
 });
 
-test('tender writes a local outbox receipt and flashes next-customer', async ({ page }) => {
+test('unauthenticated / never mounts the register', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByTestId('pos-login')).toBeVisible();
+  await expect(page.getByTestId('register-page')).toHaveCount(0);
+});
+
+test('tender writes a local outbox receipt and flashes next-customer', async ({ page }) => {
+  await mockPosAuthApis(page);
+  await signInAndUnlockRegister(page);
   const search = page.getByTestId('pos-upc-search');
   await search.waitFor();
   await search.fill('7501234567890');
@@ -39,7 +48,8 @@ test('tender writes a local outbox receipt and flashes next-customer', async ({ 
 });
 
 test('line void and manager-PIN transaction void write the local audit trail', async ({ page }) => {
-  await page.goto('/');
+  await mockPosAuthApis(page);
+  await signInAndUnlockRegister(page);
   const search = page.getByTestId('pos-upc-search');
   await search.waitFor();
   await search.fill('7501234567890');
@@ -82,11 +92,10 @@ test('line void and manager-PIN transaction void write the local audit trail', a
 
 test('login and register stay usable on a phone viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/login');
-  await expect(page.getByTestId('pos-login')).toBeVisible();
-  await expect(page.getByTestId('pos-login-email')).toBeVisible();
-  await page.goto('/');
-  await expect(page.getByTestId('register-page')).toBeVisible();
+  await mockPosAuthApis(page);
+  await signInAndUnlockRegister(page);
   await expect(page.getByTestId('pos-upc-search')).toBeVisible();
   await expect(page.getByTestId('tender-exact')).toBeVisible();
+  await expect(page.getByTestId('pos-quick-tenders')).toBeVisible();
+  await expect(page.getByTestId('pos-add-customer')).toBeVisible();
 });

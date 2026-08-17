@@ -5,6 +5,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +31,11 @@ public class SettingsController {
     @PatchMapping
     public Map<String, Object> patchSettings(@RequestBody Map<String, Object> patch) {
         return settingsService.patchSettings(patch);
+    }
+
+    @PutMapping
+    public Map<String, Object> putSettings(@RequestBody Map<String, Object> body) {
+        return settingsService.patchSettings(body);
     }
 
     /** Force-invalidate Redis/local tenant settings cache after ops policy changes. */

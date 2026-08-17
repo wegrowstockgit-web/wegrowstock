@@ -14,7 +14,7 @@ describe('LoginPage', () => {
         <LoginPage />
       </MemoryRouter>,
     );
-    await user.click(screen.getByRole('button', { name: 'Open register' }));
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
     expect(fetchImpl).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
@@ -27,7 +27,7 @@ describe('LoginPage', () => {
         <LoginPage />
       </MemoryRouter>,
     );
-    await user.click(screen.getByRole('button', { name: 'Open register' }));
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
     expect(await screen.findByTestId('pos-login-error')).toHaveTextContent('Invalid email or password');
     vi.unstubAllGlobals();
   });

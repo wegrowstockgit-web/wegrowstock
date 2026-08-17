@@ -7,8 +7,10 @@ test.describe('i18n persistence and B2B/Mesh office navigation', () => {
     await expect(ownerPage.getByTestId('nav-mesh-network')).toBeVisible({ timeout: 15_000 });
 
     await ownerPage.getByTestId('nav-category-outbound').click();
-    await expect(ownerPage.getByTestId('nav-b2b-rfqs')).toBeVisible();
-    await expect(ownerPage.getByTestId('nav-b2b-customers')).toBeVisible();
+    await expect(ownerPage.getByRole('link', { name: 'Sales Orders', exact: true })).toBeVisible();
+    await expect(ownerPage.getByRole('link', { name: 'Customers', exact: true })).toBeVisible();
+    await expect(ownerPage.getByTestId('nav-b2b-rfqs')).toHaveCount(0);
+    await expect(ownerPage.getByTestId('nav-b2b-customers')).toHaveCount(0);
 
     await expect(ownerPage.locator('a[href^="/showroom"]')).toHaveCount(0);
 
@@ -16,15 +18,10 @@ test.describe('i18n persistence and B2B/Mesh office navigation', () => {
     await expect(ownerPage).toHaveURL(/\/mesh-network/, { timeout: 15_000 });
     await expect(ownerPage.getByTestId('mesh-network-page')).toBeVisible();
 
-    await ownerPage.getByTestId('nav-b2b-rfqs').click();
-    await expect(ownerPage).toHaveURL(/\/sales\/orders/, { timeout: 15_000 });
-
-    await ownerPage.getByTestId('nav-b2b-customers').click();
-    await expect(ownerPage).toHaveURL(/\/sales\/customers/, { timeout: 15_000 });
-    await expect(ownerPage.getByTestId('pending-applications-tab')).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await ownerPage.getByTestId('nav-category-outbound').click();
+    await ownerPage.getByRole('link', { name: 'Customers', exact: true }).click();
+    await expect(ownerPage).toHaveURL(/\/customers/, { timeout: 15_000 });
+    await expect(ownerPage.getByTestId('pending-applications-tab')).toBeVisible();
   });
 
   test('profile language change updates the whole UI without reload', async ({ ownerPage }) => {

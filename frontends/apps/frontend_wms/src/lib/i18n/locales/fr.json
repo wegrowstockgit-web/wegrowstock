@@ -906,6 +906,27 @@
           "0": "Les lignes mesh non mappées peuvent créer des commandes DRAFT d’exception."
         }
       },
+      "settings_tab_retailPos": {
+        "title": "Paramètres — PDV commerce",
+        "description": "Texte du ticket, devise de caisse, facturation CFDI et clôture à l’aveugle.",
+        "purpose": "Configurer l’add-on PDV — marque du ticket, devise, CFDI mexicain et clôture à l’aveugle.",
+        "markdown": "Réglez devise et CFDI, éditez l’en-tête et le pied, puis enregistrez. Les caissiers le prennent à la prochaine connexion.",
+        "dataOrigin": "Réglages PDV que vos administrateurs maintiennent.",
+        "flow": {
+          "0": "Choisissez la devise par défaut et si la facturation CFDI 4.0 est active.",
+          "1": "Modifiez l’en-tête et le pied imprimés à l’encaissement.",
+          "2": "Activez la clôture à l’aveugle si le caissier doit compter sans voir le total attendu.",
+          "3": "Enregistrez — la prochaine session PDV lit les réglages."
+        },
+        "reversals": {
+          "0": "Modifiez à nouveau et enregistrez ; le papier déjà imprimé n’est pas versionné.",
+          "1": "Désactiver le CFDI n’annule pas les factures déjà émises depuis la caisse."
+        },
+        "correlations": {
+          "0": "Seuls les locataires avec le module PDV voient cet onglet.",
+          "1": "La clôture à l’aveugle est une règle de caisse, distincte des inventaires à l’aveugle."
+        }
+      },
       "settings_tab_operations": {
         "title": "Paramètres — Opérations",
         "description": "Règles sol — réception à l’aveugle, limites d’ajustement, options scanner — plus le journal d’audit.",
@@ -1124,6 +1145,7 @@
       "warehouses": "Entrepôts",
       "inventory": "Règles d’inventaire",
       "documents": "Documents",
+      "retailPos": "PDV commerce",
       "security": "Sécurité et SSO",
       "reconciliation": "Rapprochement",
       "accounting": "Sync comptable",
@@ -1138,6 +1160,27 @@
       "integrationsHub": "Centre d’intégrations",
       "billing": "Facturation",
       "fintech": "Trésorerie et financement"
+    },
+    "retailPos": {
+      "localizationTitle": "Localisation et conformité",
+      "localizationDescription": "Devise de caisse et facturation CFDI mexicaine.",
+      "defaultCurrency": "Devise par défaut",
+      "enableCfdi": "Activer la facturation CFDI 4.0 (Mexique)",
+      "enableCfdiHint": "Les caissiers peuvent saisir le RFC et l’Uso de CFDI à l’encaissement.",
+      "receiptTitle": "Configuration du ticket",
+      "receiptDescription": "En-tête et pied imprimés sur chaque ticket PDV.",
+      "receiptHeader": "En-tête du ticket",
+      "receiptHeaderPlaceholder": "Nom du magasin, adresse, identifiant fiscal",
+      "receiptFooter": "Pied du ticket",
+      "receiptFooterPlaceholder": "Politique de retour, message de remerciement",
+      "securityTitle": "Sécurité et prévention des pertes",
+      "securityDescription": "Contrôles de fin de vacation qui réduisent les écarts de caisse.",
+      "blindCloseout": "Exiger une clôture à l’aveugle en fin de vacation",
+      "blindCloseoutHint": "Le caissier compte l’espèce sans voir le total attendu du tiroir.",
+      "save": "Enregistrer les réglages PDV",
+      "saved": "Réglages PDV enregistrés",
+      "saveFailed": "Impossible d’enregistrer les réglages PDV",
+      "loading": "Chargement…"
     }
   },
   "mesh": {

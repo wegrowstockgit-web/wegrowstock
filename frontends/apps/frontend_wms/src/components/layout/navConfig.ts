@@ -12,7 +12,6 @@ import {
   FileSpreadsheet,
   GitCommit,
   HardDrive,
-  Inbox,
   Layers,
   LayoutDashboard,
   ListOrdered,
@@ -26,7 +25,6 @@ import {
   SlidersHorizontal,
   Truck,
   UploadCloud,
-  UserPlus,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -60,7 +58,8 @@ export type NavSoloConfig = NavLeafConfig & { id: string };
  * Nested navigation matrix — every category + leaf icon is unique.
  *
  * Mesh Network is a top-level office item (not the buyer /showroom portal).
- * B2B RFQ + showroom onboarding live under Outbound and stay off /showroom.
+ * RFQ inbox and wholesale applications stay on Sales Orders / Customers
+ * (filter + tab), not as duplicate Outbound leaves.
  */
 export const NAV_MATRIX: {
   solos: NavSoloConfig[];
@@ -145,33 +144,11 @@ export const NAV_MATRIX: {
           tourAnchor: 'nav-sales-orders',
         },
         {
-          to: '/sales/orders',
-          label: 'RFQs',
-          labelKey: 'nav.salesOrdersRfq',
-          icon: Inbox,
-          roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
-          modules: ['B2B_SHOWROOM'],
-          hideForPicker: true,
-          hideForViewer: true,
-          testId: 'nav-b2b-rfqs',
-        },
-        {
           to: '/customers',
           label: 'Customers',
           labelKey: 'nav.customers',
           icon: Users,
           hideForPicker: true,
-        },
-        {
-          to: '/sales/customers',
-          label: 'Showroom onboarding',
-          labelKey: 'nav.showroomOnboarding',
-          icon: UserPlus,
-          roles: ['OWNER', 'ADMIN'],
-          modules: ['B2B_SHOWROOM'],
-          hideForPicker: true,
-          hideForViewer: true,
-          testId: 'nav-b2b-customers',
         },
         {
           to: '/invoices',

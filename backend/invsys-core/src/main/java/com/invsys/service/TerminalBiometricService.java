@@ -80,6 +80,41 @@ public class TerminalBiometricService {
                 "allowCredentials", List.of());
     }
 
+    @Transactional
+    public Map<String, Object> createLoginMfaChallenge(UUID userId) {
+        Map<String, Object> options = new java.util.LinkedHashMap<>(createAssertionOptions());
+        UUID tenantId = TenantContext.requireTenantId();
+        List<Map<String, String>> allow = credentialRepository.findByTenantIdAndUserId(tenantId, userId).stream()
+                .map(cred -> Map.of("type", "public-key", "id", cred.getCredentialId()))
+                .toList();
+        options.put("allowCredentials", allow);
+        options.put("userId", userId.toString());
+        return options;
+    }
+
+    @Transactional
+    public void verifyLoginMfa(UUID userId, String credentialId, String challenge, String signature) {
+        UUID tenantId = TenantContext.requireTenantId();
+        WebAuthnChallenge stored = challengeRepository.findByTenantIdAndChallenge(tenantId, challenge)
+                .orElse(null);
+        if (stored == null || stored.getConsumedAt() != null || stored.getExpiresAt().isBefore(Instant.now())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CHALLENGE",
+                    "Unknown or expired biometric challenge");
+        }
+        WebAuthnCredential cred = credentialRepository.findByTenantIdAndCredentialId(tenantId, credentialId)
+                .orElse(null);
+        if (cred == null
+                || !userId.equals(cred.getUserId())
+                || !verifyHmacSignature(challenge, credentialId, signature, cred.getCredentialSecretHash())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_ASSERTION",
+                    "Biometric assertion failed");
+        }
+        stored.setConsumedAt(Instant.now());
+        challengeRepository.save(stored);
+        cred.setSignCount(cred.getSignCount() + 1);
+        credentialRepository.save(cred);
+    }
+
     /**
      * Register a software passkey for a user (OWNER/ADMIN). Returns one-time secret for the authenticator.
      */

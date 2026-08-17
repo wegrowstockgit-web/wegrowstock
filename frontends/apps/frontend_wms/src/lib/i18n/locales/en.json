@@ -906,6 +906,27 @@
           "0": "Unmapped mesh lines may create DRAFT exception sales orders for review."
         }
       },
+      "settings_tab_retailPos": {
+        "title": "Settings — Retail POS",
+        "description": "Receipt copy, register currency, CFDI facturación, and blind closeout.",
+        "purpose": "Configure the Retail POS addon — receipt branding, default currency, Mexican CFDI, and shift-end blind closeout.",
+        "markdown": "Set currency and CFDI, edit receipt header and footer, then save. Cashiers pick up the rules on the next register login.",
+        "dataOrigin": "Tenant Retail POS settings your administrators maintain.",
+        "flow": {
+          "0": "Choose the register default currency and whether CFDI 4.0 invoicing is on.",
+          "1": "Edit the receipt header and footer printed at checkout.",
+          "2": "Toggle blind closeout if cashiers must count the drawer without seeing the expected total.",
+          "3": "Save — the next POS session reads the updated tenant settings."
+        },
+        "reversals": {
+          "0": "Edit the fields again and save; receipt text is not versioned on paper already printed.",
+          "1": "Turning off CFDI does not void invoices already issued from the register."
+        },
+        "correlations": {
+          "0": "Only tenants with the Retail POS module see this tab.",
+          "1": "Blind closeout is a register guardrail, separate from warehouse blind cycle counts."
+        }
+      },
       "settings_tab_operations": {
         "title": "Settings — Operations",
         "description": "Floor rules — blind receiving, adjustment limits, scanner options — plus the Audit Log.",
@@ -1124,6 +1145,7 @@
       "warehouses": "Warehouses",
       "inventory": "Inventory Rules",
       "documents": "Documents",
+      "retailPos": "Retail POS",
       "security": "Security & SSO",
       "reconciliation": "Reconciliation",
       "accounting": "Accounting Sync",
@@ -1138,6 +1160,27 @@
       "integrationsHub": "Integrations Hub",
       "billing": "Billing",
       "fintech": "Cash Flow & Financing"
+    },
+    "retailPos": {
+      "localizationTitle": "Localization & Compliance",
+      "localizationDescription": "Register currency and Mexican CFDI facturación.",
+      "defaultCurrency": "Default currency",
+      "enableCfdi": "Enable CFDI 4.0 Facturación (Mexico)",
+      "enableCfdiHint": "Cashiers can collect RFC and Uso de CFDI at checkout.",
+      "receiptTitle": "Receipt Configuration",
+      "receiptDescription": "Header and footer printed on every POS receipt.",
+      "receiptHeader": "Receipt header",
+      "receiptHeaderPlaceholder": "Store name, address, Tax ID",
+      "receiptFooter": "Receipt footer",
+      "receiptFooterPlaceholder": "Return policy, thank you message",
+      "securityTitle": "Security & Loss Prevention",
+      "securityDescription": "Shift-end controls that reduce till variance.",
+      "blindCloseout": "Require Blind Closeout at Shift End",
+      "blindCloseoutHint": "Cashiers enter counted cash without seeing the expected drawer total.",
+      "save": "Save POS settings",
+      "saved": "Retail POS settings saved",
+      "saveFailed": "Could not save Retail POS settings",
+      "loading": "Loading…"
     }
   },
   "mesh": {

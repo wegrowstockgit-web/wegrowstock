@@ -80,7 +80,7 @@ export async function syncManagerPinVault(
       tenantId?: string;
       managers?: ManagerPinRecord[];
     };
-    if (!body || !Array.isArray(body.managers)) return;
+    if (!body || !Array.isArray(body.managers) || body.managers.length === 0) return;
     cacheManagerPins(body.tenantId || fallbackTenantId || DEMO_TENANT_ID, body.managers);
   } catch {
     /* Keep the last morning-sync vault while the register is offline. */

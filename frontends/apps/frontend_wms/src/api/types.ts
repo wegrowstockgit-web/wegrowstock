@@ -31,6 +31,9 @@ export interface LoginRequest {
   email: string;
   password: string;
   targetApp?: 'WMS' | 'POS' | 'ADMIN';
+  mfaCredentialId?: string;
+  mfaChallenge?: string;
+  mfaSignature?: string;
 }
 
 /** Session metadata — JWTs are HttpOnly cookies only. */
@@ -1344,6 +1347,7 @@ export interface RmaQcInspection {
 export interface RoleDefinition {
   id: string;
   name: string;
+  networkAccessLevel?: 'STRICT_INTERNAL' | 'MFA_OUTSIDE_NETWORK' | 'ROAMING';
 }
 
 export interface RolePermissionGrant {
@@ -1356,4 +1360,5 @@ export interface RolePermissionsMatrixResponse {
   roles: RoleDefinition[];
   permissionKeys: string[];
   grants: RolePermissionGrant[];
+  allowedCidrBlocks?: string[];
 }

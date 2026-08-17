@@ -369,6 +369,7 @@ echo     API       http://localhost:8081
 echo     Host hint Host: admin.invsys.com on gateway :8081
 echo   Observability / data
 echo     Grafana   http://localhost:3001   ^(admin / admin^)
+echo     Mailpit   http://localhost:8025   ^(SMTP 1025, demo tenant only^)
 echo     Postgres  localhost:5432
 echo     PgBouncer localhost:6432
 exit /b 0

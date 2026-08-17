@@ -32,4 +32,21 @@ public class CurrencyService {
                         "No exchange rate for " + from + " to " + to));
         return amount.divide(inverse.getRate(), 4, RoundingMode.HALF_UP);
     }
+
+    /**
+     * Live FX for POS display. Same-currency or missing rates return {@code 1}
+     * so a register never fails bootstrap.
+     */
+    public BigDecimal quoteOrOne(String from, String to) {
+        String src = from == null ? "" : from.trim().toUpperCase();
+        String dst = to == null ? "" : to.trim().toUpperCase();
+        if (src.isEmpty() || dst.isEmpty() || src.equals(dst)) {
+            return BigDecimal.ONE;
+        }
+        try {
+            return convert(BigDecimal.ONE, src, dst);
+        } catch (RuntimeException ex) {
+            return BigDecimal.ONE;
+        }
+    }
 }

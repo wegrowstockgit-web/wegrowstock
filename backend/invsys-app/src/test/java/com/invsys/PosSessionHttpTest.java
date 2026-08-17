@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,7 +41,7 @@ class PosSessionHttpTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void session_returnsOrganizationLanguageAndWmsCurrencyWhenPosEnabled() throws Exception {
+    void session_returnsOrganizationLanguageAndPlaceDisplayCurrencyWhenPosEnabled() throws Exception {
         TokenResponse owner = signup("pos-cfg");
 
         mockMvc.perform(patch("/api/v1/settings")
@@ -62,8 +63,10 @@ class PosSessionHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.module").value("RETAIL_POS"))
                 .andExpect(jsonPath("$.language").value("es"))
                 .andExpect(jsonPath("$.languageSource").value("ORGANIZATION"))
-                .andExpect(jsonPath("$.currency").value("EUR"))
-                .andExpect(jsonPath("$.currencySource").value("WMS"))
+                .andExpect(jsonPath("$.currency").value("MXN"))
+                .andExpect(jsonPath("$.currencySource").value("PLACE"))
+                .andExpect(jsonPath("$.tenantBaseCurrency").value("EUR"))
+                .andExpect(jsonPath("$.liveExchangeRate").value(1))
                 .andExpect(jsonPath("$.placeCurrency").value("MXN"))
                 .andExpect(jsonPath("$.taxRegionHint").value("MX"))
                 .andExpect(jsonPath("$.companyName").value("POS Co"))
@@ -118,6 +121,25 @@ class PosSessionHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.languageSource").value("PLACE"))
                 .andExpect(jsonPath("$.currency").value("MXN"))
                 .andExpect(jsonPath("$.currencySource").value("PLACE"));
+    }
+
+    @Test
+    void posCustomers_listsCrmProfilesForTheCashier() throws Exception {
+        TokenResponse owner = signup("pos-crm");
+
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Walk-in Club","email":"club@demo.test"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/pos/customers")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Walk-in Club"))
+                .andExpect(jsonPath("$[0].email").value("club@demo.test"));
     }
 
     private TokenResponse signup(String prefix) {

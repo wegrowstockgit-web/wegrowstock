@@ -1,5 +1,6 @@
 package com.invsys.pos.dto;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public record PosSessionResponse(
@@ -17,6 +18,8 @@ public record PosSessionResponse(
         String timezone,
         String companyName,
         UUID cashierId,
-        UUID tenantId
+        UUID tenantId,
+        String tenantBaseCurrency,
+        BigDecimal liveExchangeRate
 ) {
 }
