@@ -2,6 +2,8 @@
 
 Multi-tenant Inventory / WMS / Supply-Chain B2B SaaS with append-only inventory ledger, PostgreSQL Row-Level Security, office + warehouse surfaces, B2B showroom portal, manufacturing, embedded payments/fintech, and offline-capable floor scanning.
 
+**Docs:** [`usermanual.md`](usermanual.md) for everyday users with no warehouse background · [`USER_GUIDE.md`](USER_GUIDE.md) for operators (setup, migration, floor) · [`PRODUCT.md`](PRODUCT.md) for product intent.
+
 ## Quick Start
 
 ### Prerequisites
@@ -341,6 +343,8 @@ InventorySystem/
 ├── docker-compose.yml            # db + both APIs + WMS/admin/POS UIs + gateway + LGTM
 ├── deploy.bat
 ├── deploy.sh
+├── usermanual.md             # Everyday users (no warehouse background)
+├── USER_GUIDE.md             # Operators: setup, migration, floor workflows
 ├── DATABASE_GUIDE.md
 ├── DEVELOPER_ARCHITECTURE.md
 ├── PRODUCT.md
