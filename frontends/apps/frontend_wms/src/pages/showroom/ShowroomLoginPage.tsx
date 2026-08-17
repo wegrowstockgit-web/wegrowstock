@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useSessionStore } from '@/stores/session';
+import { claimMagicLinkToken } from '@/lib/magicLinkConsume';
 
 interface MeResponse {
   userId: string;
@@ -46,7 +47,15 @@ export function ShowroomLoginPage() {
       }
       navigate('/showroom/catalog', { replace: true });
     },
-    onError: () => setError('Magic link expired or already used.'),
+    onError: async () => {
+      try {
+        const me = await apiClient.get<MeResponse>('/api/v1/auth/me');
+        applyMeProfile(me.data);
+        navigate('/showroom/catalog', { replace: true });
+      } catch {
+        setError('Magic link expired or already used.');
+      }
+    },
   });
 
   const requestMutation = useMutation({
@@ -60,9 +69,12 @@ export function ShowroomLoginPage() {
 
   useEffect(() => {
     const token = searchParams.get('magic');
-    if (token) {
-      consumeMutation.mutate(token);
-    }
+    if (!claimMagicLinkToken(token)) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('magic');
+    const qs = next.toString();
+    navigate({ pathname: '/showroom/login', search: qs ? `?${qs}` : '' }, { replace: true });
+    consumeMutation.mutate(token as string);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

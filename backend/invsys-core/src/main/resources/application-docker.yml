@@ -18,6 +18,12 @@ spring:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
       timeout: 2s
+  mail:
+    host: ${MAIL_HOST:mailpit}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail.smtp.auth: "false"
+      mail.smtp.starttls.enable: "false"
 
 management:
   endpoints:
@@ -30,6 +36,9 @@ management:
       show-details: when_authorized
       show-components: when_authorized
     prometheus:
+      enabled: true
+  health:
+    mail:
       enabled: true
   # Metrics stay on Prometheus scrape; Tempo is traces-only in this stack.
   otlp:

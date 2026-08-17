@@ -1,38 +1,53 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { ClipboardList } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { AuditLogItem, AuditTenantPage } from '@/api/types';
-import { Card, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
-  VirtualizedTable,
-  type VirtualizedColumnDef,
-} from '@/components/ui/primitives/VirtualizedTable';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
+import { cn } from '@/lib/utils';
+import {
+  actorLabel,
+  auditFieldChanges,
+  formatActionLabel,
+  formatEntityLabel,
+  summarizeAuditDiff,
+} from './auditDiffCopy';
 
 const ENTITY_FILTERS = [
-  '',
-  'USER',
-  'USERS',
-  'INVITATION',
-  'TENANT_SETTINGS',
-  'USER_ROLES',
-  'USER_WAREHOUSES',
+  { value: 'USER', label: 'User' },
+  { value: 'USERS', label: 'Users' },
+  { value: 'INVITATION', label: 'Invitation' },
+  { value: 'TENANT_SETTINGS', label: 'Workspace settings' },
+  { value: 'USER_ROLES', label: 'User role' },
+  { value: 'USER_WAREHOUSES', label: 'Warehouse access' },
 ];
 
 const ACTION_FILTERS = [
-  '',
-  'UPDATE_USER',
-  'INVITE_USER',
-  'RESEND_INVITATION',
-  'DEACTIVATE_USER',
-  'TG_INSERT',
-  'TG_UPDATE',
-  'TG_DELETE',
-  'USER_INVITE',
-  'USER_ORG_UPDATE',
+  { value: 'UPDATE_USER', label: 'Updated user' },
+  { value: 'INVITE_USER', label: 'Sent invitation' },
+  { value: 'RESEND_INVITATION', label: 'Resent invitation' },
+  { value: 'DEACTIVATE_USER', label: 'Deactivated user' },
+  { value: 'TG_INSERT', label: 'Created' },
+  { value: 'TG_UPDATE', label: 'Updated' },
+  { value: 'TG_DELETE', label: 'Deleted' },
+  { value: 'USER_INVITE', label: 'Sent invitation' },
+  { value: 'USER_ORG_UPDATE', label: 'Updated access' },
+  { value: 'POS_LINE_VOID', label: 'Voided register line' },
 ];
 
 function formatWhen(iso?: string): string {
@@ -44,32 +59,17 @@ function formatWhen(iso?: string): string {
   }
 }
 
-function actorLabel(row: AuditLogItem): string {
-  return row.actorDisplayName || row.actorEmail || row.actorUserId?.slice(0, 8) || '—';
-}
-
-function DiffCell({ diff }: { diff: Record<string, unknown> }) {
-  const [open, setOpen] = useState(false);
-  const preview = JSON.stringify(diff);
+function ActionBadge({ action }: { action: string }) {
+  const tone =
+    action.includes('DELETE') || action.includes('DEACTIVATE') || action.includes('VOID')
+      ? 'bg-danger/10 text-danger'
+      : action.includes('INSERT') || action.includes('INVITE')
+        ? 'bg-success/10 text-success'
+        : 'bg-accent-muted text-accent';
   return (
-    <div className="max-w-md">
-      <button
-        type="button"
-        className="w-full truncate text-left font-mono text-xs text-text-muted hover:text-text"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-        title={preview}
-      >
-        {open ? 'Hide JSON' : preview.slice(0, 80) + (preview.length > 80 ? '…' : '')}
-      </button>
-      {open && (
-        <pre className="mt-1 max-h-40 overflow-auto rounded border border-border bg-surface-overlay/50 p-2 text-[11px] text-text">
-          {JSON.stringify(diff, null, 2)}
-        </pre>
-      )}
-    </div>
+    <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-semibold', tone)}>
+      {formatActionLabel(action)}
+    </span>
   );
 }
 
@@ -79,6 +79,7 @@ function DiffCell({ diff }: { diff: Record<string, unknown> }) {
 export function AuditLogTable() {
   const [entityType, setEntityType] = useState('');
   const [action, setAction] = useState('');
+  const [selected, setSelected] = useState<AuditLogItem | null>(null);
   const {
     inputValue: actorInput,
     deferredValue: actorFilter,
@@ -112,136 +113,175 @@ export function AuditLogTable() {
     return all.filter((row) => actorLabel(row).toLowerCase().includes(q));
   }, [query.data?.pages, actorFilter]);
 
-  const onEndReached = useCallback(() => {
-    if (query.hasNextPage && !query.isFetchingNextPage) {
-      void query.fetchNextPage();
-    }
-  }, [query]);
-
-  const columns = useMemo<VirtualizedColumnDef<AuditLogItem>[]>(
-    () => [
-      {
-        id: 'timestamp',
-        header: 'Timestamp',
-        width: 170,
-        sortable: true,
-        sortValue: (r) => r.createdAt ?? '',
-        cell: (r) => <span className="text-sm tabular-nums">{formatWhen(r.createdAt)}</span>,
-      },
-      {
-        id: 'actor',
-        header: 'Actor',
-        width: 180,
-        flexGrow: true,
-        cell: (r) => <span className="text-sm">{actorLabel(r)}</span>,
-      },
-      {
-        id: 'action',
-        header: 'Action',
-        width: 150,
-        cell: (r) => (
-          <span className="rounded bg-accent-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent">
-            {r.action}
-          </span>
-        ),
-      },
-      {
-        id: 'entityType',
-        header: 'Entity Type',
-        width: 140,
-        cell: (r) => <span className="font-mono text-xs">{r.entityType}</span>,
-      },
-      {
-        id: 'entityId',
-        header: 'Entity ID',
-        width: 120,
-        cell: (r) => (
-          <span className="font-mono text-xs text-text-muted" title={r.entityId}>
-            {r.entityId.slice(0, 8)}…
-          </span>
-        ),
-      },
-      {
-        id: 'diff',
-        header: 'Changes (Diff)',
-        width: 280,
-        flexGrow: true,
-        cell: (r) => <DiffCell diff={r.diff ?? {}} />,
-      },
-    ],
-    [],
-  );
+  const selectedChanges = selected ? auditFieldChanges(selected.diff) : [];
 
   return (
-    <Card data-testid="audit-log-table">
-      <CardHeader
-        title="Compliance audit log"
-        description="Tenant-wide append-only trail — filter by entity type and action"
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Input
-              aria-label="Filter by actor"
-              value={actorInput}
-              onChange={(e) => setActorInput(e.target.value)}
-              placeholder="Filter by actor..."
-              className="min-w-[10rem] max-w-[14rem]"
-              aria-busy={actorPending || undefined}
-              data-testid="audit-filter-actor"
-            />
-            <Select
-              aria-label="Filter entity type"
-              value={entityType}
-              onChange={(e) => {
-                const next = e.target.value;
-                startTransition(() => setEntityType(next));
-              }}
-              data-testid="audit-filter-entity-type"
-              className="min-w-[10rem]"
-            >
-              <option value="">All entity types</option>
-              {ENTITY_FILTERS.filter(Boolean).map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label="Filter action"
-              value={action}
-              onChange={(e) => {
-                const next = e.target.value;
-                startTransition(() => setAction(next));
-              }}
-              data-testid="audit-filter-action"
-              className="min-w-[10rem]"
-            >
-              <option value="">All actions</option>
-              {ACTION_FILTERS.filter(Boolean).map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </div>
-        }
-      />
+    <Card padding="none" className="min-w-0 overflow-hidden" data-testid="audit-log-table">
+      <div className="space-y-4 px-6 pt-6 pb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-text">Compliance audit log</h3>
+          <p className="mt-1 text-sm text-text-muted">
+            Who changed what, in plain language. Click a row for the full before-and-after.
+          </p>
+        </div>
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <Input
+            aria-label="Filter by actor"
+            value={actorInput}
+            onChange={(e) => setActorInput(e.target.value)}
+            placeholder="Filter by person..."
+            className="w-full min-w-[10rem] sm:w-auto sm:max-w-[16rem]"
+            aria-busy={actorPending || undefined}
+            data-testid="audit-filter-actor"
+          />
+          <Select
+            aria-label="Filter entity type"
+            value={entityType}
+            onChange={(e) => {
+              const next = e.target.value;
+              startTransition(() => setEntityType(next));
+            }}
+            data-testid="audit-filter-entity-type"
+            className="min-w-[10rem] flex-1 sm:flex-none"
+          >
+            <option value="">All records</option>
+            {ENTITY_FILTERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label="Filter action"
+            value={action}
+            onChange={(e) => {
+              const next = e.target.value;
+              startTransition(() => setAction(next));
+            }}
+            data-testid="audit-filter-action"
+            className="min-w-[10rem] flex-1 sm:flex-none"
+          >
+            <option value="">All actions</option>
+            {ACTION_FILTERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
       {query.isLoading ? (
-        <TableSkeleton rows={8} cols={6} />
-      ) : (
-        <div className="h-[420px]" data-testid="audit-log-grid">
-          <VirtualizedTable
-            gridId="audit-compliance"
-            columns={columns}
-            rows={rows}
-            getRowId={(r) => r.id}
-            onEndReached={onEndReached}
-            empty={<p className="p-4 text-sm text-text-muted">No audit entries match these filters.</p>}
+        <div className="px-6 pb-6">
+          <TableSkeleton rows={8} cols={5} />
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="px-6 pb-6">
+          <EmptyState
+            icon={ClipboardList}
+            title="No matching activity"
+            description="Try clearing the person, record, or action filters."
           />
         </div>
+      ) : (
+        <div className="min-w-0 overflow-x-auto" data-testid="audit-log-grid">
+          <Table className="min-w-[52rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Timestamp</TableHead>
+                <TableHead>Actor</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Entity Type</TableHead>
+                <TableHead>Entity ID</TableHead>
+                <TableHead>Changes (Diff)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className="h-auto min-h-11 align-top"
+                  onClick={() => setSelected(row)}
+                  selected={selected?.id === row.id}
+                  data-testid={`audit-row-${row.id}`}
+                >
+                  <TableCell className="whitespace-nowrap text-sm tabular-nums text-text-muted">
+                    {formatWhen(row.createdAt)}
+                  </TableCell>
+                  <TableCell className="text-sm text-text">{actorLabel(row)}</TableCell>
+                  <TableCell>
+                    <ActionBadge action={row.action} />
+                  </TableCell>
+                  <TableCell className="text-sm text-text">{formatEntityLabel(row.entityType)}</TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs text-text-muted" title={row.entityId}>
+                      {row.entityId.slice(0, 8)}…
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-sm">
+                    <p className="text-sm leading-5 text-text">{summarizeAuditDiff(row.diff, row.action)}</p>
+                    <p className="mt-0.5 text-xs text-text-muted">View details</p>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
-      {query.isFetchingNextPage && (
-        <p className="px-3 py-2 text-xs text-text-muted">Loading more…</p>
+
+      {query.hasNextPage && (
+        <div className="flex justify-center border-t border-border px-6 py-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
+            Load more activity
+          </Button>
+        </div>
       )}
+
+      <RightPeekDrawer
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title={selected ? formatActionLabel(selected.action) : 'Change details'}
+        description={
+          selected
+            ? `${actorLabel(selected)} · ${formatEntityLabel(selected.entityType)} · ${formatWhen(selected.createdAt)}`
+            : undefined
+        }
+        width="md"
+      >
+        {selected && (
+          <div className="space-y-5" data-testid="audit-diff-detail">
+            <p className="text-sm text-text">{summarizeAuditDiff(selected.diff, selected.action)}</p>
+            {selectedChanges.length > 0 ? (
+              <dl className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                {selectedChanges.map((change) => (
+                  <div key={change.field} className="grid grid-cols-[8rem_1fr] gap-3 px-3 py-2.5 sm:grid-cols-[10rem_1fr]">
+                    <dt className="text-xs font-medium text-text-muted">{change.field}</dt>
+                    <dd className="text-sm text-text">
+                      {change.from && change.to ? (
+                        <>
+                          <span className="text-text-muted line-through">{change.from}</span>
+                          <span className="mx-1.5 text-text-muted">→</span>
+                          <span>{change.to}</span>
+                        </>
+                      ) : (
+                        change.to ?? change.from ?? '—'
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-sm text-text-muted">No field-level details for this event.</p>
+            )}
+            <p className="text-xs text-text-muted">Record ID {selected.entityId}</p>
+          </div>
+        )}
+      </RightPeekDrawer>
     </Card>
   );
 }

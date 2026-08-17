@@ -91,6 +91,9 @@ management:
   health:
     db:
       enabled: true
+    # Prod/base: SMTP must not fail readiness. Dev/docker profiles enable this against Mailpit.
+    mail:
+      enabled: false
   tracing:
     sampling:
       probability: ${TRACING_SAMPLE_PROBABILITY:1.0}

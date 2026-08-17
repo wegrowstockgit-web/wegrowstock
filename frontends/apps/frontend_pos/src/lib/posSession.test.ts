@@ -72,7 +72,17 @@ describe('pos session', () => {
       place,
     );
     expect(unauthorized.posEnabled).toBeNull();
+    expect(unauthorized.cashierId).toBe('');
+    expect(readCachedSession()).toBeNull();
     expect(defaultSessionState().posEnabled).toBeNull();
+
+    writeCachedSession(demoSession({ companyName: 'WmsCookie' }));
+    const forbidden = await fetchPosSession(
+      vi.fn().mockResolvedValue({ status: 403, ok: false }),
+      place,
+    );
+    expect(forbidden.posEnabled).toBeNull();
+    expect(readCachedSession()).toBeNull();
 
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

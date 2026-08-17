@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PosSessionProvider, usePosSession } from './PosSessionContext';
-import { demoSession } from './posSession';
+import { demoSession, writeCachedSession } from './posSession';
 
 function Probe() {
   const { session, t, isAuthenticated, hydrated } = usePosSession();
@@ -29,7 +29,21 @@ describe('PosSessionProvider', () => {
     expect(screen.getByTestId('probe-hydrated')).toHaveTextContent('true');
   });
 
+  it('does not call the session API for a guest', async () => {
+    const fetchImpl = vi.fn();
+    vi.stubGlobal('fetch', fetchImpl);
+    render(
+      <PosSessionProvider>
+        <Probe />
+      </PosSessionProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('probe-hydrated')).toHaveTextContent('true'));
+    expect(screen.getByTestId('probe-auth')).toHaveTextContent('false');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('loads a live session when the API is entitled', async () => {
+    writeCachedSession(demoSession({ cashierId: 'cashier-1' }));
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -42,6 +56,7 @@ describe('PosSessionProvider', () => {
           currency: 'MXN',
           currencySource: 'WMS',
           companyName: 'Tienda',
+          cashierId: 'cashier-1',
         }),
       }),
     );

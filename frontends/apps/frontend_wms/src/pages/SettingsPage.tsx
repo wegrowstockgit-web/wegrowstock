@@ -1695,7 +1695,7 @@ function OperationsConsoleTab() {
   });
 
   return (
-    <div className="space-y-6" data-testid="operations-console">
+    <div className="min-w-0 space-y-6" data-testid="operations-console">
       <OperationsSettingsPanel />
       <Card>
         <CardHeader

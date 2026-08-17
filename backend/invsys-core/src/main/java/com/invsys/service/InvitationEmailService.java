@@ -70,9 +70,9 @@ public class InvitationEmailService {
         return dispatch(
                 toEmail,
                 inviteUrl,
-                "Join InvSys WMS",
-                "InvSys WMS Workspace Invitation",
-                "You have been invited to join your organization's secure logistics workspace on the InvSys Warehouse Management platform.",
+                "Join weGrowStock WMS",
+                "weGrowStock WMS Workspace Invitation",
+                "You have been invited to join your organization's secure logistics workspace on the weGrowStock Warehouse Management platform.",
                 "Accept Invitation & Get Started",
                 "This secure invitation link will remain valid for exactly 7 days.");
     }
@@ -111,8 +111,8 @@ public class InvitationEmailService {
     String renderHtml(String inviteUrl) {
         return renderActionHtml(
                 inviteUrl,
-                "InvSys WMS Workspace Invitation",
-                "You have been invited to join your organization's secure logistics workspace on the InvSys Warehouse Management platform.",
+                "weGrowStock WMS Workspace Invitation",
+                "You have been invited to join your organization's secure logistics workspace on the weGrowStock Warehouse Management platform.",
                 "Accept Invitation & Get Started",
                 "This secure invitation link will remain valid for exactly 7 days.");
     }
@@ -157,7 +157,7 @@ public class InvitationEmailService {
                           </tr>
                           <tr>
                             <td style="background-color:#f1f5f9; padding:16px 32px; border-top:1px solid #e2e8f0; text-align:center;">
-                              <p style="margin:0; font-size:12px; color:#94a3b8; line-height:18px;">&copy; 2026 InvSys Logistics Systems Inc. All rights reserved.</p>
+                              <p style="margin:0; font-size:12px; color:#94a3b8; line-height:18px;">&copy; 2026 weGrowStock. All rights reserved.</p>
                             </td>
                           </tr>
                         </table>

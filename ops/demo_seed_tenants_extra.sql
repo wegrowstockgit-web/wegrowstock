@@ -357,6 +357,15 @@ INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
      '{"company_name":"Northwind Logistics","currency":"USD","timezone":"America/Los_Angeles","allow_negative_inventory":false,"barcode_prefix":"7703","platform_fee_percent":0.4,"payment_terms_days":30}'::jsonb)
 ON CONFLICT (tenant_id) DO NOTHING;
 
+UPDATE tenant_settings
+SET settings = settings || jsonb_build_object(
+    'smtp_host', 'mailpit',
+    'smtp_port', 1025,
+    'smtp_from', 'noreply@northwind.test',
+    'smtp_auth', false
+)
+WHERE tenant_id = 'c0000000-0000-4000-8000-000000000001';
+
 INSERT INTO roles (id, tenant_id, code, network_access_level) VALUES
     ('c0000000-0000-4000-8000-000000000101', 'c0000000-0000-4000-8000-000000000001', 'OWNER', 'MFA_OUTSIDE_NETWORK'),
     ('c0000000-0000-4000-8000-000000000102', 'c0000000-0000-4000-8000-000000000001', 'ADMIN', 'MFA_OUTSIDE_NETWORK'),
@@ -785,6 +794,15 @@ INSERT INTO tenant_settings (id, tenant_id, settings) VALUES
     ('d0000000-0000-4000-8000-000000000010', 'd0000000-0000-4000-8000-000000000001',
      '{"company_name":"Pacific Parts Co","currency":"USD","timezone":"America/Los_Angeles","allow_negative_inventory":false,"platform_fee_percent":0.4,"payment_terms_days":30}'::jsonb)
 ON CONFLICT (tenant_id) DO NOTHING;
+
+UPDATE tenant_settings
+SET settings = settings || jsonb_build_object(
+    'smtp_host', 'mailpit',
+    'smtp_port', 1025,
+    'smtp_from', 'noreply@pacific.test',
+    'smtp_auth', false
+)
+WHERE tenant_id = 'd0000000-0000-4000-8000-000000000001';
 
 INSERT INTO roles (id, tenant_id, code, network_access_level) VALUES
     ('d0000000-0000-4000-8000-000000000101', 'd0000000-0000-4000-8000-000000000001', 'OWNER', 'MFA_OUTSIDE_NETWORK'),

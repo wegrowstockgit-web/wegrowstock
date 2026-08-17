@@ -39,7 +39,10 @@ class InvitationEmailServiceTest {
     void renderHtmlEmbedsInviteUrlAndBranding() {
         String html = service.renderHtml("http://localhost:3000/invite/tok-1");
         assertThat(html)
-                .contains("InvSys WMS Workspace Invitation")
+                .contains("weGrowStock WMS Workspace Invitation")
+                .contains("weGrowStock Warehouse Management")
+                .contains("weGrowStock. All rights reserved")
+                .doesNotContain("InvSys")
                 .contains("Accept Invitation &amp; Get Started")
                 .contains("href=\"http://localhost:3000/invite/tok-1\"")
                 .contains("7 days")

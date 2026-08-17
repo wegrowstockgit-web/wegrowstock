@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { BrandLogo } from '@/components/layout/BrandLogo';
 import { nextHrdStep, resolveSsoHref, type HrdResponse, type HrdStep } from '@/lib/hrd';
 import { readTerminalPasskey } from '@/lib/terminalPasskey';
+import { claimMagicLinkToken, postLoginPath } from '@/lib/magicLinkConsume';
 import {
   completeMfaAssertion,
   isMfaRequiredTitle,
@@ -126,28 +127,35 @@ export function LoginPage() {
       try {
         const me = await apiClient.get<MeResponse>('/api/v1/auth/me');
         applyMeProfile(me.data);
+        navigate(postLoginPath(me.data.roles), { replace: true });
+        return;
       } catch {
         // Floor shell hydrates /me after navigation.
       }
-      navigate('/fulfillment');
+      navigate(postLoginPath(data.roles), { replace: true });
     },
-    onError: () => setError('Magic link expired or already used.'),
+    onError: async () => {
+      try {
+        const me = await apiClient.get<MeResponse>('/api/v1/auth/me');
+        applyMeProfile(me.data);
+        navigate(postLoginPath(me.data.roles), { replace: true });
+      } catch {
+        setError('Magic link expired or already used.');
+      }
+    },
   });
 
   const magicRequestMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post<{ status: string; magicToken?: string }>(
+      const res = await apiClient.post<{ status: string }>(
         '/api/v1/auth/magic-login',
         { email },
       );
       return res.data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       setMagicSent(true);
       setError('');
-      if (data.magicToken) {
-        magicConsumeMutation.mutate(data.magicToken);
-      }
     },
     onError: () => setError('Could not send a magic link for that email.'),
   });
@@ -176,9 +184,12 @@ export function LoginPage() {
 
   useEffect(() => {
     const token = searchParams.get('magic');
-    if (token) {
-      magicConsumeMutation.mutate(token);
-    }
+    if (!claimMagicLinkToken(token)) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('magic');
+    const qs = next.toString();
+    navigate({ pathname: '/login', search: qs ? `?${qs}` : '' }, { replace: true });
+    magicConsumeMutation.mutate(token as string);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -330,7 +341,7 @@ export function LoginPage() {
               )}
               {magicSent && !error && (
                 <p className="rounded-lg border border-[#55ACEE]/40 bg-[#55ACEE]/10 px-3 py-2 text-sm text-[#7ec8f7]">
-                  Magic link sent — check console/email, or it will sign in automatically in demo mode.
+                  Magic link sent — open Mailpit at localhost:8025 and use the Sign in button. The link works once.
                 </p>
               )}
 

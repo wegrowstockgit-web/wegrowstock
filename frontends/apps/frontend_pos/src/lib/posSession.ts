@@ -145,6 +145,15 @@ export function writeCachedSession(state: PosSessionState): void {
   localStorage.setItem(POS_SESSION_CACHE_KEY, JSON.stringify({ ...state, fromCache: true }));
 }
 
+export function clearCachedSession(): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(POS_SESSION_CACHE_KEY);
+}
+
+export function hasCachedCashierSession(): boolean {
+  return Boolean(readCachedSession()?.cashierId);
+}
+
 export async function fetchPosSession(
   fetchImpl: typeof fetch = fetch,
   place = detectPlace(),
@@ -158,7 +167,9 @@ export async function fetchPosSession(
     credentials: 'include',
     headers: { Accept: 'application/json', 'Accept-Language': place.localeTag },
   });
-  if (response.status === 401) {
+  // 401 = no/expired cookie. 403 = a WMS (or other) token was sent to the POS API.
+  if (response.status === 401 || response.status === 403) {
+    clearCachedSession();
     return { ...defaultSessionState(), posEnabled: null };
   }
   if (!response.ok) {

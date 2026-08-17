@@ -1,5 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { languageForUi, defaultSessionState, fetchPosSession, readCachedSession, type PosSessionState } from './posSession';
+import {
+  languageForUi,
+  defaultSessionState,
+  fetchPosSession,
+  hasCachedCashierSession,
+  readCachedSession,
+  type PosSessionState,
+} from './posSession';
 import { translate, type PosLanguage, type PosMessageKey } from './i18n';
 
 type PosSessionContextValue = {
@@ -45,6 +52,12 @@ export function PosSessionProvider({
 
   useEffect(() => {
     if (disableFetch) return;
+    // GET /api/v1/pos/session is authenticated. Skip the boot call until a POS
+    // login (or a cached cashier id) exists so the login screen does not 401.
+    if (!hasCachedCashierSession()) {
+      setHydrated(true);
+      return;
+    }
     void refresh();
   }, [disableFetch]);
 

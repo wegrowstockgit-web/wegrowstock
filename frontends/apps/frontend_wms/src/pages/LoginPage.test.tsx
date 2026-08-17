@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { LoginPage } from './LoginPage';
 import { apiClient } from '@/api/client';
+import { resetMagicLinkClaimsForTests } from '@/lib/magicLinkConsume';
 
 vi.mock('@/api/client', () => ({
   apiClient: {
@@ -22,13 +24,13 @@ vi.mock('@/lib/terminalPasskey', () => ({
   }),
 }));
 
-function wrap(ui: ReactNode) {
+function wrap(ui: ReactNode, initialEntry = '/login') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>
         {ui}
       </MemoryRouter>
     </QueryClientProvider>,
@@ -39,6 +41,7 @@ describe('LoginPage MFA intercept', () => {
   beforeEach(() => {
     vi.mocked(apiClient.get).mockReset();
     vi.mocked(apiClient.post).mockReset();
+    resetMagicLinkClaimsForTests();
   });
 
   it('opens passkey challenge on MFA_REQUIRED_FOR_EXTERNAL_ACCESS then reissues login', async () => {
@@ -94,5 +97,63 @@ describe('LoginPage MFA intercept', () => {
         }),
       );
     });
+  });
+});
+
+describe('LoginPage magic link', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.get).mockReset();
+    vi.mocked(apiClient.post).mockReset();
+    resetMagicLinkClaimsForTests();
+  });
+
+  it('does not consume the token when requesting an email link', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { isPasswordAllowed: true } });
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { status: 'accepted', magicToken: 'should-not-consume' } });
+
+    wrap(<LoginPage />);
+    fireEvent.click(screen.getByTestId('login-continue'));
+    expect(await screen.findByTestId('login-magic-link')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('login-magic-link'));
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith('/api/v1/auth/magic-login', {
+        email: 'owner@demo.test',
+      });
+    });
+    expect(apiClient.post).not.toHaveBeenCalledWith(
+      '/api/v1/auth/magic-login/consume',
+      expect.anything(),
+    );
+    expect(await screen.findByText(/open Mailpit/i)).toBeInTheDocument();
+  });
+
+  it('consumes a URL magic token only once under Strict Mode', async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: { tenantId: 't1', userId: 'u1', roles: ['OWNER'], warehouseIds: [], grantedPermissions: [] },
+    });
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        userId: 'u1',
+        tenantId: 't1',
+        email: 'owner@demo.test',
+        displayName: 'Owner',
+        roles: ['OWNER'],
+      },
+    });
+
+    wrap(
+      <StrictMode>
+        <LoginPage />
+      </StrictMode>,
+      '/login?magic=tok-once',
+    );
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith('/api/v1/auth/magic-login/consume', { token: 'tok-once' });
+    });
+    expect(
+      vi.mocked(apiClient.post).mock.calls.filter((call) => String(call[0]).includes('magic-login/consume')),
+    ).toHaveLength(1);
   });
 });
