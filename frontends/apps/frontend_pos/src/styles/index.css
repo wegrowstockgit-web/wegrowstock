@@ -405,6 +405,159 @@
     color: #fff;
   }
 
+  .pos-void {
+    grid-column: span 2;
+    background: #7f1d1d;
+    color: #fecaca;
+  }
+
+  .pos-void:disabled {
+    opacity: 0.45;
+  }
+
+  .pos-remove {
+    min-height: 44px;
+    border-radius: 0.55rem;
+    background: #fee2e2;
+    padding: 0 0.65rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: #7f1d1d;
+    white-space: nowrap;
+  }
+
+  .pos-void-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(11 18 32 / 0.88);
+    padding: 1rem;
+  }
+
+  .pos-void-card {
+    width: min(26rem, 100%);
+    display: grid;
+    gap: 0.7rem;
+    border-radius: 1.1rem;
+    background: #f7f9fc;
+    padding: 1.4rem 1.2rem 1.2rem;
+    color: #0f172a;
+  }
+
+  .pos-void-card h1 {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .pos-void-body {
+    color: #334155;
+    line-height: 1.45;
+  }
+
+  .pos-void-error {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #b91c1c;
+  }
+
+  .pos-void-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .pos-void-actions button {
+    min-height: 48px;
+    border-radius: 0.65rem;
+    font-weight: 800;
+  }
+
+  .pos-void-cancel {
+    background: #e2e8f0;
+  }
+
+  .pos-void-yes {
+    background: #7f1d1d;
+    color: #fff;
+  }
+
+  .pos-void-yes:disabled {
+    opacity: 0.4;
+  }
+
+  .pos-pin-keypad {
+    display: grid;
+    gap: 0.75rem;
+    justify-items: center;
+  }
+
+  .pos-pin-copy {
+    text-align: center;
+  }
+
+  .pos-pin-copy h2 {
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .pos-pin-copy p {
+    margin-top: 0.2rem;
+    font-size: 0.82rem;
+    color: #475569;
+  }
+
+  .pos-pin-dots {
+    display: flex;
+    gap: 0.7rem;
+  }
+
+  .pos-pin-dots span {
+    height: 0.9rem;
+    width: 0.9rem;
+    border-radius: 999px;
+    border: 2px solid #94a3b8;
+    background: transparent;
+  }
+
+  .pos-pin-dots span[data-filled='true'] {
+    background: #0b1220;
+    border-color: #0b1220;
+  }
+
+  .pos-pin-dots.is-error span {
+    border-color: #b91c1c;
+  }
+
+  .pos-pin-dots.is-error span[data-filled='true'] {
+    background: #b91c1c;
+  }
+
+  .pos-pin-grid {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .pos-pin-grid button {
+    min-height: 52px;
+    border-radius: 0.7rem;
+    background: #e2e8f0;
+    font-size: 1.4rem;
+    font-weight: 800;
+  }
+
+  .pos-pin-grid button:active:not(:disabled) {
+    transform: scale(0.97);
+    background: #0b1220;
+    color: #fff;
+  }
+
   .pos-success {
     position: fixed;
     inset: 0;

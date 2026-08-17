@@ -66,7 +66,9 @@ class PosSessionHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.currencySource").value("WMS"))
                 .andExpect(jsonPath("$.placeCurrency").value("MXN"))
                 .andExpect(jsonPath("$.taxRegionHint").value("MX"))
-                .andExpect(jsonPath("$.companyName").value("POS Co"));
+                .andExpect(jsonPath("$.companyName").value("POS Co"))
+                .andExpect(jsonPath("$.cashierId").value(owner.userId().toString()))
+                .andExpect(jsonPath("$.tenantId").value(owner.tenantId().toString()));
     }
 
     @Test

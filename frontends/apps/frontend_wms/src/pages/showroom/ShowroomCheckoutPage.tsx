@@ -10,6 +10,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { useShowroomCart } from '@/showroom/useShowroomCart';
+import { useTranslation } from 'react-i18next';
 
 function AllocationPreference({
   value,
@@ -18,9 +19,10 @@ function AllocationPreference({
   value: AllocationPolicy;
   onChange: (next: AllocationPolicy) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium text-text">Allocation preference</legend>
+      <legend className="text-sm font-medium text-text">{t('sales.allocationPreference')}</legend>
       <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-3">
         <input
           type="radio"
@@ -30,8 +32,8 @@ function AllocationPreference({
           onChange={() => onChange('SHIP_COMPLETE')}
         />
         <span>
-          <span className="block text-sm font-medium text-text">Ship Complete</span>
-          <span className="text-xs text-text-muted">Hold my order until everything is in stock.</span>
+          <span className="block text-sm font-medium text-text">{t('sales.shipComplete')}</span>
+          <span className="text-xs text-text-muted">{t('sales.shipCompleteHelp')}</span>
         </span>
       </label>
       <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-3">
@@ -43,8 +45,8 @@ function AllocationPreference({
           onChange={() => onChange('ALLOW_PARTIAL')}
         />
         <span>
-          <span className="block text-sm font-medium text-text">Split Shipment</span>
-          <span className="text-xs text-text-muted">Ship available items now, backorder the rest.</span>
+          <span className="block text-sm font-medium text-text">{t('sales.splitShipment')}</span>
+          <span className="text-xs text-text-muted">{t('sales.splitShipmentHelp')}</span>
         </span>
       </label>
     </fieldset>

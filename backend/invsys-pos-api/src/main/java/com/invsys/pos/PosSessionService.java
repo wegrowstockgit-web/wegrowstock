@@ -73,7 +73,9 @@ public class PosSessionService {
                 localeTag,
                 taxRegionHint,
                 resolvedTimezone,
-                companyName);
+                companyName,
+                me.userId(),
+                me.tenantId());
     }
 
     private static String stringValue(Object value) {

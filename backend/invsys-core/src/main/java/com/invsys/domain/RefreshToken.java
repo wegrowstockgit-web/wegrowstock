@@ -27,6 +27,9 @@ public class RefreshToken extends TenantScopedEntity {
     @Column(name = "replaced_by")
     private UUID replacedBy;
 
+    @Column(name = "app_context", length = 16)
+    private String appContext;
+
     public UUID getUserId() {
         return userId;
     }
@@ -65,5 +68,13 @@ public class RefreshToken extends TenantScopedEntity {
 
     public void setReplacedBy(UUID replacedBy) {
         this.replacedBy = replacedBy;
+    }
+
+    public String getAppContext() {
+        return appContext;
+    }
+
+    public void setAppContext(String appContext) {
+        this.appContext = appContext;
     }
 }

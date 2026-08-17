@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import i18n, { normalizeLanguage } from './index';
+import i18n, { normalizeLanguage, persistLanguage, readStoredLanguage, WMS_LANG_STORAGE_KEY } from './index';
 import en from './locales/en.json';
 import es from './locales/es.json';
 import fr from './locales/fr.json';
@@ -14,6 +14,16 @@ function collectKeys(value: unknown, prefix = ''): string[] {
 }
 
 describe('i18n language normalization', () => {
+  it('reads and persists wms_lang', async () => {
+    localStorage.setItem(WMS_LANG_STORAGE_KEY, 'fr-CA');
+    expect(readStoredLanguage()).toBe('fr');
+    persistLanguage('es');
+    expect(localStorage.getItem(WMS_LANG_STORAGE_KEY)).toBe('es');
+    expect(i18n.language).toMatch(/^es/);
+    persistLanguage('en');
+    await i18n.changeLanguage('en');
+  });
+
   it('maps locale tags onto en/es/fr', () => {
     expect(normalizeLanguage('en-US')).toBe('en');
     expect(normalizeLanguage('es-MX')).toBe('es');
@@ -45,12 +55,25 @@ describe('locale catalogs', () => {
     try {
       await i18n.changeLanguage('es');
       expect(i18n.t('nav.Dashboard')).toBe('Panel');
+      expect(i18n.t('nav.meshNetwork')).toBe('Red Mesh');
+      expect(i18n.t('settings.workspaceLanguageUpdated')).toMatch(/actualizado/i);
       expect(i18n.t('pageHelp.playbooks.dashboard.title')).toMatch(/mando/i);
       await i18n.changeLanguage('fr');
       expect(i18n.t('nav.Dashboard')).toBe('Tableau de bord');
+      expect(i18n.t('nav.meshNetwork')).toBe('Réseau Mesh');
       expect(i18n.t('chat.title')).toMatch(/Copilote/i);
     } finally {
       await i18n.changeLanguage('en');
     }
+  });
+
+  it('covers navigation, settings, mesh, and sales dictionaries', () => {
+    expect(en.nav.meshNetwork).toBe('Mesh Network');
+    expect(en.settings.workspaceLanguage).toBeTruthy();
+    expect(en.mesh.requestConnection).toBeTruthy();
+    expect(en.sales.statuses.PENDING_REP_APPROVAL).toBeTruthy();
+    expect(en.sales.acceptQuote).toBeTruthy();
+    expect(es.nav.meshNetwork).not.toEqual(en.nav.meshNetwork);
+    expect(fr.settings.companyPreferences).not.toEqual(en.settings.companyPreferences);
   });
 });

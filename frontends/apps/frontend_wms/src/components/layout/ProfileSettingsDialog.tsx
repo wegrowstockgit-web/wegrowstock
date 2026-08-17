@@ -5,7 +5,7 @@ import { LanguageSelect } from '@/components/layout/LanguageSelect';
 import { useSessionStore } from '@/stores/session';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { apiClient } from '@/api/client';
-import i18n, { type SupportedLanguage } from '@/lib/i18n';
+import { type SupportedLanguage } from '@/lib/i18n';
 
 interface ProfileSettingsDialogProps {
   open: boolean;
@@ -22,7 +22,6 @@ export function ProfileSettingsDialog({ open, onClose }: ProfileSettingsDialogPr
 
   const persistLanguage = async (next: SupportedLanguage) => {
     setLanguage(next);
-    void i18n.changeLanguage(next);
     try {
       await apiClient.patch('/api/v1/users/me/profile', { preferredLanguage: next, localeLanguage: next });
       if (user) {

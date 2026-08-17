@@ -7,6 +7,7 @@ import {
   type ResolvedPosLocale,
 } from './locale';
 import type { TaxRegion } from './tax';
+import { syncManagerPinVault } from '@/offline/pinVault';
 
 export const POS_SESSION_CACHE_KEY = 'pos.session.v1';
 
@@ -24,12 +25,16 @@ export type PosSessionDto = {
   taxRegionHint?: string;
   timezone?: string | null;
   companyName?: string;
+  cashierId?: string | null;
+  tenantId?: string | null;
 };
 
 export type PosSessionState = ResolvedPosLocale & {
   posEnabled: boolean | null;
   companyName: string;
   tier: string;
+  cashierId: string;
+  tenantId: string;
   fromCache: boolean;
 };
 
@@ -40,6 +45,8 @@ export function defaultSessionState(): PosSessionState {
     posEnabled: null,
     companyName: '',
     tier: '',
+    cashierId: '',
+    tenantId: '',
     fromCache: false,
   };
 }
@@ -58,6 +65,8 @@ export function demoSession(overrides: Partial<PosSessionState> = {}): PosSessio
     timezone: 'America/New_York',
     companyName: 'Demo Corp',
     tier: 'ENTERPRISE',
+    cashierId: 'a0000000-0000-4000-8000-000000000201',
+    tenantId: 'a0000000-0000-4000-8000-000000000001',
     fromCache: false,
     ...overrides,
   };
@@ -98,6 +107,8 @@ export function applySessionDto(dto: PosSessionDto, place = detectPlace()): PosS
     timezone: dto.timezone || place.timezone,
     companyName: dto.companyName ?? '',
     tier: dto.tier ?? '',
+    cashierId: dto.cashierId ?? '',
+    tenantId: dto.tenantId ?? '',
     fromCache: false,
   };
 }
@@ -142,6 +153,7 @@ export async function fetchPosSession(
   const dto = (await response.json()) as PosSessionDto;
   const next = applySessionDto(dto, place);
   writeCachedSession(next);
+  await syncManagerPinVault(fetchImpl, next.tenantId);
   return next;
 }
 

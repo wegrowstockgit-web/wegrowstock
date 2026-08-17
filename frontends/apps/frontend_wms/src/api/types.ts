@@ -30,6 +30,7 @@ export interface User {
 export interface LoginRequest {
   email: string;
   password: string;
+  targetApp?: 'WMS' | 'POS' | 'ADMIN';
 }
 
 /** Session metadata — JWTs are HttpOnly cookies only. */
@@ -113,6 +114,28 @@ export interface TenantUser {
   mfaEnabled?: boolean;
   shiftSchedule?: string | null;
   shiftScheduleType?: string | null;
+  warehouseIds?: string[];
+}
+
+export interface CreateUserPayload {
+  email: string;
+  roleIds: string[];
+  role?: string;
+  roles?: string[];
+  customerId?: string;
+  supplierId?: string;
+}
+
+export interface UpdateUserPayload {
+  roleIds: string[];
+  role?: string;
+  roles?: string[];
+  corporateDepartment?: string | null;
+  timezonePreference?: string | null;
+  localeLanguage?: string | null;
+  shiftScheduleType?: string | null;
+  assignedWarehouseId?: string | null;
+  clearAssignedWarehouse?: boolean;
   warehouseIds?: string[];
 }
 

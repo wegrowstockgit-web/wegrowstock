@@ -44,6 +44,18 @@ class RolePermissionServiceTest {
     }
 
     @Test
+    void retailRolesOnlyReceivePosPermissions() {
+        assertThat(RolePermissionService.baselineGranted("RETAIL_CASHIER", PermissionKeys.POS_OPERATE)).isTrue();
+        assertThat(RolePermissionService.baselineGranted("RETAIL_CASHIER", PermissionKeys.POS_SUPERVISE)).isFalse();
+        assertThat(RolePermissionService.baselineGranted("RETAIL_CASHIER", PermissionKeys.INVENTORY_ADJUST)).isFalse();
+        assertThat(RolePermissionService.baselineGranted("RETAIL_MANAGER", PermissionKeys.POS_OPERATE)).isTrue();
+        assertThat(RolePermissionService.baselineGranted("RETAIL_MANAGER", PermissionKeys.POS_SUPERVISE)).isTrue();
+        assertThat(RolePermissionService.baselineGranted("RETAIL_MANAGER", PermissionKeys.INVENTORY_ADJUST)).isFalse();
+        assertThat(RolePermissionService.baselineGranted("WAREHOUSE_MANAGER", PermissionKeys.POS_SUPERVISE)).isTrue();
+        assertThat(RolePermissionService.baselineGranted("PICKER", PermissionKeys.POS_OPERATE)).isFalse();
+    }
+
+    @Test
     void emptyRolesDeny() {
         assertThat(service.isGrantedForRoles(List.of(), PermissionKeys.INVENTORY_COST_VIEW)).isFalse();
     }

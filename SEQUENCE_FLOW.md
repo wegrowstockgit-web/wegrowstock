@@ -40,9 +40,13 @@ Every flow below is anchored to a Spring `ROLE_*` and the physical surface where
 | `VIEWER` | Read-mostly analyst | Office (Surface A) | Dashboards, products, lot trace (read-only) |
 | `B2B_CUSTOMER` | Wholesale buyer | Showroom portal | Browse catalog, place portal orders |
 | `SUPPLIER` | Vendor contact | Public tokenized portal | View/acknowledge PO, update ship dates |
+| `RETAIL_CASHIER` | Store register operator | Retail POS (`frontend_pos`) | Ring sales, offline queue, PIN unlock (`pos.operate`) |
+| `RETAIL_MANAGER` | Store supervisor | Retail POS (`frontend_pos`) | Everything cashiers do + void/override approvals (`pos.supervise`) |
 | `SUPER_ADMIN` *(platform)* | InvSys operator | **Control plane** (`admin.invsys.com` / `:3002`) | Tiers, entitlements, billing, impersonate, suspend, RAG ingest, kill-switch, audit, shards, DLQ, telemetry, compliance — **not** in WMS nav |
 
 Frontend mirrors these with `useSessionStore.hasRole`, `ProtectedRoute`, and the `NAV_MATRIX` filters (`roles`, `hideForPicker`, `hideForViewer`). Exclusive `PICKER` users land on `/fulfillment` (floor shell) instead of the office dashboard.
+
+Roles are **additive**: one person can hold several (e.g. `WAREHOUSE_MANAGER` + `RETAIL_CASHIER`); permissions are the union. Invites and Settings → Users edits assign multiple roles via a checkbox multi-select, and the users table shows one badge per role. A session is still sandboxed to one surface: login with `targetApp` stamps an `app_context` claim (`POS`/`WMS`) that `JwtAuthFilter` enforces (POS tokens cannot call WMS APIs and vice versa — 403).
 
 ---
 
@@ -110,6 +114,7 @@ sequenceDiagram
     Browser->>Edge: fetch /api/v1/... <br/>Cookie: invsys_access (RS256 JWT)<br/>Headers: X-Warehouse-Id, Idempotency-Key?
     Edge->>Jwt: proxy_pass (rate limits applied at edge)
     Jwt->>Jwt: validate JWT → roles, tenant_id, warehouse_ids<br/>TenantContext.set(...)
+    Jwt->>Jwt: app_context gate: POS token off /api/v1/pos/** (or WMS token on it) → 403
     Jwt->>Susp: continue chain
     Susp->>Susp: tenants.status = SUSPENDED → 403 TENANT_SUSPENDED
     Susp->>Lbac: continue chain
@@ -160,8 +165,8 @@ sequenceDiagram
         Login->>Auth: POST /api/v1/auth/login
     end
     Auth->>DB: verify BCrypt hash, load roles + warehouse assignments
-    Auth->>Jwt: createAccessToken (roles, tenant_id, warehouse_ids)
-    Auth->>DB: persist hashed RefreshToken (rotating, ~7d)
+    Auth->>Jwt: createAccessToken (roles, tenant_id, warehouse_ids,<br/>app_context when login sent targetApp)
+    Auth->>DB: persist hashed RefreshToken (rotating, ~7d; carries app_context)
     Auth-->>Login: 200 + Set-Cookie invsys_access (~15m) / invsys_refresh
     Login->>Login: useSessionStore.setSessionFromLogin(user, roles)
     alt exclusive PICKER

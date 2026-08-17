@@ -16,11 +16,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,6 +61,7 @@ public class UserController {
                         p.id(),
                         p.email(),
                         p.role(),
+                        p.roles(),
                         p.expiresAt(),
                         p.invitedBy(),
                         p.customerId(),
@@ -68,13 +71,15 @@ public class UserController {
 
     @PostMapping("/invitations")
     public InviteResponse invite(@Valid @RequestBody InviteRequest request) {
+        List<String> roleCodes = resolveRoleCodes(request.role(), request.roles(), request.roleIds());
         UserManagementService.InviteResult result = userManagementService.invite(
-                request.email(), request.role(), request.customerId(), request.supplierId());
+                request.email(), roleCodes, request.customerId(), request.supplierId());
         Invitation invitation = result.invitation();
         return new InviteResponse(
                 invitation.getId(),
                 invitation.getEmail(),
-                request.role(),
+                roleCodes.isEmpty() ? request.role() : roleCodes.getFirst(),
+                roleCodes,
                 invitation.getTokenHash(),
                 result.rawToken(),
                 invitation.getExpiresAt());
@@ -95,6 +100,16 @@ public class UserController {
     }
 
     /**
+     * Replace the user's full role set (additive RBAC).
+     */
+    @PutMapping("/{id}/roles")
+    public Map<String, Object> replaceRoles(@PathVariable UUID id, @Valid @RequestBody ReplaceRolesRequest request) {
+        List<String> roleCodes = resolveRoleCodes(request.role(), request.roles(), request.roleIds());
+        List<String> roles = userManagementService.replaceRoles(id, roleCodes);
+        return Map.of("userId", id, "roles", roles);
+    }
+
+    /**
      * Admin-only organizational scope: role, warehouse LBAC, timezone, locale, department, shift.
      */
     @PatchMapping("/{id}/org-scope")
@@ -105,6 +120,9 @@ public class UserController {
                 id,
                 new UserManagementService.OrgScopeUpdate(
                         request.role(),
+                        hasRolePayload(request)
+                                ? resolveRoleCodes(request.role(), request.roles(), request.roleIds())
+                                : null,
                         request.corporateDepartment() != null
                                 ? request.corporateDepartment()
                                 : request.department(),
@@ -165,7 +183,9 @@ public class UserController {
 
     public record InviteRequest(
             @NotBlank @Email String email,
-            @NotBlank String role,
+            String role,
+            List<String> roles,
+            List<String> roleIds,
             UUID customerId,
             UUID supplierId
     ) {
@@ -174,11 +194,20 @@ public class UserController {
     public record ChangeRoleRequest(@NotBlank String role) {
     }
 
+    public record ReplaceRolesRequest(
+            String role,
+            List<String> roles,
+            List<String> roleIds
+    ) {
+    }
+
     public record PasskeyLabelRequest(String label) {
     }
 
     public record OrgScopeRequest(
             String role,
+            List<String> roles,
+            List<String> roleIds,
             String corporateDepartment,
             String department,
             String timezonePreference,
@@ -213,6 +242,7 @@ public class UserController {
             UUID id,
             String email,
             String role,
+            List<String> roles,
             String tokenHash,
             String token,
             Instant expiresAt
@@ -223,10 +253,31 @@ public class UserController {
             UUID id,
             String email,
             String role,
+            List<String> roles,
             Instant expiresAt,
             UUID invitedBy,
             UUID customerId,
             UUID supplierId
     ) {
+    }
+
+    static List<String> resolveRoleCodes(String role, List<String> roles, List<String> roleIds) {
+        List<String> combined = new ArrayList<>();
+        if (role != null && !role.isBlank()) {
+            combined.add(role);
+        }
+        if (roles != null) {
+            combined.addAll(roles);
+        }
+        if (roleIds != null) {
+            combined.addAll(roleIds);
+        }
+        return UserManagementService.normalizeRoleCodes(combined);
+    }
+
+    private static boolean hasRolePayload(OrgScopeRequest request) {
+        return (request.role() != null && !request.role().isBlank())
+                || request.roles() != null
+                || request.roleIds() != null;
     }
 }

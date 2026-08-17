@@ -48,7 +48,7 @@
 | UI | React 19.2, Vite 7, TanStack Query, Zustand, Tailwind, TanStack Virtual, driver.js |
 | Edge | Nginx gateway: data plane `:8080` + control plane `:8081` |
 | Infra | Redis (PIN lockout / rate limits), MinIO/S3 media, pgvector for support RAG |
-| Auth (WMS) | RS256 JWT in HttpOnly cookies (`invsys_access` / `invsys_refresh`) |
+| Auth (WMS) | RS256 JWT in HttpOnly cookies (`invsys_access` / `invsys_refresh`); optional `app_context` claim (`POS`/`WMS`) sandboxes a session to one app surface |
 | Auth (Admin) | Isolated admin cookies (`invsys_admin_access` / `invsys_admin_refresh`, SameSite=Strict) + `platform_admin` JWT claim |
 | Optional AI | Spring AI (Google GenAI / Gemini) lives only in `invsys-chatbot` — core runs without it |
 
@@ -57,7 +57,7 @@
 1. **Apartment building** — every row is `tenant_id`-scoped; Postgres RLS enforces isolation via `app.current_tenant`.
 2. **Bank statement** — inventory never “updates a qty in place” as truth; movements append to `inventory_ledger`; levels are maintained by deltas / flush worker + allocation paths.
 
-**Scale notes (current head V116):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
+**Scale notes (current head V120):** `inventory_ledger` and `audit_log` are monthly RANGE-partitioned; aged audit rows cold-archive to S3/MinIO; credential vault supports `LOCAL` / `AWS_KMS` / `HASHICORP_VAULT`; platform support RAG uses global `support_knowledge_*` tables (pgvector + GraphRAG, no tenant RLS). Control-plane governance lives in `platform_admins` (V106), `tenant_shard_routing` / kill-switch / rate overrides / compliance broadcasts / knowledge docs (V107), and append-only `platform_audit_logs` (V108). Retail POS (`RETAIL_POS`) syncs offline receipts into `pos_synced_receipts` (V111) and enqueues `inventory_level_deltas` without locking `inventory_levels`. Mesh hub (V114) stores published listings in `mesh_catalog_listings` and handshake rows in `tenant_mesh_partners` (`REQUESTED` until approve creates Supplier/Customer).
 
 ---
 
@@ -80,7 +80,7 @@ InventorySystem/
 │   │       └── …                    billing, media, mesh, rtls, modules/*, …
 │   ├── invsys-chatbot/              Optional Support Co-Pilot (Spring AI + PgVector RAG)
 │   ├── invsys-training/             Optional Flight Simulator (shadow tenant interceptor)
-│   ├── invsys-pos-api/              Retail POS ingest (`POST /api/v1/pos/sync-receipts`)
+│   ├── invsys-pos-api/              Retail POS: receipt/audit sync, session, manager PIN vault + overrides
 │   ├── invsys-app/                  Data-plane runner (`InvSysApplication`, artifact `invsys-api`)
 │   │   └── src/test/java/...        WMS integration tests
 │   └── invsys-admin-api/            Control-plane runner (`InvSysAdminApplication`)
@@ -303,7 +303,11 @@ Terraform encodes the same contract in SSM `/…/infra/plane-routing` (`data_pla
 | `VIEWER` | Read-mostly |
 | `B2B_CUSTOMER` | Showroom portal only |
 | `SUPPLIER` | Authenticated supplier portal |
+| `RETAIL_CASHIER` | POS register only (`pos.operate`) — V118 |
+| `RETAIL_MANAGER` | POS supervision incl. void overrides (`pos.supervise`) — V118 |
 | `SUPER_ADMIN` | Control plane only (`platform_admins` + `token_type=PLATFORM_ADMIN`) — never a WMS role |
+
+Roles are **additive**: a user may hold several `user_roles` rows (e.g. `WAREHOUSE_MANAGER` + `RETAIL_CASHIER`) and permissions are the union. Invites and user edits accept multiple roles (`UserManagementService.applyRolesChange`, `invitations.additional_roles` V120); the Settings → Users UI uses a checkbox `RoleMultiSelect` and renders one badge per role. Cross-app leakage of a multi-role session is blocked by the JWT `app_context` claim (see `JwtAuthFilter` below).
 
 Frontend mirrors this in `useSessionStore.hasRole`, `ProtectedRoute`, and nested `NAV_MATRIX` filters (`roles`, `hideForPicker`, `hideForViewer`) in `components/layout/navConfig.ts`.
 
@@ -482,13 +486,13 @@ DTO records live under `api.dto.*` (reports, portal, manufacturing responses, et
 
 | Class | Purpose |
 |-------|---------|
-| `AuthService` | Credential login, refresh rotation, warehouse PIN, terminal switch |
+| `AuthService` | Credential login, refresh rotation, warehouse PIN, terminal switch; honors `targetApp` on login and stamps `app_context` into access + refresh tokens (context survives rotation via `refresh_tokens.app_context`, V119) |
 | `AuthCookieService` | HttpOnly cookie write/clear |
-| `JwtService` | RS256 issue/validate |
+| `JwtService` | RS256 issue/validate; embeds/extracts the `app_context` claim |
 | `TaskOrchestratorService` | Dynamic interleaving (pick / putaway / count / predictive REPLENISH) via coords + hierarchy |
 | `PredictiveReplenishmentWorker` | VT worker: 48h demand vs pick-face qty → `wave_replenishment_triggers` |
 | `TenantIsolationFilter` | Outermost absolute `try/finally` → `TenantContext.clear()` (worker-pool isolation) |
-| `JwtAuthFilter` | Bind tenant/user from RS256 JWT; `filterChain.doFilter` always in `try/finally` with `TenantContext.clear()` |
+| `JwtAuthFilter` | Bind tenant/user from RS256 JWT; enforces `app_context` audience scoping (POS tokens → `/api/v1/pos/**` + `/api/v1/auth/**` only, WMS tokens barred from `/api/v1/pos/**`, else 403); `filterChain.doFilter` always in `try/finally` with `TenantContext.clear()` |
 | `SuspendedTenantAccessFilter` | After JWT bind: `tenants.status = SUSPENDED` → 403 (control-plane dunning) |
 | `MdcLoggingFilter` | Request-id MDC enrichment (clears MDC in `finally`) |
 | `SecurityConfig` | Filter chain, permitAll public routes |
@@ -792,9 +796,9 @@ Progress text: `Step {{current}} of {{total}}`. Final done: **Finish Onboarding*
     │ POST /api/v1/auth/login {email,password}  (password path only)
     ▼
 [AuthController] → [AuthService.login]
-    │ verify password, load roles + warehouseIds
-    │ JwtService.createAccessToken
-    │ persist RefreshToken hash
+    │ verify password, load roles (may be several — additive) + warehouseIds
+    │ JwtService.createAccessToken (+ app_context claim when login sent targetApp POS/WMS)
+    │ persist RefreshToken hash (carries app_context across rotation)
     │ AuthCookieService.writeSessionCookies
     ▼
 [Browser] cookies set; Zustand setSessionFromLogin
@@ -1073,6 +1077,7 @@ Recent warehouse pillar migrations (keep Flyway head current):
 | `V114` | Mesh hub handshake + `mesh_catalog_listings` + PO `notes` |
 | `V115` | Home Realm Discovery: domain TXT/`is_verified` + SSO provider/ACS/cert/corporate CIDRs |
 | `V116` | `app_owner` INSERT policy on `tenants` (clone-sandbox / training UAT under FORCE RLS) |
+| `V117` | ENTERPRISE `tenant_subscriptions` backfill for `B2B_SHOWROOM` + `MESH_NETWORK` |
 
 **Compliance pillars (enforced in code + tests):** DSCSA GS1 AI 21 serial (FE+BE parsers / scan fallback); FSMA §204 lot metadata genealogy; GAAP ledger append-only + double-reversal guards; SOC 2 tenant GUC + PgBouncer `DISCARD ALL` + RFC 7807 Problem Details.
 

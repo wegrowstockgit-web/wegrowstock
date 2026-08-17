@@ -30,12 +30,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import com.invsys.modules.sales.domain.Customer;
 
@@ -94,13 +97,13 @@ public class UserManagementService {
         return invitationRepository.findByTenantIdAndAcceptedAtIsNullOrderByExpiresAtAsc(tenantId).stream()
                 .filter(inv -> inv.getExpiresAt() == null || inv.getExpiresAt().isAfter(now))
                 .map(inv -> {
-                    String roleCode = roleRepository.findById(inv.getRoleId())
-                            .map(Role::getCode)
-                            .orElse("UNKNOWN");
+                    List<String> roleCodes = invitationRoleCodes(inv);
+                    String roleCode = roleCodes.isEmpty() ? "UNKNOWN" : roleCodes.getFirst();
                     return new PendingInvitation(
                             inv.getId(),
                             inv.getEmail(),
                             roleCode,
+                            roleCodes,
                             inv.getExpiresAt(),
                             inv.getInvitedBy(),
                             inv.getCustomerId(),
@@ -119,31 +122,32 @@ public class UserManagementService {
 
     @Transactional
     public InviteResult invite(String email, String roleCode, UUID customerId) {
-        return invite(email, roleCode, customerId, null);
+        return invite(email, List.of(roleCode), customerId, null);
     }
 
     @Transactional
     @Auditable(action = "INVITE_USER", entityType = "INVITATION")
     public InviteResult invite(String email, String roleCode, UUID customerId, UUID supplierId) {
+        return invite(email, List.of(roleCode), customerId, supplierId);
+    }
+
+    @Transactional
+    @Auditable(action = "INVITE_USER", entityType = "INVITATION")
+    public InviteResult invite(String email, List<String> roleCodes, UUID customerId, UUID supplierId) {
         UUID tenantId = TenantContext.requireTenantId();
         String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
         if (normalizedEmail.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "Email is required");
         }
-        Role role = roleRepository.findByTenantIdAndCode(tenantId, roleCode)
-                .orElseGet(() -> {
-                    if (!"B2B_CUSTOMER".equals(roleCode) && !"SUPPLIER".equals(roleCode)) {
-                        throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ROLE", "Invalid role");
-                    }
-                    Role created = new Role();
-                    created.setTenantId(tenantId);
-                    created.setCode(roleCode);
-                    return roleRepository.save(created);
-                });
-        if ("B2B_CUSTOMER".equals(roleCode) && customerId == null) {
+        List<String> codes = normalizeRoleCodes(roleCodes);
+        if (codes.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one role is required");
+        }
+        List<Role> roles = resolveAssignableRoles(tenantId, codes);
+        if (codes.contains("B2B_CUSTOMER") && customerId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CUSTOMER_REQUIRED", "Customer is required for portal invites");
         }
-        if ("SUPPLIER".equals(roleCode) && supplierId == null) {
+        if (codes.contains("SUPPLIER") && supplierId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "SUPPLIER_REQUIRED", "Supplier is required for vendor portal invites");
         }
         if (userRepository.existsByTenantIdAndEmail(tenantId, normalizedEmail)) {
@@ -157,7 +161,8 @@ public class UserManagementService {
         Invitation invitation = new Invitation();
         invitation.setTenantId(tenantId);
         invitation.setEmail(normalizedEmail);
-        invitation.setRoleId(role.getId());
+        invitation.setRoleId(roles.getFirst().getId());
+        invitation.setAdditionalRoles(codes.size() > 1 ? String.join(",", codes.subList(1, codes.size())) : null);
         invitation.setCustomerId(customerId);
         invitation.setSupplierId(supplierId);
         invitation.setTokenHash(hash(token));
@@ -167,8 +172,9 @@ public class UserManagementService {
 
         Map<String, Object> diff = new LinkedHashMap<>();
         diff.put("email", normalizedEmail);
-        diff.put("role", role.getCode());
-        diff.put("summary", "Invitation created for " + normalizedEmail + " as " + role.getCode());
+        diff.put("role", codes.getFirst());
+        diff.put("roles", codes);
+        diff.put("summary", "Invitation created for " + normalizedEmail + " as " + String.join(",", codes));
         auditService.record("USER_INVITE", "INVITATION", invitation.getId(), diff);
 
         String inviteUrl = invitationEmailService.inviteUrl(token);
@@ -233,6 +239,7 @@ public class UserManagementService {
             UUID id,
             String email,
             String role,
+            List<String> roles,
             Instant expiresAt,
             UUID invitedBy,
             UUID customerId,
@@ -276,11 +283,21 @@ public class UserManagementService {
         user.setStatus("ACTIVE");
         userRepository.save(user);
 
-        UserRole userRole = new UserRole();
-        userRole.setTenantId(invitation.tenantId());
-        userRole.setUserId(user.getId());
-        userRole.setRoleId(invitation.roleId());
-        userRoleRepository.save(userRole);
+        List<UUID> roleIds = new ArrayList<>();
+        roleIds.add(invitation.roleId());
+        for (String extra : splitRoleCodes(invitation.additionalRoles())) {
+            roleRepository.findByTenantIdAndCode(invitation.tenantId(), extra)
+                    .map(Role::getId)
+                    .ifPresent(roleIds::add);
+        }
+        Set<UUID> assigned = new LinkedHashSet<>(roleIds);
+        for (UUID roleId : assigned) {
+            UserRole userRole = new UserRole();
+            userRole.setTenantId(invitation.tenantId());
+            userRole.setUserId(user.getId());
+            userRole.setRoleId(roleId);
+            userRoleRepository.save(userRole);
+        }
 
         Role role = roleRepository.findById(invitation.roleId()).orElseThrow();
         if ("B2B_CUSTOMER".equals(role.getCode()) && invitation.customerId() != null) {
@@ -300,6 +317,26 @@ public class UserManagementService {
 
         bootstrapJdbc.markInvitationAccepted(invitation.id());
         return user;
+    }
+
+    @Transactional
+    @Auditable(action = "UPDATE_USER", entityType = "USER")
+    public List<String> replaceRoles(UUID userId, List<String> roleCodes) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        if (!user.getTenantId().equals(TenantContext.requireTenantId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found");
+        }
+        List<String> before = userRoleRepository.findRoleCodesByUserId(userId);
+        applyRolesChange(userId, roleCodes);
+        List<String> after = userRoleRepository.findRoleCodesByUserId(userId);
+        Map<String, Object> diff = new LinkedHashMap<>();
+        diff.put("field", "roles");
+        diff.put("from", String.join(",", before));
+        diff.put("to", String.join(",", after));
+        diff.put("summary", "Roles replaced: " + String.join(",", after));
+        auditService.record("USER_ORG_UPDATE", "USER", user.getId(), diff);
+        return after;
     }
 
     @Transactional
@@ -364,11 +401,18 @@ public class UserManagementService {
         List<String> beforeRoles = userRoleRepository.findRoleCodesByUserId(userId);
         List<UUID> beforeWarehouses = warehouseIdsForUser(userId);
 
-        if (update.role() != null && !update.role().isBlank()) {
-            String roleCode = update.role().trim().toUpperCase(Locale.ROOT);
-            if (!beforeRoles.contains(roleCode) || beforeRoles.size() != 1) {
-                applyRoleChange(userId, roleCode);
-                changes.add(change("role", String.join(",", beforeRoles), roleCode));
+        List<String> nextRoles = update.roles() != null
+                ? normalizeRoleCodes(update.roles())
+                : (update.role() != null && !update.role().isBlank()
+                        ? List.of(update.role().trim().toUpperCase(Locale.ROOT))
+                        : null);
+        if (nextRoles != null) {
+            if (nextRoles.isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one role is required");
+            }
+            if (!sameRoleSet(beforeRoles, nextRoles)) {
+                applyRolesChange(userId, nextRoles);
+                changes.add(change("roles", String.join(",", beforeRoles), String.join(",", nextRoles)));
             }
         }
 
@@ -495,17 +539,26 @@ public class UserManagementService {
     }
 
     private void applyRoleChange(UUID userId, String roleCode) {
-        Role role = roleRepository.findByTenantIdAndCode(TenantContext.requireTenantId(), roleCode)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ROLE", "Invalid role"));
+        applyRolesChange(userId, List.of(roleCode));
+    }
+
+    private void applyRolesChange(UUID userId, List<String> roleCodes) {
+        List<String> codes = normalizeRoleCodes(roleCodes);
+        if (codes.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one role is required");
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        List<Role> roles = resolveAssignableRoles(tenantId, codes);
         List<UserRole> existing = userRoleRepository.findByUserId(userId);
-        if (existing.stream().anyMatch(ur -> {
+        boolean currentlyOwner = existing.stream().anyMatch(ur -> {
             Role r = roleRepository.findById(ur.getRoleId()).orElseThrow();
             return "OWNER".equals(r.getCode());
-        }) && !"OWNER".equals(roleCode)) {
-            long ownerCount = roleRepository.findByTenantId(TenantContext.requireTenantId()).stream()
+        });
+        if (currentlyOwner && !codes.contains("OWNER")) {
+            long ownerCount = roleRepository.findByTenantId(tenantId).stream()
                     .filter(r -> "OWNER".equals(r.getCode()))
                     .map(Role::getId)
-                    .mapToLong(ownerRoleId -> userRoleRepository.countByRoleId(ownerRoleId))
+                    .mapToLong(userRoleRepository::countByRoleId)
                     .sum();
             if (ownerCount <= 1) {
                 throw new ApiException(HttpStatus.CONFLICT, "LAST_OWNER", "Cannot demote the last owner");
@@ -515,11 +568,65 @@ public class UserManagementService {
         // Flush so re-inserting a previously held role does not hit the unique constraint
         // before the deletes are visible to PostgreSQL (multi-role → single-role restore).
         userRoleRepository.flush();
-        UserRole userRole = new UserRole();
-        userRole.setTenantId(TenantContext.requireTenantId());
-        userRole.setUserId(userId);
-        userRole.setRoleId(role.getId());
-        userRoleRepository.save(userRole);
+        for (Role role : roles) {
+            UserRole userRole = new UserRole();
+            userRole.setTenantId(tenantId);
+            userRole.setUserId(userId);
+            userRole.setRoleId(role.getId());
+            userRoleRepository.save(userRole);
+        }
+    }
+
+    public static List<String> normalizeRoleCodes(Collection<String> raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        LinkedHashSet<String> codes = new LinkedHashSet<>();
+        for (String value : raw) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            codes.add(value.trim().toUpperCase(Locale.ROOT));
+        }
+        return List.copyOf(codes);
+    }
+
+    static List<String> splitRoleCodes(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return normalizeRoleCodes(List.of(csv.split(",")));
+    }
+
+    private List<String> invitationRoleCodes(Invitation invitation) {
+        List<String> codes = new ArrayList<>();
+        roleRepository.findById(invitation.getRoleId())
+                .map(Role::getCode)
+                .ifPresent(codes::add);
+        codes.addAll(splitRoleCodes(invitation.getAdditionalRoles()));
+        return normalizeRoleCodes(codes);
+    }
+
+    private List<Role> resolveAssignableRoles(UUID tenantId, List<String> codes) {
+        List<Role> roles = new ArrayList<>();
+        for (String code : codes) {
+            Role role = roleRepository.findByTenantIdAndCode(tenantId, code)
+                    .orElseGet(() -> {
+                        if (!"B2B_CUSTOMER".equals(code) && !"SUPPLIER".equals(code)) {
+                            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ROLE", "Invalid role: " + code);
+                        }
+                        Role created = new Role();
+                        created.setTenantId(tenantId);
+                        created.setCode(code);
+                        return roleRepository.save(created);
+                    });
+            roles.add(role);
+        }
+        return roles;
+    }
+
+    private static boolean sameRoleSet(List<String> before, List<String> after) {
+        return new LinkedHashSet<>(before).equals(new LinkedHashSet<>(after));
     }
 
     private void replaceWarehouses(UUID userId, List<UUID> warehouseIds) {
@@ -554,6 +661,7 @@ public class UserManagementService {
 
     public record OrgScopeUpdate(
             String role,
+            List<String> roles,
             String corporateDepartment,
             String timezonePreference,
             String localeLanguage,

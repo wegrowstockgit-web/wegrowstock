@@ -111,7 +111,13 @@ test.describe('Admin security & settings suite', () => {
       await expect(admin.page.getByTestId('user-detail-drawer')).toBeVisible();
       await expect(admin.page.getByTestId('org-scope-section')).toBeVisible();
 
-      await admin.page.getByTestId('org-scope-section').getByLabel('Role').selectOption('PICKER');
+      const roleBox = admin.page.getByTestId('role-multiselect');
+      await expect(roleBox).toBeVisible();
+      await roleBox.getByTestId('role-option-PICKER').locator('input[type="checkbox"]').check();
+      const viewerBox = roleBox.getByTestId('role-option-VIEWER').locator('input[type="checkbox"]');
+      if (await viewerBox.isChecked()) {
+        await viewerBox.uncheck();
+      }
 
       const orgWait = admin.page.waitForResponse(
         (r) => r.url().includes('/org-scope') && r.request().method() === 'PATCH',

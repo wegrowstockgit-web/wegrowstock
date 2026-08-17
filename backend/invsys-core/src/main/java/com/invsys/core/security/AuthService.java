@@ -26,6 +26,7 @@ import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -135,18 +138,87 @@ public class AuthService {
         }
         TenantContext.setTenantId(tenantId);
         try {
-            return self.completeLogin(authUser.id());
+            TokenResponse tokens = self.completeLogin(authUser.id(), request.targetApp());
+            AuthService.assertTargetAppAccess(request.targetApp(), tokens);
+            return tokens;
         } finally {
             TenantContext.clear();
         }
     }
 
+    /**
+     * Cross-app login gate. {@code null}/blank {@code targetApp} keeps existing clients working.
+     */
+    public static void assertTargetAppAccess(String targetApp, TokenResponse tokens) {
+        if (targetApp == null || targetApp.isBlank() || tokens == null) {
+            return;
+        }
+        String app = targetApp.trim().toUpperCase(Locale.ROOT);
+        List<String> roles = tokens.roles() == null ? List.of() : tokens.roles();
+        List<String> permissions = tokens.grantedPermissions() == null ? List.of() : tokens.grantedPermissions();
+        switch (app) {
+            case "POS" -> {
+                if (!hasPosOperate(roles, permissions)) {
+                    throw new AccessDeniedException("User does not have POS access privileges.");
+                }
+            }
+            case "WMS" -> {
+                if (!hasWmsAccess(roles, permissions)) {
+                    throw new AccessDeniedException("User does not have WMS access privileges.");
+                }
+            }
+            case "ADMIN" -> throw new AccessDeniedException("User does not have admin access privileges.");
+            default -> {
+            }
+        }
+    }
+
+    static boolean hasPosOperate(List<String> roles, List<String> permissions) {
+        if (roles.contains("OWNER") || roles.contains("ADMIN")) {
+            return true;
+        }
+        return permissions.contains(PermissionKeys.POS_OPERATE);
+    }
+
+    static boolean hasWmsAccess(List<String> roles, List<String> permissions) {
+        if (roles.stream().anyMatch(WMS_LOGIN_ROLES::contains)) {
+            return true;
+        }
+        return permissions.stream().anyMatch(AuthService::isWmsPermission);
+    }
+
+    static String normalizeAppContext(String targetApp) {
+        if (targetApp == null || targetApp.isBlank()) {
+            return null;
+        }
+        String app = targetApp.trim().toUpperCase(Locale.ROOT);
+        return switch (app) {
+            case "POS", "WMS" -> app;
+            default -> null;
+        };
+    }
+
+    static boolean isWmsPermission(String permissionKey) {
+        return permissionKey != null
+                && PermissionKeys.CATALOG.contains(permissionKey)
+                && !PermissionKeys.POS_OPERATE.equals(permissionKey)
+                && !PermissionKeys.POS_SUPERVISE.equals(permissionKey);
+    }
+
+    private static final Set<String> WMS_LOGIN_ROLES = Set.of(
+            "OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER", "B2B_CUSTOMER", "SUPPLIER");
+
     @Transactional
     public TokenResponse completeLogin(UUID userId) {
+        return completeLogin(userId, null);
+    }
+
+    @Transactional
+    public TokenResponse completeLogin(UUID userId, String targetApp) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
         List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
-        return issueTokens(user, roles);
+        return issueTokens(user, roles, targetApp);
     }
 
     /**
@@ -180,7 +252,7 @@ public class AuthService {
         }
         TenantContext.setTenantId(tenantId);
         try {
-            return self.completeLogin(userId);
+            return self.completeLogin(userId, "WMS");
         } finally {
             TenantContext.clear();
         }
@@ -220,13 +292,16 @@ public class AuthService {
 
             List<String> roles = userRoleRepository.findRoleCodesByUserId(user.getId());
             List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
-            String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roles, warehouseIds);
+            String appContext = tokenEntity.getAppContext();
+            String access = jwtService.generateAccessToken(
+                    user.getId(), user.getTenantId(), roles, warehouseIds, appContext);
             String refresh = UUID.randomUUID().toString();
             RefreshToken replacement = new RefreshToken();
             replacement.setTenantId(user.getTenantId());
             replacement.setUserId(user.getId());
             replacement.setTokenHash(hashToken(refresh));
             replacement.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
+            replacement.setAppContext(appContext);
             replacement = refreshTokenRepository.save(replacement);
             tokenEntity.setReplacedBy(replacement.getId());
             refreshTokenRepository.save(tokenEntity);
@@ -291,7 +366,7 @@ public class AuthService {
                 throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PIN", "Invalid terminal PIN");
             }
             terminalPinBruteForceGuard.recordCredentialSuccess(lockKey);
-            return self.completeLogin(target.getId());
+            return self.completeLogin(target.getId(), "WMS");
         } finally {
             TenantContext.clear();
         }
@@ -389,17 +464,24 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user, List<String> roles) {
+        return issueTokens(user, roles, null);
+    }
+
+    private TokenResponse issueTokens(User user, List<String> roles, String targetApp) {
         List<String> roleList = roles == null ? List.of() : List.copyOf(roles);
         List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roleList);
         List<String> grantedPermissions = rolePermissionService.resolveGrantedPermissions(
                 user.getTenantId(), roles);
-        String access = jwtService.generateAccessToken(user.getId(), user.getTenantId(), roleList, warehouseIds);
+        String appContext = normalizeAppContext(targetApp);
+        String access = jwtService.generateAccessToken(
+                user.getId(), user.getTenantId(), roleList, warehouseIds, appContext);
         String refresh = UUID.randomUUID().toString();
         RefreshToken entity = new RefreshToken();
         entity.setTenantId(user.getTenantId());
         entity.setUserId(user.getId());
         entity.setTokenHash(hashToken(refresh));
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
+        entity.setAppContext(appContext);
         refreshTokenRepository.save(entity);
         return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roleList, warehouseIds,
                 user.getAvatarUrl(), grantedPermissions);

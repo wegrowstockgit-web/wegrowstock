@@ -11,8 +11,11 @@ export async function loginWithPassword(
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, targetApp: 'POS' }),
   });
+  if (response.status === 403) {
+    throw new Error('POS access denied');
+  }
   if (!response.ok) {
     throw new Error('Invalid email or password');
   }
@@ -76,7 +79,11 @@ export function LoginPage() {
         </label>
         {error ? (
           <p className="pos-login-error" data-testid="pos-login-error">
-            {error === 'Invalid email or password' ? t('login.error') : error}
+            {error === 'Invalid email or password'
+              ? t('login.error')
+              : error === 'POS access denied'
+                ? t('login.posDenied')
+                : error}
           </p>
         ) : null}
         <button type="submit" disabled={busy}>

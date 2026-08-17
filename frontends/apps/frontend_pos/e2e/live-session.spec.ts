@@ -13,6 +13,8 @@ test('signed-in register reads POS entitlement, language, and currency from WMS'
   if (!login.ok()) {
     test.skip(true, 'API is not available for live POS session testing');
   }
+  const tokens = await login.json();
+  const accessToken = tokens.accessToken as string;
 
   await page.goto('/login');
   await page.getByTestId('pos-login-email').fill('owner@demo.test');
@@ -25,7 +27,7 @@ test('signed-in register reads POS entitlement, language, and currency from WMS'
   await expect(locked.or(search)).toBeVisible();
 
   const session = await request.get(`${apiBase}/api/v1/pos/session`, {
-    headers: { Authorization: `Bearer ${(await login.json()).accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     failOnStatusCode: false,
   });
   if (session.ok()) {
@@ -36,6 +38,41 @@ test('signed-in register reads POS entitlement, language, and currency from WMS'
     if (body.posEnabled) {
       await expect(search).toBeVisible();
       await expect(page.getByTestId('pos-grand-total')).toBeVisible();
+
+      const pin = await request.post(`${apiBase}/api/v1/auth/terminal-pin`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        data: { pin: '1234' },
+        failOnStatusCode: false,
+      });
+      const overrides = await request.get(`${apiBase}/api/v1/pos/managers/sync-pins`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        failOnStatusCode: false,
+      });
+      if (overrides.ok()) {
+        expect(body.cashierId).toBeTruthy();
+        expect(body.tenantId).toBeTruthy();
+        const vault = await overrides.json();
+        expect(Array.isArray(vault.managers)).toBe(true);
+        if (pin.ok() || pin.status() === 204) {
+          expect(vault.managers.length).toBeGreaterThan(0);
+        }
+
+        const eventId = crypto.randomUUID();
+        const sync = await request.post(`${apiBase}/api/v1/pos/audit-sync`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          data: [{
+            id: eventId,
+            timestamp: Date.now(),
+            cashierId: body.cashierId ?? tokens.userId,
+            eventType: 'LINE_VOID',
+            orderId: crypto.randomUUID(),
+            valueVoided: 12.5,
+          }],
+        });
+        expect(sync.ok()).toBeTruthy();
+        const ingested = await sync.json();
+        expect(ingested.accepted + ingested.duplicates).toBeGreaterThan(0);
+      }
     } else {
       await expect(locked).toBeVisible();
     }

@@ -84,7 +84,7 @@ Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emai
 ### 3. Invite your team
 
 1. Open **Admin → Organization** (or `/settings`) → **Users & invitations**.
-2. **Invite user** → email + role:
+2. **Invite user** → email + **one or more roles** (checkboxes — roles are additive; the person gets the combined access):
 
 | Role | Typical access |
 |------|----------------|
@@ -94,9 +94,13 @@ Demo tenants (if seeded): `owner@demo.test` / `password123` (and other role emai
 | **PICKER** | Floor scan flows (fulfillment, receive, counts) |
 | **VIEWER** | Read-only office views |
 | **B2B_CUSTOMER** | Showroom only |
+| **RETAIL_CASHIER** | Retail POS register (with the POS addon) |
+| **RETAIL_MANAGER** | Retail POS supervision — approves voids/overrides |
 
 3. For floor staff, assign **which warehouses** they may use (location-based access). Someone checked only for Warehouse A cannot change Warehouse B stock.
-4. Invitee opens the email link (`/invite/...`), sets a password, and joins.
+4. Invitee opens the email link (`/invite/...`), sets a password, and joins with **all** the roles you picked. You can change a person's roles later from the same Users list — each role shows as its own badge.
+
+> Even when someone holds both office and register roles (e.g. Warehouse Manager + Retail Cashier), each sign-in is locked to the app it started in: a POS register session can't call office APIs and vice versa.
 
 ### 4. Secure the scanners (PIN)
 

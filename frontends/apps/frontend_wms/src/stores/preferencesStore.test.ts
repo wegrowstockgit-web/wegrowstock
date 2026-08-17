@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DENSITY_STYLES, usePreferencesStore } from '@/stores/preferencesStore';
+import i18n, { WMS_LANG_STORAGE_KEY } from '@/lib/i18n';
 
 describe('preferencesStore density', () => {
   beforeEach(() => {
@@ -23,8 +24,12 @@ describe('preferencesStore density', () => {
     expect(DENSITY_STYLES.spacious.typography).toBe('text-base');
   });
 
-  it('persists language preference', () => {
+  it('persists language preference', async () => {
     usePreferencesStore.getState().setLanguage('es');
     expect(usePreferencesStore.getState().language).toBe('es');
+    expect(localStorage.getItem(WMS_LANG_STORAGE_KEY)).toBe('es');
+    expect(i18n.language).toMatch(/^es/);
+    usePreferencesStore.getState().setLanguage('en');
+    await i18n.changeLanguage('en');
   });
 });

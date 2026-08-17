@@ -6,7 +6,7 @@ A plain-language map of how InventorySystem stores warehouse data in PostgreSQL 
 
 **Companion docs:** `DEVELOPER_ARCHITECTURE.md` (how the app uses this schema), `USER_GUIDE.md` (day-to-day product use), `README.md` (run the stack).
 
-Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V116**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
+Schema is owned by Flyway (`backend/invsys-core/src/main/resources/db/migration/`). Current head is **V120**. Hibernate runs with `ddl-auto: validate` — never invent columns only in JPA.
 
 ---
 
@@ -85,10 +85,10 @@ Indexes stay compound with `(tenant_id, created_at, …)` so tenant queries prun
 | `users` | Tenant people (email, password hash, profile fields) — **not** Super Admins |
 | `platform_admins` | Control-plane Super Admin identities (**V106**, no tenant RLS) |
 | `platform_admin_refresh_tokens` | Admin session refresh (**V106**) |
-| `roles` / `user_roles` | `OWNER`, `ADMIN`, `WAREHOUSE_MANAGER`, `PICKER`, `VIEWER`, `B2B_CUSTOMER`, … |
+| `roles` / `user_roles` | `OWNER`, `ADMIN`, `WAREHOUSE_MANAGER`, `PICKER`, `VIEWER`, `B2B_CUSTOMER`, plus retail POS roles `RETAIL_CASHIER` / `RETAIL_MANAGER` (**V118**). Multi-role is additive — one user may hold several rows |
 | `user_warehouses` | **LBAC** — which warehouses a user may operate |
-| `invitations` | Time-limited invite hashes |
-| `refresh_tokens` | Rotating WMS session refresh |
+| `invitations` | Time-limited invite hashes; `additional_roles` CSV (**V120**) carries extra role codes for multi-role invites |
+| `refresh_tokens` | Rotating WMS session refresh; `app_context` (**V119**) preserves the POS/WMS JWT sandbox across refresh |
 | `magic_login_tokens` | Passwordless / supplier-portal magic links |
 
 ### 2. Catalog
@@ -267,7 +267,7 @@ Property: `invsys.integration.vault-provider`.
 
 ---
 
-## Recent Flyway head (V080–V116)
+## Recent Flyway head (V080–V120)
 
 | Version | Purpose |
 |---------|---------|
@@ -306,6 +306,10 @@ Property: `invsys.integration.vault-provider`.
 | **V114** | Mesh hub: `REQUESTED` status, nullable pairing FKs, `mesh_catalog_listings`, `purchase_orders.notes` |
 | **V115** | Home Realm Discovery: domain TXT token + `is_verified`; SSO provider / ACS / cert / corporate CIDRs |
 | **V116** | `app_owner` INSERT policy on `tenants` so Control Plane clone-sandbox / training UAT can provision rows under FORCE RLS |
+| **V117** | Backfill ENTERPRISE `tenant_subscriptions` with `B2B_SHOWROOM` + `MESH_NETWORK` (BASIC/INTERMEDIATE unchanged) |
+| **V118** | Retail POS roles `RETAIL_CASHIER` / `RETAIL_MANAGER` seeded per tenant (widened `roles_code_check`); grants `pos.operate` / `pos.supervise` permission keys |
+| **V119** | `refresh_tokens.app_context` — POS/WMS JWT audience scoping survives refresh rotation |
+| **V120** | `invitations.additional_roles` — multi-role invites assign every role on accept |
 
 ---
 
@@ -325,4 +329,4 @@ Property: `invsys.integration.vault-provider`.
 
 Global exceptions (no tenant RLS): `currency_rates`, `support_knowledge_*`, `platform_admins`, `platform_admin_refresh_tokens`, `platform_audit_logs`, `platform_compliance_broadcasts`, `platform_knowledge_documents`. Almost everything else is tenant-scoped.
 
-See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V116`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).
+See the domain map tables above for the living index. For column-level detail, open the Flyway file that introduced the table (`V001`…`V120`) or the matching JPA entity under `backend/invsys-core/src/main/java/com/invsys/domain/` (support entities may live under `com.invsys.support`).

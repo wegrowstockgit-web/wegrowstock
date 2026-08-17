@@ -1,5 +1,8 @@
 package com.invsys.pos;
 
+import com.invsys.core.security.RequireModule;
+import com.invsys.domain.subscription.AppModule;
+import com.invsys.pos.dto.PosManagerOverrideResponse;
 import com.invsys.pos.dto.PosSessionResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -12,9 +15,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class PosSessionController {
 
     private final PosSessionService sessionService;
+    private final PosManagerOverrideService managerOverrideService;
 
-    public PosSessionController(PosSessionService sessionService) {
+    public PosSessionController(
+            PosSessionService sessionService,
+            PosManagerOverrideService managerOverrideService) {
         this.sessionService = sessionService;
+        this.managerOverrideService = managerOverrideService;
     }
 
     /**
@@ -28,5 +35,14 @@ public class PosSessionController {
             @RequestParam(value = "placeLanguage", required = false) String placeLanguage,
             @RequestParam(value = "placeCurrency", required = false) String placeCurrency) {
         return sessionService.currentSession(acceptLanguage, timezone, placeLanguage, placeCurrency);
+    }
+
+    /**
+     * Morning sync of {@code pos.supervise} PIN hashes for offline manager overrides.
+     */
+    @GetMapping("/managers/sync-pins")
+    @RequireModule(AppModule.RETAIL_POS)
+    public PosManagerOverrideResponse syncManagerPins() {
+        return managerOverrideService.currentManagers();
     }
 }

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useEffect, useState } from 'react';
 import type { User, SessionResponse } from '@/api/types';
-import i18n, { normalizeLanguage } from '@/lib/i18n';
+import { normalizeLanguage } from '@/lib/i18n';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 
 const EMPTY_ROLES: readonly string[] = Object.freeze([]);
@@ -170,7 +170,6 @@ export const useSessionStore = create<SessionState>()(
           const language = normalizeLanguage(
             nextUser.localeLanguage ?? profile.preferredLanguage,
           );
-          void i18n.changeLanguage(language);
           usePreferencesStore.getState().setLanguage(language);
           return {
             authenticated: true,
@@ -268,6 +267,12 @@ export const useSessionStore = create<SessionState>()(
             ? freezePrimary(p.primarySession as PrimarySessionSnapshot)
             : null,
         };
+      },
+      onRehydrateStorage: () => (state) => {
+        const locale = state?.user?.localeLanguage;
+        if (locale) {
+          usePreferencesStore.getState().setLanguage(normalizeLanguage(locale));
+        }
       },
     },
   ),

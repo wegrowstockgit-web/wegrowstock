@@ -58,7 +58,7 @@ describe('ShowroomOrdersPage quote accept', () => {
     expect(await screen.findByRole('heading', { name: 'SO-QUOTE-1' })).toBeInTheDocument();
     expect(screen.getByText(/custom pricing/i)).toBeInTheDocument();
     expect(screen.getByText('NET 45 approved')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Accept & Convert to Order' }));
+    await user.click(screen.getByRole('button', { name: /Accept Quote/i }));
     expect(apiClient.post).toHaveBeenCalledWith('/api/v1/portal/orders/q-1/accept-quote');
   });
 });

@@ -21,7 +21,8 @@ import java.util.UUID;
 public class TenantOnboardingService {
 
     private static final List<String> DEFAULT_ROLES = List.of(
-            "OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER");
+            "OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER",
+            "RETAIL_CASHIER", "RETAIL_MANAGER");
 
     private final TenantProvisioningService provisioningService;
 

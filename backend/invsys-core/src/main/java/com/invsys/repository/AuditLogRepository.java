@@ -16,6 +16,8 @@ import com.invsys.core.tenancy.TenantContext;
 public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
     List<AuditLog> findByTenantIdOrderByCreatedAtDesc(UUID tenantId);
 
+    boolean existsByTenantIdAndEntityId(UUID tenantId, UUID entityId);
+
     List<AuditLog> findByTenantIdAndEntityTypeInAndEntityIdOrderByCreatedAtDescIdDesc(
             UUID tenantId,
             Collection<String> entityTypes,

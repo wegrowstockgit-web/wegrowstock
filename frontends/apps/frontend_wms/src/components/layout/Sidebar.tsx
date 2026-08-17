@@ -26,12 +26,14 @@ import { isNavPathEnabled } from '@/lib/router/moduleRegistry';
 function leafVisible(
   item: NavLeafConfig,
   hasRole: (...roles: string[]) => boolean,
+  hasModule: (module: string) => boolean,
   isPickerOnly: boolean,
   isViewerOnly: boolean,
   entitlements: readonly string[],
 ): boolean {
   if (!isNavPathEnabled(item.to, entitlements)) return false;
   if (item.roles && !hasRole(...item.roles)) return false;
+  if (item.modules?.length && !item.modules.every((module) => hasModule(module))) return false;
   if (isPickerOnly && item.hideForPicker) return false;
   if (isViewerOnly && item.hideForViewer) return false;
   return true;
@@ -112,6 +114,7 @@ export function Sidebar() {
   const { t } = useTranslation();
   const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
+  const hasModule = useSessionStore((s) => s.hasModule);
   const isPickerOnly = useSessionStore((s) => s.isPickerOnly);
   const isViewerOnly = useSessionStore((s) => s.isViewerOnly);
   const entitlements = useEnabledModules();
@@ -136,18 +139,26 @@ export function Sidebar() {
   const pickerOnly = isPickerOnly();
   const viewerOnly = isViewerOnly();
 
+  const visibleSolos = useMemo(
+    () =>
+      NAV_MATRIX.solos.filter((item) =>
+        leafVisible(item, hasRole, hasModule, pickerOnly, viewerOnly, entitlements),
+      ),
+    [hasRole, hasModule, pickerOnly, viewerOnly, entitlements],
+  );
+
   const visibleCategories = useMemo(() => {
     return NAV_MATRIX.categories
       .map(
         (group): NavCategoryConfig => ({
           ...group,
           items: group.items.filter((item) =>
-            leafVisible(item, hasRole, pickerOnly, viewerOnly, entitlements),
+            leafVisible(item, hasRole, hasModule, pickerOnly, viewerOnly, entitlements),
           ),
         }),
       )
       .filter((group) => group.items.length > 0);
-  }, [hasRole, pickerOnly, viewerOnly, entitlements]);
+  }, [hasRole, hasModule, pickerOnly, viewerOnly, entitlements]);
 
   const activeGroupId = useMemo(() => {
     for (const group of visibleCategories) {
@@ -278,7 +289,7 @@ export function Sidebar() {
       {showOverlay && mobileOpen && (
         <button
           type="button"
-          aria-label="Close navigation"
+          aria-label={t('nav.closeNavigation')}
           className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
@@ -344,8 +355,8 @@ export function Sidebar() {
               <button
                 type="button"
                 aria-pressed={pinned}
-                aria-label={pinned ? 'Unpin navigation' : 'Pin navigation open'}
-                title={coarsePointer ? undefined : pinned ? 'Unpin' : 'Pin open'}
+                aria-label={pinned ? t('nav.unpinNavigation') : t('nav.pinNavigation')}
+                title={coarsePointer ? undefined : pinned ? t('nav.unpinNavigation') : t('nav.pinNavigation')}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={handlePinToggle}
                 className={cn(
@@ -369,7 +380,7 @@ export function Sidebar() {
           {!showOverlay && coarsePointer && !expanded && (
             <button
               type="button"
-              aria-label="Expand navigation labels"
+              aria-label={t('nav.expandNavigation')}
               onClick={() => {
                 setPeekLocked(false);
                 setPinned(true);
@@ -413,16 +424,17 @@ export function Sidebar() {
               )}
               aria-label="Primary"
             >
-              {NAV_MATRIX.solos.map((solo) => (
+              {visibleSolos.map((solo) => (
                 <SoloLink
                   key={solo.id}
                   to={solo.to}
-                  label={t(`nav.${solo.label}`)}
+                  label={t(solo.labelKey, solo.label)}
                   icon={solo.icon}
                   labelsVisible={labelsVisible}
                   coarsePointer={coarsePointer}
                   showOverlay={showOverlay}
                   linkClass={linkClass}
+                  testId={solo.testId}
                 />
               ))}
 
@@ -443,8 +455,8 @@ export function Sidebar() {
                       aria-expanded={isOpen}
                       aria-controls={`nav-group-panel-${group.id}`}
                       data-testid={`nav-category-${group.id}`}
-                      title={coarsePointer || showOverlay ? undefined : t(`nav.${group.category}`)}
-                      aria-label={t(`nav.${group.category}`)}
+                      title={coarsePointer || showOverlay ? undefined : t(group.labelKey, group.category)}
+                      aria-label={t(group.labelKey, group.category)}
                       onClick={() => {
                         if (!labelsVisible) {
                           setPeekLocked(false);
@@ -475,7 +487,7 @@ export function Sidebar() {
                             : 'pointer-events-none max-w-0 -translate-x-1 opacity-0 delay-0',
                         )}
                       >
-                        {t(`nav.${group.category}`)}
+                        {t(group.labelKey, group.category)}
                       </span>
                       {labelsVisible && (
                         <ChevronRight
@@ -492,14 +504,14 @@ export function Sidebar() {
                       <div
                         id={`nav-group-panel-${group.id}`}
                         role="group"
-                        aria-label={t(`nav.${group.category}`)}
+                        aria-label={t(group.labelKey, group.category)}
                         className={cn(
                           'flex flex-col gap-0.5',
                           labelsVisible && 'ml-5 border-l border-border/70 pl-1',
                         )}
                       >
-                        {group.items.map(({ to, label, icon: Icon, tourAnchor }) => {
-                          const translated = t(`nav.${label}`);
+                        {group.items.map(({ to, label, labelKey, icon: Icon, tourAnchor, testId }) => {
+                          const translated = t(labelKey, label);
                           return (
                           <NavLink
                             key={to}
@@ -508,6 +520,7 @@ export function Sidebar() {
                             aria-label={translated}
                             className={childLinkClass}
                             data-tour={tourAnchor}
+                            data-testid={testId}
                             onClick={() => {
                               if (showOverlay) setMobileOpen(false);
                             }}
@@ -530,7 +543,7 @@ export function Sidebar() {
 
           <SoloLink
             to="/settings/profile"
-            label={t('nav.Profile')}
+            label={t('nav.profile', t('nav.Profile'))}
             icon={UserCircle}
             labelsVisible={labelsVisible}
             coarsePointer={coarsePointer}

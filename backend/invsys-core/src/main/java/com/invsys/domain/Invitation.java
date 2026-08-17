@@ -36,6 +36,10 @@ public class Invitation extends TenantScopedEntity {
     @Column(name = "supplier_id")
     private UUID supplierId;
 
+    /** Extra role codes beyond {@code role_id}, comma-separated (additive invite). */
+    @Column(name = "additional_roles", length = 512)
+    private String additionalRoles;
+
     public String getEmail() {
         return email;
     }
@@ -98,5 +102,13 @@ public class Invitation extends TenantScopedEntity {
 
     public void setSupplierId(UUID supplierId) {
         this.supplierId = supplierId;
+    }
+
+    public String getAdditionalRoles() {
+        return additionalRoles;
+    }
+
+    public void setAdditionalRoles(String additionalRoles) {
+        this.additionalRoles = additionalRoles;
     }
 }

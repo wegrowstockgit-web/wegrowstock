@@ -58,6 +58,8 @@ class PosSessionServiceTest {
         assertThat(session.companyName()).isEqualTo("Demo Corp");
         assertThat(session.module()).isEqualTo("RETAIL_POS");
         assertThat(session.tier()).isEqualTo("ENTERPRISE");
+        assertThat(session.cashierId()).isNotNull();
+        assertThat(session.tenantId()).isEqualTo(tenantId);
     }
 
     @Test

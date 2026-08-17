@@ -9,7 +9,9 @@
 --
 -- Demo credentials (password for all users): password123
 -- Tenants (commercial tiers for control-plane testing):
---   Demo Corp (ENTERPRISE): CORE + B2B_SHOWROOM + FINTECH + AI_COPILOT + RETAIL_POS
+--   Demo Corp (ENTERPRISE): CORE + B2B_SHOWROOM + FINTECH + AI_COPILOT + RETAIL_POS + MESH_NETWORK
+--   Owner users on BASIC / INTERMEDIATE do not receive Mesh or B2B (tier-gated).
+--   Owner users on ENTERPRISE (owner@demo.test and any other ENTERPRISE owner) do.
 --   Acme Wholesale (BASIC): CORE
 --   Northwind Logistics (INTERMEDIATE): CORE + SHOPIFY + ADVANCED_FULFILLMENT
 --   Pacific Parts Co: seeded via demo_seed_tenants_extra.sql

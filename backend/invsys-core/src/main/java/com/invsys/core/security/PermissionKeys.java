@@ -16,6 +16,8 @@ public final class PermissionKeys {
     public static final String EDI_OUTBOUND = "edi:outbound";
     public static final String SO_DISCOUNT_OVERRIDE = "so:discount:override";
     public static final String MANAGE_CUSTOMERS = "customers:manage";
+    public static final String POS_OPERATE = "pos.operate";
+    public static final String POS_SUPERVISE = "pos.supervise";
 
     public static final List<String> CATALOG = List.of(
             INVENTORY_COST_VIEW,
@@ -29,7 +31,9 @@ public final class PermissionKeys {
             PRINTING_THERMAL,
             EDI_OUTBOUND,
             SO_DISCOUNT_OVERRIDE,
-            MANAGE_CUSTOMERS
+            MANAGE_CUSTOMERS,
+            POS_OPERATE,
+            POS_SUPERVISE
     );
 
     private PermissionKeys() {

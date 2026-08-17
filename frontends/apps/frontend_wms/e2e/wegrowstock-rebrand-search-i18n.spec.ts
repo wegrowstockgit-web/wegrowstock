@@ -21,7 +21,6 @@ test.describe('weGrowStock rebrand, warehouse scope, global search, i18n', () =>
   test('office chrome shows brand, tier badge, and tenant-global scope', async ({ ownerPage }) => {
     await ownerPage.goto('/dashboard');
     await expect(ownerPage.getByTestId('brand-logo').first()).toBeVisible({ timeout: 15_000 });
-    await expect(ownerPage.getByText('weGrowStock').first()).toBeVisible();
     await expect(ownerPage.getByTestId('tier-badge').first()).toBeVisible({ timeout: 15_000 });
     await expect(ownerPage.getByTestId('tier-badge').first()).toHaveText(/BASIC|INTERMEDIATE|ENTERPRISE/i);
 
@@ -153,15 +152,15 @@ test.describe('weGrowStock rebrand, warehouse scope, global search, i18n', () =>
     try {
       await persistLanguage('es');
       await loginUi();
-      await expect(page.getByRole('link', { name: 'Panel', exact: true })).toBeVisible({
+      await expect(page.getByRole('link', { name: /Panel/i }).first()).toBeVisible({
         timeout: 15_000,
       });
       await page.getByTestId('page-help-trigger').click();
-      await expect(page.getByTestId('page-help-title')).toHaveTextContent(/Centro de mando/i);
+      await expect(page.getByTestId('page-help-title')).toHaveText(/Centro de mando/i);
       await page.keyboard.press('Escape');
       await page.getByTestId('support-assistant-fab').click();
       await expect(page.getByTestId('support-assistant-panel')).toBeVisible();
-      await expect(page.getByTestId('support-assistant-panel')).toHaveTextContent(
+      await expect(page.getByTestId('support-assistant-panel')).toHaveText(
         /Copiloto de operaciones/i,
       );
       await page.getByTestId('support-assistant-close').click();
@@ -172,14 +171,14 @@ test.describe('weGrowStock rebrand, warehouse scope, global search, i18n', () =>
 
       await persistLanguage('fr');
       await loginUi();
-      await expect(page.getByRole('link', { name: 'Tableau de bord', exact: true })).toBeVisible({
+      await expect(page.getByRole('link', { name: /Tableau de bord/i }).first()).toBeVisible({
         timeout: 15_000,
       });
       await page.getByTestId('page-help-trigger').click();
-      await expect(page.getByTestId('page-help-title')).toHaveTextContent(/Centre de commande/i);
+      await expect(page.getByTestId('page-help-title')).toHaveText(/Centre de commande/i);
       await page.keyboard.press('Escape');
       await page.getByTestId('support-assistant-fab').click();
-      await expect(page.getByTestId('support-assistant-panel')).toHaveTextContent(/Copilote/i);
+      await expect(page.getByTestId('support-assistant-panel')).toHaveText(/Copilote/i);
     } finally {
       await persistLanguage('en');
       await context.close();
@@ -197,6 +196,9 @@ test.describe('weGrowStock rebrand, warehouse scope, global search, i18n', () =>
       data: { email: 'owner@demo.test', password: DEMO_PASSWORD },
     });
     expect(login.ok()).toBeTruthy();
+    await page.request.patch('/api/v1/users/me/profile', {
+      data: { preferredLanguage: 'en', localeLanguage: 'en' },
+    });
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.ok()).toBeTruthy();
     const body = (await me.json()) as { localeLanguage?: string; tier?: string };

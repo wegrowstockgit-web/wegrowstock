@@ -111,5 +111,6 @@ class ControlPlaneTenantEntitlementHttpTest extends AbstractIntegrationTest {
         var enterprise = tenantSubscriptionService.replaceTier(owner.tenantId(), CommercialTier.ENTERPRISE);
         assertThat(enterprise.tier()).isEqualTo(CommercialTier.ENTERPRISE);
         assertThat(enterprise.enabledModules()).hasSize(AppModule.values().length);
+        assertThat(enterprise.enabledModules()).contains(AppModule.B2B_SHOWROOM, AppModule.MESH_NETWORK);
     }
 }

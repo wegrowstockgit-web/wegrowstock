@@ -128,8 +128,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ProblemDetail handleAccess(AccessDeniedException ex) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Access denied");
+        String detail = ex.getMessage() == null || ex.getMessage().isBlank()
+                ? "Access denied"
+                : ex.getMessage();
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, detail);
         pd.setTitle("FORBIDDEN");
+        pd.setProperty("code", "ACCESS_DENIED");
         return pd;
     }
 

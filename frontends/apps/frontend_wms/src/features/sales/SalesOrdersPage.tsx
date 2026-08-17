@@ -1,4 +1,6 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -53,6 +55,7 @@ function AllocationHoldBadge({
   status: string;
   allocationPolicy?: string;
 }) {
+  const { t } = useTranslation();
   if (!['PARTIALLY_ALLOCATED', 'BACKORDERED', 'UNALLOCATED'].includes(status)) {
     return null;
   }
@@ -62,14 +65,13 @@ function AllocationHoldBadge({
       className="rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
       data-testid="allocation-hold-badge"
     >
-      {shipComplete
-        ? 'Held by Ship Complete — waiting until every line has ATP.'
-        : 'Split shipment — remaining quantity is backordered.'}
+      {shipComplete ? t('sales.heldByShipComplete') : t('sales.splitShipmentHold')}
     </p>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -77,7 +79,7 @@ function StatusBadge({ status }: { status: string }) {
         STATUS_STYLES[status] ?? 'bg-surface-overlay text-text-muted'
       )}
     >
-      {status.replaceAll('_', ' ')}
+      {t(`sales.statuses.${status}`, { defaultValue: status.replaceAll('_', ' ') })}
     </span>
   );
 }
@@ -436,10 +438,14 @@ function RowActions({ order }: { order: SalesOrder }) {
 }
 
 export function SalesOrdersPage() {
+  const { t } = useTranslation();
+  const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [modalOpen, setModalOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(() =>
+    location.pathname.startsWith('/sales/orders') ? 'PENDING_REP_APPROVAL' : '',
+  );
   const [peekOrderId, setPeekOrderId] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -463,11 +469,11 @@ export function SalesOrdersPage() {
   }, [data, statusFilter]);
 
   const orderPresets = [
-    { id: 'all', label: 'All', filters: {} as Record<string, string> },
-    { id: 'rfq', label: 'RFQ inbox', filters: { status: 'PENDING_REP_APPROVAL' } },
-    { id: 'open', label: 'Open', filters: { status: 'CONFIRMED' } },
-    { id: 'allocated', label: 'Allocated', filters: { status: 'ALLOCATED' } },
-    { id: 'shipped', label: 'Shipped', filters: { status: 'SHIPPED' } },
+    { id: 'all', label: t('sales.filterAll'), filters: {} as Record<string, string> },
+    { id: 'rfq', label: t('sales.rfqInbox'), filters: { status: 'PENDING_REP_APPROVAL' } },
+    { id: 'open', label: t('status.open'), filters: { status: 'CONFIRMED' } },
+    { id: 'allocated', label: t('status.allocated'), filters: { status: 'ALLOCATED' } },
+    { id: 'shipped', label: t('status.shipped'), filters: { status: 'SHIPPED' } },
   ];
 
   return (
@@ -477,13 +483,13 @@ export function SalesOrdersPage() {
         data-tour="tour-so-allocation"
       >
         <div>
-          <h1 className="text-2xl font-bold text-text">Sales Orders</h1>
-          <p className="mt-1 text-sm text-text-muted">Outbound fulfillment</p>
+          <h1 className="text-2xl font-bold text-text">{t('sales.title')}</h1>
+          <p className="mt-1 text-sm text-text-muted">{t('sales.subtitle')}</p>
         </div>
         {canCreate && (
           <Button onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" />
-            New order
+            {t('sales.newOrder')}
           </Button>
         )}
       </div>
@@ -508,17 +514,15 @@ export function SalesOrdersPage() {
         data={filtered}
         refetch={refetch}
         emptyIcon={ShoppingCart}
-        emptyTitle="No sales orders yet"
+        emptyTitle={t('sales.emptyTitle')}
         emptyDescription={
-          canCreate
-            ? 'Create a sales order when a customer places an order.'
-            : 'Sales orders will appear here as they come in.'
+          canCreate ? t('sales.emptyDescriptionCreate') : t('sales.emptyDescription')
         }
         emptyAction={
           canCreate ? (
             <Button onClick={() => setModalOpen(true)}>
               <Plus className="h-4 w-4" />
-              Create sales order
+              {t('sales.createOrder')}
             </Button>
           ) : undefined
         }
@@ -606,6 +610,7 @@ function QuoteNegotiationForm({
   order: SalesOrderDetail;
   onSent: () => void;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [prices, setPrices] = useState<Record<string, string>>(() =>
     Object.fromEntries(order.lines.map((line) => [line.id, String(line.unitPrice)])),
@@ -634,7 +639,7 @@ function QuoteNegotiationForm({
       void queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
       onSent();
     },
-    onError: () => setError('Could not send quote. Check prices and expiry.'),
+    onError: () => setError(t('sales.quoteSendFailed')),
   });
 
   return (
@@ -647,7 +652,7 @@ function QuoteNegotiationForm({
       }}
     >
       <p className="text-sm text-text-muted">
-        Edit unit prices, apply a flat discount, and send this quote to the buyer.
+        {t('sales.quoteHelp')}
       </p>
       <ul className="divide-y divide-border rounded-lg border border-border">
         {order.lines.map((line) => (
@@ -661,7 +666,7 @@ function QuoteNegotiationForm({
               </div>
             </div>
             <Input
-              label="Unit price"
+              label={t('sales.unitPrice')}
               type="number"
               min="0"
               step="0.01"
@@ -672,7 +677,7 @@ function QuoteNegotiationForm({
         ))}
       </ul>
       <Input
-        label="Global flat discount"
+        label={t('sales.flatDiscount')}
         type="number"
         min="0"
         step="0.01"
@@ -680,14 +685,14 @@ function QuoteNegotiationForm({
         onChange={(e) => setDiscount(e.target.value)}
       />
       <Input
-        label="Quote expires"
+        label={t('sales.quoteExpires')}
         type="date"
         value={expires}
         onChange={(e) => setExpires(e.target.value)}
       />
       <div className="flex flex-col gap-1.5">
         <label htmlFor="rep-quote-notes" className="text-sm font-medium text-text">
-          Notes to customer
+          {t('sales.notesToCustomer')}
         </label>
         <textarea
           id="rep-quote-notes"
@@ -699,7 +704,7 @@ function QuoteNegotiationForm({
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
       <Button type="submit" className="w-full" loading={sendQuote.isPending}>
-        Send Quote to Customer
+        {t('sales.sendQuote')}
       </Button>
     </form>
   );

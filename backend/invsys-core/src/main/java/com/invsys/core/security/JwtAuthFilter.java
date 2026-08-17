@@ -38,6 +38,11 @@ import com.invsys.core.common.MdcSupport;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
+    static final String ATTR_APP_CONTEXT = "invsys.app_context";
+    static final String ATTR_TOKEN_BOUND = "invsys.jwt_bound";
+    private static final String POS_API_PREFIX = "/api/v1/pos/";
+    private static final String AUTH_API_PREFIX = "/api/v1/auth/";
+
     private final JwtService jwtService;
     private final AuthCookieService authCookieService;
     private final PortalIdentityResolver portalIdentityResolver;
@@ -66,6 +71,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             // Resolve tenant from cookies/Bearer and bind context (no-op when unauthenticated).
             bindTenantFromTokenIfPresent(request);
+            if (!isAppContextAllowed(request)) {
+                SecurityContextHolder.clearContext();
+                TenantContext.clear();
+                writeAppContextForbidden(response);
+                return;
+            }
             filterChain.doFilter(request, response);
         } finally {
             // Always drop tenant/MDC ThreadLocals on this thread. For SSE kickoff the
@@ -105,6 +116,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             List<UUID> warehouseIds = parseWarehouseIds(claims.getClaim("warehouse_ids"));
 
+            Object appContextClaim = claims.getClaim(JwtService.CLAIM_APP_CONTEXT);
+            if (appContextClaim != null && !appContextClaim.toString().isBlank()) {
+                request.setAttribute(ATTR_APP_CONTEXT, appContextClaim.toString().trim());
+            }
+            request.setAttribute(ATTR_TOKEN_BOUND, Boolean.TRUE);
+
             TenantContext.setTenantId(tenantId);
             TenantContext.setUserId(userId);
             TenantContext.setAuthorizedWarehouseIds(warehouseIds);
@@ -133,6 +150,38 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
             TenantContext.clear();
         }
+    }
+
+    /**
+     * POS tokens may only call {@code /api/v1/pos/**} plus session plumbing under
+     * {@code /api/v1/auth/**} ({@code /me}, logout, terminal PIN). WMS tokens cannot
+     * call POS APIs. Missing {@code app_context} stays unrestricted for legacy tokens.
+     */
+    boolean isAppContextAllowed(HttpServletRequest request) {
+        if (!Boolean.TRUE.equals(request.getAttribute(ATTR_TOKEN_BOUND))) {
+            return true;
+        }
+        Object raw = request.getAttribute(ATTR_APP_CONTEXT);
+        if (raw == null || raw.toString().isBlank()) {
+            return true;
+        }
+        String appContext = raw.toString().trim();
+        String uri = request.getRequestURI();
+        if ("POS".equalsIgnoreCase(appContext)) {
+            return uri.startsWith(POS_API_PREFIX) || uri.startsWith(AUTH_API_PREFIX);
+        }
+        if ("WMS".equalsIgnoreCase(appContext)) {
+            return !uri.startsWith(POS_API_PREFIX);
+        }
+        return true;
+    }
+
+    private static void writeAppContextForbidden(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setContentType("application/problem+json");
+        response.getWriter().write(
+                "{\"type\":\"about:blank\",\"title\":\"ACCESS_DENIED\","
+                        + "\"detail\":\"Token app_context does not allow this API\",\"status\":403}");
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

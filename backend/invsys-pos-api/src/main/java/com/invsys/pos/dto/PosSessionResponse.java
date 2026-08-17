@@ -1,5 +1,7 @@
 package com.invsys.pos.dto;
 
+import java.util.UUID;
+
 public record PosSessionResponse(
         boolean posEnabled,
         String module,
@@ -13,6 +15,8 @@ public record PosSessionResponse(
         String localeTag,
         String taxRegionHint,
         String timezone,
-        String companyName
+        String companyName,
+        UUID cashierId,
+        UUID tenantId
 ) {
 }

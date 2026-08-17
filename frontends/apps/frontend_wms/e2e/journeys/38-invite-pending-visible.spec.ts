@@ -1,5 +1,5 @@
 import { expect, test } from '../fixtures/roleFixture';
-import { contextForRole } from './helpers';
+import { contextForRole, selectInviteRoles } from './helpers';
 
 /**
  * Journey 38 — Invite user shows pending invitation in Settings → Users
@@ -18,7 +18,7 @@ test.describe('Journey 38: Invite pending visibility', () => {
       await expect(owner.page.getByTestId('invite-user-modal')).toBeVisible();
 
       await owner.page.locator('#invite-email').fill(email);
-      await owner.page.locator('#invite-role').selectOption('PICKER');
+      await selectInviteRoles(owner.page, 'PICKER');
 
       const inviteWait = owner.page.waitForResponse(
         (r) =>
@@ -43,7 +43,7 @@ test.describe('Journey 38: Invite pending visibility', () => {
       // Duplicate invite surfaces API detail
       await owner.page.getByTestId('invite-user-button').click();
       await owner.page.locator('#invite-email').fill(email);
-      await owner.page.locator('#invite-role').selectOption('VIEWER');
+      await selectInviteRoles(owner.page, 'VIEWER');
       const dupWait = owner.page.waitForResponse(
         (r) =>
           r.url().includes('/api/v1/users/invitations') &&

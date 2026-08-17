@@ -227,9 +227,9 @@ InventorySystem is split into independently deployable planes:
 | **Retail POS** | Offline-first store registers | `invsys-pos-api` (on `invsys-app`) | `frontends/apps/frontend_pos` | `:3003` / Vite `:5175` — syncs via `:8080` |
 | **Control plane** | Super Admin ops: entitlements, billing, impersonation, RAG, kill-switch, audit, shards, DLQ, telemetry, compliance | `invsys-admin-api` (:8081) | `frontends/apps/frontend_admin` | `admin.invsys.com` / `:8081` — admin JWT cookies (`invsys_admin_*`, SameSite=Strict) |
 
-Shared engine: `invsys-core` (entities, Flyway through `V114`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
+Shared engine: `invsys-core` (entities, Flyway through `V120`, `TenantSubscriptionService`). Frontends share `@invsys/shared-types` and `@invsys/shared-ui`. Both APIs must load the **same** RS256 PEMs from `ops/jwt/` so impersonation tokens verify on the WMS.
 
-- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V114`), RS256 JWT, virtual threads, Actuator/Prometheus
+- **Backend:** Java 25 LTS, Spring Boot 4.1, JPA + Flyway (through `V120`), RS256 JWT, virtual threads, Actuator/Prometheus
 - **Database:** PostgreSQL 16, RLS on tenant tables, append-only `inventory_ledger`, trigger-maintained `inventory_levels` (optional `lpn_id` for palletized stock); control-plane writes use `app_owner` / BootstrapJdbc
 - **Commercial entitlements:** `tenant_subscriptions` + `@RequireModule` (e.g. FINTECH → 402 `MODULE_LOCKED`)
 - **Tenant suspend:** `tenants.status = SUSPENDED` → WMS `SuspendedTenantAccessFilter` returns **403** immediately
@@ -330,9 +330,9 @@ Auth & tenancy:
 
 - `POST /api/v1/auth/signup` — Create tenant + owner
 - `GET /api/v1/auth/discovery` — Home Realm Discovery (email domain and/or corporate CIDR → SSO or password)
-- `POST /api/v1/auth/login` — Access + refresh JWT
+- `POST /api/v1/auth/login` — Access + refresh JWT; optional `targetApp` (`POS`/`WMS`) stamps an `app_context` claim that sandboxes the session to that surface
 - `POST /api/v1/auth/impersonation/accept` — Exchange a 15-min control-plane impersonation JWT for WMS cookies
-- `POST /api/v1/auth/refresh` — Rotate refresh token (access may be unchanged within the same second)
+- `POST /api/v1/auth/refresh` — Rotate refresh token (access may be unchanged within the same second); preserves `app_context`
 
 Core inventory & orders:
 
@@ -363,8 +363,9 @@ Portal, money & platform (data plane):
 - `/api/v1/fintech/**` — Capital / underwriting cockpit (OWNER-gated; `@RequireModule(FINTECH)`)
 - `/api/v1/ap-ingestions/**` — Supplier invoice OCR/ingest
 - `/api/v1/webhooks/**` + public webhook receivers — Stripe, Shopify, EasyPost
-- `/api/v1/settings`, users, invitations, SSO, account mappings, tax rates, shipping credentials
+- `/api/v1/settings`, users, invitations, SSO, account mappings, tax rates, shipping credentials — invites and `PUT /api/v1/users/{id}/roles` accept **multiple roles** (additive RBAC; union of permissions)
 - `POST /api/v1/pos/sync-receipts` — Offline POS receipt batch (`@RequireModule(RETAIL_POS)`); enqueues `inventory_level_deltas`
+- `GET /api/v1/pos/managers/sync-pins`, `GET /api/v1/pos/manager-overrides`, `POST /api/v1/pos/audit-sync` — Register manager PIN vault, void-override lookup, offline audit-event batch (`RETAIL_POS`)
 
 Control plane (admin API only — **not** on `:8080`):
 

@@ -13,7 +13,7 @@ import { usePreferencesStore, type DensityMode } from '@/stores/preferencesStore
 import { useSessionStore } from '@/stores/session';
 import { useTranslation } from 'react-i18next';
 import { LanguageSelect } from '@/components/layout/LanguageSelect';
-import i18n, { type SupportedLanguage } from '@/lib/i18n';
+import { normalizeLanguage, type SupportedLanguage } from '@/lib/i18n';
 
 type MeProfile = {
   displayName?: string;
@@ -112,7 +112,6 @@ export function ProfileSettingsPage() {
               ? 'fr'
               : 'en';
           setLanguage(next);
-          void i18n.changeLanguage(next);
         }
         setOrg(me);
       })
@@ -121,6 +120,7 @@ export function ProfileSettingsPage() {
 
   const profileMutation = useMutation({
     mutationFn: async () => {
+      const nextLang = usePreferencesStore.getState().language;
       await apiClient.patch('/api/v1/users/me/profile', {
         displayName: displayName || null,
         phone: phone || null,
@@ -132,11 +132,15 @@ export function ProfileSettingsPage() {
         addressCountry: addressCountry || null,
         mfaEnabled,
         uiDensityPreference: densityToApi(densityMode),
-        preferredLanguage: language,
-        localeLanguage: language,
+        preferredLanguage: nextLang,
+        localeLanguage: nextLang,
       });
+      return nextLang;
     },
-    onSuccess: () => setSaved(true),
+    onSuccess: (nextLang) => {
+      setLanguage(nextLang);
+      setSaved(true);
+    },
   });
 
   const passwordMutation = useMutation({
@@ -149,9 +153,9 @@ export function ProfileSettingsPage() {
     onSuccess: () => {
       setCurrentPassword('');
       setNewPassword('');
-      setPasswordMsg('Password updated. Sign in again on other devices.');
+      setPasswordMsg(t('profile.passwordUpdated'));
     },
-    onError: () => setPasswordMsg('Could not change password. Check your current password.'),
+    onError: () => setPasswordMsg(t('profile.passwordFailed')),
   });
 
   const assigned = warehouses.find(
@@ -165,26 +169,23 @@ export function ProfileSettingsPage() {
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
       <div>
         <h1 className="text-2xl font-bold text-text">{t('profile.title')}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Manage your photo, contact details, password, and UI preferences. Organizational access
-          is controlled by workspace admins.
-        </p>
+        <p className="mt-1 text-sm text-text-muted">{t('profile.subtitle')}</p>
         {isAdmin && (
           <p className="mt-2 text-sm text-text-muted">
-            Need to edit roles or warehouse access?{' '}
+            {t('profile.adminHint')}{' '}
             <Link to="/settings?tab=users" className="text-accent underline-offset-2 hover:underline">
-              Open Users admin
+              {t('profile.openUsersAdmin')}
             </Link>
           </p>
         )}
       </div>
 
       <Card>
-        <CardHeader title="Profile photo" description="Shown in the office header" />
+        <CardHeader title={t('profile.photo')} description={t('profile.photoDescription')} />
         <div data-testid="profile-avatar-picker">
           <MediaPicker
             kind="AVATAR"
-            label="Upload photo"
+            label={t('profile.uploadPhotoShort')}
             capture
             previewUrl={user?.avatarUrl}
             onUploaded={async (result) => {
@@ -195,74 +196,79 @@ export function ProfileSettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Contact information" description="Visible to your workspace admins" />
+        <CardHeader title={t('profile.contact')} description={t('profile.contactDescription')} />
         <form
           data-testid="personal-profile-form"
           className="grid grid-cols-1 gap-4 md:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
+            const selected = normalizeLanguage(
+              (e.currentTarget.querySelector('[data-testid="language-select"]') as HTMLSelectElement | null)
+                ?.value,
+            );
+            setLanguage(selected);
+            setOrg((prev) => ({ ...prev, localeLanguage: selected }));
             setSaved(false);
             profileMutation.mutate();
           }}
         >
           <Input
-            label="Display name"
+            label={t('profile.displayName')}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
           />
-          <Input label="Email" value={user?.email ?? ''} disabled />
+          <Input label={t('profile.email')} value={user?.email ?? ''} disabled />
           <Input
-            label="Phone"
+            label={t('profile.phone')}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+1 555 0100"
           />
           <Input
-            label="Country"
+            label={t('profile.country')}
             value={addressCountry}
             onChange={(e) => setAddressCountry(e.target.value)}
             placeholder="US"
             maxLength={2}
           />
           <Input
-            label="Address line 1"
+            label={t('profile.addressLine1')}
             value={addressLine1}
             onChange={(e) => setAddressLine1(e.target.value)}
             className="md:col-span-2"
           />
           <Input
-            label="Address line 2"
+            label={t('profile.addressLine2')}
             value={addressLine2}
             onChange={(e) => setAddressLine2(e.target.value)}
             className="md:col-span-2"
           />
-          <Input label="City" value={addressCity} onChange={(e) => setAddressCity(e.target.value)} />
+          <Input label={t('profile.city')} value={addressCity} onChange={(e) => setAddressCity(e.target.value)} />
           <Input
-            label="State / region"
+            label={t('profile.region')}
             value={addressRegion}
             onChange={(e) => setAddressRegion(e.target.value)}
           />
           <Input
-            label="Postal code"
+            label={t('profile.postalCode')}
             value={addressPostalCode}
             onChange={(e) => setAddressPostalCode(e.target.value)}
           />
           <Select
-            label="UI density"
+            label={t('profile.uiDensity')}
             value={densityMode}
             onChange={(e) => setDensityMode(e.target.value as DensityMode)}
             data-testid="ui-density-select"
           >
-            <option value="compact">Compact</option>
-            <option value="cozy">Comfortable</option>
-            <option value="spacious">Spacious</option>
+            <option value="compact">{t('profile.densityCompact')}</option>
+            <option value="cozy">{t('profile.densityComfortable')}</option>
+            <option value="spacious">{t('profile.densitySpacious')}</option>
           </Select>
           <LanguageSelect
             value={org.localeLanguage ?? language}
             onChange={(lng: SupportedLanguage) => {
               setLanguage(lng);
-              void i18n.changeLanguage(lng);
               setOrg((prev) => ({ ...prev, localeLanguage: lng }));
             }}
           />
@@ -274,7 +280,7 @@ export function ProfileSettingsPage() {
               onChange={(e) => setMfaEnabled(e.target.checked)}
               data-testid="mfa-enabled-checkbox"
             />
-            MFA enabled (preference flag)
+            {t('profile.mfaEnabled')}
           </label>
           <div className="flex items-center gap-3 md:col-span-2">
             <Button type="submit" loading={profileMutation.isPending} data-testid="save-personal-settings">
@@ -288,7 +294,7 @@ export function ProfileSettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Password" description="Changing password signs out other sessions" />
+        <CardHeader title={t('profile.password')} description={t('profile.passwordDescription')} />
         <form
           data-testid="change-password-form"
           className="grid grid-cols-1 gap-4 md:grid-cols-2"
@@ -299,7 +305,7 @@ export function ProfileSettingsPage() {
           }}
         >
           <Input
-            label="Current password"
+            label={t('profile.currentPassword')}
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
@@ -307,7 +313,7 @@ export function ProfileSettingsPage() {
             autoComplete="current-password"
           />
           <Input
-            label="New password"
+            label={t('profile.newPassword')}
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
@@ -317,7 +323,7 @@ export function ProfileSettingsPage() {
           />
           <div className="flex items-center gap-3 md:col-span-2">
             <Button type="submit" loading={passwordMutation.isPending}>
-              Update password
+              {t('profile.updatePassword')}
             </Button>
             {passwordMsg && <span className="text-sm text-text-muted">{passwordMsg}</span>}
           </div>
@@ -326,37 +332,37 @@ export function ProfileSettingsPage() {
 
       <Card data-testid="org-scope-readonly">
         <CardHeader
-          title="Organizational scope"
-          description="Read-only — managed by OWNER / ADMIN"
+          title={t('profile.orgScope')}
+          description={t('profile.orgScopeDescription')}
         />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Roles</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('profile.roles')}</p>
             <p className="mt-1 text-sm text-text">{(user?.roles ?? []).join(', ') || '—'}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Department</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('profile.department')}</p>
             <p className="mt-1 text-sm text-text">
               {org.corporateDepartment ?? org.department ?? '—'}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Timezone</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('profile.timezone')}</p>
             <p className="mt-1 text-sm text-text">{org.timezonePreference ?? '—'}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Locale</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('profile.locale')}</p>
             <p className="mt-1 text-sm text-text">{org.localeLanguage ?? '—'}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Shift</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('profile.shift')}</p>
             <p className="mt-1 text-sm text-text">
               {org.shiftScheduleType ?? org.shiftSchedule ?? '—'}
             </p>
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              Assigned warehouse
+              {t('profile.assignedWarehouse')}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {assigned ? (

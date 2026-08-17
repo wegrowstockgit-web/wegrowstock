@@ -5,6 +5,7 @@ import {
   expect,
   expectFulfillmentSurface,
   freshLogin,
+  selectInviteRoles,
 } from './helpers';
 
 /**
@@ -32,7 +33,7 @@ test.describe('Journey 01: Onboarding & RBAC boundary', () => {
       await expect(admin.page.getByRole('button', { name: 'Invite user' })).toBeVisible();
       await admin.page.getByRole('button', { name: 'Invite user' }).click();
       await admin.page.getByLabel('Email').fill(pickerEmail);
-      await admin.page.locator('#invite-role').selectOption('PICKER');
+      await selectInviteRoles(admin.page, 'PICKER');
       await admin.page.getByTestId('invite-submit').click();
 
       const inviteRes = await inviteWait;

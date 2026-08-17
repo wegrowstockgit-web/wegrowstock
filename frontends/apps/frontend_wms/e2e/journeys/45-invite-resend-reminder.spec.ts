@@ -1,5 +1,5 @@
 import { expect, test } from '../fixtures/roleFixture';
-import { contextForRole } from './helpers';
+import { contextForRole, selectInviteRoles } from './helpers';
 
 /**
  * Journey 45 — Send Reminder remints invitation expiry and shows success toast.
@@ -15,7 +15,7 @@ test.describe('Journey 45: Invitation reminder resend', () => {
       await expect(owner.page.getByTestId('invite-user-button')).toBeVisible({ timeout: 20_000 });
       await owner.page.getByTestId('invite-user-button').click();
       await owner.page.locator('#invite-email').fill(email);
-      await owner.page.locator('#invite-role').selectOption('PICKER');
+      await selectInviteRoles(owner.page, 'PICKER');
 
       const inviteWait = owner.page.waitForResponse(
         (r) =>

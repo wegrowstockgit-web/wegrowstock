@@ -22,32 +22,32 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 type MeshTab = 'discover' | 'network' | 'catalog';
 
 export function MeshNetworkPage() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<MeshTab>('discover');
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col" data-testid="mesh-network-page">
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
         <div>
-          <h1 className="text-2xl font-bold text-text">Mesh Network</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Discover partner catalogs, approve connections, and publish your wholesale list
-          </p>
+          <h1 className="text-2xl font-bold text-text">{t('mesh.title')}</h1>
+          <p className="mt-1 text-sm text-text-muted">{t('mesh.subtitle')}</p>
         </div>
       </div>
 
-      <div className="mb-4 flex shrink-0 gap-2 px-6 pt-4" role="tablist" aria-label="Mesh network views">
+      <div className="mb-4 flex shrink-0 gap-2 px-6 pt-4" role="tablist" aria-label={t('mesh.views')}>
         <TabButton active={tab === 'discover'} onClick={() => setTab('discover')} testId="mesh-tab-discover">
-          Discover
+          {t('mesh.discover')}
         </TabButton>
         <TabButton active={tab === 'network'} onClick={() => setTab('network')} testId="mesh-tab-network">
-          My Network
+          {t('mesh.myNetwork')}
         </TabButton>
         <TabButton active={tab === 'catalog'} onClick={() => setTab('catalog')} testId="mesh-tab-catalog">
-          Shared Catalog
+          {t('mesh.sharedCatalog')}
         </TabButton>
       </div>
 
@@ -89,6 +89,7 @@ function TabButton({
 }
 
 function DiscoverGrid() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data = [], isLoading } = useQuery({
     queryKey: ['mesh', 'discover'],
@@ -102,13 +103,13 @@ function DiscoverGrid() {
   });
 
   if (isLoading) {
-    return <p className="text-sm text-text-muted">Loading published partner products…</p>;
+    return <p className="text-sm text-text-muted">{t('mesh.loadingDiscover')}</p>;
   }
   if (data.length === 0) {
     return (
       <Card className="flex flex-col items-center gap-2 py-12 text-center">
         <Network className="h-8 w-8 text-text-muted" aria-hidden />
-        <p className="text-sm text-text-muted">No partner products are published to the network yet.</p>
+        <p className="text-sm text-text-muted">{t('mesh.emptyDiscover')}</p>
       </Card>
     );
   }
@@ -121,7 +122,7 @@ function DiscoverGrid() {
             {item.imageUrl ? (
               <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full items-center justify-center text-xs text-text-muted">No image</div>
+              <div className="flex h-full items-center justify-center text-xs text-text-muted">{t('mesh.noImage')}</div>
             )}
           </div>
           <div>
@@ -133,7 +134,7 @@ function DiscoverGrid() {
             onClick={() => request.mutate(item.variantId)}
             disabled={request.isPending}
           >
-            Request Connection
+            {t('mesh.requestConnection')}
           </Button>
         </Card>
       ))}
@@ -142,6 +143,7 @@ function DiscoverGrid() {
 }
 
 function NetworkTable() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data = [], isLoading } = useQuery({
     queryKey: ['mesh', 'network'],
@@ -155,7 +157,7 @@ function NetworkTable() {
   });
 
   if (isLoading) {
-    return <p className="text-sm text-text-muted">Loading network…</p>;
+    return <p className="text-sm text-text-muted">{t('mesh.loadingNetwork')}</p>;
   }
 
   return (
@@ -163,17 +165,17 @@ function NetworkTable() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Partner</TableHead>
-          <TableHead>Role</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Action</TableHead>
+          <TableHead>{t('mesh.partner')}</TableHead>
+          <TableHead>{t('mesh.role')}</TableHead>
+          <TableHead>{t('mesh.status')}</TableHead>
+          <TableHead>{t('mesh.action')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {data.length === 0 ? (
           <TableRow>
             <TableCell colSpan={4} className="text-text-muted">
-              No pending, requested, or connected partners yet.
+              {t('mesh.emptyNetwork')}
             </TableCell>
           </TableRow>
         ) : (
@@ -187,7 +189,7 @@ function NetworkTable() {
               <TableCell>
                 {row.canApprove ? (
                   <Button size="sm" onClick={() => approve.mutate(row.id)} disabled={approve.isPending}>
-                    Approve
+                    {t('mesh.approve')}
                   </Button>
                 ) : (
                   <span className="text-xs text-text-muted">—</span>
@@ -203,6 +205,7 @@ function NetworkTable() {
 }
 
 function SharedCatalogTable() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data = [], isLoading } = useQuery({
     queryKey: ['mesh', 'catalog'],
@@ -217,7 +220,7 @@ function SharedCatalogTable() {
   });
 
   if (isLoading) {
-    return <p className="text-sm text-text-muted">Loading catalog…</p>;
+    return <p className="text-sm text-text-muted">{t('mesh.loadingCatalog')}</p>;
   }
 
   return (
@@ -225,17 +228,17 @@ function SharedCatalogTable() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Product</TableHead>
-          <TableHead>SKU</TableHead>
-          <TableHead>Publish to Network</TableHead>
-          <TableHead>Mesh Wholesale Price</TableHead>
+          <TableHead>{t('mesh.product')}</TableHead>
+          <TableHead>{t('table.sku')}</TableHead>
+          <TableHead>{t('mesh.publishToNetwork')}</TableHead>
+          <TableHead>{t('mesh.wholesalePrice')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {data.length === 0 ? (
           <TableRow>
             <TableCell colSpan={4} className="text-text-muted">
-              Add products to publish them to the mesh.
+              {t('mesh.emptyCatalog')}
             </TableCell>
           </TableRow>
         ) : (
@@ -257,7 +260,7 @@ function SharedCatalogTable() {
                       })
                     }
                   />
-                  Publish to Network
+                  {t('mesh.publishToNetwork')}
                 </label>
               </TableCell>
               <TableCell>

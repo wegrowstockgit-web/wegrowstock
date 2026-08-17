@@ -18,6 +18,7 @@ import {
 import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useShowroomCart } from '@/showroom/useShowroomCart';
+import { useTranslation } from 'react-i18next';
 import { ReturnsWizard } from '@/features/showroom/ReturnsWizard';
 
 const RETURNABLE = new Set(['SHIPPED', 'PARTIALLY_SHIPPED', 'CLOSED']);
@@ -112,6 +113,7 @@ function QuoteReadyBanner({
   accepting: boolean;
   onAccept: () => void;
 }) {
+  const { t } = useTranslation();
   const discount = Number(order.manualDiscountTotal ?? 0);
   const expires = order.quoteExpiresAt ? new Date(order.quoteExpiresAt) : null;
   return (
@@ -119,7 +121,7 @@ function QuoteReadyBanner({
       className="mb-6 rounded-xl border border-accent/40 bg-accent-muted p-5"
       data-testid={`quote-ready-${order.id}`}
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent">Quote ready</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent">{t('sales.quoteReady')}</p>
       <h2 className="mt-1 text-xl font-bold text-text">{order.number}</h2>
       <p className="mt-2 text-sm text-text-muted">
         Your sales rep applied custom pricing
@@ -130,7 +132,7 @@ function QuoteReadyBanner({
       </p>
       {order.quoteNotes && <p className="mt-2 text-sm text-text">{order.quoteNotes}</p>}
       <Button className="mt-4 w-full py-3 text-base" loading={accepting} onClick={onAccept}>
-        Accept & Convert to Order
+        {t('sales.acceptQuote')}
       </Button>
     </div>
   );

@@ -529,3 +529,5 @@ described in §2.5. This is a **P0** because it silently weakens several other c
 - Multipart uploads: size limits, magic-byte validation, non-traversable object keys; `MediaUrlValidator` blocks private IPs.
 - Dependencies current; `nimbus-jose-jwt` pinned for CVE-2025-53864.
 - JWT PEMs gitignored (not committed).
+- JWT audience scoping: `app_context` claim (`POS`/`WMS`) set from login `targetApp`, persisted on refresh tokens (V119), and enforced in `JwtAuthFilter` — POS tokens are confined to `/api/v1/pos/**` + `/api/v1/auth/**`, WMS tokens are barred from `/api/v1/pos/**` (403). Blocks token portability for multi-role users.
+- Additive multi-role RBAC with last-owner protection: role replacement (`UserManagementService.applyRolesChange`) refuses to strip the final `OWNER`.

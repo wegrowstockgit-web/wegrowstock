@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { persistLanguage, type SupportedLanguage } from '@/lib/i18n';
 
 export type DensityMode = 'compact' | 'cozy' | 'spacious';
 
@@ -15,8 +16,8 @@ export function registerTourDriverDestroy(fn: (() => void) | null): void {
 interface PreferencesState {
   densityMode: DensityMode;
   setDensityMode: (mode: DensityMode) => void;
-  language: 'en' | 'es' | 'fr';
-  setLanguage: (language: 'en' | 'es' | 'fr') => void;
+  language: SupportedLanguage;
+  setLanguage: (language: SupportedLanguage) => void;
   /** When true, prompt for interactive driver.js tour after login. */
   showOnboardingTour: boolean;
   setShowOnboardingTour: (show: boolean) => void;
@@ -83,7 +84,10 @@ export const usePreferencesStore = create<PreferencesState>()(
       densityMode: 'cozy',
       setDensityMode: (densityMode) => set({ densityMode }),
       language: 'en',
-      setLanguage: (language) => set({ language }),
+      setLanguage: (language) => {
+        persistLanguage(language);
+        set({ language });
+      },
       showOnboardingTour: true,
       setShowOnboardingTour: (showOnboardingTour) => set({ showOnboardingTour }),
 

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { VoidConfirmModal } from '@/components/VoidConfirmModal';
 import {
   clearCartDraft,
   enqueueReceipt,
+  loadActiveOrderId,
   loadCartDraft,
+  logPosEvent,
   lookupCatalog,
   saveCartDraft,
   type CartLine,
@@ -13,6 +16,7 @@ import { cartTotals, formatMoney, lineTotal, type TaxRegion } from '@/lib/tax';
 import { uuidv7 } from '@/lib/uuidv7';
 import { cashPresets } from '@/lib/locale';
 import { usePosSession } from '@/lib/PosSessionContext';
+import { seedDemoManagerPinsIfEmpty } from '@/offline/pinVault';
 
 const DEMO_STORE_ID =
   import.meta.env.VITE_DEMO_STORE_LOCATION_ID ?? 'a0000000-0000-4000-8000-000000000601';
@@ -29,6 +33,8 @@ export function RegisterPage() {
   const [scanError, setScanError] = useState('');
   const [success, setSuccess] = useState(false);
   const [ready, setReady] = useState(false);
+  const [orderId, setOrderId] = useState('');
+  const [voidOpen, setVoidOpen] = useState(false);
 
   useEffect(() => {
     setTaxRegion(session.taxRegion);
@@ -37,10 +43,13 @@ export function RegisterPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      seedDemoManagerPinsIfEmpty();
       await seedDemoCatalogIfEmpty();
       const draft = await loadCartDraft();
+      const draftOrderId = await loadActiveOrderId();
       if (!cancelled) {
         setLines(draft);
+        setOrderId(draftOrderId ?? '');
         setReady(true);
         searchRef.current?.focus();
       }
@@ -52,8 +61,8 @@ export function RegisterPage() {
 
   useEffect(() => {
     if (!ready) return;
-    void saveCartDraft(lines);
-  }, [lines, ready]);
+    void saveCartDraft(lines, orderId || undefined);
+  }, [lines, orderId, ready]);
 
   const totals = useMemo(() => cartTotals(lines, taxRegion), [lines, taxRegion]);
   const currency = session.currency;
@@ -61,6 +70,15 @@ export function RegisterPage() {
   const money = (amount: number) => formatMoney(amount, currency, locale);
   const presets = cashPresets(currency);
   const locked = session.posEnabled === false;
+
+  const cashierId = session.cashierId || 'offline-cashier';
+
+  const ensureOrderId = (current = orderId) => {
+    if (current) return current;
+    const next = uuidv7();
+    setOrderId(next);
+    return next;
+  };
 
   const addUpc = async (raw: string) => {
     const upc = raw.trim();
@@ -71,6 +89,7 @@ export function RegisterPage() {
       return;
     }
     setScanError('');
+    ensureOrderId();
     setLines((prev) => {
       const existing = prev.find((line) => line.variantId === item.id);
       if (existing) {
@@ -96,9 +115,50 @@ export function RegisterPage() {
 
   const setQty = (variantId: string, qty: number) => {
     setLines((prev) => {
-      if (qty <= 0) return prev.filter((line) => line.variantId !== variantId);
+      if (qty <= 0) {
+        const next = prev.filter((line) => line.variantId !== variantId);
+        if (next.length === 0) setOrderId('');
+        return next;
+      }
       return prev.map((line) => (line.variantId === variantId ? { ...line, qty } : line));
     });
+  };
+
+  const removeLine = (line: CartLine) => {
+    const activeOrderId = ensureOrderId();
+    void logPosEvent({
+      timestamp: Date.now(),
+      cashierId,
+      eventType: 'LINE_VOID',
+      orderId: activeOrderId,
+      productId: line.variantId,
+      valueVoided: lineTotal(line.unitPrice, line.qty),
+    });
+    setLines((prev) => {
+      const next = prev.filter((row) => row.variantId !== line.variantId);
+      if (next.length === 0) setOrderId('');
+      return next;
+    });
+  };
+
+  const voidTransaction = (managerId: string) => {
+    if (!managerId) return;
+    const activeOrderId = orderId || uuidv7();
+    void logPosEvent({
+      timestamp: Date.now(),
+      cashierId,
+      eventType: 'TX_VOID',
+      orderId: activeOrderId,
+      valueVoided: totals.grandTotal,
+      managerOverrideId: managerId,
+    });
+    setLines([]);
+    setOrderId('');
+    setTenderBuffer('');
+    setScanError('');
+    setVoidOpen(false);
+    void clearCartDraft();
+    searchRef.current?.focus();
   };
 
   const pressKey = (key: string) => {
@@ -139,6 +199,7 @@ export function RegisterPage() {
     };
     await enqueueReceipt(receipt);
     setLines([]);
+    setOrderId('');
     setTenderBuffer('');
     setScanError('');
     void clearCartDraft();
@@ -244,12 +305,13 @@ export function RegisterPage() {
                   <th className="text-right">{t('register.unitPrice')}</th>
                   <th className="text-center">{t('register.qty')}</th>
                   <th className="text-right">{t('register.lineTotal')}</th>
+                  <th className="text-right">{t('register.removeShort')}</th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="pos-empty">
+                    <td colSpan={6} className="pos-empty">
                       {t('register.empty')}
                     </td>
                   </tr>
@@ -291,6 +353,17 @@ export function RegisterPage() {
                         </div>
                       </td>
                       <td className="text-right font-mono font-semibold">{money(lineTotal(line.unitPrice, line.qty))}</td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="pos-remove"
+                          data-testid={`cart-remove-${line.upc}`}
+                          aria-label={t('register.remove', { name: line.name })}
+                          onClick={() => removeLine(line)}
+                        >
+                          🗑️ {t('register.removeShort')}
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -388,9 +461,32 @@ export function RegisterPage() {
             >
               {t('register.card')}
             </button>
+            <button
+              type="button"
+              data-testid="void-transaction"
+              className="pos-void"
+              disabled={lines.length === 0 || locked}
+              onClick={() => setVoidOpen(true)}
+            >
+              {t('register.voidTransaction')}
+            </button>
           </div>
         </aside>
       </div>
+
+      <VoidConfirmModal
+        open={voidOpen}
+        cartValueLabel={t('register.voidValue', { amount: money(totals.grandTotal) })}
+        title={t('register.voidTitle')}
+        body={t('register.voidBody')}
+        pinTitle={t('register.voidPin')}
+        pinHint={t('register.voidPinHint')}
+        invalidPin={t('register.voidInvalidPin')}
+        confirmLabel={t('register.voidConfirm')}
+        cancelLabel={t('register.voidCancel')}
+        onCancel={() => setVoidOpen(false)}
+        onConfirm={voidTransaction}
+      />
     </div>
   );
 }

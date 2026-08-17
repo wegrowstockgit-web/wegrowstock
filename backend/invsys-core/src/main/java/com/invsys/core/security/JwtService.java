@@ -38,6 +38,8 @@ public class JwtService {
     private static final long CLOCK_SKEW_SECONDS = 30L;
     public static final String CLAIM_TOKEN_TYPE = "token_type";
     public static final String CLAIM_TENANT_ID = "tenant_id";
+    /** Login surface sandbox: {@code POS} or {@code WMS}. Missing claim = unrestricted (legacy). */
+    public static final String CLAIM_APP_CONTEXT = "app_context";
     /** Bound session tenant for TERMINAL_SWITCH — must equal {@code tenant_id}. */
     public static final String CLAIM_BIND_TENANT_ID = "bind_tenant_id";
     public static final String TOKEN_TYPE_TERMINAL_SWITCH = "TERMINAL_SWITCH";
@@ -97,7 +99,16 @@ public class JwtService {
     }
 
     public String generateAccessToken(UUID userId, UUID tenantId, List<String> roles, List<UUID> warehouseIds) {
-        return generateAccessToken(userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L, null);
+        return generateAccessToken(userId, tenantId, roles, warehouseIds, null);
+    }
+
+    public String generateAccessToken(UUID userId,
+                                      UUID tenantId,
+                                      List<String> roles,
+                                      List<UUID> warehouseIds,
+                                      String appContext) {
+        return generateAccessToken(
+                userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L, null, appContext);
     }
 
     /**
@@ -140,7 +151,8 @@ public class JwtService {
                 roles,
                 warehouseIds,
                 properties.getTerminalSwitchTokenMinutes() * 60L,
-                TOKEN_TYPE_TERMINAL_SWITCH);
+                TOKEN_TYPE_TERMINAL_SWITCH,
+                null);
     }
 
     /**
@@ -155,7 +167,8 @@ public class JwtService {
                 roles,
                 warehouseIds,
                 IMPERSONATION_TTL_SECONDS,
-                TOKEN_TYPE_IMPERSONATION);
+                TOKEN_TYPE_IMPERSONATION,
+                "WMS");
     }
 
     private String generateAccessToken(UUID userId,
@@ -163,7 +176,8 @@ public class JwtService {
                                        List<String> roles,
                                        List<UUID> warehouseIds,
                                        long ttlSeconds,
-                                       String tokenType) {
+                                       String tokenType,
+                                       String appContext) {
         try {
             Instant now = Instant.now();
             List<String> warehouseClaim = warehouseIds == null
@@ -178,6 +192,9 @@ public class JwtService {
                     .expirationTime(Date.from(now.plusSeconds(ttlSeconds)));
             if (tokenType != null) {
                 builder.claim(CLAIM_TOKEN_TYPE, tokenType);
+            }
+            if (appContext != null && !appContext.isBlank()) {
+                builder.claim(CLAIM_APP_CONTEXT, appContext.trim());
             }
             if (TOKEN_TYPE_IMPERSONATION.equals(tokenType)) {
                 builder.jwtID(UUID.randomUUID().toString());
@@ -232,6 +249,15 @@ public class JwtService {
     }
 
     public record SupplierPortalClaims(UUID tenantId, UUID purchaseOrderId) {
+    }
+
+    public String extractAppContext(String token) {
+        Object value = validateAndParse(token).getClaim(CLAIM_APP_CONTEXT);
+        if (value == null) {
+            return null;
+        }
+        String appContext = value.toString().trim();
+        return appContext.isEmpty() ? null : appContext;
     }
 
     /**

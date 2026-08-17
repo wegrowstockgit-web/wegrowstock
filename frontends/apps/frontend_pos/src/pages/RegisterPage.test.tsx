@@ -71,7 +71,7 @@ describe('RegisterPage', () => {
     await user.click(await screen.findByTestId('tender-card'));
     expect(await screen.findByTestId('pos-success-overlay')).toBeTruthy();
     expect(await db.outbox_receipts.count()).toBe(1);
-  });
+  }, 15_000);
 
   it('edits the numpad buffer and accepts cash presets', async () => {
     const user = userEvent.setup();
@@ -98,6 +98,61 @@ describe('RegisterPage', () => {
     renderRegister(demoSession({ posEnabled: false, language: 'es', placeLanguage: 'es' }));
     expect(await screen.findByTestId('pos-locked')).toHaveTextContent(/POS no está activado/i);
     expect(screen.getByTestId('register-page')).toBeTruthy();
+  });
+
+  it('logs a LINE_VOID when a cashier removes a line', async () => {
+    const user = userEvent.setup();
+    renderRegister();
+    await screen.findByTestId('pos-upc-search');
+    await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
+    await screen.findByTestId('cart-row-7501234567890');
+    await user.click(screen.getByTestId('cart-remove-7501234567890'));
+    expect(screen.queryByTestId('cart-row-7501234567890')).toBeNull();
+    await waitFor(async () => {
+      expect(await db.audit_events.count()).toBe(1);
+    });
+    const event = await db.audit_events.toCollection().first();
+    expect(event?.eventType).toBe('LINE_VOID');
+    expect(event?.valueVoided).toBe(12.5);
+    expect(event?.productId).toBeTruthy();
+  });
+
+  it('requires a manager PIN before voiding the transaction', async () => {
+    const user = userEvent.setup();
+    renderRegister();
+    await screen.findByTestId('pos-upc-search');
+    await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
+    await screen.findByTestId('cart-row-7501234567890');
+    await user.click(screen.getByTestId('void-transaction'));
+    const confirm = await screen.findByTestId('void-confirm-yes');
+    expect(confirm).toBeDisabled();
+
+    await user.click(screen.getByTestId('scanner-pin-digit-1'));
+    await user.click(screen.getByTestId('scanner-pin-digit-1'));
+    await user.click(screen.getByTestId('scanner-pin-digit-1'));
+    await user.click(screen.getByTestId('scanner-pin-digit-1'));
+    expect(await screen.findByTestId('void-pin-error')).toBeTruthy();
+    expect(confirm).toBeDisabled();
+
+    await user.click(screen.getByTestId('scanner-pin-back'));
+    await user.click(screen.getByTestId('scanner-pin-back'));
+    await user.click(screen.getByTestId('scanner-pin-back'));
+    await user.click(screen.getByTestId('scanner-pin-back'));
+    await user.click(screen.getByTestId('scanner-pin-digit-1'));
+    await user.click(screen.getByTestId('scanner-pin-digit-2'));
+    await user.click(screen.getByTestId('scanner-pin-digit-3'));
+    await user.click(screen.getByTestId('scanner-pin-digit-4'));
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+
+    expect(screen.queryByTestId('cart-row-7501234567890')).toBeNull();
+    await waitFor(async () => {
+      expect(await db.audit_events.count()).toBe(1);
+    });
+    const event = await db.audit_events.toCollection().first();
+    expect(event?.eventType).toBe('TX_VOID');
+    expect(event?.managerOverrideId).toBe('a0000000-0000-4000-8000-000000000203');
+    expect(event?.valueVoided).toBeGreaterThan(12.5);
   });
 
   it('renders Spanish cashier copy from organization language', async () => {

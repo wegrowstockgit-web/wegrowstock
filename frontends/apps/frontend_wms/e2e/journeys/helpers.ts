@@ -559,6 +559,27 @@ export async function inviteAndAcceptB2b(
   return freshLogin(browser, opts.email, DEMO_PASSWORD);
 }
 
+export async function selectInviteRoles(page: Page, ...roles: string[]): Promise<void> {
+  const box = page.getByTestId('invite-role-multiselect');
+  await expect(box).toBeVisible();
+  const options = box.locator('[data-testid^="role-option-"]');
+  const count = await options.count();
+  for (let i = 0; i < count; i++) {
+    const option = options.nth(i);
+    const testId = await option.getAttribute('data-testid');
+    const code = testId?.replace('role-option-', '') ?? '';
+    const input = option.locator('input[type="checkbox"]');
+    const shouldCheck = roles.includes(code);
+    if (shouldCheck !== (await input.isChecked())) {
+      if (shouldCheck) {
+        await input.check();
+      } else {
+        await input.uncheck();
+      }
+    }
+  }
+}
+
 export { completeScannerPin, expect, hidScan };
 
 export async function submitManualBarcode(page: Page, barcode: string): Promise<void> {

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Plus, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { userApi } from '@/api/users';
 import type {
   CostCenter,
   Customer,
@@ -16,6 +17,9 @@ import type {
   TenantSettingsMap,
   TenantUser,
 } from '@/api/types';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { RoleMultiSelect } from '@/features/settings/RoleMultiSelect';
+import { formatRoleLabel, requireAtLeastOneRole } from '@/features/settings/roleAssignment';
 import { cn } from '@/lib/utils';
 import { TenantSecuritySettings } from '@/pages/TenantSecuritySettings';
 import { useSessionStore } from '@/stores/session';
@@ -46,34 +50,35 @@ import { RolePermissionsMatrix } from '@/features/settings/RolePermissionsMatrix
 import { AuditLogTable } from '@/features/audit/AuditLogTable';
 import { HistoricalArchivesPanel } from '@/features/audit/HistoricalArchivesPanel';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from 'react-i18next';
+import { usePreferencesStore } from '@/stores/preferencesStore';
+import { normalizeLanguage } from '@/lib/i18n';
 
 const TABS = [
-  { id: 'profile', label: 'Profile' },
-  { id: 'users', label: 'Users' },
-  { id: 'warehouses', label: 'Warehouses' },
-  { id: 'inventory', label: 'Inventory Rules' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'security', label: 'Security & SSO' },
-  { id: 'reconciliation', label: 'Reconciliation' },
-  { id: 'accounting', label: 'Accounting Sync' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'mesh', label: 'Partner Catalog' },
-  { id: 'operations', label: 'Operations' },
-  { id: 'automations', label: 'Automations & Thresholds' },
-  { id: 'syncConflicts', label: 'Sync Conflicts' },
-  { id: 'costCenters', label: 'Cost Centers & Requisitions' },
+  { id: 'profile', labelKey: 'settings.tabs.profile' },
+  { id: 'users', labelKey: 'settings.tabs.users' },
+  { id: 'warehouses', labelKey: 'settings.tabs.warehouses' },
+  { id: 'inventory', labelKey: 'settings.tabs.inventory' },
+  { id: 'documents', labelKey: 'settings.tabs.documents' },
+  { id: 'security', labelKey: 'settings.tabs.security' },
+  { id: 'reconciliation', labelKey: 'settings.tabs.reconciliation' },
+  { id: 'accounting', labelKey: 'settings.tabs.accounting' },
+  { id: 'integrations', labelKey: 'settings.tabs.integrations' },
+  { id: 'mesh', labelKey: 'settings.tabs.mesh' },
+  { id: 'operations', labelKey: 'settings.tabs.operations' },
+  { id: 'automations', labelKey: 'settings.tabs.automations' },
+  { id: 'syncConflicts', labelKey: 'settings.tabs.syncConflicts' },
+  { id: 'costCenters', labelKey: 'settings.tabs.costCenters' },
 ] as const;
 
 /** Dedicated settings subroutes (hubs live outside tab panels). */
 const SETTINGS_SUBROUTES = [
-  { to: '/settings/integrations', label: 'Integrations Hub' },
-  { to: '/settings/billing', label: 'Billing' },
-  { to: '/settings/fintech', label: 'Cash Flow & Financing', ownerOnly: true },
+  { to: '/settings/integrations', labelKey: 'settings.subroutes.integrationsHub' },
+  { to: '/settings/billing', labelKey: 'settings.subroutes.billing' },
+  { to: '/settings/fintech', labelKey: 'settings.subroutes.fintech', ownerOnly: true },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
-
-const ASSIGNABLE_ROLES = ['ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER', 'B2B_CUSTOMER'] as const;
 
 const SYNC_STATUS_STYLES: Record<string, string> = {
   SYNCED: 'bg-success/20 text-success',
@@ -123,14 +128,18 @@ function useTenantSettings() {
 }
 
 function SavedNote({ show }: { show: boolean }) {
+  const { t } = useTranslation();
   if (!show) return null;
-  return <span className="text-sm text-success">Saved</span>;
+  return <span className="text-sm text-success">{t('settings.saved')}</span>;
 }
 
 /* ------------------------------------ Profile ----------------------------------- */
 
 /** Admin Settings → Profile: company prefs only. Personal data lives at /settings/profile. */
 function ProfileTab() {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const setLanguage = usePreferencesStore((s) => s.setLanguage);
   const settings = useTenantSettings();
   const [currency, setCurrency] = useState('');
   const [localeLanguage, setLocaleLanguage] = useState('en');
@@ -149,48 +158,53 @@ function ProfileTab() {
     <div className="space-y-6">
       <Card>
         <CardHeader
-          title="Personal settings moved"
-          description="Avatar, address, password, and UI density are self-service for every user"
+          title={t('settings.personalMovedTitle')}
+          description={t('settings.personalMovedDescription')}
         />
-        <p className="mb-3 text-sm text-text-muted">
-          Organizational fields (role, warehouses, department, timezone, locale, shift) are edited
-          under Users → Edit access — not on personal profile forms.
-        </p>
+        <p className="mb-3 text-sm text-text-muted">{t('settings.personalMovedHint')}</p>
         <Link
           to="/settings/profile"
           data-testid="open-personal-profile"
           className="inline-flex"
         >
           <Button type="button" size="sm" variant="secondary">
-            Open personal settings
+            {t('settings.openPersonal')}
           </Button>
         </Link>
       </Card>
 
       <Card>
         <CardHeader
-          title="Company preferences"
-          description="Workspace language and currency apply to Retail POS when the module is enabled"
+          title={t('settings.companyPreferences')}
+          description={t('settings.companyPreferencesDescription')}
         />
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            settings.patch.mutate({ currency, locale_language: localeLanguage });
+            settings.patch.mutate(
+              { currency, locale_language: localeLanguage },
+              {
+                onSuccess: () => {
+                  setLanguage(normalizeLanguage(localeLanguage));
+                  toast(t('settings.workspaceLanguageUpdated'), { tone: 'success' });
+                },
+              },
+            );
           }}
           className="grid grid-cols-1 gap-4 md:grid-cols-2"
         >
           <Select
-            label="Workspace language"
+            label={t('settings.workspaceLanguage')}
             value={localeLanguage}
             onChange={(e) => setLocaleLanguage(e.target.value)}
             data-testid="org-locale-language"
           >
-            <option value="en">English</option>
-            <option value="es">Español</option>
-            <option value="fr">Français</option>
+            <option value="en">{t('languages.en')}</option>
+            <option value="es">{t('languages.es')}</option>
+            <option value="fr">{t('languages.fr')}</option>
           </Select>
           <Select
-            label="Base currency"
+            label={t('settings.baseCurrency')}
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
             data-testid="org-base-currency"
@@ -202,8 +216,8 @@ function ProfileTab() {
             ))}
           </Select>
           <div className="flex items-center gap-3 md:col-span-2">
-            <Button type="submit" loading={settings.patch.isPending}>
-              Save changes
+            <Button type="submit" loading={settings.patch.isPending} data-testid="save-workspace-language">
+              {t('settings.saveChanges')}
             </Button>
             <SavedNote show={settings.patch.isSuccess && !settings.patch.isPending} />
           </div>
@@ -219,6 +233,7 @@ type PendingInvitation = {
   id: string;
   email: string;
   role: string;
+  roles?: string[];
   expiresAt: string;
 };
 
@@ -240,39 +255,41 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const { toast } = useToast();
   const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<string>('VIEWER');
+  const [roleIds, setRoleIds] = useState<string[]>(['VIEWER']);
   const [customerId, setCustomerId] = useState('');
   const [error, setError] = useState('');
 
   const { data: customers = [] } = useQuery({
     queryKey: ['customers'],
     queryFn: async () => (await apiClient.get<Customer[]>('/api/v1/customers')).data,
-    enabled: open && role === 'B2B_CUSTOMER',
+    enabled: open && roleIds.includes('B2B_CUSTOMER'),
   });
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const { data } = await apiClient.post<{ email: string; role: string; token?: string }>(
-        '/api/v1/users/invitations',
-        {
-          email: email.trim(),
-          role,
-          customerId: role === 'B2B_CUSTOMER' ? customerId : undefined,
-        },
-      );
-      return data;
+      const roleError = requireAtLeastOneRole(roleIds);
+      if (roleError) {
+        throw new Error(roleError);
+      }
+      return userApi.create({
+        email: email.trim(),
+        roleIds,
+        customerId: roleIds.includes('B2B_CUSTOMER') ? customerId : undefined,
+      });
     },
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
       void queryClient.invalidateQueries({ queryKey: ['pending-invitations'] });
-      toast(`Invitation sent to ${data.email}`, { tone: 'success' });
+      toast(`Invitation sent to ${(data as { email?: string }).email ?? email}`, { tone: 'success' });
       setEmail('');
-      setRole('VIEWER');
+      setRoleIds(['VIEWER']);
       setCustomerId('');
       setError('');
       onClose();
     },
-    onError: (err) => setError(inviteErrorMessage(err)),
+    onError: (err) => setError(err instanceof Error && err.message === 'Select at least one role'
+      ? err.message
+      : inviteErrorMessage(err)),
   });
 
   return (
@@ -280,6 +297,11 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          const roleError = requireAtLeastOneRole(roleIds);
+          if (roleError) {
+            setError(roleError);
+            return;
+          }
           setError('');
           mutation.mutate();
         }}
@@ -305,20 +327,9 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
         {canManageOrg && (
           <section className="space-y-3" data-testid="invite-org-scope">
             <h3 className="text-sm font-semibold text-text">Organizational scope</h3>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Select
-                id="invite-role"
-                label="Role"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-              >
-                {ASSIGNABLE_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r.replaceAll('_', ' ')}
-                  </option>
-                ))}
-              </Select>
-              {role === 'B2B_CUSTOMER' && (
+            <div className="grid grid-cols-1 gap-4">
+              <RoleMultiSelect value={roleIds} onChange={setRoleIds} testId="invite-role-multiselect" />
+              {roleIds.includes('B2B_CUSTOMER') && (
                 <Select
                   id="invite-portal-customer"
                   label="Portal customer"
@@ -369,7 +380,7 @@ function UserDetailDrawer({
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
-  const [role, setRole] = useState('VIEWER');
+  const [roleIds, setRoleIds] = useState<string[]>(['VIEWER']);
   const [department, setDepartment] = useState('');
   const [timezone, setTimezone] = useState('');
   const [locale, setLocale] = useState('en-US');
@@ -389,7 +400,7 @@ function UserDetailDrawer({
 
   useEffect(() => {
     if (!user) return;
-    setRole(user.roles[0] ?? 'VIEWER');
+    setRoleIds(user.roles.length > 0 ? [...user.roles] : ['VIEWER']);
     setDepartment(user.corporateDepartment ?? user.department ?? '');
     setTimezone(user.timezonePreference ?? '');
     setLocale(user.localeLanguage ?? 'en-US');
@@ -402,8 +413,12 @@ function UserDetailDrawer({
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!user) return;
-      await apiClient.patch(`/api/v1/users/${user.id}/org-scope`, {
-        role,
+      const roleError = requireAtLeastOneRole(roleIds);
+      if (roleError) {
+        throw new Error(roleError);
+      }
+      await userApi.update(user.id, {
+        roleIds,
         corporateDepartment: department || null,
         timezonePreference: timezone || null,
         localeLanguage: locale || null,
@@ -418,7 +433,10 @@ function UserDetailDrawer({
       toast('Access updated successfully', { tone: 'success' });
       onClose();
     },
-    onError: () => setError('Could not update organizational scope.'),
+      onError: (err) =>
+        setError(err instanceof Error && err.message === 'Select at least one role'
+          ? err.message
+          : 'Could not update organizational scope.'),
   });
 
   return (
@@ -436,6 +454,11 @@ function UserDetailDrawer({
           onSubmit={(e) => {
             e.preventDefault();
             if (!canManageOrg) return;
+            const roleError = requireAtLeastOneRole(roleIds);
+            if (roleError) {
+              setError(roleError);
+              return;
+            }
             saveMutation.mutate();
           }}
         >
@@ -451,14 +474,13 @@ function UserDetailDrawer({
           {canManageOrg ? (
             <section className="space-y-3" data-testid="org-scope-section">
               <h3 className="text-sm font-semibold text-text">Organizational scope</h3>
+              <RoleMultiSelect
+                value={roleIds}
+                onChange={setRoleIds}
+                exclude={['B2B_CUSTOMER']}
+                includeCodes={user.roles.includes('OWNER') ? ['OWNER'] : []}
+              />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
-                  {ASSIGNABLE_ROLES.filter((r) => r !== 'B2B_CUSTOMER').map((r) => (
-                    <option key={r} value={r}>
-                      {r.replaceAll('_', ' ')}
-                    </option>
-                  ))}
-                </Select>
                 <Input
                   label="Department"
                   value={department}
@@ -558,7 +580,7 @@ function UsersTab() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
-    queryFn: async () => (await apiClient.get<TenantUser[]>('/api/v1/users')).data,
+    queryFn: () => userApi.list(),
     retry: false,
   });
 
@@ -631,7 +653,11 @@ function UsersTab() {
                         <p className="font-medium text-text">{inv.email}</p>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">{inv.role}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {(inv.roles?.length ? inv.roles : [inv.role]).map((code) => (
+                            <StatusBadge key={code} status={formatRoleLabel(code)} />
+                          ))}
+                        </div>
                       </TableCell>
                       <TableCell>{statusChip('PENDING')}</TableCell>
                       <TableCell>
@@ -683,7 +709,13 @@ function UsersTab() {
                       <p className="text-xs text-text-muted">{u.email}</p>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">{u.roles.join(', ') || '—'}</span>
+                      <div className="flex flex-wrap gap-1" data-testid={`user-roles-${u.id}`}>
+                        {u.roles.length > 0 ? (
+                          u.roles.map((code) => <StatusBadge key={code} status={code} />)
+                        ) : (
+                          <span className="text-sm text-text-muted">—</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <span className="text-sm">{u.corporateDepartment ?? u.department ?? '—'}</span>
@@ -1996,6 +2028,7 @@ function CostCentersRequisitionsTab() {
 }
 
 export function SettingsPage() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isOwner = useSessionStore((s) => s.user?.roles?.includes('OWNER') ?? false);
   const tabParam = searchParams.get('tab');
@@ -2028,17 +2061,15 @@ export function SettingsPage() {
     >
       <div className="settings-shell flex min-h-0 flex-1 flex-col px-4 pt-6 sm:px-6 lg:px-8">
         <div className="mb-4 shrink-0 sm:mb-6">
-          <h1 className="text-2xl font-bold text-text text-wrap-balance">Settings</h1>
-          <p className="mt-1 max-w-2xl text-sm text-text-muted">
-            Manage your company, users, warehouses, and preferences
-          </p>
+          <h1 className="text-2xl font-bold text-text text-wrap-balance">{t('settings.title')}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-text-muted">{t('settings.subtitle')}</p>
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-12 lg:gap-6">
           {/* Left nav: rail-style — scrollbar hidden; fade/chevrons when more items exist. */}
           <ScrollFadePort
             as="nav"
-            aria-label="Settings sections"
+            aria-label={t('settings.sections')}
             data-testid="settings-nav"
             measureKey={activeTab}
             shellClassName="settings-shell__nav shrink-0 lg:col-span-3 lg:h-full xl:col-span-2"
@@ -2057,7 +2088,7 @@ export function SettingsPage() {
                     : 'text-text-muted hover:bg-surface-overlay hover:text-text',
                 )}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </button>
             ))}
             <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
@@ -2076,7 +2107,7 @@ export function SettingsPage() {
                       : 'text-text-muted hover:bg-surface-overlay hover:text-text',
                   )}
                 >
-                  {link.label}
+                  {t(link.labelKey)}
                 </Link>
               ),
             )}

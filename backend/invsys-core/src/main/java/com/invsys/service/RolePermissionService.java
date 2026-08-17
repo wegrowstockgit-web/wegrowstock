@@ -140,8 +140,17 @@ public class RolePermissionService {
                     PermissionKeys.RETURNS_QC_PROCESS,
                     PermissionKeys.MRP_RUN,
                     PermissionKeys.PRINTING_THERMAL,
-                    PermissionKeys.PURCHASING_PO_APPROVE
+                    PermissionKeys.PURCHASING_PO_APPROVE,
+                    PermissionKeys.POS_OPERATE,
+                    PermissionKeys.POS_SUPERVISE
             ).contains(permissionKey);
+        }
+        if ("RETAIL_MANAGER".equals(roleCode)) {
+            return PermissionKeys.POS_OPERATE.equals(permissionKey)
+                    || PermissionKeys.POS_SUPERVISE.equals(permissionKey);
+        }
+        if ("RETAIL_CASHIER".equals(roleCode)) {
+            return PermissionKeys.POS_OPERATE.equals(permissionKey);
         }
         if ("PICKER".equals(roleCode)) {
             return PermissionKeys.PRINTING_THERMAL.equals(permissionKey);

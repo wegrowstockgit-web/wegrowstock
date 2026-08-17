@@ -197,3 +197,5 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+export { userApi } from '@/api/users';

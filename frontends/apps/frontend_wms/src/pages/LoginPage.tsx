@@ -180,7 +180,7 @@ export function LoginPage() {
       discoveryMutation.mutate(email);
       return;
     }
-    loginMutation.mutate({ email, password });
+    loginMutation.mutate({ email, password, targetApp: 'WMS' });
   };
 
   const showPassword = step === 'password' || step === 'sso-optional';

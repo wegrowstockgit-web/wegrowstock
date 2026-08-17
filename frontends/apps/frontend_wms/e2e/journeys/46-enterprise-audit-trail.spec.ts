@@ -1,5 +1,5 @@
 import { expect, test } from '../fixtures/roleFixture';
-import { contextForRole } from './helpers';
+import { contextForRole, selectInviteRoles } from './helpers';
 
 /**
  * Journey 46 — Settings change + invite produce SOC 2 audit rows
@@ -25,7 +25,7 @@ test.describe('Journey 46: Enterprise audit trail', () => {
       await owner.page.goto('/settings?tab=users');
       await owner.page.getByTestId('invite-user-button').click();
       await owner.page.locator('#invite-email').fill(email);
-      await owner.page.locator('#invite-role').selectOption('VIEWER');
+      await selectInviteRoles(owner.page, 'VIEWER');
       const inviteWait = owner.page.waitForResponse(
         (r) =>
           r.url().includes('/api/v1/users/invitations') &&

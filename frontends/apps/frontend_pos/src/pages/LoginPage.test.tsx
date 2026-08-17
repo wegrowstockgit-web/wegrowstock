@@ -37,10 +37,16 @@ describe('LoginPage', () => {
     await loginWithPassword('a@b.c', 'secret', fetchImpl);
     expect(fetchImpl).toHaveBeenCalledWith(
       '/api/v1/auth/login',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'a@b.c', password: 'secret', targetApp: 'POS' }),
+      }),
     );
     await expect(loginWithPassword('a', 'b', vi.fn().mockResolvedValue({ ok: false }))).rejects.toThrow(
       /Invalid/,
     );
+    await expect(
+      loginWithPassword('a', 'b', vi.fn().mockResolvedValue({ ok: false, status: 403 })),
+    ).rejects.toThrow(/POS access denied/);
   });
 });

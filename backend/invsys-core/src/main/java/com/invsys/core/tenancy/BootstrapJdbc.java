@@ -763,7 +763,7 @@ public class BootstrapJdbc {
         }
         return jdbc.query(
                 """
-                SELECT id, tenant_id, email, role_id, customer_id, supplier_id, expires_at, accepted_at
+                SELECT id, tenant_id, email, role_id, additional_roles, customer_id, supplier_id, expires_at, accepted_at
                 FROM invitations
                 WHERE token_hash = ?
                 LIMIT 1
@@ -777,6 +777,7 @@ public class BootstrapJdbc {
                             UUID.fromString(rs.getString("tenant_id")),
                             rs.getString("email"),
                             UUID.fromString(rs.getString("role_id")),
+                            rs.getString("additional_roles"),
                             rs.getString("customer_id") != null
                                     ? UUID.fromString(rs.getString("customer_id")) : null,
                             rs.getString("supplier_id") != null
@@ -936,6 +937,7 @@ public class BootstrapJdbc {
             UUID tenantId,
             String email,
             UUID roleId,
+            String additionalRoles,
             UUID customerId,
             UUID supplierId,
             java.time.Instant expiresAt,

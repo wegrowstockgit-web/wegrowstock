@@ -8,12 +8,16 @@ export const salesModule = defineModule({
   enabled: isModuleBuildEnabled('VITE_ENABLE_SALES'),
   officeRoutes: [
     { path: 'sales-orders', element: <SalesOrdersPage /> },
+    { path: 'sales/orders', element: <SalesOrdersPage /> },
     { path: 'invoices', element: <InvoicesPage /> },
     { path: 'customers', element: <CustomersPage /> },
+    { path: 'sales/customers', element: <CustomersPage /> },
   ],
   navItems: [
     { to: '/sales-orders', label: 'Sales Orders', moduleId: 'sales' },
+    { to: '/sales/orders', label: 'RFQs', moduleId: 'sales' },
     { to: '/customers', label: 'Customers', moduleId: 'sales' },
+    { to: '/sales/customers', label: 'Showroom onboarding', moduleId: 'sales' },
     { to: '/invoices', label: 'Invoices', moduleId: 'sales' },
   ],
 });

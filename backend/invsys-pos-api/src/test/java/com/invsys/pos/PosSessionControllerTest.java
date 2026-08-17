@@ -22,12 +22,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PosSessionControllerTest {
 
     @Mock PosSessionService sessionService;
+    @Mock PosManagerOverrideService managerOverrideService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new PosSessionController(sessionService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new PosSessionController(sessionService, managerOverrideService))
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(new ObjectMapper()))
                 .build();
     }
@@ -38,7 +39,9 @@ class PosSessionControllerTest {
                 .thenReturn(new PosSessionResponse(
                         true, "RETAIL_POS", "ENTERPRISE", "es", "ORGANIZATION",
                         "USD", "WMS", "es", "MXN", "es-MX", "MX",
-                        "America/Mexico_City", "Demo Corp"));
+                        "America/Mexico_City", "Demo Corp",
+                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000201"),
+                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001")));
 
         mockMvc.perform(get("/api/v1/pos/session")
                         .header("Accept-Language", "es-MX")
@@ -59,11 +62,28 @@ class PosSessionControllerTest {
                 .thenReturn(new PosSessionResponse(
                         false, "RETAIL_POS", "BASIC", "en", "DEFAULT",
                         "USD", "DEFAULT", null, "USD", "en-US", "US",
-                        null, ""));
+                        null, "",
+                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000201"),
+                        java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001")));
 
         mockMvc.perform(get("/api/v1/pos/session"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.posEnabled").value(false))
                 .andExpect(jsonPath("$.tier").value("BASIC"));
+    }
+
+    @Test
+    void syncManagerPins_returnsSupervisorHashes() throws Exception {
+        java.util.UUID tenantId = java.util.UUID.fromString("a0000000-0000-4000-8000-000000000001");
+        java.util.UUID managerId = java.util.UUID.fromString("a0000000-0000-4000-8000-000000000203");
+        when(managerOverrideService.currentManagers()).thenReturn(
+                new com.invsys.pos.dto.PosManagerOverrideResponse(
+                        tenantId,
+                        java.util.List.of(new com.invsys.pos.dto.PosManagerOverrideResponse.ManagerPin(managerId, "hash"))));
+
+        mockMvc.perform(get("/api/v1/pos/managers/sync-pins"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(tenantId.toString()))
+                .andExpect(jsonPath("$.managers[0].managerId").value(managerId.toString()));
     }
 }

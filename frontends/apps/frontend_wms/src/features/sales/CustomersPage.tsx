@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -304,11 +306,15 @@ function AddCustomerModal({ open, onClose }: { open: boolean; onClose: () => voi
 }
 
 export function CustomersPage() {
+  const { t } = useTranslation();
+  const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN');
   const [modalOpen, setModalOpen] = useState(false);
   const [peekCustomer, setPeekCustomer] = useState<Customer | null>(null);
-  const [tab, setTab] = useState<'customers' | 'applications'>('customers');
+  const [tab, setTab] = useState<'customers' | 'applications'>(() =>
+    location.pathname.startsWith('/sales/customers') ? 'applications' : 'customers',
+  );
 
   const { data, isLoading, isError, error, refetch } =
     useListQuery<Customer>(['customers'], '/api/v1/customers');
@@ -320,18 +326,18 @@ export function CustomersPage() {
     >
       <div className="mb-6 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-text">Customers</h1>
-          <p className="mt-1 text-sm text-text-muted">Buyer accounts, credit, and 3PL billing</p>
+          <h1 className="text-2xl font-bold text-text">{t('sales.customersTitle')}</h1>
+          <p className="mt-1 text-sm text-text-muted">{t('sales.customersSubtitle')}</p>
         </div>
         {canCreate && (
           <Button onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" />
-            Add customer
+            {t('sales.addCustomer')}
           </Button>
         )}
       </div>
 
-      <div className="mb-4 flex shrink-0 gap-2" role="tablist" aria-label="Customer views">
+      <div className="mb-4 flex shrink-0 gap-2" role="tablist" aria-label={t('sales.customerViews')}>
         <button
           type="button"
           role="tab"
@@ -342,7 +348,7 @@ export function CustomersPage() {
           )}
           onClick={() => setTab('customers')}
         >
-          Customers
+          {t('sales.customersTab')}
         </button>
         <button
           type="button"
@@ -355,7 +361,7 @@ export function CustomersPage() {
           )}
           onClick={() => setTab('applications')}
         >
-          Pending Applications
+          {t('sales.pendingApplications')}
         </button>
       </div>
 
