@@ -28,7 +28,7 @@ class TenantSubscriptionServiceParseTest {
     @BeforeEach
     void setUp() {
         service = new TenantSubscriptionService(
-                null, null, tierDefinitionRepository, null, null, null, null);
+                null, null, tierDefinitionRepository, null, null, null, null, null);
         lenient().when(tierDefinitionRepository.findById("BASIC")).thenReturn(Optional.of(definition(
                 "BASIC", List.of("CORE"))));
         lenient().when(tierDefinitionRepository.findById("INTERMEDIATE")).thenReturn(Optional.of(definition(

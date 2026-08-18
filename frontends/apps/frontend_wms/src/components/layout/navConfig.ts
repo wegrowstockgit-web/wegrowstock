@@ -36,8 +36,10 @@ export type NavLeafConfig = {
   labelKey: string;
   icon: LucideIcon;
   roles?: string[];
-  /** Commercial AppModule names that must be entitled (e.g. MESH_NETWORK). */
+  /** Commercial AppModule names that must all be entitled (e.g. MESH_NETWORK). */
   modules?: string[];
+  /** Single commercial AppModule that must be entitled (Double-Gate). */
+  requiredModule?: string;
   hideForPicker?: boolean;
   hideForViewer?: boolean;
   tourAnchor?: string;
@@ -82,6 +84,7 @@ export const NAV_MATRIX: {
       icon: Network,
       roles: ['OWNER', 'ADMIN'],
       modules: ['MESH_NETWORK'],
+      requiredModule: 'MESH_NETWORK',
       hideForPicker: true,
       hideForViewer: true,
       testId: 'nav-mesh-network',
@@ -115,6 +118,7 @@ export const NAV_MATRIX: {
           labelKey: 'nav.mrpReorder',
           icon: SlidersHorizontal,
           roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+          requiredModule: 'MRP',
           hideForPicker: true,
           hideForViewer: true,
         },
@@ -171,6 +175,7 @@ export const NAV_MATRIX: {
           labelKey: 'nav.clusterPick',
           icon: Layers,
           roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
+          requiredModule: 'ADVANCED_FULFILLMENT',
           hideForViewer: true,
         },
         {
@@ -179,6 +184,7 @@ export const NAV_MATRIX: {
           labelKey: 'nav.palletManifests',
           icon: Package,
           roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'],
+          requiredModule: 'ADVANCED_FULFILLMENT',
           hideForViewer: true,
         },
       ],
@@ -242,6 +248,7 @@ export const NAV_MATRIX: {
           labelKey: 'nav.boms',
           icon: Cog,
           roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+          requiredModule: 'MANUFACTURING',
           hideForPicker: true,
           hideForViewer: true,
         },
@@ -251,6 +258,7 @@ export const NAV_MATRIX: {
           labelKey: 'nav.productionOrders',
           icon: ListOrdered,
           roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+          requiredModule: 'MANUFACTURING',
           hideForPicker: true,
           hideForViewer: true,
         },
@@ -301,6 +309,7 @@ export const NAV_MATRIX: {
           labelKey: 'nav.rtlsMap',
           icon: Compass,
           roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+          requiredModule: 'RTLS_TELEMETRY',
           hideForPicker: true,
           hideForViewer: true,
         },

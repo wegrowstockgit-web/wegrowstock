@@ -1,4 +1,4 @@
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { EnterpriseRouteGate } from '@/components/auth/EnterpriseRouteGate';
 import { MeshNetworkPage } from '@/features/mesh/MeshNetworkPage';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
 
@@ -10,9 +10,9 @@ export const meshModule = defineModule({
     {
       path: 'mesh-network',
       element: (
-        <ProtectedRoute roles={['OWNER', 'ADMIN']}>
+        <EnterpriseRouteGate requiredModule="MESH_NETWORK" roles={['OWNER', 'ADMIN']}>
           <MeshNetworkPage />
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
   ],

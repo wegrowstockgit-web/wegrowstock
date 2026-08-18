@@ -33,4 +33,19 @@ describe('moduleRegistry', () => {
     expect(isNavPathEnabled('/products')).toBe(true);
     expect(isNavPathEnabled('/settings/fintech')).toBe(false);
   });
+
+  it('keeps commercially gated office routes mounted so /upgrade can run', () => {
+    registerAppModules([
+      defineModule({
+        id: 'mesh',
+        enabled: true,
+        commercialModule: 'MESH_NETWORK',
+        officeRoutes: [{ path: 'mesh-network', element: null }],
+        navItems: [{ to: '/mesh-network', label: 'Mesh', moduleId: 'mesh' }],
+      }),
+    ]);
+    expect(getEnabledOfficeRoutes(['CORE']).map((r) => r.path)).toEqual(['mesh-network']);
+    expect(getDisabledNavPaths(['CORE']).has('/mesh-network')).toBe(true);
+    expect(getEnabledModules(['CORE']).map((m) => m.id)).toEqual([]);
+  });
 });

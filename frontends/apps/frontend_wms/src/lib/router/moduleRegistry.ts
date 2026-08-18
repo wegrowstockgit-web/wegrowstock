@@ -59,16 +59,21 @@ export function getEnabledModules(entitlements?: readonly string[]): AppModule[]
   });
 }
 
-export function getEnabledOfficeRoutes(entitlements?: readonly string[]): RouteObject[] {
-  return getEnabledModules(entitlements).flatMap((m) => m.officeRoutes);
+/** Build-time enabled modules — commercial gates belong on the route element, not the registry. */
+export function getBuildEnabledModules(): AppModule[] {
+  return registeredModules.filter((m) => m.enabled);
 }
 
-export function getEnabledFloorRoutes(entitlements?: readonly string[]): RouteObject[] {
-  return getEnabledModules(entitlements).flatMap((m) => m.floorRoutes ?? []);
+export function getEnabledOfficeRoutes(_entitlements?: readonly string[]): RouteObject[] {
+  return getBuildEnabledModules().flatMap((m) => m.officeRoutes);
 }
 
-export function getEnabledStandaloneRoutes(entitlements?: readonly string[]): RouteObject[] {
-  return getEnabledModules(entitlements).flatMap((m) => m.standaloneRoutes ?? []);
+export function getEnabledFloorRoutes(_entitlements?: readonly string[]): RouteObject[] {
+  return getBuildEnabledModules().flatMap((m) => m.floorRoutes ?? []);
+}
+
+export function getEnabledStandaloneRoutes(_entitlements?: readonly string[]): RouteObject[] {
+  return getBuildEnabledModules().flatMap((m) => m.standaloneRoutes ?? []);
 }
 
 /** Paths that belong to a disabled module — Sidebar hides matching leaves. */

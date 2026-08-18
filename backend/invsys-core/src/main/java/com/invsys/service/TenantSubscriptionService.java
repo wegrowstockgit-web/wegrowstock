@@ -33,6 +33,7 @@ public class TenantSubscriptionService {
     private final PlatformTierDefinitionRepository platformTierDefinitionRepository;
     private final TenantSettingsCacheService tenantSettingsCacheService;
     private final PlatformTierDefinitionCacheService platformTierDefinitionCacheService;
+    private final TenantEnabledModulesCacheService tenantEnabledModulesCacheService;
     private final ApplicationEventPublisher eventPublisher;
     private final TenantSubscriptionService self;
 
@@ -41,6 +42,7 @@ public class TenantSubscriptionService {
                                      PlatformTierDefinitionRepository platformTierDefinitionRepository,
                                      TenantSettingsCacheService tenantSettingsCacheService,
                                      PlatformTierDefinitionCacheService platformTierDefinitionCacheService,
+                                     TenantEnabledModulesCacheService tenantEnabledModulesCacheService,
                                      ApplicationEventPublisher eventPublisher,
                                      @Lazy TenantSubscriptionService self) {
         this.bootstrapJdbc = bootstrapJdbc;
@@ -48,6 +50,7 @@ public class TenantSubscriptionService {
         this.platformTierDefinitionRepository = platformTierDefinitionRepository;
         this.tenantSettingsCacheService = tenantSettingsCacheService;
         this.platformTierDefinitionCacheService = platformTierDefinitionCacheService;
+        this.tenantEnabledModulesCacheService = tenantEnabledModulesCacheService;
         this.eventPublisher = eventPublisher;
         this.self = self;
     }
@@ -117,10 +120,10 @@ public class TenantSubscriptionService {
     }
 
     /**
-     * Cached enabled-module snapshot used by {@code RequireModuleAspect}.
-     * Cache name {@link CacheConfig#TENANT_SETTINGS_CACHE} matches the control-plane eviction contract.
+     * Live enabled-module list. Not cached in-process: control-plane writes run in
+     * {@code invsys-admin-api}, so a local ConcurrentMap copy in the WMS JVM would stay stale.
+     * Redis eviction still drops leftover {@code TenantSettingsCache} entries on other nodes.
      */
-    @Cacheable(cacheNames = CacheConfig.TENANT_SETTINGS_CACHE, key = "#tenantId")
     @Transactional(readOnly = true)
     public List<AppModule> getEnabledModules(UUID tenantId) {
         return bootstrapJdbc.findTenantSubscription(tenantId)
@@ -201,9 +204,16 @@ public class TenantSubscriptionService {
     }
 
     private ControlPlaneTenantView afterSubscriptionWrite(BootstrapJdbc.TenantSubscriptionRow updated) {
-        tenantSettingsCacheService.invalidate(updated.tenantId());
+        if (tenantSettingsCacheService != null) {
+            tenantSettingsCacheService.invalidate(updated.tenantId());
+        }
+        if (tenantEnabledModulesCacheService != null) {
+            tenantEnabledModulesCacheService.evict(updated.tenantId());
+        }
         List<AppModule> enabled = parseModules(updated.enabledModulesJson());
-        eventPublisher.publishEvent(new TenantSubscriptionUpdatedEvent(updated.tenantId(), enabled));
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new TenantSubscriptionUpdatedEvent(updated.tenantId(), enabled));
+        }
         return new ControlPlaneTenantView(
                 updated.tenantId(),
                 updated.name(),

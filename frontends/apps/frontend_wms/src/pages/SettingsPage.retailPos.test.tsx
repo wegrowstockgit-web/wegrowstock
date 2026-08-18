@@ -73,4 +73,20 @@ describe('SettingsPage Retail POS tab', () => {
     expect(screen.queryByTestId('settings-tab-retailPos')).not.toBeInTheDocument();
     expect(screen.queryByTestId('pos-settings-panel')).not.toBeInTheDocument();
   });
+
+  it('hides Integrations and Mesh tabs without those commercial modules', () => {
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u3',
+      email: 'owner@acme.test',
+      displayName: 'Owner',
+      roles: ['OWNER'],
+      tenantId: 't3',
+      enabledModules: ['CORE'],
+    });
+    renderSettings();
+    expect(screen.queryByTestId('settings-tab-integrations')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-tab-mesh')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-nav-integrations-hub')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-tab-profile')).toBeInTheDocument();
+  });
 });

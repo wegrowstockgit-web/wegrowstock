@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { RolePermissionsMatrix } from './RolePermissionsMatrix';
 import { apiClient } from '@/api/client';
+import { useSessionStore } from '@/stores/session';
 
 vi.mock('@/api/client', () => ({
   apiClient: {
@@ -24,6 +25,13 @@ describe('RolePermissionsMatrix', () => {
   beforeEach(() => {
     vi.mocked(apiClient.get).mockReset();
     vi.mocked(apiClient.patch).mockReset();
+    useSessionStore.setState({
+      authenticated: true,
+      mfaVerified: false,
+      user: null,
+      primarySession: null,
+      lastRequestId: null,
+    });
   });
 
   it('renders role x permission grid and toggles a grant via PATCH', async () => {
@@ -96,5 +104,35 @@ describe('RolePermissionsMatrix', () => {
         allowedCidrBlocks: ['10.0.0.0/8'],
       });
     });
+  });
+
+  it('hides permission rows for unpurchased commercial modules', async () => {
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u1',
+      email: 'owner@acme.test',
+      displayName: 'Owner',
+      roles: ['OWNER'],
+      tenantId: 't2',
+      enabledModules: ['CORE'],
+    });
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        roles: [{ id: 'r-admin', name: 'ADMIN', networkAccessLevel: 'MFA_OUTSIDE_NETWORK' }],
+        permissionKeys: ['inventory:cost:view', 'mrp:run', 'pos.operate'],
+        grants: [
+          { roleId: 'r-admin', permissionKey: 'inventory:cost:view', granted: true },
+          { roleId: 'r-admin', permissionKey: 'mrp:run', granted: false },
+          { roleId: 'r-admin', permissionKey: 'pos.operate', granted: false },
+        ],
+        allowedCidrBlocks: [],
+      },
+    } as never);
+
+    wrap(<RolePermissionsMatrix />);
+
+    expect(await screen.findByText('View Unit Costs')).toBeInTheDocument();
+    expect(screen.queryByText('Run MRP Reorder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('perm-ADMIN-mrp:run')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('perm-ADMIN-pos.operate')).not.toBeInTheDocument();
   });
 });

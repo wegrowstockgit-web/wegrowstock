@@ -1,4 +1,4 @@
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { EnterpriseRouteGate } from '@/components/auth/EnterpriseRouteGate';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { InboundReceivePage } from '@/features/purchasing/InboundReceivePage';
 import { MrpReorderWorkspace } from '@/features/purchasing/MrpReorderWorkspace';
@@ -16,17 +16,21 @@ export const purchasingModule = defineModule({
     {
       path: 'mrp',
       element: (
-        <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
+        <EnterpriseRouteGate
+          requiredModule="MRP"
+          requiredPermission={['mrp:run']}
+          roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}
+        >
           <MrpReorderWorkspace />
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
     {
       path: 'purchasing/rtv',
       element: (
-        <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
           <RtvWorkspace />
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
   ],
@@ -34,11 +38,11 @@ export const purchasingModule = defineModule({
     {
       path: '/inbound/receive',
       element: (
-        <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
           <ErrorBoundary boundaryName="inbound-receive">
             <InboundReceivePage />
           </ErrorBoundary>
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
   ],

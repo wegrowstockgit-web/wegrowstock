@@ -77,6 +77,11 @@ test.describe('Retail POS settings panel', () => {
       await expect(acme.page.getByTestId('settings-nav')).toBeVisible({ timeout: 15_000 });
       await expect(acme.page.getByTestId('settings-tab-retailPos')).toHaveCount(0);
       await expect(acme.page.getByTestId('pos-settings-panel')).toHaveCount(0);
+
+      await acme.page.goto('/settings/pos');
+      await completeScannerPin(acme.page);
+      await expect(acme.page).toHaveURL(/\/upgrade/, { timeout: 15_000 });
+      await expect(acme.page.getByTestId('upgrade-page')).toBeVisible();
     } finally {
       await acme.close();
     }

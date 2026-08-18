@@ -1,4 +1,4 @@
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { EnterpriseRouteGate } from '@/components/auth/EnterpriseRouteGate';
 import { FintechSettingsPage } from '@/features/fintech/FintechSettingsPage';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
 
@@ -10,9 +10,9 @@ export const fintechModule = defineModule({
     {
       path: 'settings/fintech',
       element: (
-        <ProtectedRoute roles={['OWNER']} officeOnly>
+        <EnterpriseRouteGate requiredModule="FINTECH" roles={['OWNER']} officeOnly>
           <FintechSettingsPage />
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
   ],

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useSessionStore } from '@/stores/session';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import { globalSearch } from '@/api/globalSearch';
 import {
   LayoutDashboard,
@@ -41,6 +42,7 @@ interface CommandItem {
   path: string;
   keywords?: string[];
   roles?: string[];
+  requiredModule?: string;
   hideForPicker?: boolean;
   hideForViewer?: boolean;
 }
@@ -99,6 +101,7 @@ const commands: CommandItem[] = [
     path: '/manufacturing/boms',
     keywords: ['bom', 'bill of materials', 'production'],
     roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+    requiredModule: 'MANUFACTURING',
     hideForPicker: true,
     hideForViewer: true,
   },
@@ -109,6 +112,7 @@ const commands: CommandItem[] = [
     path: '/manufacturing/orders',
     keywords: ['production', 'work order', 'manufacturing'],
     roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'],
+    requiredModule: 'MANUFACTURING',
     hideForPicker: true,
     hideForViewer: true,
   },
@@ -189,6 +193,7 @@ const commands: CommandItem[] = [
     path: '/mesh-network',
     keywords: ['mesh', 'partner', 'wholesale', 'network'],
     roles: ['OWNER', 'ADMIN'],
+    requiredModule: 'MESH_NETWORK',
     hideForPicker: true,
     hideForViewer: true,
   },
@@ -281,6 +286,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
+  const { hasModule } = useEntitlement();
   const isPickerOnly = useSessionStore((s) => s.isPickerOnly);
   const isViewerOnly = useSessionStore((s) => s.isViewerOnly);
   const [query, setQuery] = useState('');
@@ -297,11 +303,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     () =>
       commands.filter((cmd) => {
         if (cmd.roles && !hasRole(...cmd.roles)) return false;
+        if (cmd.requiredModule && !hasModule(cmd.requiredModule)) return false;
         if (isPickerOnly() && cmd.hideForPicker) return false;
         if (isViewerOnly() && cmd.hideForViewer) return false;
         return true;
       }),
-    [hasRole, isPickerOnly, isViewerOnly]
+    [hasRole, hasModule, isPickerOnly, isViewerOnly]
   );
 
   const filteredCommands = useMemo(() => {

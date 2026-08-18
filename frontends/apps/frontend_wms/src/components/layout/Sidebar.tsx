@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useSessionStore, useEnabledModules } from '@/stores/session';
 import { useRailStore } from '@/stores/rail';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import { useCoarsePointer } from '@/hooks/useCoarsePointer';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
@@ -33,6 +34,7 @@ function leafVisible(
 ): boolean {
   if (!isNavPathEnabled(item.to, entitlements)) return false;
   if (item.roles && !hasRole(...item.roles)) return false;
+  if (item.requiredModule && !hasModule(item.requiredModule)) return false;
   if (item.modules?.length && !item.modules.every((module) => hasModule(module))) return false;
   if (isPickerOnly && item.hideForPicker) return false;
   if (isViewerOnly && item.hideForViewer) return false;
@@ -114,7 +116,7 @@ export function Sidebar() {
   const { t } = useTranslation();
   const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
-  const hasModule = useSessionStore((s) => s.hasModule);
+  const { hasModule } = useEntitlement();
   const isPickerOnly = useSessionStore((s) => s.isPickerOnly);
   const isViewerOnly = useSessionStore((s) => s.isViewerOnly);
   const entitlements = useEnabledModules();

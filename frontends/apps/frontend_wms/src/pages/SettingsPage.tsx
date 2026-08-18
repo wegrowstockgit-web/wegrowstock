@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
@@ -22,6 +22,8 @@ import { RoleMultiSelect } from '@/features/settings/RoleMultiSelect';
 import { formatRoleLabel, requireAtLeastOneRole } from '@/features/settings/roleAssignment';
 import { PosSettingsPanel } from '@/features/settings/PosSettingsPanel';
 import { canConfigureRetailPos } from '@/features/settings/posSettingsAccess';
+import { RequireModule } from '@/components/auth/RequireModule';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import { cn } from '@/lib/utils';
 import { TenantSecuritySettings } from '@/pages/TenantSecuritySettings';
 import { useSessionStore } from '@/stores/session';
@@ -62,13 +64,13 @@ const TABS = [
   { id: 'users', labelKey: 'settings.tabs.users' },
   { id: 'warehouses', labelKey: 'settings.tabs.warehouses' },
   { id: 'inventory', labelKey: 'settings.tabs.inventory' },
-  { id: 'documents', labelKey: 'settings.tabs.documents' },
-  { id: 'retailPos', labelKey: 'settings.tabs.retailPos' },
+  { id: 'documents', labelKey: 'settings.tabs.documents', requiredModule: 'DOCUMENTS' },
+  { id: 'retailPos', labelKey: 'settings.tabs.retailPos', requiredModule: 'RETAIL_POS' },
   { id: 'security', labelKey: 'settings.tabs.security' },
   { id: 'reconciliation', labelKey: 'settings.tabs.reconciliation' },
-  { id: 'accounting', labelKey: 'settings.tabs.accounting' },
-  { id: 'integrations', labelKey: 'settings.tabs.integrations' },
-  { id: 'mesh', labelKey: 'settings.tabs.mesh' },
+  { id: 'accounting', labelKey: 'settings.tabs.accounting', requiredModule: 'ACCOUNTING' },
+  { id: 'integrations', labelKey: 'settings.tabs.integrations', requiredModule: 'SHOPIFY' },
+  { id: 'mesh', labelKey: 'settings.tabs.mesh', requiredModule: 'MESH_NETWORK' },
   { id: 'operations', labelKey: 'settings.tabs.operations' },
   { id: 'automations', labelKey: 'settings.tabs.automations' },
   { id: 'syncConflicts', labelKey: 'settings.tabs.syncConflicts' },
@@ -76,11 +78,26 @@ const TABS = [
 ] as const;
 
 /** Dedicated settings subroutes (hubs live outside tab panels). */
-const SETTINGS_SUBROUTES = [
-  { to: '/settings/integrations', labelKey: 'settings.subroutes.integrationsHub' },
+const SETTINGS_SUBROUTES: {
+  to: string;
+  labelKey: string;
+  ownerOnly?: boolean;
+  requiredModule?: string;
+  anyOfModules?: readonly string[];
+}[] = [
+  {
+    to: '/settings/integrations',
+    labelKey: 'settings.subroutes.integrationsHub',
+    anyOfModules: ['SHOPIFY', 'ACCOUNTING'],
+  },
   { to: '/settings/billing', labelKey: 'settings.subroutes.billing' },
-  { to: '/settings/fintech', labelKey: 'settings.subroutes.fintech', ownerOnly: true },
-] as const;
+  {
+    to: '/settings/fintech',
+    labelKey: 'settings.subroutes.fintech',
+    ownerOnly: true,
+    requiredModule: 'FINTECH',
+  },
+];
 
 type TabId = (typeof TABS)[number]['id'];
 
@@ -2073,21 +2090,42 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isOwner = useSessionStore((s) => s.user?.roles?.includes('OWNER') ?? false);
   const sessionUser = useSessionStore((s) => s.user);
+  const { hasModule } = useEntitlement();
   const showRetailPos = canConfigureRetailPos(sessionUser?.roles, sessionUser?.enabledModules);
-  const visibleTabs = TABS.filter((tab) => tab.id !== 'retailPos' || showRetailPos);
+  const visibleTabs = useMemo(
+    () =>
+      TABS.filter((tab) => {
+        if (tab.id === 'retailPos' && !showRetailPos) return false;
+        if ('requiredModule' in tab && tab.requiredModule && !hasModule(tab.requiredModule)) return false;
+        return true;
+      }),
+    [hasModule, showRetailPos],
+  );
+  const visibleSubroutes = useMemo(
+    () =>
+      SETTINGS_SUBROUTES.filter((link) => {
+        if (link.ownerOnly && !isOwner) return false;
+        if (link.requiredModule && !hasModule(link.requiredModule)) return false;
+        if (link.anyOfModules && !link.anyOfModules.some((moduleName) => hasModule(moduleName))) {
+          return false;
+        }
+        return true;
+      }),
+    [hasModule, isOwner],
+  );
   const tabParam = searchParams.get('tab');
   const initialTab = visibleTabs.some((tab) => tab.id === tabParam) ? (tabParam as TabId) : 'profile';
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
   useEffect(() => {
-    if (tabParam === 'retailPos' && !showRetailPos) {
+    if (tabParam && !visibleTabs.some((tab) => tab.id === tabParam)) {
       setActiveTab('profile');
       return;
     }
-    if (TABS.some((tab) => tab.id === tabParam) && (tabParam !== 'retailPos' || showRetailPos)) {
+    if (visibleTabs.some((tab) => tab.id === tabParam)) {
       setActiveTab(tabParam as TabId);
     }
-  }, [tabParam, showRetailPos]);
+  }, [tabParam, visibleTabs]);
 
   const selectTab = (tab: TabId) => {
     setActiveTab(tab);
@@ -2141,7 +2179,7 @@ export function SettingsPage() {
               </button>
             ))}
             <div className="my-1 hidden border-t border-border lg:block" aria-hidden />
-            {SETTINGS_SUBROUTES.filter((link) => !('ownerOnly' in link && link.ownerOnly) || isOwner).map(
+            {visibleSubroutes.map(
               (link) => (
                 <Link
                   key={link.to}
@@ -2175,13 +2213,33 @@ export function SettingsPage() {
             {activeTab === 'users' && <UsersTab />}
             {activeTab === 'warehouses' && <WarehousesTab />}
             {activeTab === 'inventory' && <InventoryRulesTab />}
-            {activeTab === 'documents' && <DocumentsTab />}
-            {activeTab === 'retailPos' && showRetailPos && <PosSettingsPanel />}
+            {activeTab === 'documents' && (
+              <RequireModule required="DOCUMENTS">
+                <DocumentsTab />
+              </RequireModule>
+            )}
+            {activeTab === 'retailPos' && (
+              <RequireModule required="RETAIL_POS">
+                {showRetailPos ? <PosSettingsPanel /> : null}
+              </RequireModule>
+            )}
             {activeTab === 'security' && <SecuritySsoTab />}
             {activeTab === 'reconciliation' && <ReconciliationTab />}
-            {activeTab === 'accounting' && <AccountingSync />}
-            {activeTab === 'integrations' && <Integrations />}
-            {activeTab === 'mesh' && <PartnerCatalogMappingPanel />}
+            {activeTab === 'accounting' && (
+              <RequireModule required="ACCOUNTING">
+                <AccountingSync />
+              </RequireModule>
+            )}
+            {activeTab === 'integrations' && (
+              <RequireModule required="SHOPIFY">
+                <Integrations />
+              </RequireModule>
+            )}
+            {activeTab === 'mesh' && (
+              <RequireModule required="MESH_NETWORK">
+                <PartnerCatalogMappingPanel />
+              </RequireModule>
+            )}
             {activeTab === 'operations' && <OperationsConsoleTab />}
             {activeTab === 'automations' && <AutomationSettings />}
             {activeTab === 'syncConflicts' && <SyncConflictsPanel />}

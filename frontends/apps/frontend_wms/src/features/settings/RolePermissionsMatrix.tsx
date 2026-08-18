@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import {
   NETWORK_ACCESS_LABELS,
   NETWORK_ACCESS_LEVELS,
@@ -14,19 +15,40 @@ import {
   type NetworkAccessLevel,
 } from '@/features/settings/networkAccess';
 
-const PERMISSION_LABELS: Record<string, string> = {
-  'inventory:cost:view': 'View Unit Costs',
-  'inventory:adjust': 'Adjust Inventory',
-  'purchasing:po:approve': 'Approve Purchase Orders',
-  'sales:invoice:void': 'Void Invoices',
-  'settings:users:manage': 'Manage Users',
-  'fulfillment:override': 'Fulfillment Override',
-  'returns:qc:process': 'Process RMA QC',
-  'mrp:run': 'Run MRP Reorder',
-  'printing:thermal': 'Thermal Printing',
-  'edi:outbound': 'EDI Outbound',
-  'so:discount:override': 'Override Pricing',
+type SystemPermission = {
+  key: string;
+  label: string;
+  requiredModule?: string;
 };
+
+/** Hardcoded permission catalog with commercial-module gating. */
+const SYSTEM_PERMISSIONS: SystemPermission[] = [
+  { key: 'inventory:cost:view', label: 'View Unit Costs' },
+  { key: 'inventory:adjust', label: 'Adjust Inventory' },
+  { key: 'purchasing:po:approve', label: 'Approve Purchase Orders' },
+  { key: 'sales:invoice:void', label: 'Void Invoices' },
+  { key: 'settings:users:manage', label: 'Manage Users' },
+  { key: 'fulfillment:override', label: 'Fulfillment Override', requiredModule: 'ADVANCED_FULFILLMENT' },
+  { key: 'returns:qc:process', label: 'Process RMA QC' },
+  { key: 'mrp:run', label: 'Run MRP Reorder', requiredModule: 'MRP' },
+  { key: 'printing:thermal', label: 'Thermal Printing' },
+  { key: 'edi:outbound', label: 'EDI Outbound', requiredModule: 'DOCUMENTS' },
+  { key: 'so:discount:override', label: 'Override Pricing' },
+  { key: 'customers:manage', label: 'Manage Customers' },
+  { key: 'pos.operate', label: 'Operate POS', requiredModule: 'RETAIL_POS' },
+  { key: 'pos.supervise', label: 'Supervise POS', requiredModule: 'RETAIL_POS' },
+];
+
+const PERMISSION_LABELS: Record<string, string> = Object.fromEntries(
+  SYSTEM_PERMISSIONS.map((permission) => [permission.key, permission.label]),
+);
+
+const PERMISSION_REQUIRED_MODULE: Record<string, string> = Object.fromEntries(
+  SYSTEM_PERMISSIONS.filter((permission) => permission.requiredModule).map((permission) => [
+    permission.key,
+    permission.requiredModule as string,
+  ]),
+);
 
 function formatPermissionLabel(key: string): string {
   return (
@@ -44,6 +66,7 @@ const MATRIX_ROLE_ORDER = ['ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER', 'OW
 export function RolePermissionsMatrix() {
   const queryClient = useQueryClient();
   const [cidrDraft, setCidrDraft] = useState('');
+  const { hasModule } = useEntitlement();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['role-permissions'],
@@ -135,7 +158,11 @@ export function RolePermissionsMatrix() {
     );
   }
 
-  const { permissionKeys } = data;
+  const { permissionKeys: catalogKeys } = data;
+  const permissionKeys = catalogKeys.filter((key) => {
+    const requiredModule = PERMISSION_REQUIRED_MODULE[key];
+    return !requiredModule || hasModule(requiredModule);
+  });
 
   const addCidr = () => {
     const next = cidrDraft.trim();

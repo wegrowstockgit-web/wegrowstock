@@ -53,7 +53,7 @@ function StatusBadge({ status }: { status: string }) {
 export function TenantManager() {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [selected, setSelected] = useState<ControlPlaneTenant | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -61,6 +61,9 @@ export function TenantManager() {
     queryKey: ['control-plane', 'tenants'],
     queryFn: fetchTenants,
   });
+
+  /** Always read the live query row — never a click-time snapshot. */
+  const selected = tenants.find((tenant) => tenant.tenantId === selectedId) ?? null;
 
   const sandboxMutation = useMutation({
     mutationFn: (tenantId: string) => cloneSandbox(tenantId),
@@ -90,7 +93,7 @@ export function TenantManager() {
   }, [tenants, query]);
 
   const openTenant = (tenant: ControlPlaneTenant) => {
-    setSelected(tenant);
+    setSelectedId(tenant.tenantId);
     setDrawerOpen(true);
   };
 

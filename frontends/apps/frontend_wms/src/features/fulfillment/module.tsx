@@ -1,4 +1,4 @@
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { EnterpriseRouteGate } from '@/components/auth/EnterpriseRouteGate';
 import { ClusterPickerView } from '@/features/fulfillment/ClusterPickerView';
 import { CycleCountsPage } from '@/features/fulfillment/CycleCountsPage';
 import { DockScheduleCalendar } from '@/features/fulfillment/DockScheduleCalendar';
@@ -15,17 +15,17 @@ export const fulfillmentModule = defineModule({
     {
       path: 'exceptions',
       element: (
-        <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
           <ExceptionsPage />
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
     {
       path: 'dock-schedule',
       element: (
-        <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
           <DockScheduleCalendar />
-        </ProtectedRoute>
+        </EnterpriseRouteGate>
       ),
     },
   ],
@@ -33,8 +33,22 @@ export const fulfillmentModule = defineModule({
     { path: '/fulfillment', element: <FulfillmentPage /> },
     { path: '/cycle-counts', element: <CycleCountsPage /> },
     { path: '/replenishments', element: <ReplenishmentsPage /> },
-    { path: '/cluster-pick', element: <ClusterPickerView /> },
-    { path: '/pallet-manifests', element: <PalletManifestWorkspace /> },
+    {
+      path: '/cluster-pick',
+      element: (
+        <EnterpriseRouteGate requiredModule="ADVANCED_FULFILLMENT">
+          <ClusterPickerView />
+        </EnterpriseRouteGate>
+      ),
+    },
+    {
+      path: '/pallet-manifests',
+      element: (
+        <EnterpriseRouteGate requiredModule="ADVANCED_FULFILLMENT">
+          <PalletManifestWorkspace />
+        </EnterpriseRouteGate>
+      ),
+    },
   ],
   navItems: [
     { to: '/fulfillment', label: 'Fulfillment', moduleId: 'fulfillment' },

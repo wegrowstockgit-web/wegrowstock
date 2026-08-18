@@ -13,7 +13,7 @@ import {
 
 import { AppShell } from '@/components/layout/AppShell';
 import { WarehouseFloorShell } from '@/components/layout/WarehouseFloorShell';
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { EnterpriseRouteGate } from '@/components/auth/EnterpriseRouteGate';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { LoginPage } from '@/pages/LoginPage';
 import { SignupPage } from '@/pages/SignupPage';
@@ -37,6 +37,8 @@ import { IssueSuppliesPage } from '@/pages/IssueSuppliesPage';
 import { LotTracePage } from '@/pages/LotTracePage';
 import { TechnicianTruckPage } from '@/pages/TechnicianTruckPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { UpgradePage } from '@/pages/UpgradePage';
+import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
 import { ShowroomLayout } from '@/pages/showroom/ShowroomLayout';
 import { ShowroomCatalogPage } from '@/pages/showroom/ShowroomCatalogPage';
 import { ShowroomOrdersPage } from '@/pages/showroom/ShowroomOrdersPage';
@@ -155,199 +157,217 @@ export function App() {
           {/* Floor ops — WarehouseFloorShell (no corporate Sidebar) */}
           <Route
             element={
-              <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
+              <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER']}>
                 <WarehouseFloorShell />
-              </ProtectedRoute>
+              </EnterpriseRouteGate>
             }
           >
             {floorFeatureRoutes.map((route) => renderRoute(route))}
-            <Route path="/manufacturing/terminal" element={<ProductionTerminalPage />} />
+            <Route element={<EnterpriseRouteGate requiredModule="MANUFACTURING" />}>
+              <Route path="/manufacturing/terminal" element={<ProductionTerminalPage />} />
+            </Route>
             <Route path="/returns/receive" element={<ReturnsReceivePage />} />
             <Route path="/issue-supplies" element={<IssueSuppliesPage />} />
             <Route path="/field/truck" element={<TechnicianTruckPage />} />
           </Route>
 
-          <Route
-            path="/showroom"
-            element={
-              <ErrorBoundary boundaryName="showroom">
-                <ShowroomLayout />
-              </ErrorBoundary>
-            }
-          >
-            <Route index element={<Navigate to="catalog" replace />} />
-            <Route path="catalog" element={<ShowroomCatalogPage />} />
+          <Route element={<EnterpriseRouteGate requiredModule="B2B_SHOWROOM" />}>
             <Route
-              path="orders"
+              path="/showroom"
               element={
-                <ProtectedRoute b2bOnly>
-                  <ShowroomOrdersPage />
-                </ProtectedRoute>
+                <ErrorBoundary boundaryName="showroom">
+                  <ShowroomLayout />
+                </ErrorBoundary>
               }
-            />
-            <Route
-              path="checkout"
-              element={
-                <ProtectedRoute b2bOnly>
-                  <ShowroomCheckoutPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="billing"
-              element={
-                <ProtectedRoute b2bOnly>
-                  <ShowroomBillingPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="*" element={<NotFoundPage />} />
+            >
+              <Route index element={<Navigate to="catalog" replace />} />
+              <Route path="catalog" element={<ShowroomCatalogPage />} />
+              <Route
+                path="orders"
+                element={
+                  <EnterpriseRouteGate b2bOnly>
+                    <ShowroomOrdersPage />
+                  </EnterpriseRouteGate>
+                }
+              />
+              <Route
+                path="checkout"
+                element={
+                  <EnterpriseRouteGate b2bOnly>
+                    <ShowroomCheckoutPage />
+                  </EnterpriseRouteGate>
+                }
+              />
+              <Route
+                path="billing"
+                element={
+                  <EnterpriseRouteGate b2bOnly>
+                    <ShowroomBillingPage />
+                  </EnterpriseRouteGate>
+                }
+              />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
           </Route>
 
           <Route
             path="/"
             element={
-              <ProtectedRoute officeOnly>
+              <EnterpriseRouteGate officeOnly>
                 <AppShell />
-              </ProtectedRoute>
+              </EnterpriseRouteGate>
             }
           >
             <Route index element={<RootRedirect />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="upgrade" element={<UpgradePage />} />
+            <Route path="unauthorized" element={<UnauthorizedPage />} />
             {officeFeatureRoutes.map((route) => renderRoute(route))}
             <Route
               path="import"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
                   <ImportPage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="settings/import"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN']} officeOnly>
                   <ImportPage legacy />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="reports"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN']} officeOnly>
                   <ReportsPage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="reports/audit-log"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN']} officeOnly>
                   <Navigate to="/settings?tab=operations" replace />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="warehouses/add"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN']} officeOnly>
                   <AddWarehousePage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
-              path="rtls"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
-                  <RtlsWorkspacePage />
-                </ProtectedRoute>
+                <EnterpriseRouteGate
+                  requiredModule="RTLS_TELEMETRY"
+                  roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}
+                />
               }
-            />
+            >
+              <Route path="rtls" element={<RtlsWorkspacePage />} />
+            </Route>
             <Route
-              path="manufacturing/boms"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
-                  <ManufacturingBomsPage />
-                </ProtectedRoute>
+                <EnterpriseRouteGate
+                  requiredModule="MANUFACTURING"
+                  roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}
+                  officeOnly
+                />
               }
-            />
-            <Route
-              path="manufacturing/orders"
-              element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
-                  <ManufacturingOrdersPage />
-                </ProtectedRoute>
-              }
-            />
+            >
+              <Route path="manufacturing/boms" element={<ManufacturingBomsPage />} />
+              <Route path="manufacturing/orders" element={<ManufacturingOrdersPage />} />
+            </Route>
             <Route
               path="returns"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
                   <ReturnsPage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="compliance/lot-trace"
               element={
-                <ProtectedRoute
+                <EnterpriseRouteGate
                   roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER']}
                   officeOnly
                 >
                   <LotTracePage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="settings/profile"
               element={
-                <ProtectedRoute
+                <EnterpriseRouteGate
                   roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER']}
                 >
                   <ProfileSettingsPage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="settings"
               element={
-                <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+                <EnterpriseRouteGate roles={['ADMIN', 'OWNER']} officeOnly>
                   <SettingsPage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="settings/users"
               element={
-                <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+                <EnterpriseRouteGate roles={['ADMIN', 'OWNER']} officeOnly>
                   <Navigate to="/settings?tab=users" replace />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="settings/operations"
               element={
-                <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+                <EnterpriseRouteGate roles={['ADMIN', 'OWNER']} officeOnly>
                   <Navigate to="/settings?tab=operations" replace />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
               path="settings/billing"
               element={
-                <ProtectedRoute roles={['ADMIN', 'OWNER']} officeOnly>
+                <EnterpriseRouteGate roles={['ADMIN', 'OWNER']} officeOnly>
                   <BillingSettingsPage />
-                </ProtectedRoute>
+                </EnterpriseRouteGate>
               }
             />
             <Route
-              path="settings/integrations"
               element={
-                <ProtectedRoute roles={['OWNER', 'ADMIN']} officeOnly>
-                  <IntegrationsHubPage />
-                </ProtectedRoute>
+                <EnterpriseRouteGate
+                  requiredModule="RETAIL_POS"
+                  requiredPermission={['pos.supervise']}
+                  officeOnly
+                />
               }
-            />
+            >
+              <Route path="settings/pos" element={<Navigate to="/settings?tab=retailPos" replace />} />
+            </Route>
+            <Route
+              element={
+                <EnterpriseRouteGate
+                  anyOfModules={['SHOPIFY', 'ACCOUNTING']}
+                  roles={['OWNER', 'ADMIN']}
+                  officeOnly
+                />
+              }
+            >
+              <Route path="settings/integrations" element={<IntegrationsHubPage />} />
+            </Route>
             {/* Auth-gated probe for ErrorBoundary e2e — not linked in navigation. */}
             <Route path="__e2e/crash" element={<E2eCrashProbe />} />
             <Route path="*" element={<NotFoundPage />} />
