@@ -4,6 +4,7 @@ import type { RoleDefinition, RolePermissionGrant } from '@/api/types';
 export interface CreateCustomRolePayload {
   name: string;
   cloneFromRoleId?: string | null;
+  description?: string | null;
 }
 
 export interface RolePermissionUpdate {
@@ -17,6 +18,7 @@ export const roleApi = {
     (await apiClient.post<RoleDefinition>('/api/v1/roles', {
       name: payload.name,
       cloneFromRoleId: payload.cloneFromRoleId || undefined,
+      description: payload.description?.trim() || undefined,
     })).data,
   updatePermissions: async (roleId: string, grants: RolePermissionUpdate[]) =>
     (await apiClient.put<RolePermissionGrant[]>(`/api/v1/roles/${roleId}/permissions`, { grants })).data,

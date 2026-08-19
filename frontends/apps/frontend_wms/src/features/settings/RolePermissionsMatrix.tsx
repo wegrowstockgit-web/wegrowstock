@@ -93,6 +93,7 @@ export function RolePermissionsMatrix() {
   const [cidrLabelDraft, setCidrLabelDraft] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [roleName, setRoleName] = useState('');
+  const [roleDescription, setRoleDescription] = useState('');
   const [cloneFromRoleId, setCloneFromRoleId] = useState('');
   const { hasModule } = useEntitlement();
 
@@ -104,7 +105,7 @@ export function RolePermissionsMatrix() {
   });
 
   const rolesQuery = useQuery({
-    queryKey: ['tenant-roles'],
+    queryKey: ['roles'],
     queryFn: roleApi.list,
     retry: false,
   });
@@ -137,7 +138,7 @@ export function RolePermissionsMatrix() {
 
   const invalidateRoles = () => {
     void queryClient.invalidateQueries({ queryKey: ['role-permissions'] });
-    void queryClient.invalidateQueries({ queryKey: ['tenant-roles'] });
+    void queryClient.invalidateQueries({ queryKey: ['roles'] });
   };
 
   const toggleMutation = useMutation({
@@ -191,10 +192,12 @@ export function RolePermissionsMatrix() {
       roleApi.create({
         name: roleName.trim(),
         cloneFromRoleId: cloneFromRoleId || null,
+        description: roleDescription.trim() || null,
       }),
     onSuccess: () => {
       setCreateOpen(false);
       setRoleName('');
+      setRoleDescription('');
       setCloneFromRoleId('');
       invalidateRoles();
     },
@@ -486,6 +489,21 @@ export function RolePermissionsMatrix() {
             data-testid="create-role-name"
             required
           />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="create-role-description" className="text-sm font-medium text-text">
+              Description
+            </label>
+            <textarea
+              id="create-role-description"
+              data-testid="create-role-description"
+              value={roleDescription}
+              onChange={(e) => setRoleDescription(e.target.value)}
+              maxLength={255}
+              rows={3}
+              placeholder="What this role can do in the warehouse"
+              className="min-h-[4.5rem] rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-text"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="clone-role" className="text-sm font-medium text-text">
               Clone permissions from

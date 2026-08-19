@@ -69,6 +69,11 @@ public class RolePermissionService {
 
     @Transactional
     public Role createCustomRole(String name, UUID cloneFromRoleId) {
+        return createCustomRole(name, cloneFromRoleId, null);
+    }
+
+    @Transactional
+    public Role createCustomRole(String name, UUID cloneFromRoleId, String description) {
         UUID tenantId = TenantContext.requireTenantId();
         String code = slugifyRoleCode(name);
         if (code.isBlank()) {
@@ -92,6 +97,7 @@ public class RolePermissionService {
         created.setCode(code);
         created.setSystemRole(false);
         created.setNetworkAccessLevel(NetworkAccessLevel.STRICT_INTERNAL);
+        created.setDescription(normalizeDescription(description));
         created = roleRepository.save(created);
 
         Map<String, Boolean> grants = new LinkedHashMap<>();
@@ -251,6 +257,14 @@ public class RolePermissionService {
             slug = slug.substring(0, MAX_ROLE_CODE_LENGTH).replaceAll("_+$", "");
         }
         return slug;
+    }
+
+    static String normalizeDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return Role.CUSTOM_ROLE_FALLBACK;
+        }
+        String trimmed = description.trim();
+        return trimmed.length() <= 255 ? trimmed : trimmed.substring(0, 255);
     }
 
     private void persistGrants(Role role, Map<String, Boolean> grants) {

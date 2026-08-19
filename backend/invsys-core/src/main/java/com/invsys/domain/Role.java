@@ -28,6 +28,11 @@ public class Role extends TenantScopedEntity {
     @Column(name = "is_system_role", nullable = false)
     private boolean systemRole = false;
 
+    @Column(length = 255)
+    private String description;
+
+    public static final String CUSTOM_ROLE_FALLBACK = "Custom organizational role";
+
     public static boolean isReservedSystemCode(String code) {
         return code != null && SYSTEM_CODES.contains(code.toUpperCase(Locale.ROOT));
     }
@@ -56,5 +61,35 @@ public class Role extends TenantScopedEntity {
 
     public void setSystemRole(boolean systemRole) {
         this.systemRole = systemRole;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    /**
+     * Canonical copy for platform baseline roles. Keep in sync with
+     * {@code V126__role_descriptions.sql} backfill.
+     */
+    public static String defaultDescription(String code) {
+        if (code == null || code.isBlank()) {
+            return CUSTOM_ROLE_FALLBACK;
+        }
+        return switch (code.toUpperCase(Locale.ROOT)) {
+            case "OWNER" -> "Tenant owner — cannot be assigned from this list";
+            case "ADMIN" -> "Full warehouse administration except ownership transfer";
+            case "WAREHOUSE_MANAGER" -> "Floor leadership, adjustments, and cycle counts";
+            case "PICKER" -> "Pick, pack, and put-away";
+            case "VIEWER" -> "Read-only operations";
+            case "RETAIL_CASHIER" -> "Retail POS register";
+            case "RETAIL_MANAGER" -> "POS supervision and voids";
+            case "B2B_CUSTOMER" -> "Customer portal access";
+            case "SUPPLIER" -> "Vendor portal access";
+            default -> CUSTOM_ROLE_FALLBACK;
+        };
     }
 }

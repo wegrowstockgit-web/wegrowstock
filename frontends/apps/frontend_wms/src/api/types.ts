@@ -1377,6 +1377,7 @@ export interface RoleDefinition {
   name: string;
   networkAccessLevel?: 'STRICT_INTERNAL' | 'MFA_OUTSIDE_NETWORK' | 'ROAMING';
   isSystemRole?: boolean;
+  description?: string | null;
 }
 
 export interface RolePermissionGrant {

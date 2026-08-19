@@ -201,12 +201,15 @@ class RolePermissionServiceTest {
                 .thenReturn(Optional.empty());
         when(rolePermissionRepository.save(any(RolePermission.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Role created = service.createCustomRole("Junior Buyer", PICKER_ID);
+        Role created = service.createCustomRole("Junior Buyer", PICKER_ID, "Sourced from receiving");
 
         assertThat(created.getCode()).isEqualTo("JUNIOR_BUYER");
         assertThat(created.isSystemRole()).isFalse();
+        assertThat(created.getDescription()).isEqualTo("Sourced from receiving");
         assertThat(RolePermissionService.slugifyRoleCode("Quality Control Temp"))
                 .isEqualTo("QUALITY_CONTROL_TEMP");
+        assertThat(Role.defaultDescription("PICKER")).isEqualTo("Pick, pack, and put-away");
+        assertThat(RolePermissionService.normalizeDescription("  ")).isEqualTo(Role.CUSTOM_ROLE_FALLBACK);
     }
 
     @Test

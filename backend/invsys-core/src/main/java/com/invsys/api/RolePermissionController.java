@@ -12,6 +12,7 @@ import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -121,7 +122,7 @@ public class RolePermissionController {
     @PostMapping("/api/v1/roles")
     @ResponseStatus(HttpStatus.CREATED)
     public RoleDefinition createRole(@Valid @RequestBody CreateRoleBody body) {
-        Role created = rolePermissionService.createCustomRole(body.name(), body.cloneFromRoleId());
+        Role created = rolePermissionService.createCustomRole(body.name(), body.cloneFromRoleId(), body.description());
         return toDefinition(created);
     }
 
@@ -149,12 +150,14 @@ public class RolePermissionController {
                 role.getId(),
                 role.getCode(),
                 role.getNetworkAccessLevel().name(),
-                systemRole);
+                systemRole,
+                role.getDescription());
     }
 
     public record CreateRoleBody(
             @NotBlank String name,
-            UUID cloneFromRoleId
+            UUID cloneFromRoleId,
+            @Size(max = 255) String description
     ) {
     }
 
@@ -190,14 +193,19 @@ public class RolePermissionController {
             UUID id,
             String name,
             String networkAccessLevel,
-            @JsonProperty("isSystemRole") boolean systemRole
+            @JsonProperty("isSystemRole") boolean systemRole,
+            String description
     ) {
         public RoleDefinition(UUID id, String name) {
-            this(id, name, NetworkAccessLevel.STRICT_INTERNAL.name(), false);
+            this(id, name, NetworkAccessLevel.STRICT_INTERNAL.name(), false, null);
         }
 
         public RoleDefinition(UUID id, String name, String networkAccessLevel) {
-            this(id, name, networkAccessLevel, false);
+            this(id, name, networkAccessLevel, false, null);
+        }
+
+        public RoleDefinition(UUID id, String name, String networkAccessLevel, boolean systemRole) {
+            this(id, name, networkAccessLevel, systemRole, null);
         }
     }
 

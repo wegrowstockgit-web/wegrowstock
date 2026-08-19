@@ -33,10 +33,15 @@ describe('roleApi', () => {
 
   it('creates a custom role with optional clone source', async () => {
     post.mockResolvedValue({ data: { id: 'r2', name: 'JUNIOR_BUYER', isSystemRole: false } });
-    await roleApi.create({ name: 'Junior Buyer', cloneFromRoleId: 'r-picker' });
+    await roleApi.create({
+      name: 'Junior Buyer',
+      cloneFromRoleId: 'r-picker',
+      description: '  Sourced from receiving  ',
+    });
     expect(post).toHaveBeenCalledWith('/api/v1/roles', {
       name: 'Junior Buyer',
       cloneFromRoleId: 'r-picker',
+      description: 'Sourced from receiving',
     });
   });
 

@@ -7,6 +7,7 @@ type RoleRow = {
   id: string;
   name: string;
   isSystemRole?: boolean;
+  description?: string | null;
 };
 
 /**
@@ -53,6 +54,7 @@ test.describe('Journey 67: Dynamic custom role provisioning', () => {
 
       await expect(owner.page.getByTestId('create-role-dialog')).toBeVisible();
       await owner.page.getByTestId('create-role-name').fill(roleName);
+      await owner.page.getByTestId('create-role-description').fill('Sourced from receiving for e2e');
       await owner.page.getByTestId('create-role-clone').selectOption({ label: 'Picker' });
 
       const createdWait = owner.page.waitForResponse(
@@ -66,6 +68,9 @@ test.describe('Journey 67: Dynamic custom role provisioning', () => {
       const created = (await (await createdWait).json()) as RoleRow;
       createdCode = created.name;
       expect(created.isSystemRole).toBe(false);
+      if (created.description !== undefined) {
+        expect(created.description).toBe('Sourced from receiving for e2e');
+      }
 
       await expect(owner.page.getByTestId(`delete-role-${created.name}`)).toBeVisible({
         timeout: 15_000,

@@ -227,6 +227,9 @@ describe('RolePermissionsMatrix', () => {
     fireEvent.change(screen.getByTestId('create-role-name'), {
       target: { value: 'Quality Control Temp' },
     });
+    fireEvent.change(screen.getByTestId('create-role-description'), {
+      target: { value: 'Inspect inbound lots before put-away' },
+    });
     fireEvent.change(screen.getByTestId('create-role-clone'), {
       target: { value: 'r-picker' },
     });
@@ -236,6 +239,7 @@ describe('RolePermissionsMatrix', () => {
       expect(roleApi.create).toHaveBeenCalledWith({
         name: 'Quality Control Temp',
         cloneFromRoleId: 'r-picker',
+        description: 'Inspect inbound lots before put-away',
       });
     });
   });

@@ -177,6 +177,7 @@ public class WholesaleApplicationService {
                     created.setTenantId(tenantId);
                     created.setCode("B2B_CUSTOMER");
                     created.setSystemRole(true);
+                    created.setDescription(Role.defaultDescription("B2B_CUSTOMER"));
                     created.setNetworkAccessLevel(
                             com.invsys.domain.NetworkAccessLevel.defaultForRole("B2B_CUSTOMER"));
                     return roleRepository.save(created);

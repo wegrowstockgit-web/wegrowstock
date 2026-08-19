@@ -53,16 +53,21 @@ class CustomRoleProvisioningHttpTest extends AbstractIntegrationTest {
         JsonNode picker = findRole(roles, "PICKER");
         assertThat(admin.get("isSystemRole").asBoolean()).isTrue();
         assertThat(picker.get("isSystemRole").asBoolean()).isTrue();
+        assertThat(admin.get("description").asText())
+                .isEqualTo("Full warehouse administration except ownership transfer");
+        assertThat(picker.get("description").asText()).isEqualTo("Pick, pack, and put-away");
         String adminId = admin.get("id").asText();
         String pickerId = picker.get("id").asText();
 
         mockMvc.perform(post("/api/v1/roles")
                         .header("Authorization", bearer)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Junior Buyer\",\"cloneFromRoleId\":\"" + pickerId + "\"}"))
+                        .content("{\"name\":\"Junior Buyer\",\"cloneFromRoleId\":\"" + pickerId
+                                + "\",\"description\":\"Sourced from receiving\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("JUNIOR_BUYER"))
-                .andExpect(jsonPath("$.isSystemRole").value(false));
+                .andExpect(jsonPath("$.isSystemRole").value(false))
+                .andExpect(jsonPath("$.description").value("Sourced from receiving"));
 
         MvcResult afterCreate = mockMvc.perform(get("/api/v1/roles").header("Authorization", bearer))
                 .andExpect(status().isOk())
