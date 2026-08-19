@@ -203,6 +203,34 @@ export interface UpdateAccountMapping {
   externalAccountId: string;
 }
 
+export interface LedgerAccount {
+  accountId: string;
+  name: string;
+  type: string;
+  classification: string;
+  code: string;
+}
+
+export interface IntegrationConnectionStatus {
+  connected: boolean;
+  accountName: string;
+  lastSyncAt: string;
+  tokenExpiringSoon: boolean;
+}
+
+export interface IntegrationAuthUrl {
+  authorizationUrl: string;
+  state: string;
+  provider: string;
+}
+
+export interface IntegrationConnectionTest {
+  ok: boolean;
+  readOk: boolean;
+  writeOk: boolean;
+  message: string;
+}
+
 export interface SyncLog {
   id: string;
   system: string;
@@ -1348,6 +1376,7 @@ export interface RoleDefinition {
   id: string;
   name: string;
   networkAccessLevel?: 'STRICT_INTERNAL' | 'MFA_OUTSIDE_NETWORK' | 'ROAMING';
+  isSystemRole?: boolean;
 }
 
 export interface RolePermissionGrant {

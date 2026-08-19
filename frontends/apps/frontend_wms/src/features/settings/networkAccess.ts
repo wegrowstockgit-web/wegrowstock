@@ -1,3 +1,63 @@
+export type CidrEntry = {
+  cidr: string;
+  label: string;
+  raw: string;
+};
+
+export function parseCidrEntry(raw: string | null | undefined): CidrEntry {
+  const value = (raw ?? '').trim();
+  const hash = value.indexOf('#');
+  if (hash < 0) {
+    return { cidr: value, label: '', raw: value };
+  }
+  return {
+    cidr: value.slice(0, hash).trim(),
+    label: value.slice(hash + 1).trim(),
+    raw: value,
+  };
+}
+
+export function formatCidrEntry(cidr: string, label?: string | null): string {
+  const block = cidr.trim();
+  const name = (label ?? '').trim().replace(/#/g, ' ');
+  return name ? `${block}#${name}` : block;
+}
+
+export function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  let value = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const octet = Number(part);
+    if (octet > 255) return null;
+    value = (value << 8) + octet;
+  }
+  return value >>> 0;
+}
+
+export function ipInCidr(ip: string, cidrOrEntry: string): boolean {
+  if (!ip || ip === 'unknown') return false;
+  const { cidr } = parseCidrEntry(cidrOrEntry);
+  const [base, bitsRaw] = cidr.split('/');
+  if (!base) return false;
+  const ipInt = ipv4ToInt(ip);
+  const baseInt = ipv4ToInt(base);
+  if (ipInt != null && baseInt != null) {
+    const bits = bitsRaw == null || bitsRaw === '' ? 32 : Number(bitsRaw);
+    if (!Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+    if (bits === 0) return true;
+    const mask = bits === 32 ? 0xffffffff : (~((1 << (32 - bits)) - 1)) >>> 0;
+    return (ipInt & mask) === (baseInt & mask);
+  }
+  return ip.toLowerCase() === base.toLowerCase();
+}
+
+export function clientIpCovered(ip: string | undefined, entries: string[]): boolean {
+  if (!ip || entries.length === 0) return false;
+  return entries.some((entry) => ipInCidr(ip, entry));
+}
+
 export const NETWORK_ACCESS_LEVELS = [
   'STRICT_INTERNAL',
   'MFA_OUTSIDE_NETWORK',

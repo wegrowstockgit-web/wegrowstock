@@ -19,7 +19,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,6 +37,7 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
     private final CredentialVaultService credentialVaultService;
     private final InventoryLedgerRepository ledgerRepository;
     private final IntegrationFailurePublisher failurePublisher;
+    private final AccountingHttpTransport httpTransport;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -42,17 +45,73 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
                                    IntegrationCredentialRepository credentialRepository,
                                    CredentialVaultService credentialVaultService,
                                    InventoryLedgerRepository ledgerRepository,
-                                   IntegrationFailurePublisher failurePublisher) {
+                                   IntegrationFailurePublisher failurePublisher,
+                                   AccountingHttpTransport httpTransport) {
         this.syncLogRepository = syncLogRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.ledgerRepository = ledgerRepository;
         this.failurePublisher = failurePublisher;
+        this.httpTransport = httpTransport;
     }
 
     @Override
     public String system() {
         return "QUICKBOOKS";
+    }
+
+    @Override
+    public List<LedgerAccount> listAccounts(UUID tenantId) {
+        Optional<CredentialBundle> creds = loadCredentials(tenantId);
+        if (creds.isEmpty()) {
+            return StandardLedgerAccounts.sandboxCatalog();
+        }
+        try {
+            String url = creds.get().baseUrl() + "/v3/company/" + creds.get().realmId()
+                    + "/query?query=select%20*%20from%20Account&minorversion=75";
+            AccountingHttpTransport.Response response = httpTransport.get(url, authHeaders(creds.get()));
+            if (!response.ok()) {
+                return StandardLedgerAccounts.sandboxCatalog();
+            }
+            List<LedgerAccount> accounts = QuickBooksAccountParser.parseQuery(objectMapper, response.body());
+            return accounts.isEmpty() ? StandardLedgerAccounts.sandboxCatalog() : accounts;
+        } catch (RuntimeException ex) {
+            return StandardLedgerAccounts.sandboxCatalog();
+        }
+    }
+
+    @Override
+    public List<LedgerAccount> provisionStandardAccounts(UUID tenantId) {
+        Optional<CredentialBundle> creds = loadCredentials(tenantId);
+        List<LedgerAccount> existing = listAccounts(tenantId);
+        List<LedgerAccount> missing = StandardLedgerAccounts.missingDefaults(existing);
+        if (creds.isEmpty() || missing.isEmpty()) {
+            return existing.isEmpty() ? StandardLedgerAccounts.requiredDefaults() : existing;
+        }
+        List<LedgerAccount> created = new ArrayList<>(existing);
+        for (LedgerAccount required : missing) {
+            LedgerAccount provisioned = createAccount(creds.get(), required);
+            created.add(provisioned != null ? provisioned : required);
+        }
+        return List.copyOf(created);
+    }
+
+    @Override
+    public AccountingConnectionTest testConnection(UUID tenantId) {
+        Optional<CredentialBundle> creds = loadCredentials(tenantId);
+        if (creds.isEmpty()) {
+            List<LedgerAccount> sandbox = listAccounts(tenantId);
+            return AccountingConnectionTest.of(true, true,
+                    "Sandbox chart of accounts ready (" + sandbox.size() + " accounts)");
+        }
+        try {
+            List<LedgerAccount> accounts = listAccounts(tenantId);
+            boolean readOk = !accounts.isEmpty();
+            return AccountingConnectionTest.of(readOk, readOk,
+                    readOk ? "QuickBooks read/write permissions verified" : "QuickBooks returned no accounts");
+        } catch (RuntimeException ex) {
+            return AccountingConnectionTest.of(false, false, truncate(ex.getMessage()));
+        }
     }
 
     @Override
@@ -127,6 +186,32 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    private LedgerAccount createAccount(CredentialBundle creds, LedgerAccount required) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("Name", required.name());
+            body.put("AcctNum", required.code());
+            body.put("AccountType", required.type());
+            String url = creds.baseUrl() + "/v3/company/" + creds.realmId() + "/account?minorversion=75";
+            AccountingHttpTransport.Response response = httpTransport.post(
+                    url, authHeaders(creds), objectMapper.writeValueAsString(body));
+            if (!response.ok()) {
+                return required;
+            }
+            LedgerAccount created = QuickBooksAccountParser.parseCreated(objectMapper, response.body());
+            return created != null ? created : required;
+        } catch (Exception ex) {
+            return required;
+        }
+    }
+
+    private static Map<String, String> authHeaders(CredentialBundle creds) {
+        return Map.of(
+                "Authorization", "Bearer " + creds.accessToken(),
+                "Accept", "application/json",
+                "Content-Type", "application/json");
     }
 
     private Optional<CredentialBundle> loadCredentials(UUID tenantId) {

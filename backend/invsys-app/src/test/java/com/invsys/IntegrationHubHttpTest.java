@@ -95,10 +95,10 @@ class IntegrationHubHttpTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/integrations/hub")
                         .header("Authorization", "Bearer " + owner.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.categories[0].integrations[0].status").value("CONNECTED"))
+                .andExpect(jsonPath("$.categories[0].integrations[0].status").value("LIVE"))
                 .andExpect(jsonPath("$.categories[0].integrations[0].connected").value(true))
-                .andExpect(jsonPath("$.categories[0].integrations[1].status").value("CONNECTED"))
-                .andExpect(jsonPath("$.categories[2].integrations[0].status").value("CONNECTED"));
+                .andExpect(jsonPath("$.categories[0].integrations[1].status").value("LIVE"))
+                .andExpect(jsonPath("$.categories[2].integrations[0].status").value("LIVE"));
     }
 
     @Test

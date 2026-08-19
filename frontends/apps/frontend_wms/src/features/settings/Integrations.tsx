@@ -7,6 +7,11 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { ShopifyIntegration } from '@/features/settings/ShopifyIntegration';
+import { IntegrationWizardModal } from '@/features/settings/IntegrationWizardModal';
+import {
+  IntegrationConnectionCards,
+  type IntegrationHubCategory,
+} from '@/features/settings/IntegrationConnectionCards';
 
 interface AlertPreferences {
   alertEmail: string | null;
@@ -163,13 +168,34 @@ function SystemAlertsCard() {
 }
 
 /**
- * Integrations settings surface: channel connections + system alert preferences.
+ * Integrations settings surface: unified connection cards + channel + alerts.
  */
 export function Integrations() {
+  const [wizardProvider, setWizardProvider] = useState<string | null>(null);
+  const { data } = useQuery({
+    queryKey: ['integrations', 'hub'],
+    queryFn: async () =>
+      (await apiClient.get<{ categories: IntegrationHubCategory[] }>('/api/v1/integrations/hub')).data,
+    retry: false,
+  });
+
   return (
     <div className="space-y-6" data-testid="integrations-settings">
+      {data?.categories && (
+        <div className="space-y-8" data-testid="integrations-settings-hub">
+          <IntegrationConnectionCards
+            categories={data.categories}
+            onOpen={(card) => setWizardProvider(card.id)}
+          />
+        </div>
+      )}
       <SystemAlertsCard />
       <ShopifyIntegration />
+      <IntegrationWizardModal
+        provider={wizardProvider}
+        open={wizardProvider !== null}
+        onClose={() => setWizardProvider(null)}
+      />
     </div>
   );
 }

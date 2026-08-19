@@ -19,9 +19,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -33,6 +35,7 @@ public class XeroAdapter implements AccountingSyncAdapter {
     private final CredentialVaultService credentialVaultService;
     private final InventoryLedgerRepository ledgerRepository;
     private final IntegrationFailurePublisher failurePublisher;
+    private final AccountingHttpTransport httpTransport;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -40,17 +43,72 @@ public class XeroAdapter implements AccountingSyncAdapter {
                        IntegrationCredentialRepository credentialRepository,
                        CredentialVaultService credentialVaultService,
                        InventoryLedgerRepository ledgerRepository,
-                       IntegrationFailurePublisher failurePublisher) {
+                       IntegrationFailurePublisher failurePublisher,
+                       AccountingHttpTransport httpTransport) {
         this.syncLogRepository = syncLogRepository;
         this.credentialRepository = credentialRepository;
         this.credentialVaultService = credentialVaultService;
         this.ledgerRepository = ledgerRepository;
         this.failurePublisher = failurePublisher;
+        this.httpTransport = httpTransport;
     }
 
     @Override
     public String system() {
         return "XERO";
+    }
+
+    @Override
+    public List<LedgerAccount> listAccounts(UUID tenantId) {
+        Optional<XeroCredentials> creds = loadCredentials(tenantId);
+        if (creds.isEmpty()) {
+            return StandardLedgerAccounts.sandboxCatalog();
+        }
+        try {
+            AccountingHttpTransport.Response response = httpTransport.get(
+                    "https://api.xero.com/api.xro/2.0/Accounts", authHeaders(creds.get()));
+            if (!response.ok()) {
+                return StandardLedgerAccounts.sandboxCatalog();
+            }
+            List<LedgerAccount> accounts = XeroAccountParser.parseAccounts(objectMapper, response.body());
+            return accounts.isEmpty() ? StandardLedgerAccounts.sandboxCatalog() : accounts;
+        } catch (RuntimeException ex) {
+            return StandardLedgerAccounts.sandboxCatalog();
+        }
+    }
+
+    @Override
+    public List<LedgerAccount> provisionStandardAccounts(UUID tenantId) {
+        Optional<XeroCredentials> creds = loadCredentials(tenantId);
+        List<LedgerAccount> existing = listAccounts(tenantId);
+        List<LedgerAccount> missing = StandardLedgerAccounts.missingDefaults(existing);
+        if (creds.isEmpty() || missing.isEmpty()) {
+            return existing.isEmpty() ? StandardLedgerAccounts.requiredDefaults() : existing;
+        }
+        List<LedgerAccount> created = new ArrayList<>(existing);
+        for (LedgerAccount required : missing) {
+            LedgerAccount provisioned = createAccount(creds.get(), required);
+            created.add(provisioned != null ? provisioned : required);
+        }
+        return List.copyOf(created);
+    }
+
+    @Override
+    public AccountingConnectionTest testConnection(UUID tenantId) {
+        Optional<XeroCredentials> creds = loadCredentials(tenantId);
+        if (creds.isEmpty()) {
+            List<LedgerAccount> sandbox = listAccounts(tenantId);
+            return AccountingConnectionTest.of(true, true,
+                    "Sandbox chart of accounts ready (" + sandbox.size() + " accounts)");
+        }
+        try {
+            List<LedgerAccount> accounts = listAccounts(tenantId);
+            boolean readOk = !accounts.isEmpty();
+            return AccountingConnectionTest.of(readOk, readOk,
+                    readOk ? "Xero read/write permissions verified" : "Xero returned no accounts");
+        } catch (RuntimeException ex) {
+            return AccountingConnectionTest.of(false, false, truncate(ex.getMessage()));
+        }
     }
 
     @Override
@@ -133,6 +191,62 @@ public class XeroAdapter implements AccountingSyncAdapter {
         }
     }
 
+    private LedgerAccount createAccount(XeroCredentials creds, LedgerAccount required) {
+        try {
+            Map<String, Object> account = new LinkedHashMap<>();
+            account.put("Code", required.code());
+            account.put("Name", required.name());
+            account.put("Type", xeroType(required));
+            String body = objectMapper.writeValueAsString(Map.of("Accounts", List.of(account)));
+            AccountingHttpTransport.Response response = httpTransport.post(
+                    "https://api.xero.com/api.xro/2.0/Accounts", authHeaders(creds), body);
+            if (!response.ok()) {
+                return required;
+            }
+            LedgerAccount created = XeroAccountParser.parseCreated(objectMapper, response.body());
+            return created != null ? created : required;
+        } catch (Exception ex) {
+            return required;
+        }
+    }
+
+    private Optional<XeroCredentials> loadCredentials(UUID tenantId) {
+        return credentialRepository.findByTenantIdAndSystem(tenantId, system())
+                .map(credential -> {
+                    String raw = new String(credentialVaultService.decrypt(credential.getCiphertext()),
+                            StandardCharsets.UTF_8);
+                    String[] parts = raw.split("\\|", 3);
+                    String accessToken = parts[0];
+                    String tenantKey = parts.length > 1 ? parts[1] : "";
+                    if (accessToken.isBlank()) {
+                        return null;
+                    }
+                    return new XeroCredentials(accessToken, tenantKey);
+                })
+                .filter(creds -> creds != null);
+    }
+
+    private static Map<String, String> authHeaders(XeroCredentials creds) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Authorization", "Bearer " + creds.accessToken());
+        headers.put("Accept", "application/json");
+        headers.put("Content-Type", "application/json");
+        if (creds.tenantId() != null && !creds.tenantId().isBlank()) {
+            headers.put("Xero-tenant-id", creds.tenantId());
+        }
+        return headers;
+    }
+
+    private static String xeroType(LedgerAccount required) {
+        return switch (required.code()) {
+            case "12000" -> "INVENTORY";
+            case "50000" -> "DIRECTCOSTS";
+            case "40000" -> "REVENUE";
+            case "22000" -> "CURRLIAB";
+            default -> "EXPENSE";
+        };
+    }
+
     private IntegrationSyncLog skipped(UUID tenantId, String entityType, UUID entityId) {
         IntegrationSyncLog log = new IntegrationSyncLog();
         log.setTenantId(tenantId);
@@ -148,5 +262,8 @@ public class XeroAdapter implements AccountingSyncAdapter {
             return null;
         }
         return value.length() > 500 ? value.substring(0, 500) : value;
+    }
+
+    private record XeroCredentials(String accessToken, String tenantId) {
     }
 }

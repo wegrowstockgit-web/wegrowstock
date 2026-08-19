@@ -1,5 +1,6 @@
 package com.invsys.service;
 
+import com.invsys.core.common.exception.SystemRoleLockedException;
 import com.invsys.domain.Role;
 import com.invsys.domain.RolePermission;
 import com.invsys.repository.RolePermissionRepository;
@@ -18,6 +19,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -112,7 +118,7 @@ class RolePermissionServiceTest {
 
     @Test
     void upsertPersistsGrantFlag() {
-        Role role = role("VIEWER", PICKER_ID);
+        Role role = role("JUNIOR_BUYER", PICKER_ID);
         when(roleRepository.findById(PICKER_ID)).thenReturn(Optional.of(role));
         when(rolePermissionRepository.findByTenantIdAndRoleIdAndPermissionKey(
                 TENANT, PICKER_ID, "inventory:adjust")).thenReturn(Optional.empty());
@@ -129,7 +135,90 @@ class RolePermissionServiceTest {
         assertThat(row.roleId()).isEqualTo(PICKER_ID);
         assertThat(row.permissionKey()).isEqualTo("inventory:adjust");
         assertThat(row.granted()).isFalse();
-        assertThat(row.roleCode()).isEqualTo("VIEWER");
+        assertThat(row.roleCode()).isEqualTo("JUNIOR_BUYER");
+    }
+
+    @Test
+    void upsertRejectsSystemRole() {
+        Role role = role("PICKER", PICKER_ID);
+        role.setSystemRole(true);
+        when(roleRepository.findById(PICKER_ID)).thenReturn(Optional.of(role));
+
+        assertThatThrownBy(() -> service.upsert(
+                new RolePermissionService.UpsertRequest(PICKER_ID, "inventory:adjust", true)))
+                .isInstanceOf(SystemRoleLockedException.class)
+                .hasMessage(SystemRoleLockedException.DETAIL);
+        verify(rolePermissionRepository, never()).save(org.mockito.ArgumentMatchers.any(RolePermission.class));
+    }
+
+    @Test
+    void upsertRejectsReservedSystemCodeEvenWhenFlagUnset() {
+        Role role = role("ADMIN", MANAGER_ID);
+        role.setSystemRole(false);
+        when(roleRepository.findById(MANAGER_ID)).thenReturn(Optional.of(role));
+
+        assertThatThrownBy(() -> service.upsert(
+                new RolePermissionService.UpsertRequest(MANAGER_ID, PermissionKeys.INVENTORY_COST_VIEW, false)))
+                .isInstanceOf(SystemRoleLockedException.class)
+                .hasMessage(SystemRoleLockedException.DETAIL);
+    }
+
+    @Test
+    void deleteRejectsSystemRole() {
+        Role role = role("ADMIN", MANAGER_ID);
+        role.setSystemRole(true);
+        when(roleRepository.findById(MANAGER_ID)).thenReturn(Optional.of(role));
+
+        assertThatThrownBy(() -> service.deleteCustomRole(MANAGER_ID))
+                .isInstanceOf(SystemRoleLockedException.class)
+                .hasMessage(SystemRoleLockedException.DETAIL);
+        verify(roleRepository, never()).delete(role);
+    }
+
+    @Test
+    void replacePermissionsRejectsSystemRole() {
+        Role role = role("ADMIN", MANAGER_ID);
+        role.setSystemRole(true);
+        when(roleRepository.findById(MANAGER_ID)).thenReturn(Optional.of(role));
+
+        assertThatThrownBy(() -> service.replacePermissions(MANAGER_ID, List.of(
+                new RolePermissionService.PermissionGrant(PermissionKeys.INVENTORY_COST_VIEW, true))))
+                .isInstanceOf(SystemRoleLockedException.class);
+    }
+
+    @Test
+    void createCustomRoleClonesGrantsAndIsNotSystem() {
+        when(roleRepository.findByTenantIdAndCode(TENANT, "JUNIOR_BUYER")).thenReturn(Optional.empty());
+        when(roleRepository.findById(PICKER_ID)).thenReturn(Optional.of(role("PICKER", PICKER_ID)));
+        when(roleRepository.save(any(Role.class))).thenAnswer(inv -> {
+            Role saved = inv.getArgument(0);
+            saved.setId(UUID.fromString("e0000000-0000-4000-8000-000000000099"));
+            return saved;
+        });
+        when(rolePermissionRepository.findByTenantIdAndRoleId(TENANT, PICKER_ID))
+                .thenReturn(List.of(permission(PICKER_ID, PermissionKeys.PRINTING_THERMAL, true)));
+        when(rolePermissionRepository.findByTenantIdAndRoleIdAndPermissionKey(any(), any(), anyString()))
+                .thenReturn(Optional.empty());
+        when(rolePermissionRepository.save(any(RolePermission.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Role created = service.createCustomRole("Junior Buyer", PICKER_ID);
+
+        assertThat(created.getCode()).isEqualTo("JUNIOR_BUYER");
+        assertThat(created.isSystemRole()).isFalse();
+        assertThat(RolePermissionService.slugifyRoleCode("Quality Control Temp"))
+                .isEqualTo("QUALITY_CONTROL_TEMP");
+    }
+
+    @Test
+    void deleteCustomRoleRemovesPermissionsAndRole() {
+        Role custom = role("JUNIOR_BUYER", PICKER_ID);
+        custom.setSystemRole(false);
+        when(roleRepository.findById(PICKER_ID)).thenReturn(Optional.of(custom));
+
+        service.deleteCustomRole(PICKER_ID);
+
+        verify(rolePermissionRepository).deleteByTenantIdAndRoleId(TENANT, PICKER_ID);
+        verify(roleRepository).delete(custom);
     }
 
     private static Role role(String code, UUID id) {

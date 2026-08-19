@@ -7,11 +7,12 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   description?: string;
+  size?: 'md' | 'lg';
   children: ReactNode;
 }
 
 /** Accessible dialog built on the native <dialog> element (escapes stacking contexts, focus-trapped by the browser). */
-export function Modal({ open, onClose, title, description, children }: ModalProps) {
+export function Modal({ open, onClose, title, description, size = 'md', children }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -32,7 +33,11 @@ export function Modal({ open, onClose, title, description, children }: ModalProp
         // Click on the backdrop (the dialog element itself) closes
         if (e.target === ref.current) onClose();
       }}
-      className="w-full max-w-lg rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]"
+      className={
+        size === 'lg'
+          ? 'w-full max-w-2xl rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
+          : 'w-full max-w-lg rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
+      }
     >
       <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
         <div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link2, RefreshCw } from 'lucide-react';
+import { Link2, RefreshCw, Sparkles } from 'lucide-react';
+import { IntegrationWizardModal } from '@/features/settings/IntegrationWizardModal';
 import { apiClient } from '@/api/client';
 import type { AccountMapping, SyncLog, UpdateAccountMapping } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -47,6 +48,7 @@ export function AccountingSync() {
   const queryClient = useQueryClient();
   const [draftMappings, setDraftMappings] = useState<UpdateAccountMapping[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({ QUICKBOOKS: '', XERO: '' });
+  const [wizardProvider, setWizardProvider] = useState<string | null>(null);
 
   const { data: vaultStatuses = [] } = useQuery({
     queryKey: ['settings', 'integration-credentials', 'accounting'],
@@ -146,7 +148,23 @@ export function AccountingSync() {
       <Card>
         <CardHeader
           title="Accounting connections"
-          description="Store QuickBooks / Xero API credentials in the encrypted vault"
+          description="1-click OAuth wizard or store QuickBooks / Xero API credentials in the encrypted vault"
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => setWizardProvider('QUICKBOOKS')} data-testid="open-qbo-wizard">
+                <Sparkles className="h-4 w-4" />
+                QuickBooks wizard
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setWizardProvider('XERO')}
+                data-testid="open-xero-wizard"
+              >
+                Xero wizard
+              </Button>
+            </div>
+          }
         />
         <div className="space-y-4">
           {SYSTEMS.map((system) => {
@@ -301,6 +319,11 @@ export function AccountingSync() {
           </Table>
         )}
       </Card>
+      <IntegrationWizardModal
+        provider={wizardProvider}
+        open={wizardProvider !== null}
+        onClose={() => setWizardProvider(null)}
+      />
     </div>
   );
 }

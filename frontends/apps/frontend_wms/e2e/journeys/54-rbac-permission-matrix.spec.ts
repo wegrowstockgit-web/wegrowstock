@@ -25,9 +25,9 @@ type UserRow = {
  * Real functional e2e for composite multi-role RBAC:
  * 1) Matrix baseline (PICKER cost=false, MANAGER cost=true)
  * 2) Session grantedPermissions for picker vs manager
- * 3) PATCH toggle updates picker grants
+ * 3) System roles reject permission PATCH (422)
  * 4) Multi-role union: PICKER + WAREHOUSE_MANAGER → cost view true
- * 5) Settings UI matrix smoke
+ * 5) Settings UI matrix: system-role toggles are disabled
  */
 test.describe('Journey 54: Granular RBAC permission matrix', () => {
   test('matrix, session grants, PATCH toggle, and multi-role union', async ({ browser }) => {
@@ -54,28 +54,13 @@ test.describe('Journey 54: Granular RBAC permission matrix', () => {
         matrix.grants.find((g) => g.roleId === roleId && g.permissionKey === COST_VIEW)?.granted ??
         false;
 
-      // Ensure baseline: picker denied, manager granted (seed or repair via PATCH)
-      if (grantFor(managerRole!.id) !== true) {
-        const repair = await owner.page.request.patch('/api/v1/settings/permissions', {
-          data: { roleId: managerRole!.id, permissionKey: COST_VIEW, granted: true },
-        });
-        expect(repair.ok(), await repair.text()).toBeTruthy();
-      }
-      if (grantFor(pickerRole!.id) !== false) {
-        const repair = await owner.page.request.patch('/api/v1/settings/permissions', {
-          data: { roleId: pickerRole!.id, permissionKey: COST_VIEW, granted: false },
-        });
-        expect(repair.ok(), await repair.text()).toBeTruthy();
-      }
+      expect(grantFor(pickerRole!.id)).toBe(false);
+      expect(grantFor(managerRole!.id)).toBe(true);
 
-      const matrixAfter = (await (
-        await owner.page.request.get('/api/v1/settings/permissions')
-      ).json()) as MatrixResponse;
-      const grantAfter = (roleId: string) =>
-        matrixAfter.grants.find((g) => g.roleId === roleId && g.permissionKey === COST_VIEW)
-          ?.granted ?? false;
-      expect(grantAfter(pickerRole!.id)).toBe(false);
-      expect(grantAfter(managerRole!.id)).toBe(true);
+      const lockedPatch = await owner.page.request.patch('/api/v1/settings/permissions', {
+        data: { roleId: pickerRole!.id, permissionKey: COST_VIEW, granted: true },
+      });
+      expect(lockedPatch.status()).toBe(422);
 
       // --- Session grants for single-role users ---
       const manager = await contextForRole(browser, 'manager');
@@ -98,29 +83,7 @@ test.describe('Journey 54: Granular RBAC permission matrix', () => {
         await picker.close();
       }
 
-      // --- PATCH: temporarily grant cost view to PICKER role ---
-      const grantPatch = await owner.page.request.patch('/api/v1/settings/permissions', {
-        data: { roleId: pickerRole!.id, permissionKey: COST_VIEW, granted: true },
-      });
-      expect(grantPatch.ok(), await grantPatch.text()).toBeTruthy();
-
-      const pickerGranted = await contextForRole(browser, 'picker');
-      try {
-        const me = (await (
-          await pickerGranted.page.request.get('/api/v1/auth/me')
-        ).json()) as MeResponse;
-        expect(me.grantedPermissions ?? []).toContain(COST_VIEW);
-      } finally {
-        await pickerGranted.close();
-      }
-
-      // Restore picker role grant to false
-      const revokePatch = await owner.page.request.patch('/api/v1/settings/permissions', {
-        data: { roleId: pickerRole!.id, permissionKey: COST_VIEW, granted: false },
-      });
-      expect(revokePatch.ok(), await revokePatch.text()).toBeTruthy();
-
-      // --- Multi-role union: add WAREHOUSE_MANAGER onto picker user ---
+      // --- System roles are immutable; union uses WAREHOUSE_MANAGER grant as-is ---
       const usersRes = await owner.page.request.get('/api/v1/users');
       expect(usersRes.ok()).toBeTruthy();
       const users = (await usersRes.json()) as UserRow[];
@@ -179,12 +142,7 @@ test.describe('Journey 54: Granular RBAC permission matrix', () => {
       const pickerCostToggle = owner.page.getByTestId(`perm-PICKER-${COST_VIEW}`);
       await expect(pickerCostToggle).toBeVisible();
       await expect(pickerCostToggle).toHaveAttribute('aria-checked', 'false');
-
-      // Toggle on via UI then off (leave baseline intact)
-      await pickerCostToggle.click();
-      await expect(pickerCostToggle).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
-      await pickerCostToggle.click();
-      await expect(pickerCostToggle).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+      await expect(pickerCostToggle).toBeDisabled();
     } finally {
       // Best-effort restore if test aborted mid-union
       try {
@@ -195,16 +153,6 @@ test.describe('Journey 54: Granular RBAC permission matrix', () => {
           if (pickerUser) {
             await owner.page.request.patch(`/api/v1/users/${pickerUser.id}/role`, {
               data: { role: 'PICKER' },
-            });
-          }
-        }
-        const matrixRes = await owner.page.request.get('/api/v1/settings/permissions');
-        if (matrixRes.ok()) {
-          const matrix = (await matrixRes.json()) as MatrixResponse;
-          const pickerRole = matrix.roles.find((r) => r.name === 'PICKER');
-          if (pickerRole) {
-            await owner.page.request.patch('/api/v1/settings/permissions', {
-              data: { roleId: pickerRole.id, permissionKey: COST_VIEW, granted: false },
             });
           }
         }

@@ -32,6 +32,10 @@ public class ClientIpResolver {
         this.trustedProxies = List.copyOf(built);
     }
 
+    public String resolveClientIp(HttpServletRequest request) {
+        return resolve(request);
+    }
+
     public String resolve(HttpServletRequest request) {
         if (request == null) {
             return "unknown";
@@ -78,6 +82,46 @@ public class ClientIpResolver {
             return;
         }
         into.add(new IpAddressMatcher(cidr.trim()));
+    }
+
+    public static boolean isPrivateNetwork(String ip) {
+        InetAddress address = parseAddress(ip);
+        return address != null && address.isSiteLocalAddress();
+    }
+
+    public static String suggestedCidr(String ip) {
+        InetAddress address = parseAddress(ip);
+        if (address == null) {
+            return "";
+        }
+        return address.getHostAddress().toLowerCase(Locale.ROOT)
+                + (address.getAddress().length == 16 ? "/128" : "/32");
+    }
+
+    public static String networkHint(String ip) {
+        InetAddress address = parseAddress(ip);
+        if (address == null) {
+            return "Unknown network";
+        }
+        if (address.isLoopbackAddress()) {
+            return "Local / loopback";
+        }
+        if (address.isSiteLocalAddress()) {
+            return "Internal VPN / LAN";
+        }
+        return "Public Corporate Gateway";
+    }
+
+    private static InetAddress parseAddress(String ip) {
+        String normalized = normalizeIp(ip);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            return InetAddress.getByName(normalized);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     static String normalizeIp(String raw) {

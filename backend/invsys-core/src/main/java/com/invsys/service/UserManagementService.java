@@ -618,6 +618,7 @@ public class UserManagementService {
                         Role created = new Role();
                         created.setTenantId(tenantId);
                         created.setCode(code);
+                        created.setSystemRole(true);
                         created.setNetworkAccessLevel(
                                 com.invsys.domain.NetworkAccessLevel.defaultForRole(code));
                         return roleRepository.save(created);

@@ -7,7 +7,7 @@ import { contextForRole } from './helpers';
 test.describe('Journey 42: Integrations Hub', () => {
   test.setTimeout(180_000);
 
-  test('owner sees hub cards; manager blocked; connect navigates to detail tabs', async ({
+  test('owner sees hub cards; manager blocked; connect opens the wizard', async ({
     browser,
   }) => {
     const owner = await contextForRole(browser, 'owner');
@@ -38,11 +38,16 @@ test.describe('Journey 42: Integrations Hub', () => {
       await expect(owner.page.getByTestId('integration-card-QUICKBOOKS')).toBeVisible();
       await expect(owner.page.getByTestId('integration-card-AS2')).toBeVisible();
 
-      await expect(owner.page.getByTestId('integration-status-SHOPIFY')).toHaveText(/Connected|Disconnected/);
+      await expect(owner.page.getByTestId('integration-status-SHOPIFY')).toHaveText(
+        /LIVE|DISCONNECTED|ACTION REQUIRED/,
+      );
 
-      await owner.page.getByTestId('integration-action-SHOPIFY').click();
-      await expect(owner.page).toHaveURL(/\/settings\?tab=integrations/, { timeout: 15_000 });
-      await expect(owner.page.getByTestId('integrations-settings')).toBeVisible({ timeout: 15_000 });
+      await owner.page.getByTestId('integration-action-QUICKBOOKS').click();
+      await expect(owner.page.getByTestId('integration-wizard')).toBeVisible({ timeout: 15_000 });
+      await expect(owner.page.getByTestId('integration-wizard')).toHaveAttribute(
+        'data-provider',
+        'QUICKBOOKS',
+      );
 
       await manager.page.goto('/settings/integrations');
       await expect(manager.page).not.toHaveURL(/\/settings\/integrations/, { timeout: 15_000 });

@@ -32,6 +32,18 @@ class ClientIpResolverTest {
         request.setRemoteAddr("172.18.0.5");
         request.addHeader("X-Real-IP", "198.51.100.9");
         request.addHeader("X-Forwarded-For", "127.0.0.1, 198.51.100.9");
-        assertThat(resolver.resolve(request)).isEqualTo("198.51.100.9");
+        assertThat(resolver.resolveClientIp(request)).isEqualTo("198.51.100.9");
+    }
+
+    @Test
+    void classifiesPrivateAndPublicNetworks() {
+        assertThat(ClientIpResolver.isPrivateNetwork("10.1.2.3")).isTrue();
+        assertThat(ClientIpResolver.isPrivateNetwork("192.168.1.20")).isTrue();
+        assertThat(ClientIpResolver.isPrivateNetwork("172.16.9.1")).isTrue();
+        assertThat(ClientIpResolver.isPrivateNetwork("198.51.100.45")).isFalse();
+        assertThat(ClientIpResolver.suggestedCidr("198.51.100.45")).isEqualTo("198.51.100.45/32");
+        assertThat(ClientIpResolver.networkHint("10.0.0.8")).isEqualTo("Internal VPN / LAN");
+        assertThat(ClientIpResolver.networkHint("198.51.100.45")).isEqualTo("Public Corporate Gateway");
+        assertThat(ClientIpResolver.networkHint("unknown")).isEqualTo("Unknown network");
     }
 }

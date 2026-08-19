@@ -1,16 +1,24 @@
 import { useMemo, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
-import type { RolePermissionsMatrixResponse } from '@/api/types';
+import { roleApi } from '@/api/roles';
+import type { RoleDefinition, RolePermissionsMatrixResponse } from '@/api/types';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
 import { useEntitlement } from '@/hooks/useEntitlement';
+import { useCurrentNetwork } from '@/hooks/useCurrentNetwork';
+import { useToast } from '@/components/ui/Toast';
 import {
   NETWORK_ACCESS_LABELS,
   NETWORK_ACCESS_LEVELS,
+  clientIpCovered,
+  formatCidrEntry,
+  parseCidrEntry,
   parseNetworkAccessLevel,
   type NetworkAccessLevel,
 } from '@/features/settings/networkAccess';
@@ -60,29 +68,60 @@ function formatPermissionLabel(key: string): string {
   );
 }
 
-/** System roles shown as matrix columns (excludes portal-only roles). */
+function formatRoleColumnName(name: string): string {
+  if (name === 'WAREHOUSE_MANAGER') return 'Manager';
+  return name
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function isLockedSystemRole(role: RoleDefinition): boolean {
+  return role.isSystemRole === true;
+}
+
+/** Baseline columns first; custom roles append in fetch order. */
 const MATRIX_ROLE_ORDER = ['ADMIN', 'WAREHOUSE_MANAGER', 'PICKER', 'VIEWER', 'OWNER'];
 
 export function RolePermissionsMatrix() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { networkInfo, isLoading: networkLoading } = useCurrentNetwork();
   const [cidrDraft, setCidrDraft] = useState('');
+  const [cidrLabelDraft, setCidrLabelDraft] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [roleName, setRoleName] = useState('');
+  const [cloneFromRoleId, setCloneFromRoleId] = useState('');
   const { hasModule } = useEntitlement();
 
-  const { data, isLoading, isError } = useQuery({
+  const matrixQuery = useQuery({
     queryKey: ['role-permissions'],
     queryFn: async () =>
       (await apiClient.get<RolePermissionsMatrixResponse>('/api/v1/settings/permissions')).data,
     retry: false,
   });
 
+  const rolesQuery = useQuery({
+    queryKey: ['tenant-roles'],
+    queryFn: roleApi.list,
+    retry: false,
+  });
+
+  const data = matrixQuery.data;
+  const fetchedRoles = rolesQuery.data;
+
   const roles = useMemo(() => {
-    const list = data?.roles ?? [];
+    const list = fetchedRoles ?? data?.roles ?? [];
     return [...list].sort((a, b) => {
       const ai = MATRIX_ROLE_ORDER.indexOf(a.name);
       const bi = MATRIX_ROLE_ORDER.indexOf(b.name);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      const aRank = ai === -1 ? 99 : ai;
+      const bRank = bi === -1 ? 99 : bi;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.name.localeCompare(b.name);
     });
-  }, [data?.roles]);
+  }, [data?.roles, fetchedRoles]);
 
   const grantMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -93,6 +132,12 @@ export function RolePermissionsMatrix() {
   }, [data?.grants]);
 
   const cidrs = data?.allowedCidrBlocks ?? [];
+  const catalogKeys = data?.permissionKeys ?? [];
+
+  const invalidateRoles = () => {
+    void queryClient.invalidateQueries({ queryKey: ['role-permissions'] });
+    void queryClient.invalidateQueries({ queryKey: ['tenant-roles'] });
+  };
 
   const toggleMutation = useMutation({
     mutationFn: async ({
@@ -104,15 +149,13 @@ export function RolePermissionsMatrix() {
       permissionKey: string;
       granted: boolean;
     }) => {
-      await apiClient.patch('/api/v1/settings/permissions', {
-        roleId,
-        permissionKey,
-        granted,
-      });
+      const grants = catalogKeys.map((key) => ({
+        permissionKey: key,
+        granted: key === permissionKey ? granted : (grantMap.get(`${roleId}:${key}`) ?? false),
+      }));
+      await roleApi.updatePermissions(roleId, grants);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['role-permissions'] });
-    },
+    onSuccess: invalidateRoles,
   });
 
   const networkMutation = useMutation({
@@ -128,9 +171,7 @@ export function RolePermissionsMatrix() {
         networkAccessLevel,
       });
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['role-permissions'] });
-    },
+    onSuccess: invalidateRoles,
   });
 
   const cidrMutation = useMutation({
@@ -139,15 +180,35 @@ export function RolePermissionsMatrix() {
     },
     onSuccess: () => {
       setCidrDraft('');
-      void queryClient.invalidateQueries({ queryKey: ['role-permissions'] });
+      setCidrLabelDraft('');
+      invalidateRoles();
     },
   });
 
-  if (isLoading) {
+  const createMutation = useMutation({
+    mutationFn: async () =>
+      roleApi.create({
+        name: roleName.trim(),
+        cloneFromRoleId: cloneFromRoleId || null,
+      }),
+    onSuccess: () => {
+      setCreateOpen(false);
+      setRoleName('');
+      setCloneFromRoleId('');
+      invalidateRoles();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (roleId: string) => roleApi.delete(roleId),
+    onSuccess: invalidateRoles,
+  });
+
+  if (matrixQuery.isLoading || rolesQuery.isLoading) {
     return <TableSkeleton rows={4} cols={6} />;
   }
 
-  if (isError || !data) {
+  if (matrixQuery.isError || !data) {
     return (
       <Card data-testid="role-permissions-matrix">
         <CardHeader
@@ -158,43 +219,123 @@ export function RolePermissionsMatrix() {
     );
   }
 
-  const { permissionKeys: catalogKeys } = data;
   const permissionKeys = catalogKeys.filter((key) => {
     const requiredModule = PERMISSION_REQUIRED_MODULE[key];
     return !requiredModule || hasModule(requiredModule);
   });
 
+  const cidrAlreadyListed = (cidr: string) =>
+    cidrs.some((entry) => parseCidrEntry(entry).cidr === parseCidrEntry(cidr).cidr);
+
   const addCidr = () => {
-    const next = cidrDraft.trim();
-    if (!next || cidrs.includes(next)) return;
+    const next = formatCidrEntry(cidrDraft, cidrLabelDraft);
+    if (!parseCidrEntry(next).cidr || cidrAlreadyListed(next)) return;
     cidrMutation.mutate([...cidrs, next]);
   };
+
+  const addCurrentNetwork = () => {
+    const suggested = networkInfo?.suggestedCidr?.trim();
+    if (!suggested || cidrAlreadyListed(suggested)) return;
+    cidrMutation.mutate([...cidrs, formatCidrEntry(suggested, cidrLabelDraft)], {
+      onSuccess: () => {
+        toast(`Added your current network (${networkInfo?.clientIp}) to the allowlist.`, {
+          tone: 'success',
+        });
+      },
+    });
+  };
+
+  const fencingEnabled = cidrs.length > 0;
+  const currentIpUncovered =
+    fencingEnabled &&
+    !!networkInfo?.clientIp &&
+    networkInfo.clientIp !== 'unknown' &&
+    !clientIpCovered(networkInfo.clientIp, cidrs);
 
   return (
     <Card data-testid="role-permissions-matrix">
       <CardHeader
         title="Role permissions"
-        description="Granular toggles per role. Users with multiple roles receive the union of granted permissions. Network access is the highest assigned level."
+        description="Granular toggles per custom role. System roles are locked to platform defaults. Users with multiple roles receive the union of granted permissions. Network access is the highest assigned level."
+        action={
+          <Button
+            type="button"
+            size="sm"
+            data-testid="create-custom-role"
+            onClick={() => setCreateOpen(true)}
+          >
+            + Create Custom Role
+          </Button>
+        }
       />
       <div className="mb-4 space-y-2 rounded-lg border border-border bg-surface-overlay/40 p-3" data-testid="corporate-ip-allowlist">
         <p className="text-sm font-semibold text-text">Corporate IP Allowlist</p>
         <p className="text-xs text-text-muted">
           CIDRs that count as the internal warehouse / office network. Leave empty to disable fencing.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {cidrs.map((cidr) => (
-            <button
-              key={cidr}
-              type="button"
-              className="rounded-full border border-border bg-surface-raised px-2 py-0.5 text-xs"
-              data-testid={`cidr-chip-${cidr}`}
-              onClick={() => cidrMutation.mutate(cidrs.filter((item) => item !== cidr))}
-            >
-              {cidr} ×
-            </button>
-          ))}
+        <div
+          className="rounded-md border border-border bg-surface-raised px-3 py-2 text-sm"
+          data-testid="current-network-banner"
+        >
+          {networkLoading || !networkInfo ? (
+            <p className="text-text-muted">Detecting your current connection…</p>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-text">
+                📍 Your Current Connection:{' '}
+                <span className="font-mono" data-testid="current-network-ip">
+                  {networkInfo.clientIp}
+                </span>{' '}
+                <span className="text-text-muted" data-testid="current-network-hint">
+                  ({networkInfo.networkHint})
+                </span>
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                data-testid="add-current-network"
+                onClick={addCurrentNetwork}
+                disabled={!networkInfo.suggestedCidr || cidrAlreadyListed(networkInfo.suggestedCidr)}
+                loading={cidrMutation.isPending}
+              >
+                + Add My Current Network
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="flex gap-2">
+        {currentIpUncovered && (
+          <div
+            className="rounded-md border border-amber-400/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+            data-testid="cidr-lockout-warning"
+            role="alert"
+          >
+            ⚠️ Warning: Your current network is not in the allowlist. Saving these settings may restrict your access.
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {cidrs.map((entry) => {
+            const parsed = parseCidrEntry(entry);
+            return (
+              <button
+                key={entry}
+                type="button"
+                className="rounded-full border border-border bg-surface-raised px-2 py-0.5 text-xs"
+                data-testid={`cidr-chip-${parsed.cidr}`}
+                onClick={() => cidrMutation.mutate(cidrs.filter((item) => item !== entry))}
+              >
+                {parsed.label ? `${parsed.label} - ${parsed.cidr}` : parsed.cidr} ×
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            value={cidrLabelDraft}
+            onChange={(e) => setCidrLabelDraft(e.target.value)}
+            placeholder="Dallas Warehouse"
+            data-testid="cidr-label-input"
+            className="max-w-[12rem]"
+          />
           <Input
             value={cidrDraft}
             onChange={(e) => setCidrDraft(e.target.value)}
@@ -219,7 +360,21 @@ export function RolePermissionsMatrix() {
                   key={role.id}
                   className="px-3 py-2 text-center font-semibold text-text whitespace-nowrap"
                 >
-                  {role.name === 'WAREHOUSE_MANAGER' ? 'Manager' : role.name.charAt(0) + role.name.slice(1).toLowerCase()}
+                  <span className="inline-flex items-center justify-center gap-1">
+                    {formatRoleColumnName(role.name)}
+                    {!isLockedSystemRole(role) && (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${role.name}`}
+                        data-testid={`delete-role-${role.name}`}
+                        className="rounded p-0.5 text-text-muted hover:text-danger"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => deleteMutation.mutate(role.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -263,6 +418,7 @@ export function RolePermissionsMatrix() {
                 </td>
                 {roles.map((role) => {
                   const granted = grantMap.get(`${role.id}:${permissionKey}`) ?? false;
+                  const locked = isLockedSystemRole(role);
                   const pending =
                     toggleMutation.isPending &&
                     toggleMutation.variables?.roleId === role.id &&
@@ -275,7 +431,7 @@ export function RolePermissionsMatrix() {
                         aria-checked={granted}
                         aria-label={`${role.name} — ${permissionKey}`}
                         data-testid={`perm-${role.name}-${permissionKey}`}
-                        disabled={pending}
+                        disabled={locked || pending}
                         onClick={() =>
                           toggleMutation.mutate({
                             roleId: role.id,
@@ -288,7 +444,8 @@ export function RolePermissionsMatrix() {
                           granted
                             ? 'border-accent bg-accent justify-end'
                             : 'border-border bg-surface-overlay justify-start',
-                          pending && 'opacity-60',
+                          (pending || locked) && 'opacity-45',
+                          locked && 'cursor-not-allowed',
                         )}
                       >
                         <span className="mx-1 h-5 w-5 rounded-full bg-surface-raised shadow-sm" />
@@ -301,6 +458,59 @@ export function RolePermissionsMatrix() {
           </tbody>
         </table>
       </div>
+
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create custom role"
+        description="Custom roles start blank or cloned from an existing role. System roles stay locked."
+      >
+        <form
+          className="space-y-4"
+          data-testid="create-role-dialog"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!roleName.trim()) return;
+            createMutation.mutate();
+          }}
+        >
+          <Input
+            label="Role Name"
+            value={roleName}
+            onChange={(e) => setRoleName(e.target.value)}
+            placeholder="Quality Control Temp"
+            data-testid="create-role-name"
+            required
+          />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="clone-role" className="text-sm font-medium text-text">
+              Clone permissions from
+            </label>
+            <select
+              id="clone-role"
+              data-testid="create-role-clone"
+              className="h-10 rounded-md border border-border bg-surface-raised px-3 text-sm"
+              value={cloneFromRoleId}
+              onChange={(e) => setCloneFromRoleId(e.target.value)}
+            >
+              <option value="">None (start blank)</option>
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {formatRoleColumnName(role.name)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" data-testid="create-role-submit" loading={createMutation.isPending}>
+              Create role
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </Card>
   );
 }

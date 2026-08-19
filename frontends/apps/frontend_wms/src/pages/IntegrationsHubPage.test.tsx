@@ -7,6 +7,8 @@ import { IntegrationsHubPage } from './IntegrationsHubPage';
 vi.mock('@/api/client', () => ({
   apiClient: {
     get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
   },
 }));
 
@@ -21,8 +23,15 @@ describe('IntegrationsHubPage', () => {
             id: 'ECOMMERCE',
             label: 'E-Commerce',
             integrations: [
-              { id: 'SHOPIFY', name: 'Shopify', status: 'DISCONNECTED', connected: false },
-              { id: 'AMAZON', name: 'Amazon Seller Central', status: 'CONNECTED', connected: true },
+              { id: 'SHOPIFY', name: 'Shopify', status: 'DISCONNECTED', connected: false, lastSyncAt: '', errorCount: 0 },
+              {
+                id: 'AMAZON',
+                name: 'Amazon Seller Central',
+                status: 'LIVE',
+                connected: true,
+                lastSyncAt: '2026-08-18T12:00:00Z',
+                errorCount: 2,
+              },
             ],
           },
           {
@@ -59,8 +68,13 @@ describe('IntegrationsHubPage', () => {
     expect(await screen.findByTestId('integrations-hub-page')).toBeInTheDocument();
     expect(await screen.findByTestId('integration-card-SHOPIFY')).toBeInTheDocument();
     expect(screen.getByTestId('integration-action-SHOPIFY')).toHaveTextContent('Connect');
-    expect(screen.getByTestId('integration-action-AMAZON')).toHaveTextContent('Options');
+    expect(screen.getByTestId('integration-action-AMAZON')).toHaveTextContent('Configure / Options');
+    expect(screen.getByTestId('integration-status-AMAZON')).toHaveTextContent('LIVE');
+    expect(screen.getByTestId('integration-errors-AMAZON')).toHaveTextContent('2 errors');
     expect(screen.getByTestId('integrations-hub-category-ACCOUNTING')).toBeInTheDocument();
     expect(screen.getByTestId('integration-card-AS2')).toBeInTheDocument();
+
+    screen.getByTestId('integration-action-QUICKBOOKS').click();
+    expect(await screen.findByTestId('integration-wizard')).toHaveAttribute('data-provider', 'QUICKBOOKS');
   });
 });

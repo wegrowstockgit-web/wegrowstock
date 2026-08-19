@@ -191,6 +191,18 @@ invsys:
       enabled: true
       poll-interval-ms: 300000
   integration:
+    accounting:
+      mock: ${ACCOUNTING_MOCK:false}
+      oauth:
+        redirect-uri: ${ACCOUNTING_OAUTH_REDIRECT_URI:http://localhost:3000/api/v1/public/oauth/callback}
+        quickbooks:
+          client-id: ${QBO_CLIENT_ID:sandbox-qbo-client}
+          authorize-url: ${QBO_AUTHORIZE_URL:https://appcenter.intuit.com/connect/oauth2}
+          scope: ${QBO_OAUTH_SCOPE:com.intuit.quickbooks.accounting}
+        xero:
+          client-id: ${XERO_CLIENT_ID:sandbox-xero-client}
+          authorize-url: ${XERO_AUTHORIZE_URL:https://login.xero.com/identity/connect/authorize}
+          scope: ${XERO_OAUTH_SCOPE:offline_access accounting.transactions accounting.settings}
     # LOCAL (dev/test) | AWS_KMS | HASHICORP_VAULT — wraps per-secret AES-GCM data keys
     vault-provider: ${INTEGRATION_VAULT_PROVIDER:LOCAL}
     master-key: ${INTEGRATION_MASTER_KEY:}

@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  clientIpCovered,
   completeMfaAssertion,
   computeAssertionSignature,
+  formatCidrEntry,
+  ipInCidr,
   isMfaRequiredTitle,
+  parseCidrEntry,
   parseNetworkAccessLevel,
 } from './networkAccess';
 
@@ -71,5 +75,20 @@ describe('networkAccess helpers', () => {
     await expect(
       completeMfaAssertion({ challenge: 'chal', allowCredentials: [] }, null),
     ).rejects.toThrow('Passkey required');
+  });
+
+  it('parses labeled CIDRs and matches IPv4 coverage', () => {
+    expect(parseCidrEntry('10.0.0.0/8#Dallas Warehouse')).toEqual({
+      cidr: '10.0.0.0/8',
+      label: 'Dallas Warehouse',
+      raw: '10.0.0.0/8#Dallas Warehouse',
+    });
+    expect(formatCidrEntry('198.51.100.45/32', 'Main Office Wi-Fi')).toBe(
+      '198.51.100.45/32#Main Office Wi-Fi',
+    );
+    expect(ipInCidr('10.9.1.4', '10.0.0.0/8#Dallas Warehouse')).toBe(true);
+    expect(ipInCidr('198.51.100.45', '10.0.0.0/8')).toBe(false);
+    expect(clientIpCovered('198.51.100.45', ['10.0.0.0/8'])).toBe(false);
+    expect(clientIpCovered('10.1.2.3', ['10.0.0.0/8'])).toBe(true);
   });
 });

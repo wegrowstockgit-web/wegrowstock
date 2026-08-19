@@ -3,7 +3,10 @@ package com.invsys.integration;
 import com.invsys.api.dto.IntegrationChannelResponse;
 import com.invsys.api.dto.IntegrationChannelUpsertRequest;
 import com.invsys.api.dto.SyncLogResponse;
+import com.invsys.integration.accounting.AccountingConnectionTest;
 import com.invsys.integration.channel.IntegrationChannelType;
+import com.invsys.service.AccountingChartOfAccountsService;
+import com.invsys.service.AccountingOAuthService;
 import com.invsys.service.IntegrationChannelService;
 import com.invsys.service.IntegrationHubService;
 import jakarta.validation.Valid;
@@ -30,13 +33,42 @@ public class IntegrationSettingsController {
     private final IntegrationSettingsService integrationSettingsService;
     private final IntegrationHubService integrationHubService;
     private final IntegrationChannelService integrationChannelService;
+    private final AccountingOAuthService accountingOAuthService;
+    private final AccountingChartOfAccountsService chartOfAccountsService;
 
     public IntegrationSettingsController(IntegrationSettingsService integrationSettingsService,
                                          IntegrationHubService integrationHubService,
-                                         IntegrationChannelService integrationChannelService) {
+                                         IntegrationChannelService integrationChannelService,
+                                         AccountingOAuthService accountingOAuthService,
+                                         AccountingChartOfAccountsService chartOfAccountsService) {
         this.integrationSettingsService = integrationSettingsService;
         this.integrationHubService = integrationHubService;
         this.integrationChannelService = integrationChannelService;
+        this.accountingOAuthService = accountingOAuthService;
+        this.chartOfAccountsService = chartOfAccountsService;
+    }
+
+    @GetMapping("/{provider}/auth-url")
+    public AccountingOAuthService.AuthUrl authUrl(@PathVariable String provider) {
+        return accountingOAuthService.authUrl(provider);
+    }
+
+    @GetMapping("/{provider}/status")
+    public AccountingOAuthService.ConnectionStatus status(@PathVariable String provider) {
+        return accountingOAuthService.status(provider);
+    }
+
+    @PostMapping("/{provider}/test-sync")
+    public AccountingConnectionTest testSync(@PathVariable String provider) {
+        String normalized = AccountingOAuthService.normalizeProvider(provider);
+        if ("QUICKBOOKS".equals(normalized) || "XERO".equals(normalized)) {
+            return chartOfAccountsService.testConnection(normalized);
+        }
+        AccountingOAuthService.ConnectionStatus connection = accountingOAuthService.status(normalized);
+        return AccountingConnectionTest.of(
+                connection.connected(),
+                connection.connected() && !connection.tokenExpiringSoon(),
+                connection.connected() ? "Connection healthy" : "Provider is not connected");
     }
 
     @GetMapping("/hub")

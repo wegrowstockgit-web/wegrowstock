@@ -27,4 +27,8 @@ public interface IntegrationSyncLogRepository extends JpaRepository<IntegrationS
 
     Optional<IntegrationSyncLog> findByTenantIdAndChannelIdAndExternalId(
             UUID tenantId, UUID channelId, String externalId);
+
+    Optional<IntegrationSyncLog> findFirstByTenantIdAndSystemOrderByCreatedAtDesc(UUID tenantId, String system);
+
+    long countByTenantIdAndSystemAndStatus(UUID tenantId, String system, String status);
 }

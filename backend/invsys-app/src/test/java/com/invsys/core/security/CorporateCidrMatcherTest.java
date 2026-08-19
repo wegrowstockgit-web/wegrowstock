@@ -27,4 +27,15 @@ class CorporateCidrMatcherTest {
                 .extracting(ex -> ((ApiException) ex).getCode())
                 .isEqualTo("INVALID_CIDR");
     }
+
+    @Test
+    void labeledCidrsMatchAndDedupeByBlock() {
+        assertThat(CorporateCidrMatcher.normalizeOrReject(List.of(
+                "10.0.0.0/8#Dallas Warehouse",
+                "10.0.0.0/8#Austin HQ"
+        ))).containsExactly("10.0.0.0/8#Dallas Warehouse");
+        assertThat(CorporateCidrMatcher.matches("10.9.1.4", List.of("10.0.0.0/8#Dallas Warehouse"))).isTrue();
+        assertThat(CorporateCidrMatcher.cidrPart("10.0.0.0/8#Dallas Warehouse")).isEqualTo("10.0.0.0/8");
+        assertThat(CorporateCidrMatcher.labelPart("10.0.0.0/8#Dallas Warehouse")).isEqualTo("Dallas Warehouse");
+    }
 }
