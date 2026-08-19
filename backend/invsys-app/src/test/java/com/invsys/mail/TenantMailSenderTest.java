@@ -6,12 +6,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 
+import java.time.Instant;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,5 +54,17 @@ class TenantMailSenderTest {
         TenantMailSender sender = new TenantMailSender(platformSender, settingsService, "fallback@invsys.local");
         assertThat(sender.current()).isNull();
         assertThat(sender.fromAddress()).isEqualTo("fallback@invsys.local");
+        assertThat(sender.sendNewLoginAlert("a@demo.test", "203.0.113.40", "Dallas, TX, US", Instant.parse("2026-08-19T12:00:00Z")))
+                .isFalse();
+    }
+
+    @Test
+    void sendNewLoginAlertUsesPlatformSender() {
+        when(settingsService.getSettings()).thenReturn(Map.of("currency", "USD"));
+        when(platformSender.getIfAvailable()).thenReturn(platform);
+        TenantMailSender sender = new TenantMailSender(platformSender, settingsService, "fallback@invsys.local");
+        Instant at = Instant.parse("2026-08-19T12:00:00Z");
+        assertThat(sender.sendNewLoginAlert("picker@demo.test", "198.51.100.45", "London, England, GB", at)).isTrue();
+        verify(platform).send(any(SimpleMailMessage.class));
     }
 }

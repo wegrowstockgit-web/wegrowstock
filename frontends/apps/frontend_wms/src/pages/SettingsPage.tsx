@@ -654,7 +654,7 @@ function UsersTab() {
   });
 
   return (
-    <Card>
+    <Card className="min-w-0 max-w-full">
       <CardHeader
         title="Users & invitations"
         description="Invite team members and manage organizational access"
@@ -810,7 +810,7 @@ function UsersTab() {
           </Table>
 
           {canManageOrg && (
-            <div className="pt-2">
+            <div className="min-w-0 max-w-full pt-2">
               <RolePermissionsMatrix />
             </div>
           )}

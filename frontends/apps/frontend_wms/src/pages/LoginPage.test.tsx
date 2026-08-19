@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { LoginPage } from './LoginPage';
 import { apiClient } from '@/api/client';
 import { resetMagicLinkClaimsForTests } from '@/lib/magicLinkConsume';
+import { resetImpersonationHandoffClaimsForTests } from '@/lib/impersonationHandoff';
 
 vi.mock('@/api/client', () => ({
   apiClient: {
@@ -42,6 +43,29 @@ describe('LoginPage MFA intercept', () => {
     vi.mocked(apiClient.get).mockReset();
     vi.mocked(apiClient.post).mockReset();
     resetMagicLinkClaimsForTests();
+    resetImpersonationHandoffClaimsForTests();
+  });
+
+  it('shows the network-fence detail instead of a credential error', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { isPasswordAllowed: true } });
+    vi.mocked(apiClient.post).mockRejectedValue({
+      response: {
+        status: 403,
+        data: {
+          title: 'ACCESS_DENIED',
+          detail: 'Access denied. Role requires internal corporate network connection.',
+        },
+      },
+    });
+
+    wrap(<LoginPage />);
+    fireEvent.click(screen.getByTestId('login-continue'));
+    fireEvent.change(await screen.findByTestId('login-password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByTestId('login-submit'));
+
+    expect(await screen.findByTestId('login-error')).toHaveTextContent(
+      'Access denied. Role requires internal corporate network connection.',
+    );
   });
 
   it('opens passkey challenge on MFA_REQUIRED_FOR_EXTERNAL_ACCESS then reissues login', async () => {
@@ -105,6 +129,7 @@ describe('LoginPage magic link', () => {
     vi.mocked(apiClient.get).mockReset();
     vi.mocked(apiClient.post).mockReset();
     resetMagicLinkClaimsForTests();
+    resetImpersonationHandoffClaimsForTests();
   });
 
   it('does not consume the token when requesting an email link', async () => {
@@ -154,6 +179,50 @@ describe('LoginPage magic link', () => {
     });
     expect(
       vi.mocked(apiClient.post).mock.calls.filter((call) => String(call[0]).includes('magic-login/consume')),
+    ).toHaveLength(1);
+  });
+});
+
+describe('LoginPage impersonation handoff', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.get).mockReset();
+    vi.mocked(apiClient.post).mockReset();
+    resetMagicLinkClaimsForTests();
+    resetImpersonationHandoffClaimsForTests();
+  });
+
+  it('consumes ?handoff= via impersonation/accept once under Strict Mode', async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: { tenantId: 't1', userId: 'u1', roles: ['OWNER'], warehouseIds: [], grantedPermissions: [] },
+    });
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        userId: 'u1',
+        tenantId: 't1',
+        email: 'owner@demo.test',
+        displayName: 'Owner',
+        roles: ['OWNER'],
+      },
+    });
+
+    wrap(
+      <StrictMode>
+        <LoginPage />
+      </StrictMode>,
+      '/login?handoff=handoff-once',
+    );
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith('/api/v1/auth/impersonation/accept', {
+        handoff: 'handoff-once',
+        handoffCode: 'handoff-once',
+        token: 'handoff-once',
+      });
+    });
+    expect(
+      vi.mocked(apiClient.post).mock.calls.filter((call) =>
+        String(call[0]).includes('impersonation/accept'),
+      ),
     ).toHaveLength(1);
   });
 });

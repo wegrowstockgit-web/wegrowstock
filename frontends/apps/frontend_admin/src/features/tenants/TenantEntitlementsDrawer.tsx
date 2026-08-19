@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, UserRoundSearch } from 'lucide-react';
+import { FlaskConical, ShieldAlert } from 'lucide-react';
 import {
   APP_MODULES,
   COMMERCIAL_TIERS,
@@ -10,15 +10,15 @@ import {
   type CommercialTier,
   type ControlPlaneTenant,
 } from '@invsys/shared-types';
-import { SlideOutDrawer, useToast } from '@invsys/shared-ui';
+import { Button, SlideOutDrawer, useToast } from '@invsys/shared-ui';
 import { fetchTierDefinitions } from '@/features/packaging/api';
 import {
-  buildWmsImpersonationUrl,
+  createImpersonationSession,
   cloneSandbox,
-  impersonateTenant,
   patchTenantModules,
   patchTenantStatus,
   patchTenantTier,
+  wmsImpersonationRedirectHref,
 } from './api';
 
 type Props = {
@@ -106,12 +106,10 @@ export function TenantEntitlementsDrawer({ tenant, open, onClose }: Props) {
   const impersonateMutation = useMutation({
     mutationFn: () => {
       if (!tenant) throw new Error('No tenant selected');
-      return impersonateTenant(tenant.tenantId);
+      return createImpersonationSession(tenant.tenantId);
     },
     onSuccess: (res) => {
-      const url = buildWmsImpersonationUrl(res.handoffCode || res.accessToken, res.loginUrl);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      toast.success(`Impersonating as ${res.email}`);
+      window.location.assign(wmsImpersonationRedirectHref(res));
     },
     onError: () => {
       toast.danger('Could not start impersonation session.');
@@ -165,16 +163,18 @@ export function TenantEntitlementsDrawer({ tenant, open, onClose }: Props) {
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-text">Support actions</h3>
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
                 type="button"
+                variant="danger"
+                size="sm"
                 data-testid="tenant-impersonate"
                 disabled={busy || suspended}
+                loading={impersonateMutation.isPending}
                 onClick={() => impersonateMutation.mutate()}
-                className="inline-flex items-center gap-2 rounded border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface disabled:opacity-50"
               >
-                <UserRoundSearch className="h-4 w-4" aria-hidden />
-                Impersonate
-              </button>
+                <ShieldAlert className="h-4 w-4" aria-hidden />
+                Impersonate Owner
+              </Button>
               <button
                 type="button"
                 data-testid="tenant-suspend-toggle"

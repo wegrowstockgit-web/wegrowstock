@@ -31,8 +31,10 @@ export async function patchTenantTier(
 export type ImpersonationResponse = {
   accessToken: string;
   handoffCode: string;
+  handoffToken?: string;
   expiresInSeconds: number;
   loginUrl: string;
+  redirectUrl?: string;
   email: string;
 };
 
@@ -41,6 +43,11 @@ export async function impersonateTenant(tenantId: string): Promise<Impersonation
     `/api/v1/control-plane/tenants/${tenantId}/impersonate`,
   );
   return data;
+}
+
+/** Control-plane impersonation session used by the tenant drawer. */
+export async function createImpersonationSession(tenantId: string): Promise<ImpersonationResponse> {
+  return impersonateTenant(tenantId);
 }
 
 export type TenantStatus = 'ACTIVE' | 'SUSPENDED';
@@ -78,11 +85,38 @@ export async function cloneSandbox(tenantId: string): Promise<SandboxCredentials
   return data;
 }
 
-export function buildWmsImpersonationUrl(handoffCode: string, loginUrl?: string): string {
+export function resolveImpersonationHandoff(res: ImpersonationResponse): string {
+  return (res.handoffToken || res.handoffCode || res.accessToken || '').trim();
+}
+
+export function resolveImpersonationRedirectUrl(res: ImpersonationResponse): string {
+  const explicit = res.redirectUrl?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  const loginUrl = res.loginUrl?.trim();
+  if (loginUrl) {
+    const q = loginUrl.indexOf('?');
+    return (q < 0 ? loginUrl : loginUrl.slice(0, q)).replace(/\/$/, '');
+  }
   const base = (import.meta.env.VITE_WMS_APP_URL as string | undefined)?.replace(/\/$/, '')
     || 'http://localhost:3000';
-  if (loginUrl && loginUrl.includes('impersonateCode=')) return loginUrl;
-  return `${base}/login?impersonateCode=${encodeURIComponent(handoffCode)}`;
+  return `${base}/login`;
+}
+
+export function buildWmsImpersonationUrl(
+  handoffCode: string,
+  loginUrl?: string,
+  redirectUrl?: string,
+): string {
+  const token = handoffCode.trim();
+  const base = (redirectUrl?.replace(/\/$/, '')
+    || (loginUrl ? loginUrl.split('?')[0] : '')
+    || `${(import.meta.env.VITE_WMS_APP_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:3000'}/login`)
+    .replace(/\/$/, '');
+  return `${base}?handoff=${encodeURIComponent(token)}`;
+}
+
+export function wmsImpersonationRedirectHref(res: ImpersonationResponse): string {
+  return `${resolveImpersonationRedirectUrl(res)}?handoff=${encodeURIComponent(resolveImpersonationHandoff(res))}`;
 }
 
 export type AdminLoginResponse = {

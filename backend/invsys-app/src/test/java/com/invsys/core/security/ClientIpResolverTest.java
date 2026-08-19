@@ -23,6 +23,18 @@ class ClientIpResolverTest {
         request.setRemoteAddr("172.18.0.5");
         request.addHeader("X-Forwarded-For", "127.0.0.1, 203.0.113.44");
         assertThat(resolver.resolve(request)).isEqualTo("203.0.113.44");
+        assertThat(resolver.resolveDetailed(request).onPremMesh()).isFalse();
+    }
+
+    @Test
+    void dockerProxyMeshIsOnPremWhenEveryHopIsTrusted() {
+        ClientIpResolver resolver = new ClientIpResolver("172.16.0.0/12");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("172.18.0.5");
+        request.addHeader("X-Real-IP", "172.25.0.17");
+        request.addHeader("X-Forwarded-For", "172.25.0.17");
+        ClientIpResolver.ResolvedClientIp resolved = resolver.resolveDetailed(request);
+        assertThat(resolved.onPremMesh()).isTrue();
     }
 
     @Test
@@ -45,5 +57,9 @@ class ClientIpResolverTest {
         assertThat(ClientIpResolver.networkHint("10.0.0.8")).isEqualTo("Internal VPN / LAN");
         assertThat(ClientIpResolver.networkHint("198.51.100.45")).isEqualTo("Public Corporate Gateway");
         assertThat(ClientIpResolver.networkHint("unknown")).isEqualTo("Unknown network");
+        ClientIpResolver resolver = new ClientIpResolver("");
+        assertThat(resolver.normalizeOrUnknown("203.0.113.40")).isEqualTo("203.0.113.40");
+        assertThat(resolver.normalizeOrUnknown("unknown")).isEqualTo("unknown");
+        assertThat(resolver.normalizeOrUnknown(null)).isEqualTo("unknown");
     }
 }

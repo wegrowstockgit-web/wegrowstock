@@ -25,6 +25,8 @@ import {
   auditFieldChanges,
   formatActionLabel,
   formatEntityLabel,
+  formatLoginAuditLine,
+  isLoginAuditAction,
   summarizeAuditDiff,
 } from './auditDiffCopy';
 
@@ -48,6 +50,8 @@ const ACTION_FILTERS = [
   { value: 'USER_INVITE', label: 'Sent invitation' },
   { value: 'USER_ORG_UPDATE', label: 'Updated access' },
   { value: 'POS_LINE_VOID', label: 'Voided register line' },
+  { value: 'LOGIN_SUCCESS', label: 'Signed in' },
+  { value: 'LOGIN_BLOCKED_CIDR', label: 'Blocked sign-in (off-network)' },
 ];
 
 function formatWhen(iso?: string): string {
@@ -61,9 +65,9 @@ function formatWhen(iso?: string): string {
 
 function ActionBadge({ action }: { action: string }) {
   const tone =
-    action.includes('DELETE') || action.includes('DEACTIVATE') || action.includes('VOID')
+    action.includes('DELETE') || action.includes('DEACTIVATE') || action.includes('VOID') || action.includes('BLOCKED')
       ? 'bg-danger/10 text-danger'
-      : action.includes('INSERT') || action.includes('INVITE')
+      : action.includes('INSERT') || action.includes('INVITE') || action === 'LOGIN_SUCCESS'
         ? 'bg-success/10 text-success'
         : 'bg-accent-muted text-accent';
   return (
@@ -220,7 +224,13 @@ export function AuditLogTable() {
                   </TableCell>
                   <TableCell className="max-w-sm">
                     <p className="text-sm leading-5 text-text">{summarizeAuditDiff(row.diff, row.action)}</p>
-                    <p className="mt-0.5 text-xs text-text-muted">View details</p>
+                    {isLoginAuditAction(row.action) && formatLoginAuditLine(row.diff) ? (
+                      <p className="mt-0.5 text-sm text-text-muted" data-testid="audit-login-meta">
+                        {formatLoginAuditLine(row.diff)}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-text-muted">View details</p>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -256,7 +266,11 @@ export function AuditLogTable() {
         {selected && (
           <div className="space-y-5" data-testid="audit-diff-detail">
             <p className="text-sm text-text">{summarizeAuditDiff(selected.diff, selected.action)}</p>
-            {selectedChanges.length > 0 ? (
+            {isLoginAuditAction(selected.action) && formatLoginAuditLine(selected.diff) ? (
+              <p className="text-sm text-text-muted" data-testid="audit-login-meta-detail">
+                {formatLoginAuditLine(selected.diff)}
+              </p>
+            ) : selectedChanges.length > 0 ? (
               <dl className="divide-y divide-border overflow-hidden rounded-lg border border-border">
                 {selectedChanges.map((change) => (
                   <div key={change.field} className="grid grid-cols-[8rem_1fr] gap-3 px-3 py-2.5 sm:grid-cols-[10rem_1fr]">

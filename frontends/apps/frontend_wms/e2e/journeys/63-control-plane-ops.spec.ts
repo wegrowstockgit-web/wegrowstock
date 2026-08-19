@@ -39,8 +39,17 @@ test.describe('Journey 63: Control Plane ops + admin-api', () => {
         headers: await csrfHeaders(admin),
       });
       expect(imp.ok(), await imp.text()).toBeTruthy();
-      const impBody = (await imp.json()) as { accessToken?: string; expiresInSeconds?: number };
+      const impBody = (await imp.json()) as {
+        accessToken?: string;
+        handoffToken?: string;
+        handoffCode?: string;
+        redirectUrl?: string;
+        loginUrl?: string;
+        expiresInSeconds?: number;
+      };
       expect(impBody.accessToken).toBeTruthy();
+      expect(impBody.handoffToken || impBody.handoffCode).toBeTruthy();
+      expect(impBody.redirectUrl || impBody.loginUrl).toBeTruthy();
       expect(impBody.expiresInSeconds).toBe(900);
 
       const packaging = await admin.get('/api/v1/control-plane/packaging/tiers');

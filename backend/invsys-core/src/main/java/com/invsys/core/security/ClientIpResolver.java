@@ -37,32 +37,61 @@ public class ClientIpResolver {
     }
 
     public String resolve(HttpServletRequest request) {
+        return resolveDetailed(request).ip();
+    }
+
+    /**
+     * Normalizes a raw address for audit storage. Blank, {@code unknown}, and
+     * unparseable values become {@code "unknown"} so Geo-IP and CIDR checks stay defined.
+     */
+    public String normalizeOrUnknown(String ip) {
+        String normalized = normalizeIp(ip);
+        return normalized != null ? normalized : "unknown";
+    }
+
+    /**
+     * When every hop is a configured trusted proxy (typical Docker SNAT:
+     * browser → WMS nginx → API gateway → app), there is no public client IP
+     * to fence against. Callers should treat {@link ResolvedClientIp#onPremMesh()}
+     * as internal rather than denying STRICT_INTERNAL roles.
+     */
+    public ResolvedClientIp resolveDetailed(HttpServletRequest request) {
         if (request == null) {
-            return "unknown";
+            return ResolvedClientIp.UNKNOWN;
         }
         String remote = normalizeIp(request.getRemoteAddr());
         if (remote == null) {
-            return "unknown";
+            return ResolvedClientIp.UNKNOWN;
         }
         if (!isTrustedProxy(remote)) {
-            return remote;
+            return new ResolvedClientIp(remote, false);
         }
         String realIp = normalizeIp(request.getHeader("X-Real-IP"));
         if (realIp != null && !isTrustedProxy(realIp)) {
-            return realIp;
+            return new ResolvedClientIp(realIp, false);
         }
         String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded == null || forwarded.isBlank()) {
-            return realIp != null ? realIp : remote;
-        }
-        String[] hops = forwarded.split(",");
-        for (int i = hops.length - 1; i >= 0; i--) {
-            String candidate = normalizeIp(hops[i].trim());
-            if (candidate != null && !isTrustedProxy(candidate)) {
-                return candidate;
+        if (forwarded != null && !forwarded.isBlank()) {
+            String[] hops = forwarded.split(",");
+            for (int i = hops.length - 1; i >= 0; i--) {
+                String candidate = normalizeIp(hops[i].trim());
+                if (candidate != null && !isTrustedProxy(candidate)) {
+                    return new ResolvedClientIp(candidate, false);
+                }
             }
         }
-        return remote;
+        if (realIp != null) {
+            return new ResolvedClientIp(realIp, true);
+        }
+        return new ResolvedClientIp(remote, true);
+    }
+
+    public record ResolvedClientIp(String ip, boolean onlyTrustedProxyHops) {
+        static final ResolvedClientIp UNKNOWN = new ResolvedClientIp("unknown", false);
+
+        public boolean onPremMesh() {
+            return onlyTrustedProxyHops || isLoopback(ip);
+        }
     }
 
     public boolean isTrustedProxy(String ip) {
@@ -82,6 +111,11 @@ public class ClientIpResolver {
             return;
         }
         into.add(new IpAddressMatcher(cidr.trim()));
+    }
+
+    public static boolean isLoopback(String ip) {
+        InetAddress address = parseAddress(ip);
+        return address != null && address.isLoopbackAddress();
     }
 
     public static boolean isPrivateNetwork(String ip) {

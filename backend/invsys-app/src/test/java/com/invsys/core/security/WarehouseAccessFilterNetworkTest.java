@@ -44,18 +44,39 @@ class WarehouseAccessFilterNetworkTest {
 
     @Test
     void roamingAllowsChain() throws Exception {
-        MockHttpServletResponse response = run(NetworkAccessPolicy.Decision.ALLOW, true);
+        MockHttpServletResponse response = run(NetworkAccessPolicy.Decision.ALLOW, true, false);
+        assertThat(response.getStatus()).isNotEqualTo(401);
+        assertThat(response.getStatus()).isNotEqualTo(403);
+    }
+
+    @Test
+    void supportImpersonationBypassesStrictFence() throws Exception {
+        MockHttpServletResponse response = run(NetworkAccessPolicy.Decision.DENY_STRICT, true, true);
         assertThat(response.getStatus()).isNotEqualTo(401);
         assertThat(response.getStatus()).isNotEqualTo(403);
     }
 
     private MockHttpServletResponse run(NetworkAccessPolicy.Decision decision, boolean expectChain)
             throws Exception {
+        return run(decision, expectChain, false);
+    }
+
+    private MockHttpServletResponse run(NetworkAccessPolicy.Decision decision, boolean expectChain,
+                                        boolean supportImpersonation)
+            throws Exception {
         UUID tenantId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         TenantContext.setTenantId(tenantId);
+        TenantContext.setUserId(userId);
         NetworkAccessPolicy policy = mock(NetworkAccessPolicy.class);
         ClientIpResolver ip = mock(ClientIpResolver.class);
+        GeoIpService geoIpService = mock(GeoIpService.class);
+        LoginSecurityService loginSecurityService = mock(LoginSecurityService.class);
         when(ip.resolve(org.mockito.ArgumentMatchers.any())).thenReturn("203.0.113.9");
+        when(ip.normalizeOrUnknown("203.0.113.9")).thenReturn("203.0.113.9");
+        when(ip.resolveDetailed(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new ClientIpResolver.ResolvedClientIp("203.0.113.9", false));
+        when(geoIpService.resolveLocation("203.0.113.9")).thenReturn("Dallas, TX, US");
         when(policy.highestForRoleCodes(org.mockito.ArgumentMatchers.eq(tenantId), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(NetworkAccessLevel.STRICT_INTERNAL);
         when(policy.allowedCidrBlocks(tenantId)).thenReturn(List.of("10.0.0.0/8"));
@@ -63,17 +84,20 @@ class WarehouseAccessFilterNetworkTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyBoolean(),
                 org.mockito.ArgumentMatchers.anyBoolean()
         )).thenReturn(decision);
 
-        WarehouseAccessFilter filter = new WarehouseAccessFilter(new ObjectMapper(), policy, ip);
+        WarehouseAccessFilter filter = new WarehouseAccessFilter(
+                new ObjectMapper(), policy, ip, geoIpService, loginSecurityService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/products");
         request.setRequestURI("/api/v1/products");
         request.setAttribute(JwtAuthFilter.ATTR_MFA_VERIFIED, false);
+        request.setAttribute(JwtAuthFilter.ATTR_SUPPORT_IMPERSONATION, supportImpersonation);
         MockHttpServletResponse response = new MockHttpServletResponse();
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
-                        UUID.randomUUID(), null, List.of(new SimpleGrantedAuthority("ROLE_PICKER"))));
+                        userId, null, List.of(new SimpleGrantedAuthority("ROLE_PICKER"))));
         AtomicBoolean chained = new AtomicBoolean(false);
         FilterChain chain = (req, res) -> chained.set(true);
         filter.doFilter(request, response, chain);
@@ -81,6 +105,14 @@ class WarehouseAccessFilterNetworkTest {
             assertThat(chained.get()).isTrue();
         } else {
             assertThat(chained.get()).isFalse();
+        }
+        if (decision == NetworkAccessPolicy.Decision.DENY_STRICT && !supportImpersonation) {
+            org.mockito.Mockito.verify(loginSecurityService)
+                    .recordLoginBlockedCidr(userId, "203.0.113.9", "Dallas, TX, US");
+        } else {
+            org.mockito.Mockito.verify(loginSecurityService, org.mockito.Mockito.never())
+                    .recordLoginBlockedCidr(org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         }
         return response;
     }

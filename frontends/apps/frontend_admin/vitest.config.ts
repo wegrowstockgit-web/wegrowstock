@@ -13,5 +13,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['src/**/*.test.{ts,tsx}'],
+    coverage: {
+      reporter: ['text', 'html'],
+      include: ['src/features/tenants/**'],
+    },
   },
 });

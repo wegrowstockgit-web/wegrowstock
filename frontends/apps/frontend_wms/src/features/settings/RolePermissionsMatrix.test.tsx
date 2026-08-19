@@ -151,7 +151,10 @@ describe('RolePermissionsMatrix', () => {
     expect(await screen.findByTestId('corporate-ip-allowlist')).toBeInTheDocument();
     vi.mocked(apiClient.patch).mockResolvedValue({ data: {} } as never);
 
-    fireEvent.change(screen.getByTestId('network-access-PICKER'), {
+    const pickerAccess = screen.getByTestId('network-access-PICKER');
+    expect(pickerAccess).toHaveDisplayValue('Internal Only');
+    expect(within(pickerAccess).getByRole('option', { name: 'MFA Remote' })).toBeInTheDocument();
+    fireEvent.change(pickerAccess, {
       target: { value: 'ROAMING' },
     });
     await waitFor(() => {
@@ -217,7 +220,7 @@ describe('RolePermissionsMatrix', () => {
 
   it('creates a custom role from the dialog, optionally cloning a baseline', async () => {
     wrap(<RolePermissionsMatrix />);
-    expect(await screen.findByTestId('create-custom-role')).toBeInTheDocument();
+    expect(await screen.findByTestId('create-custom-role')).toHaveTextContent(/create custom role/i);
     fireEvent.click(screen.getByTestId('create-custom-role'));
 
     expect(await screen.findByTestId('create-role-dialog')).toBeInTheDocument();

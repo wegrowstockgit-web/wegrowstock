@@ -63,6 +63,9 @@ class AdminImpersonationServiceTest {
         assertThat(response.handoffCode()).isNotBlank();
         assertThat(response.expiresInSeconds()).isEqualTo(JwtService.IMPERSONATION_TTL_SECONDS);
         assertThat(response.email()).isEqualTo("owner@acme.test");
+        assertThat(response.handoffToken()).isEqualTo(response.handoffCode());
+        assertThat(response.redirectUrl()).isEqualTo("http://localhost:3000/login");
+        assertThat(response.loginUrl()).contains("handoff=");
         assertThat(response.loginUrl()).contains("impersonateCode=");
         assertThat(response.loginUrl()).doesNotContain("impersonateToken=");
         verify(jwtService).generateImpersonationAccessToken(

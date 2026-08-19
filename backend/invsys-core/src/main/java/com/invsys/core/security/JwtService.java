@@ -42,6 +42,8 @@ public class JwtService {
     public static final String CLAIM_APP_CONTEXT = "app_context";
     /** True when the session completed WebAuthn for off-network MFA. */
     public static final String CLAIM_MFA_VERIFIED = "mfa_verified";
+    /** True when this WMS session was minted by control-plane owner impersonation. */
+    public static final String CLAIM_SUPPORT_IMPERSONATION = "support_impersonation";
     /** Bound session tenant for TERMINAL_SWITCH — must equal {@code tenant_id}. */
     public static final String CLAIM_BIND_TENANT_ID = "bind_tenant_id";
     public static final String TOKEN_TYPE_TERMINAL_SWITCH = "TERMINAL_SWITCH";
@@ -111,7 +113,7 @@ public class JwtService {
                                       String appContext) {
         return generateAccessToken(
                 userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L,
-                null, appContext, false);
+                null, appContext, false, false);
     }
 
     public String generateAccessToken(UUID userId,
@@ -120,9 +122,19 @@ public class JwtService {
                                       List<UUID> warehouseIds,
                                       String appContext,
                                       boolean mfaVerified) {
+        return generateAccessToken(userId, tenantId, roles, warehouseIds, appContext, mfaVerified, false);
+    }
+
+    public String generateAccessToken(UUID userId,
+                                      UUID tenantId,
+                                      List<String> roles,
+                                      List<UUID> warehouseIds,
+                                      String appContext,
+                                      boolean mfaVerified,
+                                      boolean supportImpersonation) {
         return generateAccessToken(
                 userId, tenantId, roles, warehouseIds, properties.getAccessTokenMinutes() * 60L,
-                null, appContext, mfaVerified);
+                null, appContext, mfaVerified, supportImpersonation);
     }
 
     /**
@@ -167,6 +179,7 @@ public class JwtService {
                 properties.getTerminalSwitchTokenMinutes() * 60L,
                 TOKEN_TYPE_TERMINAL_SWITCH,
                 null,
+                false,
                 false);
     }
 
@@ -184,6 +197,7 @@ public class JwtService {
                 IMPERSONATION_TTL_SECONDS,
                 TOKEN_TYPE_IMPERSONATION,
                 "WMS",
+                false,
                 false);
     }
 
@@ -194,7 +208,8 @@ public class JwtService {
                                        long ttlSeconds,
                                        String tokenType,
                                        String appContext,
-                                       boolean mfaVerified) {
+                                       boolean mfaVerified,
+                                       boolean supportImpersonation) {
         try {
             Instant now = Instant.now();
             List<String> warehouseClaim = warehouseIds == null
@@ -215,6 +230,9 @@ public class JwtService {
             }
             if (mfaVerified) {
                 builder.claim(CLAIM_MFA_VERIFIED, true);
+            }
+            if (supportImpersonation) {
+                builder.claim(CLAIM_SUPPORT_IMPERSONATION, true);
             }
             if (TOKEN_TYPE_IMPERSONATION.equals(tokenType)) {
                 builder.jwtID(UUID.randomUUID().toString());
@@ -282,6 +300,11 @@ public class JwtService {
 
     public boolean extractMfaVerified(String token) {
         Object value = validateAndParse(token).getClaim(CLAIM_MFA_VERIFIED);
+        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
+    }
+
+    public boolean extractSupportImpersonation(String token) {
+        Object value = validateAndParse(token).getClaim(CLAIM_SUPPORT_IMPERSONATION);
         return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 

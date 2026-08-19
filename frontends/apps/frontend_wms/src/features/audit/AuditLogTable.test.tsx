@@ -76,11 +76,60 @@ describe('AuditLogTable', () => {
     });
 
     renderTable();
-    expect(await screen.findByText('Changed status')).toBeInTheDocument();
-    await user.click(screen.getByText('Changed status'));
+    expect(await screen.findByText('Changed status from Active to Inactive')).toBeInTheDocument();
+    await user.click(screen.getByText('Changed status from Active to Inactive'));
     expect(await screen.findByTestId('audit-diff-detail')).toBeInTheDocument();
     expect(screen.getByText('Status')).toBeInTheDocument();
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument();
-    expect(screen.getByText('INACTIVE')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+  });
+
+  it('formats login success details without JSON', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'login-1',
+            actorDisplayName: 'Demo Owner',
+            action: 'LOGIN_SUCCESS',
+            entityType: 'USER',
+            entityId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            createdAt: '2026-08-19T12:00:00.000Z',
+            diff: { ip: '198.51.100.45', location: 'Dallas, TX, US' },
+          },
+        ],
+      },
+    });
+
+    renderTable();
+
+    expect(await screen.findByText('Signed in from Dallas, TX, US')).toBeInTheDocument();
+    expect(screen.getByTestId('audit-row-login-1')).toHaveTextContent('Signed in');
+    expect(screen.getByTestId('audit-login-meta')).toHaveTextContent('198.51.100.45 • Dallas, TX, US');
+    expect(screen.queryByText(/"ip":/)).not.toBeInTheDocument();
+  });
+
+  it('formats blocked CIDR login details', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'block-1',
+            actorDisplayName: 'Demo Owner',
+            action: 'LOGIN_BLOCKED_CIDR',
+            entityType: 'USER',
+            entityId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            createdAt: '2026-08-19T12:01:00.000Z',
+            diff: { ip: '203.0.113.40', location: 'Dallas, TX, US' },
+          },
+        ],
+      },
+    });
+
+    renderTable();
+
+    expect(await screen.findByText('Blocked sign-in from Dallas, TX, US')).toBeInTheDocument();
+    expect(screen.getByTestId('audit-row-block-1')).toHaveTextContent('Blocked sign-in (off-network)');
+    expect(screen.getByTestId('audit-login-meta')).toHaveTextContent('203.0.113.40 • Dallas, TX, US');
   });
 });

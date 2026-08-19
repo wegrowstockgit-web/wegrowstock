@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { roleApi } from '@/api/roles';
@@ -8,6 +8,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { Select } from '@/components/ui/Select';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
 import { useEntitlement } from '@/hooks/useEntitlement';
@@ -253,7 +254,7 @@ export function RolePermissionsMatrix() {
     !clientIpCovered(networkInfo.clientIp, cidrs);
 
   return (
-    <Card data-testid="role-permissions-matrix">
+    <Card className="min-w-0" data-testid="role-permissions-matrix">
       <CardHeader
         title="Role permissions"
         description="Granular toggles per custom role. System roles are locked to platform defaults. Users with multiple roles receive the union of granted permissions. Network access is the highest assigned level."
@@ -261,10 +262,12 @@ export function RolePermissionsMatrix() {
           <Button
             type="button"
             size="sm"
+            className="whitespace-nowrap"
             data-testid="create-custom-role"
             onClick={() => setCreateOpen(true)}
           >
-            + Create Custom Role
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            Create custom role
           </Button>
         }
       />
@@ -348,7 +351,7 @@ export function RolePermissionsMatrix() {
           </Button>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div className="min-w-0 max-w-full overflow-x-auto">
         <table className="w-full min-w-[32rem] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -358,7 +361,7 @@ export function RolePermissionsMatrix() {
               {roles.map((role) => (
                 <th
                   key={role.id}
-                  className="px-3 py-2 text-center font-semibold text-text whitespace-nowrap"
+                  className="min-w-[11rem] px-2 py-2 text-center font-semibold text-text"
                 >
                   <span className="inline-flex items-center justify-center gap-1">
                     {formatRoleColumnName(role.name)}
@@ -385,11 +388,12 @@ export function RolePermissionsMatrix() {
               {roles.map((role) => {
                 const level = parseNetworkAccessLevel(role.networkAccessLevel);
                 return (
-                  <th key={role.id} className="px-2 py-2">
-                    <select
+                  <th key={role.id} className="min-w-[11rem] px-2 py-2 align-middle">
+                    <Select
                       aria-label={`${role.name} network access`}
                       data-testid={`network-access-${role.name}`}
-                      className="w-full rounded border border-border bg-surface-raised px-1 py-1 text-xs"
+                      title={NETWORK_ACCESS_LABELS[level]}
+                      size="sm"
                       value={level}
                       onChange={(e) =>
                         networkMutation.mutate({
@@ -403,7 +407,7 @@ export function RolePermissionsMatrix() {
                           {NETWORK_ACCESS_LABELS[option]}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </th>
                 );
               })}

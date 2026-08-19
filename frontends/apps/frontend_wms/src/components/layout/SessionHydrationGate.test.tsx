@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionHydrationGate } from './SessionHydrationGate';
@@ -42,6 +42,10 @@ describe('SessionHydrationGate', () => {
     );
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('ends the session instead of polling when /auth/me returns 401', async () => {
     vi.mocked(apiClient.get).mockRejectedValue({
       isAxiosError: true,
@@ -60,6 +64,37 @@ describe('SessionHydrationGate', () => {
 
     await waitFor(() => {
       expect(endSessionOnAuthFailure).toHaveBeenCalled();
+    });
+  });
+
+  it('rewrites non-login routes that carry ?handoff= onto /login', async () => {
+    const replace = vi.fn();
+    vi.stubGlobal('location', {
+      search: '?handoff=abc',
+      pathname: '/dashboard',
+      replace,
+    });
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        userId: 'u1',
+        tenantId: 't1',
+        email: 'owner@demo.test',
+        displayName: 'Owner',
+        roles: ['OWNER'],
+      },
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <SessionHydrationGate>
+          <div>app</div>
+        </SessionHydrationGate>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith('/login?handoff=abc');
     });
   });
 });

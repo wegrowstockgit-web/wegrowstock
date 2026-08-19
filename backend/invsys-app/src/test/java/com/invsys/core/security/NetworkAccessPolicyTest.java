@@ -50,6 +50,11 @@ class NetworkAccessPolicyTest {
                 .isEqualTo(NetworkAccessPolicy.Decision.MFA_REQUIRED);
         assertThat(policy.evaluate("203.0.113.9", cidrs, NetworkAccessLevel.MFA_OUTSIDE_NETWORK, true))
                 .isEqualTo(NetworkAccessPolicy.Decision.ALLOW);
+        assertThat(policy.evaluate(
+                "172.18.0.9", cidrs, NetworkAccessLevel.STRICT_INTERNAL, false, true))
+                .isEqualTo(NetworkAccessPolicy.Decision.ALLOW);
+        assertThat(policy.evaluate("127.0.0.1", cidrs, NetworkAccessLevel.STRICT_INTERNAL, false))
+                .isEqualTo(NetworkAccessPolicy.Decision.ALLOW);
     }
 
     @Test

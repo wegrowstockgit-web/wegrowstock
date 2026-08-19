@@ -14,6 +14,9 @@ vi.mock('./api', () => ({
   patchTenantTier: vi.fn(),
   patchTenantStatus: vi.fn(),
   impersonateTenant: vi.fn(),
+  createImpersonationSession: vi.fn(),
+  buildWmsImpersonationUrl: vi.fn(),
+  wmsImpersonationRedirectHref: vi.fn(),
 }));
 
 vi.mock('@/features/packaging/api', () => ({

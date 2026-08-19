@@ -41,6 +41,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     static final String ATTR_APP_CONTEXT = "invsys.app_context";
     static final String ATTR_TOKEN_BOUND = "invsys.jwt_bound";
     public static final String ATTR_MFA_VERIFIED = "invsys.mfa_verified";
+    public static final String ATTR_SUPPORT_IMPERSONATION = "invsys.support_impersonation";
     private static final String POS_API_PREFIX = "/api/v1/pos/";
     private static final String AUTH_API_PREFIX = "/api/v1/auth/";
 
@@ -124,6 +125,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             Object mfaClaim = claims.getClaim(JwtService.CLAIM_MFA_VERIFIED);
             request.setAttribute(ATTR_MFA_VERIFIED,
                     Boolean.TRUE.equals(mfaClaim) || "true".equalsIgnoreCase(String.valueOf(mfaClaim)));
+            Object supportClaim = claims.getClaim(JwtService.CLAIM_SUPPORT_IMPERSONATION);
+            request.setAttribute(ATTR_SUPPORT_IMPERSONATION,
+                    Boolean.TRUE.equals(supportClaim) || "true".equalsIgnoreCase(String.valueOf(supportClaim)));
             request.setAttribute(ATTR_TOKEN_BOUND, Boolean.TRUE);
 
             TenantContext.setTenantId(tenantId);
@@ -222,6 +226,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/auth/warehouse/login")
                 || path.startsWith("/api/v1/auth/refresh")
                 || path.startsWith("/api/v1/auth/magic-login")
+                || path.startsWith("/api/v1/auth/impersonation/accept")
                 || path.startsWith("/api/v1/auth/sso-discover")
                 || path.startsWith("/api/v1/auth/discovery")
                 || path.startsWith("/api/v1/invitations/accept")

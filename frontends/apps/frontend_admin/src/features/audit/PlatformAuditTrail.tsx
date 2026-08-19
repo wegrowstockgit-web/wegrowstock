@@ -61,8 +61,8 @@ export function PlatformAuditTrail() {
                 <TableCell className="font-mono text-xs text-text-muted">
                   {row.targetTenantId ?? '—'}
                 </TableCell>
-                <TableCell className="text-text-muted">{row.ipAddress ?? '—'}</TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-xs text-text-muted">
+                <TableCell className="text-sm text-text-muted">{row.ipAddress ?? '—'}</TableCell>
+                <TableCell className="max-w-xs truncate text-sm text-text-muted">
                   {row.diffJson ?? '—'}
                 </TableCell>
               </TableRow>

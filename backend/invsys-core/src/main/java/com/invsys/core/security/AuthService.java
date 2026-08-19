@@ -64,6 +64,9 @@ public class AuthService {
     private final TenantSubscriptionService tenantSubscriptionService;
     private final ImpersonationHandoffStore impersonationHandoffStore;
     private final NetworkAccessPolicy networkAccessPolicy;
+    private final ClientIpResolver clientIpResolver;
+    private final GeoIpService geoIpService;
+    private final LoginSecurityService loginSecurityService;
     private final TerminalBiometricService terminalBiometricService;
     private final AuthService self;
 
@@ -84,6 +87,9 @@ public class AuthService {
                        TenantSubscriptionService tenantSubscriptionService,
                        ImpersonationHandoffStore impersonationHandoffStore,
                        NetworkAccessPolicy networkAccessPolicy,
+                       ClientIpResolver clientIpResolver,
+                       GeoIpService geoIpService,
+                       LoginSecurityService loginSecurityService,
                        @Lazy TerminalBiometricService terminalBiometricService,
                        @Lazy AuthService self) {
         this.onboardingService = onboardingService;
@@ -103,6 +109,9 @@ public class AuthService {
         this.tenantSubscriptionService = tenantSubscriptionService;
         this.impersonationHandoffStore = impersonationHandoffStore;
         this.networkAccessPolicy = networkAccessPolicy;
+        this.clientIpResolver = clientIpResolver;
+        this.geoIpService = geoIpService;
+        this.loginSecurityService = loginSecurityService;
         this.terminalBiometricService = terminalBiometricService;
         this.self = self;
     }
@@ -117,6 +126,10 @@ public class AuthService {
     }
 
     public TokenResponse login(LoginRequest request, String clientIp) {
+        return login(request, clientIp, ClientIpResolver.isLoopback(clientIp));
+    }
+
+    public TokenResponse login(LoginRequest request, String clientIp, boolean treatAsInternal) {
         var authUser = bootstrapJdbc.findUserForAuthByEmail(request.email())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
 
@@ -151,24 +164,36 @@ public class AuthService {
         }
         TenantContext.setTenantId(tenantId);
         try {
-            boolean mfaVerified = enforceLoginNetworkFence(request, clientIp, tenantId, authUser.id());
+            String ip = clientIpResolver.normalizeOrUnknown(clientIp);
+            String location = geoIpService.resolveLocation(ip);
+            boolean mfaVerified = enforceLoginNetworkFence(
+                    request, clientIp, treatAsInternal, tenantId, authUser.id(), ip, location);
             TokenResponse tokens = self.completeLogin(authUser.id(), request.targetApp(), mfaVerified);
             AuthService.assertTargetAppAccess(request.targetApp(), tokens);
+            loginSecurityService.afterSuccessfulLogin(authUser.id(), request.email(), ip, location);
             return tokens;
         } finally {
             TenantContext.clear();
         }
     }
 
-    private boolean enforceLoginNetworkFence(LoginRequest request, String clientIp, UUID tenantId, UUID userId) {
+    private boolean enforceLoginNetworkFence(LoginRequest request,
+                                             String clientIp,
+                                             boolean treatAsInternal,
+                                             UUID tenantId,
+                                             UUID userId,
+                                             String ip,
+                                             String location) {
         List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
         NetworkAccessLevel level = networkAccessPolicy.highestForRoleCodes(tenantId, roles);
         List<String> cidrs = networkAccessPolicy.allowedCidrBlocks(tenantId);
-        NetworkAccessPolicy.Decision decision = networkAccessPolicy.evaluate(clientIp, cidrs, level, false);
+        NetworkAccessPolicy.Decision decision =
+                networkAccessPolicy.evaluate(clientIp, cidrs, level, false, treatAsInternal);
         if (decision == NetworkAccessPolicy.Decision.ALLOW) {
             return false;
         }
         if (decision == NetworkAccessPolicy.Decision.DENY_STRICT) {
+            loginSecurityService.recordLoginBlockedCidr(userId, ip, location);
             throw new ApiException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", NetworkAccessPolicy.STRICT_DENIED_DETAIL);
         }
         if (request.hasMfaAssertion()) {
@@ -256,10 +281,15 @@ public class AuthService {
 
     @Transactional
     public TokenResponse completeLogin(UUID userId, String targetApp, boolean mfaVerified) {
+        return completeLogin(userId, targetApp, mfaVerified, false);
+    }
+
+    @Transactional
+    public TokenResponse completeLogin(UUID userId, String targetApp, boolean mfaVerified, boolean supportImpersonation) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials"));
         List<String> roles = userRoleRepository.findRoleCodesByUserId(userId);
-        return issueTokens(user, roles, targetApp, mfaVerified);
+        return issueTokens(user, roles, targetApp, mfaVerified, supportImpersonation);
     }
 
     /**
@@ -293,7 +323,7 @@ public class AuthService {
         }
         TenantContext.setTenantId(tenantId);
         try {
-            return self.completeLogin(userId, "WMS");
+            return self.completeLogin(userId, "WMS", false, true);
         } finally {
             TenantContext.clear();
         }
@@ -344,8 +374,10 @@ public class AuthService {
             List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roles);
             String appContext = tokenEntity.getAppContext();
             boolean mfaVerified = tokenEntity.isMfaVerified();
+            boolean supportImpersonation = tokenEntity.isSupportImpersonation();
             String access = jwtService.generateAccessToken(
-                    user.getId(), user.getTenantId(), roles, warehouseIds, appContext, mfaVerified);
+                    user.getId(), user.getTenantId(), roles, warehouseIds, appContext, mfaVerified,
+                    supportImpersonation);
             String refresh = UUID.randomUUID().toString();
             RefreshToken replacement = new RefreshToken();
             replacement.setTenantId(user.getTenantId());
@@ -354,6 +386,7 @@ public class AuthService {
             replacement.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
             replacement.setAppContext(appContext);
             replacement.setMfaVerified(mfaVerified);
+            replacement.setSupportImpersonation(supportImpersonation);
             replacement = refreshTokenRepository.save(replacement);
             tokenEntity.setReplacedBy(replacement.getId());
             refreshTokenRepository.save(tokenEntity);
@@ -516,21 +549,27 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user, List<String> roles) {
-        return issueTokens(user, roles, null, false);
+        return issueTokens(user, roles, null, false, false);
     }
 
     private TokenResponse issueTokens(User user, List<String> roles, String targetApp) {
-        return issueTokens(user, roles, targetApp, false);
+        return issueTokens(user, roles, targetApp, false, false);
     }
 
     private TokenResponse issueTokens(User user, List<String> roles, String targetApp, boolean mfaVerified) {
+        return issueTokens(user, roles, targetApp, mfaVerified, false);
+    }
+
+    private TokenResponse issueTokens(User user, List<String> roles, String targetApp, boolean mfaVerified,
+                                      boolean supportImpersonation) {
         List<String> roleList = roles == null ? List.of() : List.copyOf(roles);
         List<UUID> warehouseIds = resolveWarehouseIds(user.getTenantId(), user.getId(), roleList);
         List<String> grantedPermissions = rolePermissionService.resolveGrantedPermissions(
                 user.getTenantId(), roles);
         String appContext = normalizeAppContext(targetApp);
         String access = jwtService.generateAccessToken(
-                user.getId(), user.getTenantId(), roleList, warehouseIds, appContext, mfaVerified);
+                user.getId(), user.getTenantId(), roleList, warehouseIds, appContext, mfaVerified,
+                supportImpersonation);
         String refresh = UUID.randomUUID().toString();
         RefreshToken entity = new RefreshToken();
         entity.setTenantId(user.getTenantId());
@@ -539,6 +578,7 @@ public class AuthService {
         entity.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenDays() * 86400L));
         entity.setAppContext(appContext);
         entity.setMfaVerified(mfaVerified);
+        entity.setSupportImpersonation(supportImpersonation);
         refreshTokenRepository.save(entity);
         return new TokenResponse(access, refresh, user.getTenantId(), user.getId(), roleList, warehouseIds,
                 user.getAvatarUrl(), grantedPermissions);

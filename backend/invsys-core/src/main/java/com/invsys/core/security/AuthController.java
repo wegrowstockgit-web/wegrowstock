@@ -81,17 +81,17 @@ public class AuthController {
     public SessionResponse login(@Valid @RequestBody LoginRequest request,
                                  HttpServletRequest httpRequest,
                                  HttpServletResponse response) {
-        String ip = clientIpResolver.resolve(httpRequest);
-        loginAttemptLimiter.assertAllowed(ip, request.email());
+        ClientIpResolver.ResolvedClientIp resolved = clientIpResolver.resolveDetailed(httpRequest);
+        loginAttemptLimiter.assertAllowed(resolved.ip(), request.email());
         try {
-            TokenResponse tokens = authService.login(request, ip);
+            TokenResponse tokens = authService.login(request, resolved.ip(), resolved.onPremMesh());
             AuthService.assertTargetAppAccess(request.targetApp(), tokens);
             SessionResponse session = issueSession(tokens, response);
-            loginAttemptLimiter.reset(ip, request.email());
+            loginAttemptLimiter.reset(resolved.ip(), request.email());
             return session;
         } catch (ApiException ex) {
             if ("INVALID_CREDENTIALS".equals(ex.getCode())) {
-                loginAttemptLimiter.recordFailure(ip, request.email());
+                loginAttemptLimiter.recordFailure(resolved.ip(), request.email());
             }
             throw ex;
         }
@@ -102,16 +102,8 @@ public class AuthController {
      */
     @PostMapping("/impersonation/accept")
     public SessionResponse acceptImpersonation(@RequestBody Map<String, String> body, HttpServletResponse response) {
-        String token = body == null ? null : body.get("token");
-        if (token == null || token.isBlank()) {
-            token = body == null ? null : body.get("impersonateToken");
-        }
-        if (token == null || token.isBlank()) {
-            token = body == null ? null : body.get("handoffCode");
-        }
-        if (token == null || token.isBlank()) {
-            token = body == null ? null : body.get("impersonateCode");
-        }
+        String token = firstNonBlank(body, "handoff", "handoffToken", "handoffCode",
+                "impersonateCode", "impersonateToken", "token");
         return issueSession(authService.acceptImpersonation(token), response);
     }
 
@@ -224,5 +216,18 @@ public class AuthController {
     private SessionResponse issueSession(TokenResponse tokens, HttpServletResponse response) {
         authCookieService.writeSessionCookies(response, tokens);
         return SessionResponse.from(tokens);
+    }
+
+    private static String firstNonBlank(Map<String, String> body, String... keys) {
+        if (body == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            String value = body.get(key);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 }

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useSessionHydrated, useIsAuthenticated, useSessionStore } from '@/stores/session';
 import { apiClient, endSessionOnAuthFailure } from '@/api/client';
+import { readImpersonationHandoff } from '@/lib/impersonationHandoff';
 
 type MeEntitlements = {
   userId: string;
@@ -29,6 +30,17 @@ export function SessionHydrationGate({ children }: { children: ReactNode }) {
   const authenticated = useIsAuthenticated();
   const applyMeProfile = useSessionStore((s) => s.applyMeProfile);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const handoff = readImpersonationHandoff(params);
+    if (!handoff) return;
+    const path = window.location.pathname || '/';
+    if (path === '/login' || path.startsWith('/login/')) return;
+    const next = `/login?${params.toString()}`;
+    window.location.replace(next);
+  }, []);
 
   useEffect(() => {
     if (!hydrated || !authenticated) return;

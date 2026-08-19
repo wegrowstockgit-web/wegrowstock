@@ -67,6 +67,8 @@ test.describe('Control Plane Phase 4/5 functional', () => {
     expect(imp.ok(), await imp.text()).toBeTruthy();
     const impBody = await imp.json();
     expect(impBody.accessToken).toBeTruthy();
+    expect(impBody.handoffToken || impBody.handoffCode).toBeTruthy();
+    expect(impBody.redirectUrl || impBody.loginUrl).toBeTruthy();
     expect(impBody.expiresInSeconds).toBe(900);
 
     const packaging = await admin.get('/api/v1/control-plane/packaging/tiers');

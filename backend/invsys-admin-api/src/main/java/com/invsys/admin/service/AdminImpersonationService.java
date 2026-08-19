@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -75,14 +77,17 @@ public class AdminImpersonationService {
                 accessToken,
                 Duration.ofSeconds(JwtService.IMPERSONATION_TTL_SECONDS));
 
-        String loginUrl = loginBaseUrl + "?impersonateCode=" + handoffCode;
+        String encoded = URLEncoder.encode(handoffCode, StandardCharsets.UTF_8);
+        String loginUrl = loginBaseUrl + "?handoff=" + encoded + "&impersonateCode=" + encoded;
 
         return new ImpersonationResponse(
                 accessToken,
                 handoffCode,
                 JwtService.IMPERSONATION_TTL_SECONDS,
                 loginUrl,
-                user.email());
+                user.email(),
+                handoffCode,
+                loginBaseUrl);
     }
 
     public record ImpersonationResponse(
@@ -90,7 +95,9 @@ public class AdminImpersonationService {
             String handoffCode,
             long expiresInSeconds,
             String loginUrl,
-            String email
+            String email,
+            String handoffToken,
+            String redirectUrl
     ) {
     }
 }

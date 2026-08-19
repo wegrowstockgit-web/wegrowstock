@@ -14,6 +14,10 @@ import { nextHrdStep, resolveSsoHref, type HrdResponse, type HrdStep } from '@/l
 import { readTerminalPasskey } from '@/lib/terminalPasskey';
 import { claimMagicLinkToken, postLoginPath } from '@/lib/magicLinkConsume';
 import {
+  claimImpersonationHandoff,
+  readImpersonationHandoff,
+} from '@/lib/impersonationHandoff';
+import {
   completeMfaAssertion,
   isMfaRequiredTitle,
   type MfaChallengeBody,
@@ -64,18 +68,22 @@ export function LoginPage() {
   }, [searchParams, applyMeProfile, navigate]);
 
   useEffect(() => {
-    const impersonateCode = searchParams.get('impersonateCode') || searchParams.get('impersonateToken');
-    if (!impersonateCode) return;
+    const impersonateCode = readImpersonationHandoff(searchParams);
+    if (!claimImpersonationHandoff(impersonateCode)) return;
     void (async () => {
       try {
         const session = await apiClient.post<SessionResponse>(
           '/api/v1/auth/impersonation/accept',
-          { handoffCode: impersonateCode, token: impersonateCode },
+          {
+            handoff: impersonateCode,
+            handoffCode: impersonateCode,
+            token: impersonateCode,
+          },
         );
         const me = await apiClient.get<MeResponse>('/api/v1/auth/me');
         setSessionFromLogin(session.data, me.data.email, me.data.displayName);
         applyMeProfile(me.data);
-        navigate('/dashboard', { replace: true });
+        navigate(postLoginPath(me.data.roles), { replace: true });
       } catch {
         setError('Impersonation session could not be established.');
       }
@@ -111,6 +119,10 @@ export function LoginPage() {
       if (isMfaRequiredTitle(body?.title)) {
         setError('');
         setMfaChallenge(body ?? { title: 'MFA_REQUIRED_FOR_EXTERNAL_ACCESS' });
+        return;
+      }
+      if (body?.title === 'ACCESS_DENIED') {
+        setError(body.detail || 'Access denied from this network.');
         return;
       }
       setError('Invalid email or password. Try owner@demo.test / password123');
@@ -334,6 +346,7 @@ export function LoginPage() {
               {error && (
                 <p
                   role="alert"
+                  data-testid="login-error"
                   className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
                 >
                   {error}

@@ -67,11 +67,21 @@ public class NetworkAccessPolicy {
                              List<String> cidrs,
                              NetworkAccessLevel level,
                              boolean mfaVerified) {
+        return evaluate(clientIp, cidrs, level, mfaVerified, false);
+    }
+
+    public Decision evaluate(String clientIp,
+                             List<String> cidrs,
+                             NetworkAccessLevel level,
+                             boolean mfaVerified,
+                             boolean treatAsInternal) {
         if (cidrs == null || cidrs.isEmpty()) {
             return Decision.ALLOW;
         }
         NetworkAccessLevel effective = level == null ? NetworkAccessLevel.STRICT_INTERNAL : level;
-        boolean internal = CorporateCidrMatcher.matches(clientIp, cidrs);
+        boolean internal = treatAsInternal
+                || ClientIpResolver.isLoopback(clientIp)
+                || CorporateCidrMatcher.matches(clientIp, cidrs);
         if (internal) {
             return Decision.ALLOW;
         }

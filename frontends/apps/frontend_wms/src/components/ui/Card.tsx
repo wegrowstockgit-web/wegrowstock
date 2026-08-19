@@ -38,14 +38,14 @@ interface CardHeaderProps {
 
 export function CardHeader({ title, description, action }: CardHeaderProps) {
   return (
-    <div className="mb-4 flex items-start justify-between gap-4">
-      <div>
-        <h3 className="text-lg font-semibold text-text">{title}</h3>
-        {description && (
-          <p className="mt-1 text-sm text-text-muted">{description}</p>
-        )}
+    <div className="mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h3 className="min-w-0 text-lg font-semibold text-text">{title}</h3>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      {action}
+      {description && (
+        <p className="mt-1 max-w-prose text-sm text-text-muted">{description}</p>
+      )}
     </div>
   );
 }

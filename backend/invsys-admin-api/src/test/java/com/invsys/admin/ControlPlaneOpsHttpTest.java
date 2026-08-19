@@ -59,6 +59,9 @@ class ControlPlaneOpsHttpTest extends AbstractAdminIntegrationTest {
                         .cookie(accessCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value(notNullValue()))
+                .andExpect(jsonPath("$.handoffCode").value(notNullValue()))
+                .andExpect(jsonPath("$.handoffToken").value(notNullValue()))
+                .andExpect(jsonPath("$.redirectUrl").value(notNullValue()))
                 .andExpect(jsonPath("$.expiresInSeconds").value(900))
                 .andExpect(jsonPath("$.email").value(notNullValue()))
                 .andExpect(jsonPath("$.loginUrl").value(notNullValue()));

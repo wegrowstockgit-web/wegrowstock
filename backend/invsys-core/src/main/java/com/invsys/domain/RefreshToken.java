@@ -33,6 +33,9 @@ public class RefreshToken extends TenantScopedEntity {
     @Column(name = "mfa_verified", nullable = false)
     private boolean mfaVerified;
 
+    @Column(name = "support_impersonation", nullable = false)
+    private boolean supportImpersonation;
+
     public UUID getUserId() {
         return userId;
     }
@@ -87,5 +90,13 @@ public class RefreshToken extends TenantScopedEntity {
 
     public void setMfaVerified(boolean mfaVerified) {
         this.mfaVerified = mfaVerified;
+    }
+
+    public boolean isSupportImpersonation() {
+        return supportImpersonation;
+    }
+
+    public void setSupportImpersonation(boolean supportImpersonation) {
+        this.supportImpersonation = supportImpersonation;
     }
 }

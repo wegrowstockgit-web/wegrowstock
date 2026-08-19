@@ -22,7 +22,7 @@ test.describe('Journey 47: Hybrid audit trail UI', () => {
       // Timeline mounts with the drawer; request may have already completed before we attach.
       await expect(owner.page.getByTestId('activity-timeline')).toBeVisible({ timeout: 15_000 });
       await expect(
-        owner.page.getByText(/Activity timeline|No audit events|Could not load audit/i).first(),
+        owner.page.getByText(/Activity|No changes recorded|Could not load/i).first(),
       ).toBeVisible({ timeout: 15_000 });
 
       await owner.page.getByRole('button', { name: 'Cancel' }).click();

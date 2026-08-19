@@ -47,13 +47,19 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper;
     private final NetworkAccessPolicy networkAccessPolicy;
     private final ClientIpResolver clientIpResolver;
+    private final GeoIpService geoIpService;
+    private final LoginSecurityService loginSecurityService;
 
     public WarehouseAccessFilter(ObjectMapper objectMapper,
                                  NetworkAccessPolicy networkAccessPolicy,
-                                 ClientIpResolver clientIpResolver) {
+                                 ClientIpResolver clientIpResolver,
+                                 GeoIpService geoIpService,
+                                 LoginSecurityService loginSecurityService) {
         this.objectMapper = objectMapper;
         this.networkAccessPolicy = networkAccessPolicy;
         this.clientIpResolver = clientIpResolver;
+        this.geoIpService = geoIpService;
+        this.loginSecurityService = loginSecurityService;
     }
 
     @Override
@@ -117,6 +123,9 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
      */
     boolean enforceNetworkFence(HttpServletRequest request, HttpServletResponse response, Authentication auth)
             throws IOException {
+        if (Boolean.TRUE.equals(request.getAttribute(JwtAuthFilter.ATTR_SUPPORT_IMPERSONATION))) {
+            return true;
+        }
         UUID tenantId = TenantContext.getTenantId().orElse(null);
         if (tenantId == null) {
             return true;
@@ -128,13 +137,17 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
                 .toList();
         NetworkAccessLevel level = networkAccessPolicy.highestForRoleCodes(tenantId, roleCodes);
         List<String> cidrs = networkAccessPolicy.allowedCidrBlocks(tenantId);
-        String clientIp = resolveClientIp(request);
+        ClientIpResolver.ResolvedClientIp resolved = clientIpResolver.resolveDetailed(request);
         boolean mfaVerified = Boolean.TRUE.equals(request.getAttribute(JwtAuthFilter.ATTR_MFA_VERIFIED));
-        NetworkAccessPolicy.Decision decision = networkAccessPolicy.evaluate(clientIp, cidrs, level, mfaVerified);
+        NetworkAccessPolicy.Decision decision = networkAccessPolicy.evaluate(
+                resolved.ip(), cidrs, level, mfaVerified, resolved.onPremMesh());
         if (decision == NetworkAccessPolicy.Decision.ALLOW) {
             return true;
         }
         if (decision == NetworkAccessPolicy.Decision.DENY_STRICT) {
+            UUID userId = TenantContext.getUserId().orElseGet(() -> principalUserId(auth));
+            String ip = clientIpResolver.normalizeOrUnknown(resolved.ip());
+            loginSecurityService.recordLoginBlockedCidr(userId, ip, geoIpService.resolveLocation(ip));
             writeProblem(response, HttpServletResponse.SC_FORBIDDEN, "ACCESS_DENIED",
                     NetworkAccessPolicy.STRICT_DENIED_DETAIL);
             return false;
@@ -155,6 +168,21 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
         }
         String first = forwarded.split(",")[0].trim();
         return first.isEmpty() ? resolved : first;
+    }
+
+    private static UUID principalUserId(Authentication auth) {
+        if (auth == null || auth.getPrincipal() == null) {
+            return null;
+        }
+        Object principal = auth.getPrincipal();
+        if (principal instanceof UUID id) {
+            return id;
+        }
+        try {
+            return UUID.fromString(String.valueOf(principal));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private static boolean isElevated(Authentication auth) {
@@ -187,6 +215,7 @@ public class WarehouseAccessFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/auth/warehouse/login")
                 || path.startsWith("/api/v1/auth/refresh")
                 || path.startsWith("/api/v1/auth/magic-login")
+                || path.startsWith("/api/v1/auth/impersonation/accept")
                 || path.startsWith("/api/v1/auth/discovery")
                 || path.startsWith("/api/v1/auth/sso-discover")
                 || path.startsWith("/api/v1/invitations/accept")

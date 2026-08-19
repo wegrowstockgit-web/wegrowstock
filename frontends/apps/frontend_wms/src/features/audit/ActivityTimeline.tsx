@@ -1,70 +1,57 @@
-import { useState } from 'react';
+import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { AuditLogItem } from '@/api/types';
 import { cn } from '@/lib/utils';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import {
+  actorLabel,
+  auditFieldChanges,
+  formatActionLabel,
+  formatLoginAuditLine,
+  isLoginAuditAction,
+  summarizeAuditDiff,
+  type AuditFieldChange,
+} from './auditDiffCopy';
 
 function formatWhen(iso?: string): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString();
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+    const sameDay = date.toDateString() === new Date().toDateString();
+    const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    if (sameDay) return `Today at ${time}`;
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   } catch {
     return iso;
   }
 }
 
-function actorLabel(row: AuditLogItem): string {
-  if (row.actorDisplayName && row.actorEmail) {
-    return `${row.actorDisplayName} (${row.actorEmail})`;
-  }
-  return row.actorDisplayName || row.actorEmail || row.actorUserId?.slice(0, 8) || 'System';
-}
-
-function DiffBlock({ diff }: { diff: Record<string, unknown> }) {
-  const [open, setOpen] = useState(false);
-  const before = diff.old ?? diff.from ?? diff.previous;
-  const after = diff.new ?? diff.to ?? diff.next;
-  const hasBeforeAfter = before !== undefined || after !== undefined;
-
+function FieldChangeRow({ change }: { change: AuditFieldChange }) {
   return (
-    <div className="mt-2">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
-        onClick={() => setOpen((v) => !v)}
-        data-testid="audit-diff-toggle"
-      >
-        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        {open ? 'Hide changes' : 'Show changes'}
-      </button>
-      {open && (
-        <div
-          className="mt-2 space-y-2 rounded-md border border-border bg-surface-overlay/40 p-3 font-mono text-xs text-text"
-          data-testid="audit-diff-body"
-        >
-          {hasBeforeAfter ? (
-            <>
-              <div>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                  Before
-                </div>
-                <pre className="whitespace-pre-wrap break-all">{JSON.stringify(before ?? null, null, 2)}</pre>
-              </div>
-              <div>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                  After
-                </div>
-                <pre className="whitespace-pre-wrap break-all">{JSON.stringify(after ?? null, null, 2)}</pre>
-              </div>
-            </>
-          ) : (
-            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(diff, null, 2)}</pre>
-          )}
-        </div>
-      )}
-    </div>
+    <li className="grid grid-cols-[7.5rem_1fr] gap-2 py-1.5 sm:grid-cols-[9rem_1fr]">
+      <span className="text-xs font-medium text-text-muted">{change.field}</span>
+      <span className="min-w-0 text-sm text-text">
+        {change.from && change.to ? (
+          <>
+            <span className="text-text-muted line-through">{change.from}</span>
+            <span className="mx-1.5 text-text-muted" aria-hidden>
+              →
+            </span>
+            <span>{change.to}</span>
+          </>
+        ) : (
+          (change.to ?? change.from ?? '—')
+        )}
+      </span>
+    </li>
   );
 }
 
@@ -93,45 +80,79 @@ export function ActivityTimeline({
   return (
     <section className="space-y-3" data-testid="activity-timeline">
       <div>
-        <h3 className="text-sm font-semibold text-text">Activity timeline</h3>
-        <p className="text-xs text-text-muted">Compliance events for this user (OWNER / ADMIN)</p>
+        <h3 className="text-sm font-semibold text-text">Activity</h3>
+        <p className="mt-0.5 text-xs text-text-muted">Who changed this account, and what they changed.</p>
       </div>
       {isLoading ? (
         <TableSkeleton rows={3} cols={1} />
       ) : isError ? (
-        <p className="text-sm text-danger">Could not load audit timeline.</p>
+        <p className="text-sm text-danger">Could not load this person&apos;s activity. Try closing the drawer and opening it again.</p>
       ) : data.length === 0 ? (
-        <p className="text-sm text-text-muted">No audit events for this user yet.</p>
+        <p className="text-sm text-text-muted">No changes recorded for this person yet.</p>
       ) : (
         <ol className="relative space-y-0 border-l border-border pl-4">
-          {data.map((row, index) => (
-            <li
-              key={row.id}
-              className="relative pb-5 last:pb-0"
-              data-testid={`timeline-event-${row.id}`}
-            >
-              <span
-                className={cn(
-                  'absolute -left-[1.3rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-accent',
-                  index === 0 && 'ring-2 ring-accent/30',
+          {data.map((row, index) => {
+            const login = isLoginAuditAction(row.action);
+            const changes = login ? [] : auditFieldChanges(row.diff);
+            const summary = login ? formatActionLabel(row.action) : summarizeAuditDiff(row.diff, row.action);
+            const loginLine = login ? formatLoginAuditLine(row.diff) : '';
+            return (
+              <li
+                key={row.id}
+                className="relative pb-5 last:pb-0"
+                data-testid={`timeline-event-${row.id}`}
+              >
+                {row.action === 'LOGIN_SUCCESS' ? (
+                  <ShieldCheck
+                    className="absolute -left-[1.55rem] top-0.5 h-4 w-4 text-success"
+                    aria-hidden
+                    data-testid="timeline-login-success-icon"
+                  />
+                ) : row.action === 'LOGIN_BLOCKED_CIDR' ? (
+                  <ShieldAlert
+                    className="absolute -left-[1.55rem] top-0.5 h-4 w-4 text-danger"
+                    aria-hidden
+                    data-testid="timeline-login-blocked-icon"
+                  />
+                ) : (
+                  <span
+                    className={cn(
+                      'absolute -left-[1.3rem] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-accent',
+                      index === 0 && 'ring-2 ring-accent/30',
+                    )}
+                  />
                 )}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className="rounded bg-accent-muted px-2 py-0.5 font-mono text-[11px] font-semibold text-accent"
-                  data-testid="timeline-action-badge"
-                >
-                  {row.action}
-                </span>
-                <span className="text-xs text-text-muted">{formatWhen(row.createdAt)}</span>
-              </div>
-              <p className="mt-1 text-sm text-text">
-                <span className="text-text-muted">by </span>
-                {actorLabel(row)}
-              </p>
-              {row.diff && Object.keys(row.diff).length > 0 && <DiffBlock diff={row.diff} />}
-            </li>
-          ))}
+                <p className="text-sm font-medium text-text" data-testid="timeline-action-badge">
+                  {summary}
+                </p>
+                {loginLine ? (
+                  <p className="mt-0.5 text-sm text-text-muted" data-testid="timeline-login-meta">
+                    {loginLine}
+                  </p>
+                ) : null}
+                <p className="mt-0.5 text-xs text-text-muted">
+                  {formatWhen(row.createdAt)}
+                  <span className="mx-1.5 text-border">·</span>
+                  {actorLabel(row)}
+                </p>
+                {changes.length > 0 ? (
+                  <ul
+                    className="mt-2 divide-y divide-border overflow-hidden rounded-md border border-border bg-surface px-3"
+                    data-testid="audit-diff-body"
+                  >
+                    {changes.slice(0, 6).map((change) => (
+                      <FieldChangeRow key={change.field} change={change} />
+                    ))}
+                    {changes.length > 6 ? (
+                      <li className="py-1.5 text-xs text-text-muted">
+                        And {changes.length - 6} more {changes.length - 6 === 1 ? 'change' : 'changes'}
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       )}
     </section>

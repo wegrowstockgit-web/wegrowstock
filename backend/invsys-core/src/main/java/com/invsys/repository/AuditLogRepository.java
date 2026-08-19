@@ -24,6 +24,12 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
             UUID entityId,
             Pageable pageable);
 
+    List<AuditLog> findByTenantIdAndEntityIdAndActionOrderByCreatedAtDesc(
+            UUID tenantId,
+            UUID entityId,
+            String action,
+            Pageable pageable);
+
     /**
      * Aged rows for cold archival. Call with {@code TenantContext} bound so RLS
      * scopes the page to the current tenant.

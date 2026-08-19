@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatActionLabel,
   formatEntityLabel,
+  formatLoginAuditLine,
   summarizeAuditDiff,
   auditFieldChanges,
 } from './auditDiffCopy';
@@ -31,7 +32,7 @@ describe('auditDiffCopy', () => {
         old: { email: 'a@demo.test', status: 'ACTIVE' },
         new: { email: 'a@demo.test', status: 'INACTIVE' },
       }),
-    ).toBe('Changed status');
+    ).toBe('Changed status from Active to Inactive');
   });
 
   it('uses invitation email from args', () => {
@@ -53,5 +54,49 @@ describe('auditDiffCopy', () => {
       new: { id: 'x', email: 'new@demo.test', status: 'ACTIVE' },
     });
     expect(changes).toEqual([{ field: 'Email', from: 'old@demo.test', to: 'new@demo.test' }]);
+  });
+
+  it('reads BEFORE/AFTER snapshots and skips technical ids', () => {
+    const changes = auditFieldChanges({
+      op: 'UPDATE',
+      BEFORE: {
+        id: 'x',
+        tenant_id: 't',
+        status: 'ACTIVE',
+        display_name: 'Retail B',
+        updated_at: '2026-08-18T20:00:00Z',
+      },
+      AFTER: {
+        id: 'x',
+        tenant_id: 't',
+        status: 'INACTIVE',
+        display_name: 'Retail B',
+        updated_at: '2026-08-18T20:42:00Z',
+      },
+    });
+    expect(changes).toEqual([{ field: 'Status', from: 'Active', to: 'Inactive' }]);
+  });
+
+  it('formats login success and blocked CIDR events', () => {
+    expect(formatActionLabel('LOGIN_SUCCESS')).toBe('Signed in');
+    expect(formatActionLabel('LOGIN_BLOCKED_CIDR')).toBe('Blocked sign-in (off-network)');
+    expect(
+      summarizeAuditDiff(
+        { ip: '198.51.100.45', location: 'Dallas, TX, US', summary: 'IP: 198.51.100.45 | Location: Dallas, TX, US' },
+        'LOGIN_SUCCESS',
+      ),
+    ).toBe('Signed in from Dallas, TX, US');
+    expect(
+      formatLoginAuditLine({ ip: '198.51.100.45', location: 'Dallas, TX, US' }),
+    ).toBe('198.51.100.45 • Dallas, TX, US');
+    expect(
+      summarizeAuditDiff(
+        { ip: '203.0.113.40', location: 'Dallas, TX, US' },
+        'LOGIN_BLOCKED_CIDR',
+      ),
+    ).toBe('Blocked sign-in from Dallas, TX, US');
+    expect(
+      auditFieldChanges({ ip: '198.51.100.45', location: 'Dallas, TX, US', summary: 'IP: x | Location: y' }),
+    ).toEqual([]);
   });
 });
