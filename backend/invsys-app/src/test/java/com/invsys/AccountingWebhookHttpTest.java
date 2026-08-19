@@ -80,10 +80,59 @@ class AccountingWebhookHttpTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/public/webhooks/accounting/xero")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .header("X-Accounting-Signature", SECRET)
+                        .header("X-Accounting-Signature", hmac(body))
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("already_paid"));
+    }
+
+    @Test
+    void rawSharedSecretIsRejected() throws Exception {
+        String body = "{\"invoiceNumber\":\"INV-DOES-NOT-EXIST\"}";
+        mockMvc.perform(post("/api/v1/public/webhooks/accounting/xero")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Accounting-Signature", SECRET)
+                        .content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.title").value("INVALID_SIGNATURE"));
+    }
+
+    @Test
+    void missingInvoiceAndBadSignatureUseTheSameError() throws Exception {
+        String missing = "{\"invoiceNumber\":\"INV-ORACLE-MISS\"}";
+        String existing = "{\"invoiceNumber\":\"INV-ORACLE-HIT\"}";
+
+        UUID tenantId = testDataHelper.createTenant("Acct Oracle", "acct-o-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+        Customer customer = new Customer();
+        customer.setTenantId(tenantId);
+        customer.setName("Oracle Customer");
+        customer = customerRepository.save(customer);
+        Invoice invoice = new Invoice();
+        invoice.setTenantId(tenantId);
+        invoice.setCustomerId(customer.getId());
+        invoice.setNumber("INV-ORACLE-HIT");
+        invoice.setStatus("OPEN");
+        invoice.setSubtotal(new BigDecimal("10.00"));
+        invoice.setTax(BigDecimal.ZERO);
+        invoice.setTotal(new BigDecimal("10.00"));
+        invoice.setDueAt(Instant.now().plusSeconds(86400));
+        invoiceRepository.save(invoice);
+        TenantContext.clear();
+
+        mockMvc.perform(post("/api/v1/public/webhooks/accounting/xero")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Accounting-Signature", "deadbeef")
+                        .content(missing))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.title").value("INVALID_SIGNATURE"));
+
+        mockMvc.perform(post("/api/v1/public/webhooks/accounting/xero")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Accounting-Signature", "deadbeef")
+                        .content(existing))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.title").value("INVALID_SIGNATURE"));
     }
 
     private static String hmac(String body) throws Exception {

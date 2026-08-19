@@ -112,10 +112,15 @@ public class MediaController {
                 ? uploadService.requireUploadedByCurrentUser(id)
                 : uploadService.requireOwned(id);
         InputStream stream = uploadService.openContent(id);
+        String contentType = media.getContentType() == null ? "application/octet-stream" : media.getContentType();
+        boolean activeContent = contentType.toLowerCase().contains("svg")
+                || contentType.toLowerCase().contains("html")
+                || contentType.toLowerCase().contains("xml");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                .contentType(MediaType.parseMediaType(media.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, activeContent ? "attachment" : "inline")
+                .header("X-Content-Type-Options", "nosniff")
+                .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(media.getByteSize())
                 .body(new InputStreamResource(stream));
     }

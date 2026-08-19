@@ -55,15 +55,15 @@ invsys:
     secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
     path-style-access: ${MEDIA_PATH_STYLE:true}
     create-bucket-if-missing: ${MEDIA_CREATE_BUCKET:true}
-    allow-private-endpoints: ${MEDIA_ALLOW_PRIVATE_ENDPOINTS:true}
+    allow-private-endpoints: ${MEDIA_ALLOW_PRIVATE_ENDPOINTS:false}
   webhooks:
-    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:shopify_mock_secret}
-    easypost-secret: ${EASYPOST_WEBHOOK_SECRET:easypost_mock_secret}
-    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET:accounting_mock_secret}
-    stripe-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
+    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:}
+    easypost-secret: ${EASYPOST_WEBHOOK_SECRET:}
+    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET:}
+    stripe-secret: ${STRIPE_WEBHOOK_SECRET:}
   stripe:
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
-    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:whsec_mock_secret}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:}
   actuator:
     scrape-allowed-cidrs: ${ACTUATOR_SCRAPE_ALLOWED_CIDRS:127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
   admin:

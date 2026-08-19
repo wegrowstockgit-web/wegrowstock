@@ -80,7 +80,6 @@ public class UserController {
                 invitation.getEmail(),
                 roleCodes.isEmpty() ? request.role() : roleCodes.getFirst(),
                 roleCodes,
-                invitation.getTokenHash(),
                 result.rawToken(),
                 invitation.getExpiresAt());
     }
@@ -243,7 +242,6 @@ public class UserController {
             String email,
             String role,
             List<String> roles,
-            String tokenHash,
             String token,
             Instant expiresAt
     ) {

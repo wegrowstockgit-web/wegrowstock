@@ -72,6 +72,14 @@ class QuickBooksOnlineAdapterTest {
     }
 
     @Test
+    void pinsNonIntuitBaseUrlToSandboxHost() {
+        assertThat(QuickBooksOnlineAdapter.pinnedBaseUrl("http://169.254.169.254"))
+                .isEqualTo("https://sandbox-quickbooks.api.intuit.com");
+        assertThat(QuickBooksOnlineAdapter.pinnedBaseUrl("https://quickbooks.api.intuit.com/v3"))
+                .isEqualTo("https://quickbooks.api.intuit.com");
+    }
+
+    @Test
     void fallsBackToSandboxWhenDisconnected() {
         IntegrationCredentialRepository credentials = mock(IntegrationCredentialRepository.class);
         when(credentials.findByTenantIdAndSystem(eq(TENANT), eq("QUICKBOOKS"))).thenReturn(Optional.empty());

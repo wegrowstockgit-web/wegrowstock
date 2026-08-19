@@ -22,8 +22,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import com.invsys.domain.Payment;
 import com.invsys.modules.sales.domain.Invoice;
@@ -39,7 +41,14 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
     private final IntegrationFailurePublisher failurePublisher;
     private final AccountingHttpTransport httpTransport;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private static final Set<String> INTUIT_HOSTS = Set.of(
+            "quickbooks.api.intuit.com",
+            "sandbox-quickbooks.api.intuit.com");
+    private static final String SANDBOX_BASE_URL = "https://sandbox-quickbooks.api.intuit.com";
+
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
 
     public QuickBooksOnlineAdapter(IntegrationSyncLogRepository syncLogRepository,
                                    IntegrationCredentialRepository credentialRepository,
@@ -229,7 +238,11 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
                     if (parts.length < 3) {
                         return null;
                     }
-                    return new CredentialBundle(parts[0], parts[1], parts[2]);
+                    String realmId = parts[1] == null ? "" : parts[1].trim();
+                    if (!realmId.matches("[A-Za-z0-9-]{1,64}")) {
+                        return null;
+                    }
+                    return new CredentialBundle(parts[0], realmId, pinnedBaseUrl(parts[2]));
                 })
                 .filter(bundle -> bundle != null);
     }
@@ -266,6 +279,25 @@ public class QuickBooksOnlineAdapter implements AccountingSyncAdapter {
             return null;
         }
         return value.length() > 500 ? value.substring(0, 500) : value;
+    }
+
+    static String pinnedBaseUrl(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return SANDBOX_BASE_URL;
+        }
+        try {
+            URI uri = URI.create(raw.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+                return SANDBOX_BASE_URL;
+            }
+            String host = uri.getHost().toLowerCase(Locale.ROOT);
+            if (INTUIT_HOSTS.contains(host)) {
+                return "https://" + host;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // fall through to sandbox
+        }
+        return SANDBOX_BASE_URL;
     }
 
     private record CredentialBundle(String accessToken, String realmId, String baseUrl) {

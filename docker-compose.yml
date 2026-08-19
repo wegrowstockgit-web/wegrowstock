@@ -292,7 +292,7 @@ services:
       SPRING_AI_RETRY_MAX_ATTEMPTS: ${SPRING_AI_RETRY_MAX_ATTEMPTS:-1}
       SPRING_AI_GOOGLE_GENAI_CHAT_OPTIONS_MODEL: ${SPRING_AI_GOOGLE_GENAI_CHAT_OPTIONS_MODEL:-gemini-2.5-flash}
       COOKIE_SECURE: "false"
-      COOKIE_SAME_SITE: Lax
+      COOKIE_SAME_SITE: Strict
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_mock_secret}
@@ -300,7 +300,7 @@ services:
       EASYPOST_WEBHOOK_SECRET: ${EASYPOST_WEBHOOK_SECRET:-easypost_mock_secret}
       ACCOUNTING_WEBHOOK_SECRET: ${ACCOUNTING_WEBHOOK_SECRET:-accounting_mock_secret}
       PUBLIC_SIGNUP_ENABLED: "true"
-      EXPOSE_MAGIC_TOKEN: "true"
+      EXPOSE_MAGIC_TOKEN: ${EXPOSE_MAGIC_TOKEN:-false}
       TRUSTED_PROXY_CIDRS: "172.16.0.0/12,10.0.0.0/8"
       ACTUATOR_SCRAPE_ALLOWED_CIDRS: "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:5175,http://localhost:3003,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:5175,http://127.0.0.1:3003}
@@ -434,7 +434,7 @@ services:
       frontend-pos:
         condition: service_started
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
       # Control plane must not be reachable on the public interface. Geo $admin_allowed
       # cannot see the real client IP after Docker SNAT, so bind loopback explicitly.
       - "127.0.0.1:8081:8081"
@@ -455,7 +455,7 @@ services:
         VITE_ENABLE_CHATBOT: ${VITE_ENABLE_CHATBOT:-true}
     container_name: invsys-web
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
 
   frontend-admin:
     build:
@@ -472,7 +472,7 @@ services:
       dockerfile: apps/frontend_pos/Dockerfile
     container_name: invsys-pos-web
     ports:
-      - "3003:80"
+      - "127.0.0.1:3003:80"
 
 volumes:
   invsys_pgdata:

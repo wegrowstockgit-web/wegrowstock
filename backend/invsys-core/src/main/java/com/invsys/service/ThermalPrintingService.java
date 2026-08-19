@@ -146,6 +146,7 @@ public class ThermalPrintingService {
         if (printer.getIpAddress() == null || printer.getIpAddress().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "PRINTER_IP_REQUIRED", "Printer IP address is required");
         }
+        PrinterAddressValidator.assertSafePrinterTarget(printer.getIpAddress());
         int port = printer.getPort() != null ? printer.getPort() : 9100;
         byte[] payload = zpl.getBytes(StandardCharsets.UTF_8);
         try (Socket socket = new Socket()) {
@@ -185,6 +186,7 @@ public class ThermalPrintingService {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "PRINTER_IP_REQUIRED",
                             "Printer IP address is required");
                 }
+                PrinterAddressValidator.assertSafePrinterTarget(ipAddress);
                 if (port != null && (port < 1 || port > 65535)) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PORT", "Port must be between 1 and 65535");
                 }

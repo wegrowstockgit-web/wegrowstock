@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 
 @Component
@@ -18,21 +19,15 @@ public class ShopifyWebhookValidator {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] digest = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
-            String computed = Base64.getEncoder().encodeToString(digest);
-            return constantTimeEquals(computed, hmacHeader);
+            byte[] provided;
+            try {
+                provided = Base64.getDecoder().decode(hmacHeader.trim());
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+            return MessageDigest.isEqual(digest, provided);
         } catch (Exception ex) {
             return false;
         }
-    }
-
-    private boolean constantTimeEquals(String a, String b) {
-        if (a.length() != b.length()) {
-            return false;
-        }
-        int result = 0;
-        for (int i = 0; i < a.length(); i++) {
-            result |= a.charAt(i) ^ b.charAt(i);
-        }
-        return result == 0;
     }
 }

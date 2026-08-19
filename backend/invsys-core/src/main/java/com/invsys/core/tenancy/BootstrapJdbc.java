@@ -361,14 +361,18 @@ public class BootstrapJdbc {
         if (state == null || state.isBlank()) {
             return Optional.empty();
         }
-        Optional<OauthStateRow> row = jdbc.query(
+        return jdbc.query(
                 """
-                SELECT state, tenant_id, provider, payload::text AS payload, expires_at
-                FROM oauth_callback_states
+                DELETE FROM oauth_callback_states
                 WHERE state = ?
+                RETURNING state, tenant_id, provider, payload::text AS payload, expires_at
                 """,
                 rs -> {
                     if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    java.time.Instant expiresAt = rs.getTimestamp("expires_at").toInstant();
+                    if (expiresAt.isBefore(java.time.Instant.now())) {
                         return Optional.empty();
                     }
                     return Optional.of(new OauthStateRow(
@@ -376,11 +380,9 @@ public class BootstrapJdbc {
                             UUID.fromString(rs.getString("tenant_id")),
                             rs.getString("provider"),
                             rs.getString("payload"),
-                            rs.getTimestamp("expires_at").toInstant()));
+                            expiresAt));
                 },
                 state.trim());
-        row.ifPresent(r -> jdbc.update("DELETE FROM oauth_callback_states WHERE state = ?", r.state()));
-        return row;
     }
 
     public Optional<MagicLoginTokenRow> findMagicLoginTokenByHash(String tokenHash) {

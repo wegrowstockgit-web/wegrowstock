@@ -45,6 +45,21 @@ invsys:
     auto-seed: true
   jwt:
     allow-ephemeral: true
+  stripe:
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
+    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}}
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_mock}
+  easypost:
+    api-key: ${EASYPOST_API_KEY:easypost_mock_key}
+  shopify:
+    api-key: ${SHOPIFY_API_KEY:shopify_mock_key}
+  webhooks:
+    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:shopify_mock_secret}
+    easypost-secret: ${EASYPOST_WEBHOOK_SECRET:easypost_mock_secret}
+    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET:accounting_mock_secret}
+  media:
+    access-key: ${MEDIA_ACCESS_KEY:invsys}
+    secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
   security:
     cookie-secure: false
     cookie-same-site: Lax

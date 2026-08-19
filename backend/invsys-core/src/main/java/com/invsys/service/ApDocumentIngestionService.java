@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
@@ -21,6 +22,7 @@ import java.util.concurrent.Executor;
 public class ApDocumentIngestionService {
 
     private static final long MAX_BYTES = 15 * 1024 * 1024L;
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".pdf", ".png", ".jpg", ".jpeg", ".csv", ".txt");
 
     private final ApInvoiceIngestionRepository ingestionRepository;
     private final ObjectStorage objectStorage;
@@ -90,13 +92,14 @@ public class ApDocumentIngestionService {
     private static String extensionFor(String filename, String contentType) {
         if (filename != null && filename.contains(".")) {
             String ext = filename.substring(filename.lastIndexOf('.')).toLowerCase(Locale.ROOT);
-            if (ext.length() <= 8) {
-                return ext;
+            if (ALLOWED_EXTENSIONS.contains(ext)) {
+                return ext.equals(".jpeg") ? ".jpg" : ext;
             }
         }
-        return switch (contentType.toLowerCase(Locale.ROOT)) {
+        return switch (contentType == null ? "" : contentType.toLowerCase(Locale.ROOT)) {
             case "application/pdf" -> ".pdf";
-            case "text/csv", "text/plain" -> ".txt";
+            case "text/csv" -> ".csv";
+            case "text/plain" -> ".txt";
             case "image/png" -> ".png";
             case "image/jpeg" -> ".jpg";
             default -> ".bin";

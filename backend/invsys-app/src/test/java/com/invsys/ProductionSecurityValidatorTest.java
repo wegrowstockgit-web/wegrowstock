@@ -90,6 +90,35 @@ class ProductionSecurityValidatorTest {
     }
 
     @Test
+    void prodProfileFailsWhenMagicTokenExposureEnabled() {
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("prod");
+        ProductionSecurityValidator validator = new ProductionSecurityValidator(
+                env,
+                "whsec_live_real",
+                "whsec_platform_live",
+                "sk_live_real_key",
+                "EZAK_live",
+                "shopify_live",
+                "-----BEGIN PRIVATE KEY-----",
+                "-----BEGIN PUBLIC KEY-----",
+                "master-key-value",
+                false,
+                "shopify_live_whsec",
+                "easypost_live_whsec",
+                "accounting_live_whsec",
+                "media-live-secret",
+                "db-live-password",
+                true,
+                true,
+                liveGatewayProvider(),
+                liveProps());
+        assertThatThrownBy(() -> validator.run(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("expose-magic-token");
+    }
+
+    @Test
     void nonProdProfileSkipsChecks() {
         Environment env = new MockEnvironment();
         @SuppressWarnings("unchecked")
@@ -129,6 +158,7 @@ class ProductionSecurityValidatorTest {
                 "media-live-secret",
                 "db-live-password",
                 true,
+                false,
                 gateway,
                 props);
     }

@@ -28,7 +28,7 @@ import java.util.UUID;
 /** Dev/CI-only hooks (accrual run, labor clock). Never loaded under {@code prod}. */
 @RestController
 @RequestMapping("/api/v1/admin/test")
-@Profile({"dev", "test", "docker", "default"})
+@Profile({"dev", "test", "docker"})
 @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
 public class EnterpriseTestController {
 

@@ -128,13 +128,13 @@ invsys:
     public-key-pem: ${JWT_PUBLIC_KEY:}
     allow-ephemeral: ${JWT_ALLOW_EPHEMERAL:false}
   stripe:
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}
-    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:${STRIPE_WEBHOOK_SECRET:whsec_mock_secret}}
-    secret-key: ${STRIPE_SECRET_KEY:sk_test_mock}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    platform-webhook-secret: ${STRIPE_PLATFORM_WEBHOOK_SECRET:${STRIPE_WEBHOOK_SECRET:}}
+    secret-key: ${STRIPE_SECRET_KEY:}
     platform-fee-percent: 0.4
     connect-return-url: ${STRIPE_CONNECT_RETURN_URL:http://localhost:3000/settings/billing?stripe=success}
   easypost:
-    api-key: ${EASYPOST_API_KEY:easypost_mock_key}
+    api-key: ${EASYPOST_API_KEY:}
     # Ship-from defaults used by LiveEasyPostGateway (prod). Ignored by MockEasyPostGateway.
     default-from:
       name: ${EASYPOST_FROM_NAME:Demo Warehouse}
@@ -148,12 +148,12 @@ invsys:
       phone: ${EASYPOST_FROM_PHONE:}
       email: ${EASYPOST_FROM_EMAIL:}
   shopify:
-    api-key: ${SHOPIFY_API_KEY:shopify_mock_key}
+    api-key: ${SHOPIFY_API_KEY:}
     api-version: ${SHOPIFY_API_VERSION:2024-10}
   webhooks:
-    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:shopify_mock_secret}
-    easypost-secret: ${EASYPOST_WEBHOOK_SECRET:easypost_mock_secret}
-    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET:accounting_mock_secret}
+    shopify-secret: ${SHOPIFY_WEBHOOK_SECRET:}
+    easypost-secret: ${EASYPOST_WEBHOOK_SECRET:}
+    accounting-secret: ${ACCOUNTING_WEBHOOK_SECRET:}
   security:
     public-signup-enabled: ${PUBLIC_SIGNUP_ENABLED:false}
     expose-magic-token: ${EXPOSE_MAGIC_TOKEN:false}
@@ -223,8 +223,8 @@ invsys:
     region: ${MEDIA_REGION:us-east-1}
     endpoint: ${MEDIA_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MEDIA_PUBLIC_ENDPOINT:}
-    access-key: ${MEDIA_ACCESS_KEY:invsys}
-    secret-key: ${MEDIA_SECRET_KEY:invsyssecret}
+    access-key: ${MEDIA_ACCESS_KEY:}
+    secret-key: ${MEDIA_SECRET_KEY:}
     path-style-access: ${MEDIA_PATH_STYLE:true}
     create-bucket-if-missing: ${MEDIA_CREATE_BUCKET:true}
     max-bytes: 15728640

@@ -314,7 +314,16 @@ public class AuthService {
         String hash = hashToken(request.refreshToken());
         var stored = bootstrapJdbc.findRefreshTokenByHash(hash)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token"));
-        if (stored.revokedAt() != null || stored.expiresAt().isBefore(Instant.now())) {
+        if (stored.revokedAt() != null) {
+            TenantContext.setTenantId(stored.tenantId());
+            try {
+                refreshTokenRepository.revokeAllForUser(stored.userId(), Instant.now());
+            } finally {
+                TenantContext.clear();
+            }
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token");
+        }
+        if (stored.expiresAt().isBefore(Instant.now())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid refresh token");
         }
         // /auth/refresh bypasses JwtAuthFilter — bind + clear tenant explicitly for RLS + VT safety.

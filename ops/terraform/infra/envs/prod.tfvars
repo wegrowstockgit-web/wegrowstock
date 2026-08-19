@@ -11,8 +11,8 @@ data_plane_hostname    = "app.invsys.com"
 control_plane_hostname = "admin.invsys.com"
 data_plane_api_port    = 8080
 control_plane_api_port = 8081
-# Example VPN / office ranges — replace with real CIDRs; empty = allow-all (not recommended for prod).
+# REQUIRED before apply: empty allow-list opens the control plane to the world.
+# Replace with office / VPN CIDRs. Do not apply production with an empty list.
 control_plane_cidr_allowlist = [
-  # "10.0.0.0/8",
-  # "192.168.0.0/16",
+  # "203.0.113.0/24",
 ]

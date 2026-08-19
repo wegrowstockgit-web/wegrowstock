@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/v1/invitations")
 public class InvitationController {
@@ -20,10 +22,19 @@ public class InvitationController {
     }
 
     @PostMapping("/accept")
-    public User accept(@Valid @RequestBody AcceptInvitationRequest request) {
-        return userManagementService.acceptInvitation(request.token(), request.displayName(), request.password());
+    public InviteAcceptResponse accept(@Valid @RequestBody AcceptInvitationRequest request) {
+        User user = userManagementService.acceptInvitation(
+                request.token(), request.displayName(), request.password());
+        return InviteAcceptResponse.from(user);
     }
 
     public record AcceptInvitationRequest(@NotBlank String token, @NotBlank String displayName, @NotBlank String password) {
+    }
+
+    public record InviteAcceptResponse(UUID id, String email, String displayName, String status) {
+        static InviteAcceptResponse from(User user) {
+            return new InviteAcceptResponse(
+                    user.getId(), user.getEmail(), user.getDisplayName(), user.getStatus());
+        }
     }
 }

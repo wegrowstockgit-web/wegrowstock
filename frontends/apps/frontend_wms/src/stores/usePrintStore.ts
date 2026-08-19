@@ -43,7 +43,7 @@ function browserPrintPdf(payload: string | Blob): Promise<void> {
           // Mock / inline: render a printable HTML slip instead of a real PDF binary.
           const html = `<!doctype html><html><body style="font-family:sans-serif;padding:24px">
             <h1>Shipping Label</h1>
-            <p>${payload.startsWith('easypost_mock_') ? `Mock label: ${payload}` : 'PDF label'}</p>
+            <p>${payload.startsWith('easypost_mock_') ? `Mock label: ${escapeHtml(payload)}` : 'PDF label'}</p>
             <script>window.onload=()=>{window.print();}</script>
           </body></html>`;
           url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));

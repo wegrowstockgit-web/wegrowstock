@@ -179,7 +179,6 @@ public class UserManagementService {
 
         String inviteUrl = invitationEmailService.inviteUrl(token);
         invitationEmailService.sendInvitation(normalizedEmail, inviteUrl);
-        System.out.println("[DEV] Invitation link token for " + normalizedEmail + ": " + token);
         return new InviteResult(invitation, token);
     }
 

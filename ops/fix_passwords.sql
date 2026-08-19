@@ -1,3 +1,5 @@
+-- LOCAL DEMO ONLY. Do not run against shared/staging/prod databases.
+-- Resets demo personas to the well-known password "password123".
 -- Fix demo user passwords (password123) and re-activate core demo personas
 SELECT set_config('app.current_tenant', 'a0000000-0000-4000-8000-000000000001', false);
 UPDATE users

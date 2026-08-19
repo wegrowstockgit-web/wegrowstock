@@ -65,6 +65,32 @@ describe('usePrintStore', () => {
     expect(useStore.getState().lastPrintError).toContain('printer offline');
   });
 
+  it('escapes mock EasyPost payload before building printable HTML', async () => {
+    const createObjectURL = vi.fn(() => 'blob:mock-label');
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('Blob', class MockBlob {
+      constructor(public parts: unknown[]) {}
+    });
+    const appendSpy = vi.spyOn(document.body, 'appendChild');
+    const useStore = createPrintStore(mockAgent());
+
+    const route = await useStore.getState().executePrint(
+      'easypost_mock_<img src=x onerror=alert(1)>',
+      'PDF',
+    );
+
+    expect(route).toBe('browser');
+    expect(appendSpy).toHaveBeenCalled();
+    const blob = createObjectURL.mock.calls[0]?.[0] as { parts?: unknown[] };
+    const html = String(blob?.parts?.[0] ?? '');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+  });
+
   it('lists printers from the local agent', async () => {
     const agent = mockAgent();
     const useStore = createPrintStore(agent);

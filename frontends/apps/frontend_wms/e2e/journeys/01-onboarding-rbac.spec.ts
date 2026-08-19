@@ -42,10 +42,9 @@ test.describe('Journey 01: Onboarding & RBAC boundary', () => {
         email: string;
         role: string;
         token: string;
-        tokenHash: string;
       };
       expect(inviteBody.token).toBeTruthy();
-      expect(inviteBody.tokenHash).toBeTruthy();
+      expect(inviteBody).not.toHaveProperty('tokenHash');
       expect(inviteBody.email).toBe(pickerEmail);
       expect(inviteBody.role).toBe('PICKER');
       await expect(admin.page.getByTestId(`pending-invite-${pickerEmail}`)).toBeVisible({

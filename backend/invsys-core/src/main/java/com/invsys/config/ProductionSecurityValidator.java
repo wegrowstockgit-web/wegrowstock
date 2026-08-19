@@ -55,6 +55,7 @@ public class ProductionSecurityValidator implements ApplicationRunner {
     private final String mediaSecretKey;
     private final String dbPassword;
     private final boolean cookieSecure;
+    private final boolean exposeMagicToken;
     private final ObjectProvider<EasyPostGateway> easyPostGateway;
     private final EasyPostProperties easyPostProperties;
 
@@ -75,6 +76,7 @@ public class ProductionSecurityValidator implements ApplicationRunner {
             @Value("${invsys.media.secret-key:}") String mediaSecretKey,
             @Value("${spring.datasource.password:}") String dbPassword,
             @Value("${invsys.security.cookie-secure:true}") boolean cookieSecure,
+            @Value("${invsys.security.expose-magic-token:false}") boolean exposeMagicToken,
             ObjectProvider<EasyPostGateway> easyPostGateway,
             EasyPostProperties easyPostProperties) {
         this.environment = environment;
@@ -93,6 +95,7 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         this.mediaSecretKey = mediaSecretKey;
         this.dbPassword = dbPassword;
         this.cookieSecure = cookieSecure;
+        this.exposeMagicToken = exposeMagicToken;
         this.easyPostGateway = easyPostGateway;
         this.easyPostProperties = easyPostProperties;
     }
@@ -153,6 +156,9 @@ public class ProductionSecurityValidator implements ApplicationRunner {
         }
         if (publicSignupEnabled) {
             errors.add("invsys.security.public-signup-enabled must be false in production");
+        }
+        if (exposeMagicToken) {
+            errors.add("invsys.security.expose-magic-token must be false in production");
         }
         if (easyPostProperties.defaultFromAddress() == null) {
             errors.add("EASYPOST_FROM_STREET1/CITY/STATE/ZIP (invsys.easypost.default-from.*) must be set for live label purchase");

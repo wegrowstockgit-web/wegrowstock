@@ -47,7 +47,7 @@ public class AccountingPaymentWebhookService {
                                            OutboxService outboxService,
                                            IntegrationCredentialRepository credentialRepository,
                                            CredentialVaultService credentialVaultService,
-                                           @Value("${invsys.webhooks.accounting-secret:accounting_mock_secret}")
+                                           @Value("${invsys.webhooks.accounting-secret:}")
                                            String fallbackWebhookSecret,
                                            @Lazy AccountingPaymentWebhookService self) {
         this.bootstrapJdbc = bootstrapJdbc;
@@ -76,21 +76,21 @@ public class AccountingPaymentWebhookService {
 
         String invoiceKey = extractInvoiceKey(payload);
         if (invoiceKey == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "MISSING_INVOICE",
-                    "Payload must include invoice number or id");
+            throw rejectWebhook();
         }
 
-        var lookup = bootstrapJdbc.findInvoiceByNumberOrId(invoiceKey)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice not found"));
+        var lookup = bootstrapJdbc.findInvoiceByNumberOrId(invoiceKey);
+        if (lookup.isEmpty()) {
+            throw rejectWebhook();
+        }
 
-        TenantContext.setTenantId(lookup.tenantId());
+        TenantContext.setTenantId(lookup.get().tenantId());
         try {
-            String secret = resolveWebhookSecret(lookup.tenantId(), normalized);
+            String secret = resolveWebhookSecret(lookup.get().tenantId(), normalized);
             if (!isValidSignature(rawBody, signatureHeader, secret)) {
-                throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_SIGNATURE",
-                        "Invalid accounting webhook signature");
+                throw rejectWebhook();
             }
-            return self.applyPayment(lookup.id(), normalized);
+            return self.applyPayment(lookup.get().id(), normalized);
         } finally {
             TenantContext.clear();
         }
@@ -98,7 +98,9 @@ public class AccountingPaymentWebhookService {
 
     /** Backward-compatible entry used by tests that already signed with the platform secret. */
     public Map<String, String> handlePayment(String provider, Map<String, Object> payload) {
-        return handlePayment(provider, payload, null, fallbackWebhookSecret);
+        String invoiceKey = extractInvoiceKey(payload);
+        String rawBody = invoiceKey == null ? "{}" : "{\"invoiceNumber\":\"" + invoiceKey + "\"}";
+        return handlePayment(provider, payload, rawBody, hmacHex(rawBody, fallbackWebhookSecret));
     }
 
     @Transactional
@@ -138,23 +140,35 @@ public class AccountingPaymentWebhookService {
         if (secret == null || secret.isBlank() || signatureHeader == null || signatureHeader.isBlank()) {
             return false;
         }
-        String provided = signatureHeader.trim();
-        if (provided.equals(secret)) {
-            return true;
-        }
         if (rawBody == null) {
             return false;
+        }
+        String computed = hmacHex(rawBody, secret);
+        if (computed.isEmpty()) {
+            return false;
+        }
+        String provided = signatureHeader.trim().toLowerCase(Locale.ROOT);
+        return MessageDigest.isEqual(
+                computed.getBytes(StandardCharsets.US_ASCII),
+                provided.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    static String hmacHex(String rawBody, String secret) {
+        if (rawBody == null || secret == null || secret.isBlank()) {
+            return "";
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            String computed = HexFormat.of().formatHex(mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8)));
-            return MessageDigest.isEqual(
-                    computed.getBytes(StandardCharsets.US_ASCII),
-                    provided.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.US_ASCII));
+            return HexFormat.of().formatHex(mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
-            return false;
+            return "";
         }
+    }
+
+    private static ApiException rejectWebhook() {
+        return new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_SIGNATURE",
+                "Invalid accounting webhook signature");
     }
 
     private static String extractInvoiceKey(Map<String, Object> payload) {

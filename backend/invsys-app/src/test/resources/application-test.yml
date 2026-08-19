@@ -54,7 +54,19 @@ invsys:
     max-bytes: 15728640
     avatar-max-bytes: 2097152
     evidence-max-bytes: 10485760
+    access-key: invsys
+    secret-key: invsyssecret
+  stripe:
+    webhook-secret: whsec_mock_secret
+    platform-webhook-secret: whsec_mock_secret
+    secret-key: sk_test_mock
+  easypost:
+    api-key: easypost_mock_key
+  shopify:
+    api-key: shopify_mock_key
   webhooks:
+    shopify-secret: shopify_mock_secret
+    easypost-secret: easypost_mock_secret
     accounting-secret: accounting_mock_secret
   integration:
     accounting:

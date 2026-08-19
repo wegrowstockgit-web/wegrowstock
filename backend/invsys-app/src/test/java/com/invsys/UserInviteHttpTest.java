@@ -56,6 +56,7 @@ class UserInviteHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.role").value("PICKER"))
                 .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.tokenHash").doesNotExist())
                 .andReturn();
 
         JsonNode body = objectMapper.readTree(created.getResponse().getContentAsString());
@@ -105,7 +106,12 @@ class UserInviteHttpTest extends AbstractIntegrationTest {
                         .content("""
                                 {"token":"%s","displayName":"Floor Picker","password":"password123"}
                                 """.formatted(token)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("picker@" + slug + ".test"))
+                .andExpect(jsonPath("$.displayName").value("Floor Picker"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.terminalPinHash").doesNotExist())
+                .andExpect(jsonPath("$.tokenHash").doesNotExist());
 
         TokenResponse picker = authService.login(new com.invsys.core.security.dto.LoginRequest(
                 "picker@" + slug + ".test", "password123"));
@@ -149,7 +155,6 @@ class UserInviteHttpTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + owner.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.emailDispatched").value(true))
                 .andExpect(jsonPath("$.inviteUrl").isNotEmpty())
                 .andReturn();
         Instant newExpiry = Instant.parse(
