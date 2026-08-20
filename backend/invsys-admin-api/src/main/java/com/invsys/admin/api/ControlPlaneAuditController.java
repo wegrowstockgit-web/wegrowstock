@@ -22,7 +22,8 @@ public class ControlPlaneAuditController {
 
     @GetMapping
     public List<PlatformAuditQueryService.AuditLogRow> list(
-            @RequestParam(defaultValue = "50") int limit) {
-        return platformAuditQueryService.listRecent(limit);
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "false") boolean impersonationOnly) {
+        return platformAuditQueryService.listRecent(limit, impersonationOnly);
     }
 }

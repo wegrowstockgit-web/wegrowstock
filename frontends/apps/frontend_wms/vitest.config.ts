@@ -81,6 +81,7 @@ export default defineConfig({
         'src/features/settings/posSettingsAccess.ts',
         'src/features/settings/RolePermissionsMatrix.tsx',
         'src/hooks/useEntitlement.ts',
+        'src/hooks/useFeatureFlag.ts',
         'src/hooks/useCurrentNetwork.ts',
         'src/components/auth/EnterpriseRouteGate.tsx',
         'src/components/auth/ModuleRouteGate.tsx',

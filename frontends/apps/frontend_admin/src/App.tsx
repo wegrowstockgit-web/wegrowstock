@@ -11,6 +11,7 @@ import { PlatformAuditTrail } from '@/features/audit/PlatformAuditTrail';
 import { ShardRoutingPanel } from '@/features/infrastructure/ShardRoutingPanel';
 import { DeadLetterQueuePanel } from '@/features/operations/DeadLetterQueuePanel';
 import { ConcurrencyDashboard } from '@/features/telemetry/ConcurrencyDashboard';
+import { FeatureFlagPanel } from '@/features/flags/FeatureFlagPanel';
 import { GlobalCompliancePanel } from '@/features/compliance/GlobalCompliancePanel';
 import { PlatformPackagingPanel } from '@/features/packaging/PlatformPackagingPanel';
 import { useAdminSession } from '@/features/auth/adminSession';
@@ -38,6 +39,7 @@ export function App() {
           <Route path="shards" element={<ShardRoutingPanel />} />
           <Route path="operations/dlq" element={<DeadLetterQueuePanel />} />
           <Route path="telemetry" element={<ConcurrencyDashboard />} />
+          <Route path="flags" element={<FeatureFlagPanel />} />
           <Route path="compliance" element={<GlobalCompliancePanel />} />
           <Route path="reports/commercial" element={<AdminCommercialReports />} />
           <Route path="reports/health" element={<AdminHealthReports />} />

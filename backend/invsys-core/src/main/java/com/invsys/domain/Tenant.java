@@ -32,6 +32,12 @@ public class Tenant {
     @Column(name = "stripe_customer_id", length = 255)
     private String stripeCustomerId;
 
+    @Column(name = "custom_rate_limit")
+    private Integer customRateLimit;
+
+    @Column(name = "is_throttled", nullable = false)
+    private boolean throttled;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -98,6 +104,22 @@ public class Tenant {
 
     public void setStripeCustomerId(String stripeCustomerId) {
         this.stripeCustomerId = stripeCustomerId;
+    }
+
+    public Integer getCustomRateLimit() {
+        return customRateLimit;
+    }
+
+    public void setCustomRateLimit(Integer customRateLimit) {
+        this.customRateLimit = customRateLimit;
+    }
+
+    public boolean isThrottled() {
+        return throttled;
+    }
+
+    public void setThrottled(boolean throttled) {
+        this.throttled = throttled;
     }
 
     public Instant getCreatedAt() {

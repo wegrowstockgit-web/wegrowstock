@@ -51,10 +51,32 @@ public class BootstrapJdbc {
 
     public boolean isTenantSuspended(UUID tenantId) {
         Boolean suspended = jdbc.query(
-                "SELECT status = 'SUSPENDED' FROM tenants WHERE id = ?",
+                "SELECT status IN ('SUSPENDED', 'PURGED') FROM tenants WHERE id = ?",
                 rs -> rs.next() && rs.getBoolean(1),
                 tenantId);
         return Boolean.TRUE.equals(suspended);
+    }
+
+    public void updateTenantThrottle(UUID tenantId, Integer customRateLimit, boolean throttled) {
+        jdbc.update("""
+                UPDATE tenants
+                   SET custom_rate_limit = ?, is_throttled = ?, updated_at = NOW()
+                 WHERE id = ?
+                """, customRateLimit, throttled, tenantId);
+    }
+
+    public TenantThrottleRow findTenantThrottle(UUID tenantId) {
+        return jdbc.query(
+                "SELECT custom_rate_limit, is_throttled FROM tenants WHERE id = ?",
+                rs -> {
+                    if (!rs.next()) {
+                        return TenantThrottleRow.OPEN;
+                    }
+                    int limit = rs.getInt("custom_rate_limit");
+                    Integer custom = rs.wasNull() ? null : limit;
+                    return new TenantThrottleRow(custom, rs.getBoolean("is_throttled"));
+                },
+                tenantId);
     }
 
     public void updateTenantStatus(UUID tenantId, String status) {
@@ -922,6 +944,10 @@ public class BootstrapJdbc {
             String slug,
             String status
     ) {
+    }
+
+    public record TenantThrottleRow(Integer customRateLimit, boolean throttled) {
+        public static final TenantThrottleRow OPEN = new TenantThrottleRow(null, false);
     }
 
     public record TenantSubscriptionRow(

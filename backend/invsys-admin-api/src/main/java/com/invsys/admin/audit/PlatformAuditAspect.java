@@ -69,8 +69,8 @@ public class PlatformAuditAspect {
         String ip = resolveClientIp();
 
         jdbc.update("""
-                INSERT INTO platform_audit_logs (id, admin_id, admin_email, action, target_tenant_id, diff_json, ip_address)
-                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?)
+                INSERT INTO platform_audit_logs (id, admin_id, admin_email, action, target_tenant_id, diff_json, ip_address, actor_type)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?)
                 """,
                 UUID.randomUUID(),
                 adminId,
@@ -78,7 +78,8 @@ public class PlatformAuditAspect {
                 platformAudit.action(),
                 targetTenantId,
                 diffJson,
-                ip);
+                ip,
+                actorType(platformAudit));
     }
 
     private static UUID resolveTenantId(ProceedingJoinPoint joinPoint, String paramName) {
@@ -156,5 +157,13 @@ public class PlatformAuditAspect {
             return forwarded.split(",")[0].trim();
         }
         return request.getRemoteAddr();
+    }
+
+    private static String actorType(PlatformAudit platformAudit) {
+        if ("TENANT_IMPERSONATE".equals(platformAudit.action())) {
+            return "PLATFORM_ADMIN_IMPERSONATION";
+        }
+        String configured = platformAudit.actorType();
+        return configured == null || configured.isBlank() ? "PLATFORM_ADMIN" : configured;
     }
 }

@@ -74,3 +74,23 @@ export type PlatformTierDefinition = {
   defaultModules: AppModule[];
   updatedAt: string;
 };
+
+export type FeatureFlagDto = {
+  id: string;
+  flagKey: string;
+  description: string | null;
+  isGlobal: boolean;
+  createdAt: string;
+  tenants?: TenantFeatureFlagOverrideDto[];
+};
+
+export type TenantFeatureFlagOverrideDto = {
+  tenantId: string;
+  enabled: boolean;
+};
+
+export type TenantThrottleRequestDto = {
+  tenantId: string;
+  customRateLimit?: number;
+  isThrottled: boolean;
+};

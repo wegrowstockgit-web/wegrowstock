@@ -1,5 +1,6 @@
 package com.invsys.core.security;
 
+import com.invsys.config.TenantThrottleFilter;
 import com.invsys.core.security.oidc.OidcLoginSuccessHandler;
 import com.invsys.core.security.oidc.TenantClientRegistrationRepository;
 import com.invsys.core.tenancy.SuspendedTenantAccessFilter;
@@ -24,6 +25,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final SuspendedTenantAccessFilter suspendedTenantAccessFilter;
+    private final TenantThrottleFilter tenantThrottleFilter;
     private final WarehouseAccessFilter warehouseAccessFilter;
     private final RedisIdempotencyFilter redisIdempotencyFilter;
     private final UnauthorizedEntryPoint unauthorizedEntryPoint;
@@ -35,6 +37,7 @@ public class SecurityConfig {
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           SuspendedTenantAccessFilter suspendedTenantAccessFilter,
+                          TenantThrottleFilter tenantThrottleFilter,
                           WarehouseAccessFilter warehouseAccessFilter,
                           RedisIdempotencyFilter redisIdempotencyFilter,
                           UnauthorizedEntryPoint unauthorizedEntryPoint,
@@ -45,6 +48,7 @@ public class SecurityConfig {
                           @Value("${invsys.security.public-signup-enabled:false}") boolean publicSignupEnabled) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.suspendedTenantAccessFilter = suspendedTenantAccessFilter;
+        this.tenantThrottleFilter = tenantThrottleFilter;
         this.warehouseAccessFilter = warehouseAccessFilter;
         this.redisIdempotencyFilter = redisIdempotencyFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
@@ -119,7 +123,8 @@ public class SecurityConfig {
                         .successHandler(oidcLoginSuccessHandler))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(suspendedTenantAccessFilter, JwtAuthFilter.class)
-                .addFilterAfter(warehouseAccessFilter, SuspendedTenantAccessFilter.class)
+                .addFilterAfter(tenantThrottleFilter, SuspendedTenantAccessFilter.class)
+                .addFilterAfter(warehouseAccessFilter, TenantThrottleFilter.class)
                 .addFilterAfter(redisIdempotencyFilter, WarehouseAccessFilter.class);
         return http.build();
     }

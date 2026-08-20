@@ -36,13 +36,8 @@ public class AdminTelemetryService {
         List<TenantTelemetryView> result = new ArrayList<>();
         for (BootstrapJdbc.TenantWithSubscriptionRow t : tenants) {
             double multiplier = bootstrapJdbc.findRateCapacityMultiplier(t.tenantId());
-            result.add(new TenantTelemetryView(
-                    t.tenantId(),
-                    t.slug(),
-                    t.status(),
-                    12.5, // placeholder p50 latency ms
-                    45.0, // placeholder p95 latency ms
-                    multiplier));
+            BootstrapJdbc.TenantThrottleRow throttle = bootstrapJdbc.findTenantThrottle(t.tenantId());
+            result.add(toView(t.tenantId(), t.slug(), t.status(), multiplier, throttle));
         }
         return result;
     }
@@ -68,15 +63,40 @@ public class AdminTelemetryService {
                 tenantId, capacityMultiplier, updatedBy);
 
         distributedRateLimiter.setTenantCapacityMultiplier(tenantId, capacityMultiplier);
+        return currentView(tenantId, capacityMultiplier);
+    }
 
+    @Transactional
+    public TenantTelemetryView setThrottle(UUID tenantId, Integer customRateLimit, boolean throttled) {
+        if (customRateLimit != null && customRateLimit <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_RATE_LIMIT",
+                    "customRateLimit must be > 0 when set");
+        }
+        bootstrapJdbc.findTenantNameSlugStatus(tenantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TENANT_NOT_FOUND", "Tenant not found"));
+
+        bootstrapJdbc.updateTenantThrottle(tenantId, customRateLimit, throttled);
+        distributedRateLimiter.setTenantThrottle(tenantId, throttled, customRateLimit);
+        return currentView(tenantId, bootstrapJdbc.findRateCapacityMultiplier(tenantId));
+    }
+
+    private TenantTelemetryView currentView(UUID tenantId, double multiplier) {
         BootstrapJdbc.TenantNameSlugStatusRow tenant = bootstrapJdbc.findTenantNameSlugStatus(tenantId).orElseThrow();
+        BootstrapJdbc.TenantThrottleRow throttle = bootstrapJdbc.findTenantThrottle(tenantId);
+        return toView(tenant.tenantId(), tenant.slug(), tenant.status(), multiplier, throttle);
+    }
+
+    private static TenantTelemetryView toView(UUID tenantId, String slug, String status,
+                                              double multiplier, BootstrapJdbc.TenantThrottleRow throttle) {
         return new TenantTelemetryView(
-                tenant.tenantId(),
-                tenant.slug(),
-                tenant.status(),
+                tenantId,
+                slug,
+                status,
                 12.5,
                 45.0,
-                capacityMultiplier);
+                multiplier,
+                throttle == null ? null : throttle.customRateLimit(),
+                throttle != null && throttle.throttled());
     }
 
     private static UUID currentAdminId() {
@@ -93,7 +113,9 @@ public class AdminTelemetryService {
             String status,
             double p50LatencyMs,
             double p95LatencyMs,
-            double capacityMultiplier
+            double capacityMultiplier,
+            Integer customRateLimit,
+            boolean isThrottled
     ) {
     }
 }

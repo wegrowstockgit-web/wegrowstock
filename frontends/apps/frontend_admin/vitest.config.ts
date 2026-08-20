@@ -15,7 +15,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       reporter: ['text', 'html'],
-      include: ['src/features/tenants/**'],
+      include: ['src/features/tenants/**', 'src/features/flags/**', 'src/features/telemetry/**', 'src/features/audit/**'],
     },
   },
 });

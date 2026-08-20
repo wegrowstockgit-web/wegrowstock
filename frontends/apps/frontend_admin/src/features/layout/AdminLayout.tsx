@@ -9,6 +9,7 @@ import {
   Building2,
   CreditCard,
   Database,
+  Flag,
   Gauge,
   Layers,
   LogOut,
@@ -55,8 +56,9 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'Operations',
+    label: 'Infrastructure',
     items: [
+      { to: '/flags', label: 'Feature Flags', icon: Flag },
       { to: '/operations/dlq', label: 'Dead Letter Queue', icon: AlertTriangle },
       { to: '/telemetry', label: 'Concurrency', icon: Gauge },
       { to: '/shards', label: 'Shard Routing', icon: Database },

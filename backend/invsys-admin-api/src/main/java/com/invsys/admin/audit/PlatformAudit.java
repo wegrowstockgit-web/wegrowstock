@@ -15,4 +15,7 @@ public @interface PlatformAudit {
 
     /** Method parameter name holding the target tenant UUID (optional). */
     String tenantIdParam() default "";
+
+    /** SOC 2 actor classification written to {@code platform_audit_logs.actor_type}. */
+    String actorType() default "PLATFORM_ADMIN";
 }

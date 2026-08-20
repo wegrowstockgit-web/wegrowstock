@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -39,8 +40,22 @@ public class ControlPlaneTelemetryController {
         return adminTelemetryService.setRateLimit(tenantId, request.capacityMultiplier());
     }
 
+    @PatchMapping("/tenants/{tenantId}/throttle")
+    @PlatformAudit(action = "TENANT_THROTTLE", tenantIdParam = "tenantId")
+    public AdminTelemetryService.TenantTelemetryView setThrottle(
+            @PathVariable UUID tenantId,
+            @Valid @RequestBody ThrottleRequest request) {
+        return adminTelemetryService.setThrottle(tenantId, request.customRateLimit(), request.isThrottled());
+    }
+
     public record RateLimitRequest(
             @NotNull Double capacityMultiplier
+    ) {
+    }
+
+    public record ThrottleRequest(
+            Integer customRateLimit,
+            @NotNull Boolean isThrottled
     ) {
     }
 }

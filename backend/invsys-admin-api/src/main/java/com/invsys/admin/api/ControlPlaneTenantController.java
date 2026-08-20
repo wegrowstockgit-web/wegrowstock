@@ -65,7 +65,8 @@ public class ControlPlaneTenantController {
     }
 
     @PostMapping("/{tenantId}/impersonate")
-    @PlatformAudit(action = "TENANT_IMPERSONATE", tenantIdParam = "tenantId")
+    @PlatformAudit(action = "TENANT_IMPERSONATE", tenantIdParam = "tenantId",
+            actorType = "PLATFORM_ADMIN_IMPERSONATION")
     public AdminImpersonationService.ImpersonationResponse impersonate(@PathVariable UUID tenantId) {
         return adminImpersonationService.impersonate(tenantId);
     }
@@ -82,6 +83,12 @@ public class ControlPlaneTenantController {
     @PlatformAudit(action = "TENANT_CLONE_SANDBOX", tenantIdParam = "tenantId")
     public AdminSandboxProvisioningService.SandboxCredentials cloneSandbox(@PathVariable UUID tenantId) {
         return adminSandboxProvisioningService.cloneSandbox(tenantId);
+    }
+
+    @PostMapping("/{tenantId}/purge")
+    @PlatformAudit(action = "TENANT_PURGE", tenantIdParam = "tenantId")
+    public AdminTenantLifecycleService.TenantPurgeView purge(@PathVariable UUID tenantId) {
+        return adminTenantLifecycleService.purgeTenantData(tenantId);
     }
 
     public record ReplaceModulesRequest(
