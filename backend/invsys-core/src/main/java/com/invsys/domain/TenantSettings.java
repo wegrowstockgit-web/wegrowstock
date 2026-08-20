@@ -40,6 +40,9 @@ public class TenantSettings extends TenantScopedEntity {
     @Column(name = "predictive_replenishment_enabled", nullable = false)
     private boolean predictiveReplenishmentEnabled = true;
 
+    @Column(name = "desktop_idle_timeout_minutes", nullable = false)
+    private int desktopIdleTimeoutMinutes = 30;
+
     public Map<String, Object> getSettings() {
         return settings;
     }
@@ -100,6 +103,16 @@ public class TenantSettings extends TenantScopedEntity {
         this.predictiveReplenishmentEnabled = predictiveReplenishmentEnabled;
     }
 
+    public int getDesktopIdleTimeoutMinutes() {
+        return desktopIdleTimeoutMinutes;
+    }
+
+    public void setDesktopIdleTimeoutMinutes(Integer desktopIdleTimeoutMinutes) {
+        this.desktopIdleTimeoutMinutes = desktopIdleTimeoutMinutes != null
+                ? desktopIdleTimeoutMinutes
+                : 30;
+    }
+
     public static TenantSettings withDefaults(UUID tenantId) {
         TenantSettings ts = new TenantSettings();
         ts.setTenantId(tenantId);
@@ -128,7 +141,9 @@ public class TenantSettings extends TenantScopedEntity {
         defaults.put("pos_default_currency", "USD");
         defaults.put("pos_require_blind_closeout", false);
         defaults.put("pos_enable_cfdi_invoicing", false);
+        defaults.put("desktop_idle_timeout_minutes", 30);
         ts.setSettings(defaults);
+        ts.setDesktopIdleTimeoutMinutes(30);
         return ts;
     }
 

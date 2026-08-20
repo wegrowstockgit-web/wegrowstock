@@ -11,8 +11,10 @@ import com.invsys.core.security.dto.TokenResponse;
 import com.invsys.core.security.dto.WarehouseLoginRequest;
 import com.invsys.core.common.ApiException;
 import com.invsys.config.JwtProperties;
+import com.invsys.api.dto.TenantSettingsDto;
 import com.invsys.domain.RefreshToken;
 import com.invsys.domain.User;
+import com.invsys.domain.TenantSettings;
 import com.invsys.domain.NetworkAccessLevel;
 import com.invsys.media.MediaUrlValidator;
 import com.invsys.repository.RefreshTokenRepository;
@@ -20,6 +22,7 @@ import com.invsys.repository.TenantRepository;
 import com.invsys.repository.UserRepository;
 import com.invsys.repository.UserRoleRepository;
 import com.invsys.repository.VehicleAssignmentRepository;
+import com.invsys.repository.TenantSettingsRepository;
 import com.invsys.service.RolePermissionService;
 import com.invsys.service.TenantOnboardingService;
 import com.invsys.service.TenantSubscriptionService;
@@ -69,6 +72,7 @@ public class AuthService {
     private final LoginSecurityService loginSecurityService;
     private final TerminalBiometricService terminalBiometricService;
     private final AuthService self;
+    private final TenantSettingsRepository tenantSettingsRepository;
 
     public AuthService(TenantOnboardingService onboardingService,
                        BootstrapJdbc bootstrapJdbc,
@@ -91,7 +95,8 @@ public class AuthService {
                        GeoIpService geoIpService,
                        LoginSecurityService loginSecurityService,
                        @Lazy TerminalBiometricService terminalBiometricService,
-                       @Lazy AuthService self) {
+                       @Lazy AuthService self,
+                       TenantSettingsRepository tenantSettingsRepository) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
         this.tenantRepository = tenantRepository;
@@ -114,6 +119,7 @@ public class AuthService {
         this.loginSecurityService = loginSecurityService;
         this.terminalBiometricService = terminalBiometricService;
         this.self = self;
+        this.tenantSettingsRepository = tenantSettingsRepository;
     }
 
     public TokenResponse signup(SignupRequest request) {
@@ -621,7 +627,36 @@ public class AuthService {
                 grantedPermissions,
                 false,
                 tenantSubscriptionService.getEnabledModules(user.getTenantId()),
-                tenantSubscriptionService.getCommercialTier(user.getTenantId()).name());
+                tenantSubscriptionService.getCommercialTier(user.getTenantId()).name(),
+                desktopIdleTimeoutMinutes(user.getTenantId()));
+    }
+
+    private int desktopIdleTimeoutMinutes(UUID tenantId) {
+        return tenantSettingsRepository.findByTenantId(tenantId)
+                .map(TenantSettings::getDesktopIdleTimeoutMinutes)
+                .filter(TenantSettingsDto.ALLOWED_DESKTOP_IDLE_MINUTES::contains)
+                .orElse(TenantSettingsDto.DEFAULT_DESKTOP_IDLE_MINUTES);
+    }
+
+    /**
+     * Step-up verification for the office idle overlay. Does not rotate session cookies.
+     */
+    public void reauthenticateDesktop(String password, String mfaCredentialId, String mfaChallenge, String mfaSignature) {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "User not found"));
+        boolean hasAssertion = mfaCredentialId != null && !mfaCredentialId.isBlank()
+                && mfaChallenge != null && !mfaChallenge.isBlank()
+                && mfaSignature != null && !mfaSignature.isBlank();
+        if (hasAssertion) {
+            terminalBiometricService.verifyLoginMfa(userId, mfaCredentialId, mfaChallenge, mfaSignature);
+            return;
+        }
+        if (password == null || password.isBlank()
+                || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PASSWORD", "Password is incorrect");
+        }
     }
 
     /**

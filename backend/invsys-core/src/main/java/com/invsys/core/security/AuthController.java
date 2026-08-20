@@ -1,5 +1,6 @@
 package com.invsys.core.security;
 
+import com.invsys.core.security.dto.DesktopUnlockRequest;
 import com.invsys.core.security.dto.LoginRequest;
 import com.invsys.core.security.dto.MagicLoginConsumeRequest;
 import com.invsys.core.security.dto.MagicLoginRequest;
@@ -149,6 +150,23 @@ public class AuthController {
     @PreAuthorize("isAuthenticated()")
     public MeResponse me() {
         return authService.currentUser();
+    }
+
+    @GetMapping("/desktop-unlock/options")
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, Object> desktopUnlockOptions() {
+        return terminalBiometricService.createDesktopUnlockOptions();
+    }
+
+    @PostMapping("/desktop-unlock")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> desktopUnlock(@RequestBody(required = false) DesktopUnlockRequest request) {
+        DesktopUnlockRequest body = request == null
+                ? new DesktopUnlockRequest(null, null, null, null)
+                : request;
+        authService.reauthenticateDesktop(
+                body.password(), body.mfaCredentialId(), body.mfaChallenge(), body.mfaSignature());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/magic-login")

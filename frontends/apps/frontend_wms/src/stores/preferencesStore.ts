@@ -21,6 +21,9 @@ interface PreferencesState {
   setTableDensity: (gridId: string, mode: DensityMode) => void;
   language: SupportedLanguage;
   setLanguage: (language: SupportedLanguage) => void;
+  /** Tenant-admin office idle timeout (minutes). Not persisted locally. */
+  desktopIdleTimeoutMinutes: number;
+  setDesktopIdleTimeoutMinutes: (minutes: number) => void;
   /** When true, prompt for interactive driver.js tour after login. */
   showOnboardingTour: boolean;
   setShowOnboardingTour: (show: boolean) => void;
@@ -95,6 +98,11 @@ export const usePreferencesStore = create<PreferencesState>()(
       setLanguage: (language) => {
         persistLanguage(language);
         set({ language });
+      },
+      desktopIdleTimeoutMinutes: 30,
+      setDesktopIdleTimeoutMinutes: (minutes) => {
+        const allowed = minutes === 15 || minutes === 30 || minutes === 60 || minutes === 240;
+        set({ desktopIdleTimeoutMinutes: allowed ? minutes : 30 });
       },
       showOnboardingTour: true,
       setShowOnboardingTour: (showOnboardingTour) => set({ showOnboardingTour }),

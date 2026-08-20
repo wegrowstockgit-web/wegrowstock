@@ -86,6 +86,7 @@ public class SettingsService {
         map.put("rma_auto_approve_max_value", settings.getRmaAutoApproveMaxValue());
         map.put("predictive_replenishment_enabled", settings.isPredictiveReplenishmentEnabled());
         TenantSettingsDto.fromSettingsMap(settings.getSettings()).writeTo(map);
+        map.put(TenantSettingsDto.KEY_DESKTOP_IDLE_TIMEOUT_MINUTES, settings.getDesktopIdleTimeoutMinutes());
         return map;
     }
 
@@ -108,6 +109,11 @@ public class SettingsService {
         if (patch.containsKey("predictive_replenishment_enabled")) {
             settings.setPredictiveReplenishmentEnabled(
                     Boolean.parseBoolean(String.valueOf(patch.get("predictive_replenishment_enabled"))));
+        }
+        if (patch.containsKey(TenantSettingsDto.KEY_DESKTOP_IDLE_TIMEOUT_MINUTES)) {
+            settings.setDesktopIdleTimeoutMinutes(
+                    TenantSettingsDto.normalizeTimeout(
+                            patch.get(TenantSettingsDto.KEY_DESKTOP_IDLE_TIMEOUT_MINUTES), true));
         }
     }
 

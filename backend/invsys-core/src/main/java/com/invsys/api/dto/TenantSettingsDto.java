@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Retail POS addon fields persisted in {@code tenant_settings.settings} JSONB.
+ * Tenant settings persisted in {@code tenant_settings} (JSONB plus typed columns).
  * Exposed on GET/PATCH/PUT {@code /api/v1/settings}.
  */
 public record TenantSettingsDto(
@@ -16,19 +16,23 @@ public record TenantSettingsDto(
         String posReceiptFooter,
         String posDefaultCurrency,
         Boolean posRequireBlindCloseout,
-        Boolean posEnableCfdiInvoicing
+        Boolean posEnableCfdiInvoicing,
+        Integer desktopIdleTimeoutMinutes
 ) {
     public static final String KEY_RECEIPT_HEADER = "pos_receipt_header";
     public static final String KEY_RECEIPT_FOOTER = "pos_receipt_footer";
     public static final String KEY_DEFAULT_CURRENCY = "pos_default_currency";
     public static final String KEY_REQUIRE_BLIND_CLOSEOUT = "pos_require_blind_closeout";
     public static final String KEY_ENABLE_CFDI = "pos_enable_cfdi_invoicing";
+    public static final String KEY_DESKTOP_IDLE_TIMEOUT_MINUTES = "desktop_idle_timeout_minutes";
 
     public static final Set<String> ALLOWED_CURRENCIES = Set.of("USD", "MXN");
+    public static final Set<Integer> ALLOWED_DESKTOP_IDLE_MINUTES = Set.of(15, 30, 60, 240);
+    public static final int DEFAULT_DESKTOP_IDLE_MINUTES = 30;
     public static final int MAX_RECEIPT_TEXT = 2000;
 
     public static TenantSettingsDto defaults() {
-        return new TenantSettingsDto("", "", "USD", false, false);
+        return new TenantSettingsDto("", "", "USD", false, false, DEFAULT_DESKTOP_IDLE_MINUTES);
     }
 
     public static TenantSettingsDto fromSettingsMap(Map<String, Object> map) {
@@ -41,7 +45,8 @@ public record TenantSettingsDto(
                 stringOr(map.get(KEY_RECEIPT_FOOTER), fallback.posReceiptFooter()),
                 normalizeCurrency(stringOr(map.get(KEY_DEFAULT_CURRENCY), fallback.posDefaultCurrency()), false),
                 boolOr(map.get(KEY_REQUIRE_BLIND_CLOSEOUT), fallback.posRequireBlindCloseout()),
-                boolOr(map.get(KEY_ENABLE_CFDI), fallback.posEnableCfdiInvoicing()));
+                boolOr(map.get(KEY_ENABLE_CFDI), fallback.posEnableCfdiInvoicing()),
+                normalizeTimeout(map.get(KEY_DESKTOP_IDLE_TIMEOUT_MINUTES), false));
     }
 
     public void writeTo(Map<String, Object> map) {
@@ -53,10 +58,12 @@ public record TenantSettingsDto(
         map.put(KEY_DEFAULT_CURRENCY, posDefaultCurrency() != null ? posDefaultCurrency() : "USD");
         map.put(KEY_REQUIRE_BLIND_CLOSEOUT, Boolean.TRUE.equals(posRequireBlindCloseout()));
         map.put(KEY_ENABLE_CFDI, Boolean.TRUE.equals(posEnableCfdiInvoicing()));
+        map.put(KEY_DESKTOP_IDLE_TIMEOUT_MINUTES,
+                desktopIdleTimeoutMinutes() != null ? desktopIdleTimeoutMinutes() : DEFAULT_DESKTOP_IDLE_MINUTES);
     }
 
     /**
-     * Validates and normalizes POS keys present in {@code patch} onto {@code settings}.
+     * Validates and normalizes POS / desktop-idle keys present in {@code patch} onto {@code settings}.
      */
     public static void applyPatch(Map<String, Object> settings, Map<String, Object> patch) {
         if (settings == null || patch == null) {
@@ -76,6 +83,10 @@ public record TenantSettingsDto(
         }
         if (patch.containsKey(KEY_ENABLE_CFDI)) {
             settings.put(KEY_ENABLE_CFDI, boolOr(patch.get(KEY_ENABLE_CFDI), false));
+        }
+        if (patch.containsKey(KEY_DESKTOP_IDLE_TIMEOUT_MINUTES)) {
+            settings.put(KEY_DESKTOP_IDLE_TIMEOUT_MINUTES,
+                    normalizeTimeout(patch.get(KEY_DESKTOP_IDLE_TIMEOUT_MINUTES), true));
         }
     }
 
@@ -102,6 +113,36 @@ public record TenantSettingsDto(
                     "POS default currency must be USD or MXN");
         }
         return "USD";
+    }
+
+    public static int normalizeTimeout(Object raw, boolean rejectUnknown) {
+        Integer parsed = parsePositiveInt(raw);
+        if (parsed != null && ALLOWED_DESKTOP_IDLE_MINUTES.contains(parsed)) {
+            return parsed;
+        }
+        if (rejectUnknown) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "DESKTOP_IDLE_TIMEOUT_UNSUPPORTED",
+                    "Desktop idle timeout must be 15, 30, 60, or 240 minutes");
+        }
+        return DEFAULT_DESKTOP_IDLE_MINUTES;
+    }
+
+    private static Integer parsePositiveInt(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number n) {
+            return n.intValue();
+        }
+        String text = String.valueOf(raw).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private static String stringOr(Object raw, String fallback) {

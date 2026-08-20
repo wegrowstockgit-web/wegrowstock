@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
-import type { SsoConfig, TenantEmailDomain } from '@/api/types';
+import type { SsoConfig, TenantEmailDomain, TenantSettingsMap } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import {
+  DEFAULT_DESKTOP_IDLE_TIMEOUT_MINUTES,
+  DESKTOP_IDLE_TIMEOUT_OPTIONS,
+} from '@/hooks/useDesktopIdle';
+import { usePreferencesStore } from '@/stores/preferencesStore';
 
 function SavedNote({ show }: { show: boolean }) {
   if (!show) return null;
@@ -30,6 +35,10 @@ export function TenantSecuritySettings() {
   const [corporateCidrs, setCorporateCidrs] = useState<string[]>([]);
   const [domainName, setDomainName] = useState('');
   const [error, setError] = useState('');
+  const [desktopIdleTimeout, setDesktopIdleTimeout] = useState<number>(
+    DEFAULT_DESKTOP_IDLE_TIMEOUT_MINUTES,
+  );
+  const setDesktopIdleTimeoutMinutes = usePreferencesStore((s) => s.setDesktopIdleTimeoutMinutes);
 
   const { data, isLoading } = useQuery({
     queryKey: ['settings', 'sso'],
@@ -59,6 +68,20 @@ export function TenantSecuritySettings() {
     queryFn: async () => (await apiClient.get<TenantEmailDomain[]>('/api/v1/settings/email-domains')).data,
     retry: false,
   });
+
+  const { data: tenantSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await apiClient.get<TenantSettingsMap>('/api/v1/settings')).data,
+    retry: false,
+  });
+
+  useEffect(() => {
+    const raw = tenantSettings?.desktop_idle_timeout_minutes;
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+    if (parsed === 15 || parsed === 30 || parsed === 60 || parsed === 240) {
+      setDesktopIdleTimeout(parsed);
+    }
+  }, [tenantSettings]);
 
   useEffect(() => {
     if (!data) return;
@@ -101,6 +124,27 @@ export function TenantSecuritySettings() {
     onError: () => setError('Could not save SSO settings. Check issuer URL, client ID, secret, and CIDRs.'),
   });
 
+  const idleTimeoutMutation = useMutation({
+    mutationFn: async (minutes: number) => {
+      const saved = await apiClient.patch<TenantSettingsMap>('/api/v1/settings', {
+        desktop_idle_timeout_minutes: minutes,
+      });
+      return saved.data;
+    },
+    onSuccess: (saved) => {
+      const raw = saved?.desktop_idle_timeout_minutes;
+      const parsed = typeof raw === 'number' ? raw : Number(raw);
+      const minutes =
+        parsed === 15 || parsed === 30 || parsed === 60 || parsed === 240
+          ? parsed
+          : desktopIdleTimeout;
+      setDesktopIdleTimeout(minutes);
+      setDesktopIdleTimeoutMinutes(minutes);
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+    },
+  });
+
   const registerDomain = useMutation({
     mutationFn: async () => {
       await apiClient.post('/api/v1/settings/email-domains', { domainName });
@@ -129,6 +173,40 @@ export function TenantSecuritySettings() {
 
   return (
     <div className="space-y-6" data-testid="security-sso-tab">
+      <Card data-testid="desktop-idle-timeout-card">
+        <CardHeader
+          title="Desktop idle timeout"
+          description="Office sessions show a 2-minute warning, then a biometric-first soft-lock. Floor scanners keep using the PIN lock."
+        />
+        <form
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            idleTimeoutMutation.mutate(desktopIdleTimeout);
+          }}
+        >
+          <Select
+            label="Desktop Idle Timeout"
+            value={String(desktopIdleTimeout)}
+            onChange={(e) => setDesktopIdleTimeout(Number(e.target.value))}
+            data-testid="desktop-idle-timeout"
+          >
+            {DESKTOP_IDLE_TIMEOUT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" loading={idleTimeoutMutation.isPending} data-testid="desktop-idle-timeout-save">
+            Save timeout
+          </Button>
+          <SavedNote show={idleTimeoutMutation.isSuccess && !idleTimeoutMutation.isPending} />
+        </form>
+        {idleTimeoutMutation.isError ? (
+          <p className="mt-3 text-sm text-danger">Could not save desktop idle timeout.</p>
+        ) : null}
+      </Card>
+
       <Card>
         <CardHeader
           title="Corporate domains"

@@ -240,6 +240,7 @@ class PosSessionServiceTest {
                 List.of(),
                 false,
                 List.of(AppModule.RETAIL_POS),
-                tier);
+                tier,
+                30);
     }
 }

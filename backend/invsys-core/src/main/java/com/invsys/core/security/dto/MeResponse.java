@@ -38,6 +38,8 @@ public record MeResponse(
         /** Commercial modules enabled for this tenant. */
         List<AppModule> enabledModules,
         /** Commercial subscription tier: BASIC, INTERMEDIATE, or ENTERPRISE. */
-        String tier
+        String tier,
+        /** Office idle soft-lock timeout in minutes (15, 30, 60, or 240). */
+        Integer desktopIdleTimeoutMinutes
 ) {
 }

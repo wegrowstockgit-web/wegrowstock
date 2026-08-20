@@ -136,7 +136,7 @@ class SettingsServiceTest {
         assertThat(settings.get(TenantSettingsDto.KEY_REQUIRE_BLIND_CLOSEOUT)).isEqualTo(true);
         assertThat(settings.get(TenantSettingsDto.KEY_ENABLE_CFDI)).isEqualTo(false);
 
-        TenantSettingsDto nullable = new TenantSettingsDto(null, null, null, null, null);
+        TenantSettingsDto nullable = new TenantSettingsDto(null, null, null, null, null, null);
         Map<String, Object> written = new HashMap<>();
         nullable.writeTo(written);
         assertThat(written.get(TenantSettingsDto.KEY_DEFAULT_CURRENCY)).isEqualTo("USD");
@@ -174,6 +174,30 @@ class SettingsServiceTest {
                 org.mockito.ArgumentMatchers.eq(tenantId),
                 org.mockito.ArgumentMatchers.eq("COSTING_METHOD_CHANGED"),
                 any());
+    }
+
+    @Test
+    void patchPersistsDesktopIdleTimeoutMinutes() {
+        TenantSettings existing = TenantSettings.withDefaults(tenantId);
+        when(repository.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
+        when(repository.save(any(TenantSettings.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Map<String, Object> saved = service.patchSettings(Map.of(
+                TenantSettingsDto.KEY_DESKTOP_IDLE_TIMEOUT_MINUTES, "15"));
+
+        assertThat(saved.get(TenantSettingsDto.KEY_DESKTOP_IDLE_TIMEOUT_MINUTES)).isEqualTo(15);
+        assertThat(existing.getDesktopIdleTimeoutMinutes()).isEqualTo(15);
+    }
+
+    @Test
+    void patchRejectsUnsupportedDesktopIdleTimeout() {
+        TenantSettings existing = TenantSettings.withDefaults(tenantId);
+        when(repository.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.patchSettings(Map.of(
+                TenantSettingsDto.KEY_DESKTOP_IDLE_TIMEOUT_MINUTES, 7)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("15, 30, 60, or 240");
     }
 
     @Test

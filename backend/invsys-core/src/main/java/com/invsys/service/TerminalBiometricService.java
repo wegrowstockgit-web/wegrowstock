@@ -64,12 +64,17 @@ public class TerminalBiometricService {
 
     @Transactional
     public Map<String, Object> createAssertionOptions() {
+        return createAssertionOptions("TERMINAL_ASSERT");
+    }
+
+    @Transactional
+    public Map<String, Object> createAssertionOptions(String purpose) {
         UUID tenantId = TenantContext.requireTenantId();
         String challenge = randomToken(32);
         WebAuthnChallenge entity = new WebAuthnChallenge();
         entity.setTenantId(tenantId);
         entity.setChallenge(challenge);
-        entity.setPurpose("TERMINAL_ASSERT");
+        entity.setPurpose(purpose == null || purpose.isBlank() ? "TERMINAL_ASSERT" : purpose);
         entity.setExpiresAt(Instant.now().plusSeconds(120));
         challengeRepository.save(entity);
         return Map.of(
@@ -78,6 +83,21 @@ public class TerminalBiometricService {
                 "rpId", "invsys.local",
                 "userVerification", "preferred",
                 "allowCredentials", List.of());
+    }
+
+    @Transactional
+    public Map<String, Object> createDesktopUnlockOptions() {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        Map<String, Object> options = new java.util.LinkedHashMap<>(createAssertionOptions("DESKTOP_UNLOCK"));
+        UUID tenantId = TenantContext.requireTenantId();
+        List<Map<String, String>> allow = credentialRepository.findByTenantIdAndUserId(tenantId, userId).stream()
+                .map(cred -> Map.of("type", "public-key", "id", cred.getCredentialId()))
+                .toList();
+        options.put("allowCredentials", allow);
+        options.put("hasPasskey", !allow.isEmpty());
+        options.put("userId", userId.toString());
+        return options;
     }
 
     @Transactional

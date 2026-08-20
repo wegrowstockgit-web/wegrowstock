@@ -11,6 +11,7 @@ import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useWarehouseStore } from '@/stores/warehouseStore';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useWarehouseContextGate, isWarehouseScopedPath } from '@/hooks/useWarehouseContextGate';
+import { DesktopIdleGate } from '@/components/security/DesktopIdleGate';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import { cn } from '@/lib/utils';
@@ -60,6 +61,7 @@ interface MeResponse {
   localeLanguage?: string | null;
   preferredLanguage?: string | null;
   tier?: string | null;
+  desktopIdleTimeoutMinutes?: number;
 }
 
 export function AppShell() {
@@ -109,7 +111,10 @@ export function AppShell() {
           localeLanguage: data.localeLanguage,
           tier: data.tier,
         });
-      return data;
+        if (typeof data.desktopIdleTimeoutMinutes === 'number') {
+          usePreferencesStore.getState().setDesktopIdleTimeoutMinutes(data.desktopIdleTimeoutMinutes);
+        }
+        return data;
     },
     enabled: authenticated,
     retry: false,
@@ -250,6 +255,7 @@ export function AppShell() {
 
       <CommandPalette open={open} onClose={close} />
       <SyncConflictToast />
+      <DesktopIdleGate />
     </div>
   );
 }

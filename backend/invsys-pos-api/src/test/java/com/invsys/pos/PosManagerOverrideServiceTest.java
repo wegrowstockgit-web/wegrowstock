@@ -86,6 +86,7 @@ class PosManagerOverrideServiceTest {
                 List.of(),
                 false,
                 List.of(AppModule.RETAIL_POS),
-                "ENTERPRISE");
+                "ENTERPRISE",
+                30);
     }
 }
