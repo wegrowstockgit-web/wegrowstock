@@ -15,22 +15,29 @@ import com.invsys.modules.sales.service.InvoicingService;
 import com.invsys.modules.sales.service.SalesOrderService;
 import com.invsys.service.SoftKitExplosionService;
 import com.invsys.service.TaxService;
+import com.invsys.core.common.OffsetPaging;
+import com.invsys.core.common.PageResponse;
 import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -66,10 +73,21 @@ public class SalesOrderController {
         this.softKitExplosionService = softKitExplosionService;
     }
 
+    private static final Set<String> CUSTOMER_SORT = Set.of("name", "createdAt", "email", "customerStatus");
+    private static final Set<String> SALES_ORDER_SORT = Set.of("createdAt", "number", "status", "channel");
+
     @GetMapping("/customers")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
-    public List<Customer> customers() {
-        return customerRepository.findByTenantIdOrderByNameAsc(TenantContext.requireTenantId());
+    public PageResponse<Customer> customers(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "name,asc") String sort) {
+        Page<Customer> result = customerRepository.search(
+                TenantContext.requireTenantId(),
+                OffsetPaging.keyword(search),
+                OffsetPaging.of(page, size, sort, "name", Sort.Direction.ASC, CUSTOMER_SORT));
+        return PageResponse.of(result);
     }
 
     @PostMapping("/customers")
@@ -127,13 +145,29 @@ public class SalesOrderController {
 
     @GetMapping("/sales-orders")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
-    public List<SalesOrderResponse> listSalesOrders() {
+    public PageResponse<SalesOrderResponse> listSalesOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String status) {
         UUID tenantId = TenantContext.requireTenantId();
-        Map<UUID, String> customerNames = customerRepository
-                .findByTenantIdOrderByNameAsc(tenantId).stream()
-                .collect(java.util.stream.Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
-        Map<UUID, String> billingByOrder = invoicingService.billingStatusBySalesOrderId(tenantId);
-        return salesOrderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+        String statusFilter = status == null || status.isBlank() ? "" : status.trim();
+        Page<SalesOrder> result = salesOrderRepository.search(
+                tenantId,
+                OffsetPaging.keyword(search),
+                statusFilter,
+                OffsetPaging.of(page, size, sort, "createdAt", Sort.Direction.DESC, SALES_ORDER_SORT));
+        Set<UUID> customerIds = result.getContent().stream()
+                .map(SalesOrder::getCustomerId)
+                .collect(Collectors.toSet());
+        Map<UUID, String> customerNames = customerIds.isEmpty()
+                ? Map.of()
+                : customerRepository.findAllById(customerIds).stream()
+                        .collect(Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
+        Set<UUID> orderIds = result.getContent().stream().map(SalesOrder::getId).collect(Collectors.toSet());
+        Map<UUID, String> billingByOrder = invoicingService.billingStatusForOrders(tenantId, orderIds);
+        List<SalesOrderResponse> items = result.getContent().stream()
                 .map(order -> new SalesOrderResponse(
                         order.getId(),
                         order.getNumber(),
@@ -146,6 +180,7 @@ public class SalesOrderController {
                         order.getQuoteExpiresAt(),
                         order.getManualDiscountTotal()))
                 .toList();
+        return PageResponse.of(result, items);
     }
 
     @PostMapping("/sales-orders")

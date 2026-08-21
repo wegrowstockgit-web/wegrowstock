@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { contextForRole, expect } from './helpers';
+import { contextForRole, expect, unwrapItems } from './helpers';
 
 /**
  * Real functional e2e for business automations + daily ops market gaps:
@@ -97,7 +97,7 @@ test.describe('Journey 55: Automations & operational market gaps', () => {
 
     const ordersRes = await page.request.get('/api/v1/sales-orders');
     test.skip(!ordersRes.ok(), 'Sales orders unavailable');
-    const orders = (await ordersRes.json()) as Array<{ id: string; status: string }>;
+    const orders = unwrapItems<{ id: string; status: string }>(await ordersRes.json());
     const candidate =
       orders.find((o) => ['CONFIRMED', 'ALLOCATED', 'PARTIALLY_SHIPPED'].includes(o.status)) ??
       orders[0];

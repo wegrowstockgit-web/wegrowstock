@@ -6,19 +6,25 @@ import com.invsys.domain.PaymentIntent;
 import com.invsys.modules.sales.repository.CustomerRepository;
 import com.invsys.modules.sales.repository.InvoiceRepository;
 import com.invsys.modules.sales.service.InvoicingService;
+import com.invsys.core.common.OffsetPaging;
+import com.invsys.core.common.PageResponse;
 import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -38,13 +44,31 @@ public class InvoiceController {
         this.customerRepository = customerRepository;
     }
 
+    private static final Set<String> INVOICE_SORT = Set.of("createdAt", "number", "status", "total", "dueAt");
+
     @GetMapping
     @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
-    public List<InvoiceResponse> list() {
-        Map<UUID, String> customerNames = customerRepository
-                .findByTenantIdOrderByNameAsc(TenantContext.requireTenantId()).stream()
-                .collect(Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
-        return invoiceRepository.findByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId()).stream()
+    public PageResponse<InvoiceResponse> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String status) {
+        UUID tenantId = TenantContext.requireTenantId();
+        String statusFilter = status == null || status.isBlank() ? "" : status.trim();
+        Page<Invoice> result = invoiceRepository.search(
+                tenantId,
+                OffsetPaging.keyword(search),
+                statusFilter,
+                OffsetPaging.of(page, size, sort, "createdAt", Sort.Direction.DESC, INVOICE_SORT));
+        Set<UUID> customerIds = result.getContent().stream()
+                .map(Invoice::getCustomerId)
+                .collect(Collectors.toSet());
+        Map<UUID, String> customerNames = customerIds.isEmpty()
+                ? Map.of()
+                : customerRepository.findAllById(customerIds).stream()
+                        .collect(Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
+        List<InvoiceResponse> items = result.getContent().stream()
                 .map(invoice -> new InvoiceResponse(
                         invoice.getId(),
                         invoice.getNumber(),
@@ -55,6 +79,7 @@ public class InvoiceController {
                         invoice.getDueAt(),
                         invoice.getSalesOrderId()))
                 .toList();
+        return PageResponse.of(result, items);
     }
 
     @GetMapping("/{invoiceId}")

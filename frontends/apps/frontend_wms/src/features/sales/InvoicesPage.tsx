@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileText, Mail, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -20,9 +20,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { ListPageState } from '@/components/layout/ListPageState';
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
+import { Pagination } from '@/components/ui/Pagination';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
+import { unwrapPageItems } from '@/api/page';
+import { listInvoices } from '@/api/operational';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
@@ -105,8 +110,11 @@ function CreateInvoiceModal({ open, onClose }: { open: boolean; onClose: () => v
   const [error, setError] = useState('');
 
   const { data: orders = [] } = useQuery({
-    queryKey: ['sales-orders'],
-    queryFn: async () => (await apiClient.get<SalesOrder[]>('/api/v1/sales-orders')).data,
+    queryKey: ['sales-orders', 'lookup'],
+    queryFn: async () =>
+      unwrapPageItems<SalesOrder>(
+        (await apiClient.get('/api/v1/sales-orders', { params: { page: 1, size: 100 } })).data,
+      ),
     enabled: open,
   });
 
@@ -185,8 +193,14 @@ export function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [peekInvoiceId, setPeekInvoiceId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error, refetch } =
-    useListQuery<Invoice>(['invoices'], '/api/v1/invoices');
+  const table = useServerTableQuery<Invoice>({
+    queryKey: 'invoices',
+    path: '/api/v1/invoices',
+    defaultSort: 'createdAt,desc',
+    extraParams: { status: statusFilter || undefined },
+    fetcher: listInvoices,
+  });
+  const { items, isLoading, isError, error, refetch, search } = table;
 
   const { data: peekInvoice } = useQuery({
     queryKey: ['invoices', peekInvoiceId],
@@ -227,11 +241,7 @@ export function InvoicesPage() {
     }
   };
 
-  const filtered = useMemo(() => {
-    if (!data) return [];
-    if (!statusFilter) return data;
-    return data.filter((i) => i.status === statusFilter);
-  }, [data, statusFilter]);
+  const filtered = items;
 
   const invoicePresets = [
     { id: 'all', label: 'All', filters: {} as Record<string, string> },
@@ -257,23 +267,33 @@ export function InvoicesPage() {
       </div>
 
       <DataListToolbar gridId="invoices">
-        <SavedFilterViews
-          className="mb-0"
-          storageKey="invoices-filters"
-          activeFilters={{ status: statusFilter }}
-          onApply={(f) => setStatusFilter(f.status ?? '')}
-          defaultPresets={invoicePresets}
-        />
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <DebouncedSearchInput
+            value={search}
+            onDebouncedChange={table.setSearch}
+            placeholder="Search invoices or customers…"
+          />
+          <SavedFilterViews
+            className="mb-0"
+            storageKey="invoices-filters"
+            activeFilters={{ status: statusFilter }}
+            onApply={(f) => {
+              setStatusFilter(f.status ?? '');
+              table.setPage(1);
+            }}
+            defaultPresets={invoicePresets}
+          />
+        </div>
       </DataListToolbar>
 
       <ListPageState
-        isLoading={isLoading}
+        isLoading={isLoading && items.length === 0}
         isError={isError}
         error={error}
         data={filtered}
         refetch={refetch}
         emptyIcon={FileText}
-        emptyTitle="No invoices yet"
+        emptyTitle={search ? 'No matching invoices' : 'No invoices yet'}
         emptyDescription={
           canCreate
             ? 'Create an invoice from an allocated or shipped sales order.'
@@ -288,7 +308,19 @@ export function InvoicesPage() {
           ) : undefined
         }
       >
-        {(items) => <InvoicesTable items={items} onPeek={setPeekInvoiceId} />}
+        {(rows) => (
+          <>
+            <InvoicesTable items={rows} onPeek={setPeekInvoiceId} />
+            <Pagination
+              page={table.page}
+              totalPages={table.totalPages}
+              totalElements={table.totalElements}
+              size={table.size}
+              onPageChange={table.setPage}
+              onSizeChange={table.setSize}
+            />
+          </>
+        )}
       </ListPageState>
 
       <CreateInvoiceModal open={modalOpen} onClose={() => setModalOpen(false)} />

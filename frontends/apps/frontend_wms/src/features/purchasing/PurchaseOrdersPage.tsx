@@ -27,12 +27,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
+import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
+import { unwrapPageItems } from '@/api/page';
+import { listPurchaseOrders } from '@/api/operational';
 
 const RECEIVABLE = new Set(['SUBMITTED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED']);
 
@@ -137,8 +142,11 @@ function CreatePoModal({
   const [error, setError] = useState('');
 
   const { data: suppliers = [] } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: async () => (await apiClient.get<Supplier[]>('/api/v1/suppliers')).data,
+    queryKey: ['suppliers', 'lookup'],
+    queryFn: async () =>
+      unwrapPageItems<Supplier>(
+        (await apiClient.get('/api/v1/suppliers', { params: { page: 1, size: 100 } })).data,
+      ),
     enabled: open,
   });
 
@@ -744,10 +752,14 @@ export function PurchaseOrdersPage() {
   const [peekPoId, setPeekPoId] = useState<string | null>(null);
   const [receivePoId, setReceivePoId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error, refetch } =
-    useListQuery<PurchaseOrder>(['purchase-orders'], '/api/v1/purchase-orders');
-
-  const peekPo = data?.find((po) => po.id === peekPoId) ?? null;
+  const table = useServerTableQuery<PurchaseOrder>({
+    queryKey: 'purchase-orders',
+    path: '/api/v1/purchase-orders',
+    defaultSort: 'createdAt,desc',
+    fetcher: listPurchaseOrders,
+  });
+  const { items, isLoading, isError, error, refetch, search } = table;
+  const peekPo = items.find((po) => po.id === peekPoId) ?? null;
 
   return (
     <TableDensityScope gridId="purchase-orders">
@@ -777,7 +789,13 @@ export function PurchaseOrdersPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar gridId="purchase-orders" />
+        <DataListToolbar gridId="purchase-orders">
+          <DebouncedSearchInput
+            value={search}
+            onDebouncedChange={table.setSearch}
+            placeholder="Search orders or suppliers…"
+          />
+        </DataListToolbar>
       </div>
 
       <div
@@ -786,15 +804,17 @@ export function PurchaseOrdersPage() {
         data-tour="tour-po-grid"
       >
         <ListPageState
-          isLoading={isLoading}
+          isLoading={isLoading && items.length === 0}
           isError={isError}
           error={error}
-          data={data}
+          data={items}
           refetch={refetch}
           emptyIcon={ClipboardList}
-          emptyTitle="No purchase orders yet"
+          emptyTitle={search ? 'No matching purchase orders' : 'No purchase orders yet'}
           emptyDescription={
-            canCreate
+            search
+              ? 'Try a different order number, status, or supplier name.'
+              : canCreate
               ? 'Create a purchase order to start receiving inventory.'
               : 'Purchase orders will appear here once created by a manager.'
           }
@@ -810,13 +830,21 @@ export function PurchaseOrdersPage() {
           {(items) => (
             <div className="w-full px-6 pb-6">
               <PurchaseOrdersTable items={items} onPeek={setPeekPoId} />
+              <Pagination
+                page={table.page}
+                totalPages={table.totalPages}
+                totalElements={table.totalElements}
+                size={table.size}
+                onPageChange={table.setPage}
+                onSizeChange={table.setSize}
+              />
             </div>
           )}
         </ListPageState>
 
         {canCreate && (
           <div className="border-t border-border/60 px-6 pb-6">
-            <ApIngestionPanel purchaseOrders={data ?? []} />
+            <ApIngestionPanel purchaseOrders={items} />
           </div>
         )}
       </div>

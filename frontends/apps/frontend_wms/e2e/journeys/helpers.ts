@@ -204,6 +204,12 @@ export async function apiJson<T>(page: Page, url: string, init?: RequestInit): P
   return (await res.json()) as T;
 }
 
+export function unwrapItems<T>(body: T[] | { items?: T[]; content?: T[] } | null | undefined): T[] {
+  if (!body) return [];
+  if (Array.isArray(body)) return body;
+  return body.items ?? body.content ?? [];
+}
+
 export async function findVariantId(page: Page, sku = WIDGET_S_SKU): Promise<string> {
   const pageData = await apiJson<{ items: Array<{ id: string; sku: string }> }>(
     page,
@@ -215,13 +221,13 @@ export async function findVariantId(page: Page, sku = WIDGET_S_SKU): Promise<str
 }
 
 export async function firstSupplierId(page: Page): Promise<string> {
-  const suppliers = await apiJson<Array<{ id: string }>>(page, '/api/v1/suppliers');
+  const suppliers = unwrapItems<{ id: string }>(await apiJson(page, '/api/v1/suppliers?page=1&size=100'));
   if (!suppliers[0]) throw new Error('No suppliers');
   return suppliers[0].id;
 }
 
 export async function firstCustomerId(page: Page): Promise<string> {
-  const customers = await apiJson<Array<{ id: string }>>(page, '/api/v1/customers');
+  const customers = unwrapItems<{ id: string }>(await apiJson(page, '/api/v1/customers?page=1&size=100'));
   if (!customers[0]) throw new Error('No customers');
   return customers[0].id;
 }

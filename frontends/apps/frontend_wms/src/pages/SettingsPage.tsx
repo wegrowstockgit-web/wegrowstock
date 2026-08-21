@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { unwrapPageItems } from '@/api/page';
 import { userApi } from '@/api/users';
 import type {
   CostCenter,
@@ -282,7 +283,10 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const { data: customers = [] } = useQuery({
     queryKey: ['customers'],
-    queryFn: async () => (await apiClient.get<Customer[]>('/api/v1/customers')).data,
+    queryFn: async () =>
+      unwrapPageItems<Customer>(
+        (await apiClient.get('/api/v1/customers', { params: { page: 1, size: 100 } })).data,
+      ),
     enabled: open && roleIds.includes('B2B_CUSTOMER'),
   });
 

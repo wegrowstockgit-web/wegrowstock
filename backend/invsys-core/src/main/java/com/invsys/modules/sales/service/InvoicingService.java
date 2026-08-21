@@ -242,6 +242,26 @@ public class InvoicingService {
         return result;
     }
 
+    @Transactional(readOnly = true)
+    public Map<UUID, String> billingStatusForOrders(UUID tenantId, java.util.Collection<UUID> salesOrderIds) {
+        if (salesOrderIds == null || salesOrderIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Invoice> invoices = invoiceRepository.findByTenantIdAndSalesOrderIdIn(tenantId, salesOrderIds);
+        Map<UUID, List<Invoice>> byOrder = new HashMap<>();
+        for (Invoice invoice : invoices) {
+            if (invoice.getSalesOrderId() == null) {
+                continue;
+            }
+            byOrder.computeIfAbsent(invoice.getSalesOrderId(), ignored -> new java.util.ArrayList<>()).add(invoice);
+        }
+        Map<UUID, String> result = new HashMap<>();
+        for (UUID orderId : salesOrderIds) {
+            result.put(orderId, resolveBillingStatus(orderId, byOrder.get(orderId)));
+        }
+        return result;
+    }
+
     private String resolveBillingStatus(UUID salesOrderId, List<Invoice> existing) {
         if (existing == null || existing.isEmpty()) {
             return "NONE";

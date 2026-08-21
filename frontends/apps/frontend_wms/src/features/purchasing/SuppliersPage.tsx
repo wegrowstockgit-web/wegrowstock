@@ -15,11 +15,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
+import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
+import { listSuppliers } from '@/api/operational';
 
 function SuppliersTable({ items }: { items: Supplier[] }) {
   const { sort, toggle, sorted } = useClientSort(
@@ -198,8 +202,13 @@ export function SuppliersPage() {
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data, isLoading, isError, error, refetch } =
-    useListQuery<Supplier>(['suppliers'], '/api/v1/suppliers');
+  const table = useServerTableQuery<Supplier>({
+    queryKey: 'suppliers',
+    path: '/api/v1/suppliers',
+    defaultSort: 'name,asc',
+    fetcher: listSuppliers,
+  });
+  const { items, isLoading, isError, error, refetch, search } = table;
 
   return (
     <TableDensityScope gridId="suppliers">
@@ -217,18 +226,26 @@ export function SuppliersPage() {
         )}
       </div>
 
-      <DataListToolbar gridId="suppliers" />
+      <DataListToolbar gridId="suppliers">
+        <DebouncedSearchInput
+          value={search}
+          onDebouncedChange={table.setSearch}
+          placeholder="Search suppliers…"
+        />
+      </DataListToolbar>
 
       <ListPageState
-        isLoading={isLoading}
+        isLoading={isLoading && items.length === 0}
         isError={isError}
         error={error}
-        data={data}
+        data={items}
         refetch={refetch}
         emptyIcon={Truck}
-        emptyTitle="No suppliers yet"
+        emptyTitle={search ? 'No matching suppliers' : 'No suppliers yet'}
         emptyDescription={
-          canCreate
+          search
+            ? 'Try a different name or payment terms.'
+            : canCreate
             ? 'Add suppliers to create purchase orders.'
             : 'Suppliers will appear here once added by a manager.'
         }
@@ -241,7 +258,19 @@ export function SuppliersPage() {
           ) : undefined
         }
       >
-        {(items) => <SuppliersTable items={items} />}
+        {(rows) => (
+          <>
+            <SuppliersTable items={rows} />
+            <Pagination
+              page={table.page}
+              totalPages={table.totalPages}
+              totalElements={table.totalElements}
+              size={table.size}
+              onPageChange={table.setPage}
+              onSizeChange={table.setSize}
+            />
+          </>
+        )}
       </ListPageState>
 
       <AddSupplierModal open={modalOpen} onClose={() => setModalOpen(false)} />

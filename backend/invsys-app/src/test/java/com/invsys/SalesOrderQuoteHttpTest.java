@@ -100,12 +100,19 @@ class SalesOrderQuoteHttpTest extends AbstractIntegrationTest {
         assertThat(priced.getStatus()).isEqualTo(SalesOrderStatus.QUOTE_READY.name());
         assertThat(priced.getManualDiscountTotal()).isEqualByComparingTo("8.00");
 
-        List<SalesOrderController.SalesOrderResponse> listed = salesOrderController.listSalesOrders();
-        assertThat(listed).anySatisfy(row -> {
+        var listed = salesOrderController.listSalesOrders(1, 50, null, "createdAt,desc", null);
+        assertThat(listed.items()).anySatisfy(row -> {
             assertThat(row.number()).isEqualTo("SO-QHTTP-1");
             assertThat(row.status()).isEqualTo(SalesOrderStatus.QUOTE_READY.name());
             assertThat(row.allocationPolicy()).isEqualTo("ALLOW_PARTIAL");
         });
+
+        var searched = salesOrderController.listSalesOrders(1, 50, "QHTTP", "number,asc", "QUOTE_READY");
+        assertThat(searched.totalElements()).isEqualTo(1);
+        assertThat(searched.items().getFirst().customerName()).isEqualTo("Quote HTTP Customer");
+
+        var byCustomer = salesOrderController.listSalesOrders(1, 50, "Quote HTTP", "createdAt,desc", null);
+        assertThat(byCustomer.totalElements()).isEqualTo(1);
 
         SalesOrderController.SalesOrderDetailResponse detail = salesOrderController.getSalesOrder(order.getId());
         assertThat(detail.quoteNotes()).isEqualTo("NET 45 courtesy");

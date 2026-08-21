@@ -52,10 +52,10 @@ test.describe('Support copilot agentic CQRS tools', () => {
   test('manager order-status question surfaces hold guidance without jargon', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
     try {
-      const page = await apiJson<
-        { content?: Array<{ number?: string; status?: string }> } | Array<{ number?: string; status?: string }>
-      >(manager.page, '/api/v1/sales-orders?limit=20');
-      const orders = Array.isArray(page) ? page : (page.content ?? []);
+      const payload = await apiJson<
+        { items?: Array<{ number?: string; status?: string }>; content?: Array<{ number?: string; status?: string }> } | Array<{ number?: string; status?: string }>
+      >(manager.page, '/api/v1/sales-orders?page=1&size=20');
+      const orders = Array.isArray(payload) ? payload : (payload.items ?? payload.content ?? []);
       const order = orders.find((o) => o.number);
       test.skip(!order?.number, 'No seeded sales orders for status grounding');
 

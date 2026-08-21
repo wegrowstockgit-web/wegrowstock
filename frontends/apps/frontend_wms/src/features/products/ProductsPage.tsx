@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileUp, Package, Plus, Search, Settings2, X } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PaginatedResponse, ProductVariant, VariantUomConversion } from '@/api/types';
@@ -484,6 +484,7 @@ export function ProductsPage() {
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor,
+    placeholderData: keepPreviousData,
     retry: false,
   });
 

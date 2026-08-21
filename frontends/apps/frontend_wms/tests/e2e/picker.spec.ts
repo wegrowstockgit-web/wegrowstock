@@ -11,6 +11,7 @@ import {
 } from '../../e2e/fixtures/tourContinuity';
 import {
   contextForRole,
+  unwrapItems,
   WIDGET_S_BARCODE,
   WIDGET_S_SKU,
   WH_01,
@@ -109,7 +110,7 @@ test.describe('Mobile Picker suite', () => {
     try {
       const suppliers = await manager.page.request.get('/api/v1/suppliers');
       expect(suppliers.ok()).toBeTruthy();
-      const supplierList = (await suppliers.json()) as Array<{ id: string }>;
+      const supplierList = unwrapItems<{ id: string }>(await suppliers.json());
       const supplierId = supplierList[0]?.id;
       expect(supplierId).toBeTruthy();
 

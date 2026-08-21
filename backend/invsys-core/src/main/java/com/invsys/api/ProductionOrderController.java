@@ -1,6 +1,8 @@
 package com.invsys.api;
 
 import com.invsys.api.dto.ProductionOrderResponse;
+import com.invsys.core.common.OffsetPaging;
+import com.invsys.core.common.PageResponse;
 import com.invsys.domain.ProductionOrder;
 import com.invsys.repository.ProductionOrderRepository;
 import com.invsys.service.ManufacturingDtoMapper;
@@ -9,16 +11,20 @@ import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -38,11 +44,22 @@ public class ProductionOrderController {
         this.dtoMapper = dtoMapper;
     }
 
+    private static final Set<String> ORDER_SORT = Set.of("createdAt", "number", "status");
+
     @GetMapping("/orders")
-    public List<ProductionOrderResponse> listOrders() {
-        return productionOrderRepository.findByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId()).stream()
+    public PageResponse<ProductionOrderResponse> listOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+        Page<ProductionOrder> result = productionOrderRepository.search(
+                TenantContext.requireTenantId(),
+                OffsetPaging.keyword(search),
+                OffsetPaging.of(page, size, sort, "createdAt", Sort.Direction.DESC, ORDER_SORT));
+        List<ProductionOrderResponse> items = result.getContent().stream()
                 .map(dtoMapper::toProductionOrderResponse)
                 .toList();
+        return PageResponse.of(result, items);
     }
 
     @GetMapping("/orders/{id}")

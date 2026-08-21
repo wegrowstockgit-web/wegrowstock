@@ -35,12 +35,10 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
         const listRes = await adminPage.request.get('/api/v1/sales-orders', {
         });
         if (!listRes.ok()) return false;
-        const orders = (await listRes.json()) as Array<{
-          id: string;
-          number: string;
-          status: string;
-          customerPoNumber?: string;
-        }>;
+        const raw = (await listRes.json()) as
+          | Array<{ id: string; number: string; status: string; customerPoNumber?: string }>
+          | { items?: Array<{ id: string; number: string; status: string; customerPoNumber?: string }> };
+        const orders = Array.isArray(raw) ? raw : (raw.items ?? []);
         const found =
           orders.find((o) => o.customerPoNumber === poNumber) ??
           orders.find((o) => o.status === 'DRAFT');
@@ -169,7 +167,10 @@ test.describe('B2B → fulfillment → invoice cycle', () => {
       .poll(async () => {
         const inv = await adminPage.request.get('/api/v1/invoices', {
         });
-        const list = (await inv.json()) as Array<{ salesOrderId?: string }>;
+        const raw = (await inv.json()) as
+          | Array<{ salesOrderId?: string }>
+          | { items?: Array<{ salesOrderId?: string }> };
+        const list = Array.isArray(raw) ? raw : (raw.items ?? []);
         return list.some((i) => i.salesOrderId === orderId);
       })
       .toBeTruthy();

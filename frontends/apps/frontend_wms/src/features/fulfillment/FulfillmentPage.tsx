@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ScanLine, Scale, Settings2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { unwrapPageItems } from '@/api/page';
 import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type {
   FulfillmentScanResponse,
@@ -307,7 +308,10 @@ export function FulfillmentPage() {
 
   const { data: packOrders = [] } = useQuery({
     queryKey: ['sales-orders', 'pack'],
-    queryFn: async () => (await apiClient.get<SalesOrder[]>('/api/v1/sales-orders')).data,
+    queryFn: async () =>
+      unwrapPageItems<SalesOrder>(
+        (await apiClient.get('/api/v1/sales-orders', { params: { page: 1, size: 100 } })).data,
+      ),
     enabled: packingMode,
     retry: false,
   });

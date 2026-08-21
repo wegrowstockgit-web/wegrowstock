@@ -95,6 +95,11 @@ export default defineConfig({
         'src/pages/UnauthorizedPage.tsx',
         'src/lib/hrd.ts',
         'src/pages/showroom/ShowroomCheckoutPage.tsx',
+        'src/api/page.ts',
+        'src/api/operational.ts',
+        'src/hooks/useServerTable.ts',
+        'src/components/ui/Pagination.tsx',
+        'src/components/ui/DebouncedSearchInput.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       // Scanner PIN overlays: covered by Mobile-Scanner Playwright + store/hook unit tests.

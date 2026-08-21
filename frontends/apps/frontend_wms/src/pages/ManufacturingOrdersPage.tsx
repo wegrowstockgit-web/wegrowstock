@@ -16,13 +16,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { DensityToggle } from '@/components/ui/DensityToggle';
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
+import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
+import { listManufacturingOrders } from '@/api/operational';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
@@ -283,10 +287,13 @@ export function ManufacturingOrdersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [disassembleOpen, setDisassembleOpen] = useState(false);
 
-  const { data, isLoading, isError, error, refetch } = useListQuery<ProductionOrder>(
-    ['manufacturing', 'orders'],
-    '/api/v1/manufacturing/orders',
-  );
+  const table = useServerTableQuery<ProductionOrder>({
+    queryKey: ['manufacturing', 'orders'],
+    path: '/api/v1/manufacturing/orders',
+    defaultSort: 'createdAt,desc',
+    fetcher: listManufacturingOrders,
+  });
+  const { items, isLoading, isError, error, refetch, search } = table;
 
   const queryClient = useQueryClient();
   const allocateMutation = useMutation({
@@ -325,14 +332,22 @@ export function ManufacturingOrdersPage() {
         </div>
       </div>
 
+      <div className="mb-4">
+        <DebouncedSearchInput
+          value={search}
+          onDebouncedChange={table.setSearch}
+          placeholder="Search production orders…"
+        />
+      </div>
+
       <ListPageState
-        isLoading={isLoading}
+        isLoading={isLoading && items.length === 0}
         isError={isError}
         error={error}
-        data={data}
+        data={items}
         refetch={refetch}
         emptyIcon={ClipboardList}
-        emptyTitle="No production orders"
+        emptyTitle={search ? 'No matching production orders' : 'No production orders'}
         emptyDescription="Create a production order to allocate components and build finished goods."
         emptyAction={
           canManage ? (
@@ -344,13 +359,23 @@ export function ManufacturingOrdersPage() {
         }
       >
         {(orders) => (
-          <ProductionOrdersTable
-            orders={orders}
-            canManage={canManage}
-            allocatePending={allocateMutation.isPending}
-            onAllocate={(id) => allocateMutation.mutate(id)}
-            onOpenTerminal={() => navigate('/manufacturing/terminal')}
-          />
+          <>
+            <ProductionOrdersTable
+              orders={orders}
+              canManage={canManage}
+              allocatePending={allocateMutation.isPending}
+              onAllocate={(id) => allocateMutation.mutate(id)}
+              onOpenTerminal={() => navigate('/manufacturing/terminal')}
+            />
+            <Pagination
+              page={table.page}
+              totalPages={table.totalPages}
+              totalElements={table.totalElements}
+              size={table.size}
+              onPageChange={table.setPage}
+              onSizeChange={table.setSize}
+            />
+          </>
         )}
       </ListPageState>
 

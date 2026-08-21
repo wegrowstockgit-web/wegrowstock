@@ -23,7 +23,10 @@ test.describe('Invoice PDF generation & dispatch', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     test.skip(!listRes.ok(), 'Invoices API unavailable');
-    let invoices = (await listRes.json()) as Array<{ id: string; number: string; status: string }>;
+    const raw = (await listRes.json()) as
+      | Array<{ id: string; number: string; status: string }>
+      | { items?: Array<{ id: string; number: string; status: string }> };
+    let invoices = Array.isArray(raw) ? raw : (raw.items ?? []);
 
     if (!invoices.some((i) => i.status === 'OPEN')) {
       // Soft-skip when demo tenant has no OPEN invoices — UI still verified via empty-state path.

@@ -81,10 +81,10 @@ test.describe('Support proactive insights & action drafts (functional)', () => {
   test('unallocate question yields Action Draft that can be dismissed', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
     try {
-      const page = await apiJson<
-        { content?: Array<{ id?: string; number?: string }> } | Array<{ id?: string; number?: string }>
-      >(manager.page, '/api/v1/sales-orders?limit=10');
-      const orders = Array.isArray(page) ? page : (page.content ?? []);
+      const payload = await apiJson<
+        { items?: Array<{ id?: string; number?: string }>; content?: Array<{ id?: string; number?: string }> } | Array<{ id?: string; number?: string }>
+      >(manager.page, '/api/v1/sales-orders?page=1&size=10');
+      const orders = Array.isArray(payload) ? payload : (payload.items ?? payload.content ?? []);
       const order = orders.find((o) => o.id || o.number);
 
       await manager.page.goto('/sales-orders');

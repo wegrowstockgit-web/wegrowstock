@@ -144,6 +144,13 @@ export interface UpdateUserPayload {
 
 export type TenantSettingsMap = Record<string, unknown>;
 
+export interface Product {
+  id: string;
+  skuRoot: string;
+  name: string;
+  description?: string | null;
+}
+
 export interface ProductVariant {
   id: string;
   sku: string;
@@ -643,7 +650,13 @@ export interface SupplierPortalLabel {
 
 export interface PaginatedResponse<T> {
   items: T[];
-  nextCursor?: string;
+  nextCursor?: string | null;
+  hasMore?: boolean;
+  totalElements?: number;
+  totalPages?: number;
+  page?: number;
+  size?: number;
+  /** Legacy alias used by older cursor clients. */
   total?: number;
 }
 

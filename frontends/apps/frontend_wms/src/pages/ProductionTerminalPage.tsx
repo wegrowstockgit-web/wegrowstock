@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, Clock, Factory, ScanLine, Square } from 'lucide-react';
 import { apiClient } from '@/api/client';
+import { unwrapPageItems } from '@/api/page';
 import type { ManufacturingOperation, ProductionOrder, ProductionTimesheet } from '@/api/types';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
@@ -33,8 +34,10 @@ export function ProductionTerminalPage() {
   } = useQuery({
     queryKey: ['manufacturing', 'terminal', 'orders'],
     queryFn: async () => {
-      const res = await apiClient.get<ProductionOrder[]>('/api/v1/manufacturing/orders');
-      return res.data.filter((o) => ACTIVE_STATUSES.includes(o.status));
+      const res = await apiClient.get('/api/v1/manufacturing/orders', {
+        params: { page: 1, size: 100 },
+      });
+      return unwrapPageItems<ProductionOrder>(res.data).filter((o) => ACTIVE_STATUSES.includes(o.status));
     },
     retry: false,
   });

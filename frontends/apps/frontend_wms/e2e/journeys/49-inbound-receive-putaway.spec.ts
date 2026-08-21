@@ -1,5 +1,5 @@
 import { expect, test } from '../fixtures/roleFixture';
-import { contextForRole, WIDGET_S_BARCODE, WIDGET_S_SKU, WH_01 } from './helpers';
+import { contextForRole, unwrapItems, WIDGET_S_BARCODE, WIDGET_S_SKU, WH_01 } from './helpers';
 
 /**
  * Journey 49 — Mobile inbound receive + directed putaway (full-screen /inbound/receive).
@@ -14,7 +14,7 @@ test.describe('Journey 49: Inbound receive & directed putaway', () => {
     try {
       const suppliers = await manager.page.request.get('/api/v1/suppliers');
       expect(suppliers.ok()).toBeTruthy();
-      const supplierList = (await suppliers.json()) as Array<{ id: string }>;
+      const supplierList = unwrapItems<{ id: string }>(await suppliers.json());
       const supplierId = supplierList[0]?.id;
       expect(supplierId).toBeTruthy();
 

@@ -4,7 +4,7 @@ import {
   expect,
   test,
 } from '../../e2e/fixtures/roleFixture';
-import { contextForRole, WIDGET_S_BARCODE, WIDGET_S_SKU, WH_01 } from '../../e2e/journeys/helpers';
+import { contextForRole, unwrapItems, WIDGET_S_BARCODE, WIDGET_S_SKU, WH_01 } from '../../e2e/journeys/helpers';
 import type { Page } from '@playwright/test';
 
 async function wedgeScan(page: Page, barcode: string): Promise<void> {
@@ -76,7 +76,7 @@ test.describe('Decoupled chatbot module', () => {
     try {
       const suppliers = await manager.page.request.get('/api/v1/suppliers');
       expect(suppliers.ok()).toBeTruthy();
-      const supplierList = (await suppliers.json()) as Array<{ id: string }>;
+      const supplierList = unwrapItems<{ id: string }>(await suppliers.json());
       const supplierId = supplierList[0]?.id;
       expect(supplierId).toBeTruthy();
 

@@ -18,11 +18,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
+import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
+import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
+import { listCustomers } from '@/api/operational';
 import { CustomerDetail } from '@/features/customers/CustomerDetail';
 import { WholesaleApplicationsPanel } from '@/features/sales/WholesaleApplicationsPanel';
 import { cn } from '@/lib/utils';
@@ -317,8 +321,13 @@ export function CustomersPage() {
     location.pathname.startsWith('/sales/customers') ? 'applications' : 'customers',
   );
 
-  const { data, isLoading, isError, error, refetch } =
-    useListQuery<Customer>(['customers'], '/api/v1/customers');
+  const table = useServerTableQuery<Customer>({
+    queryKey: 'customers',
+    path: '/api/v1/customers',
+    defaultSort: 'name,asc',
+    fetcher: listCustomers,
+  });
+  const { items, isLoading, isError, error, refetch, search } = table;
 
   return (
     <TableDensityScope gridId="customers">
@@ -370,20 +379,28 @@ export function CustomersPage() {
       {tab === 'customers' && (
         <>
           <div className="shrink-0">
-            <DataListToolbar gridId="customers" />
+            <DataListToolbar gridId="customers">
+              <DebouncedSearchInput
+                value={search}
+                onDebouncedChange={table.setSearch}
+                placeholder="Search customers…"
+              />
+            </DataListToolbar>
           </div>
 
           <div className="min-h-0 min-w-0 flex-1">
             <ListPageState
-              isLoading={isLoading}
+              isLoading={isLoading && items.length === 0}
               isError={isError}
               error={error}
-              data={data}
+              data={items}
               refetch={refetch}
               emptyIcon={Users}
-              emptyTitle="No customers yet"
+              emptyTitle={search ? 'No matching customers' : 'No customers yet'}
               emptyDescription={
-                canCreate
+                search
+                  ? 'Try a different name, email, or status.'
+                  : canCreate
                   ? 'Add customers to create sales orders and invoices.'
                   : 'Customers will appear here once added by an admin.'
               }
@@ -396,7 +413,19 @@ export function CustomersPage() {
                 ) : undefined
               }
             >
-              {(items) => <CustomersTable items={items} onPeek={setPeekCustomer} />}
+              {(rows) => (
+                <>
+                  <CustomersTable items={rows} onPeek={setPeekCustomer} />
+                  <Pagination
+                    page={table.page}
+                    totalPages={table.totalPages}
+                    totalElements={table.totalElements}
+                    size={table.size}
+                    onPageChange={table.setPage}
+                    onSizeChange={table.setSize}
+                  />
+                </>
+              )}
             </ListPageState>
           </div>
         </>

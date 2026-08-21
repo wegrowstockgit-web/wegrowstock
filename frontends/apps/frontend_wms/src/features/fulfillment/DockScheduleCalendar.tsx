@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
+import { unwrapPageItems } from '@/api/page';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -74,8 +75,10 @@ export function DockScheduleCalendar() {
       // Resolve PO id by number if provided
       let purchaseOrderId: string | null = null;
       if (poNumber.trim()) {
-        const pos = (await apiClient.get<Array<{ id: string; number: string }>>('/api/v1/purchase-orders'))
-          .data;
+        const pos = unwrapPageItems<{ id: string; number: string }>(
+          (await apiClient.get('/api/v1/purchase-orders', { params: { page: 1, size: 100, search: poNumber.trim() } }))
+            .data,
+        );
         const match = pos.find((p) => p.number.toLowerCase() === poNumber.trim().toLowerCase());
         purchaseOrderId = match?.id ?? null;
       }

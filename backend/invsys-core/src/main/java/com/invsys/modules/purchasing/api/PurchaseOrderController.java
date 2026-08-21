@@ -1,5 +1,7 @@
 package com.invsys.modules.purchasing.api;
 
+import com.invsys.core.common.OffsetPaging;
+import com.invsys.core.common.PageResponse;
 import com.invsys.modules.purchasing.domain.PurchaseOrder;
 import com.invsys.modules.purchasing.domain.PurchaseOrderLine;
 import com.invsys.modules.purchasing.domain.Supplier;
@@ -12,18 +14,23 @@ import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -47,10 +54,21 @@ public class PurchaseOrderController {
         this.supplierPortalService = supplierPortalService;
     }
 
+    private static final Set<String> SUPPLIER_SORT = Set.of("name", "createdAt", "paymentTerms");
+    private static final Set<String> PURCHASE_ORDER_SORT = Set.of("createdAt", "number", "status", "expectedAt");
+
     @GetMapping("/suppliers")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
-    public List<Supplier> suppliers() {
-        return supplierRepository.findByTenantIdOrderByNameAsc(TenantContext.requireTenantId());
+    public PageResponse<Supplier> suppliers(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "name,asc") String sort) {
+        Page<Supplier> result = supplierRepository.search(
+                TenantContext.requireTenantId(),
+                OffsetPaging.keyword(search),
+                OffsetPaging.of(page, size, sort, "name", Sort.Direction.ASC, SUPPLIER_SORT));
+        return PageResponse.of(result);
     }
 
     @PostMapping("/suppliers")
@@ -104,11 +122,24 @@ public class PurchaseOrderController {
 
     @GetMapping("/purchase-orders")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
-    public List<PurchaseOrderResponse> listPurchaseOrders() {
-        Map<UUID, String> supplierNames = supplierRepository
-                .findByTenantIdOrderByNameAsc(TenantContext.requireTenantId()).stream()
-                .collect(java.util.stream.Collectors.toMap(Supplier::getId, Supplier::getName, (a, b) -> a));
-        return purchaseOrderRepository.findByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId()).stream()
+    public PageResponse<PurchaseOrderResponse> listPurchaseOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Page<PurchaseOrder> result = purchaseOrderRepository.search(
+                tenantId,
+                OffsetPaging.keyword(search),
+                OffsetPaging.of(page, size, sort, "createdAt", Sort.Direction.DESC, PURCHASE_ORDER_SORT));
+        Set<UUID> supplierIds = result.getContent().stream()
+                .map(PurchaseOrder::getSupplierId)
+                .collect(Collectors.toSet());
+        Map<UUID, String> supplierNames = supplierIds.isEmpty()
+                ? Map.of()
+                : supplierRepository.findAllById(supplierIds).stream()
+                        .collect(Collectors.toMap(Supplier::getId, Supplier::getName, (a, b) -> a));
+        List<PurchaseOrderResponse> items = result.getContent().stream()
                 .map(po -> new PurchaseOrderResponse(
                         po.getId(),
                         po.getNumber(),
@@ -116,6 +147,7 @@ public class PurchaseOrderController {
                         po.getStatus(),
                         po.getExpectedAt()))
                 .toList();
+        return PageResponse.of(result, items);
     }
 
     @PostMapping("/purchase-orders")

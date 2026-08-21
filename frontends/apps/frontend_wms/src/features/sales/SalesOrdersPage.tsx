@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +26,11 @@ import {
 import { ListPageState } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
+import { unwrapPageItems } from '@/api/page';
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
+import { Pagination } from '@/components/ui/Pagination';
+import { useServerTableQuery } from '@/hooks/useServerTable';
+import { listSalesOrders } from '@/api/operational';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
@@ -169,8 +174,11 @@ function CreateOrderModal({ open, onClose }: { open: boolean; onClose: () => voi
   const [error, setError] = useState('');
 
   const { data: customers = [] } = useQuery({
-    queryKey: ['customers'],
-    queryFn: async () => (await apiClient.get<Customer[]>('/api/v1/customers')).data,
+    queryKey: ['customers', 'lookup'],
+    queryFn: async () =>
+      unwrapPageItems<Customer>(
+        (await apiClient.get('/api/v1/customers', { params: { page: 1, size: 100 } })).data,
+      ),
     enabled: open,
   });
 
@@ -450,11 +458,15 @@ export function SalesOrdersPage() {
   );
   const [peekOrderId, setPeekOrderId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['sales-orders'],
-    queryFn: async () => (await apiClient.get<SalesOrder[]>('/api/v1/sales-orders')).data,
+  const table = useServerTableQuery<SalesOrder>({
+    queryKey: 'sales-orders',
+    path: '/api/v1/sales-orders',
+    defaultSort: 'createdAt,desc',
+    extraParams: { status: statusFilter || undefined },
+    fetcher: listSalesOrders,
     refetchInterval: refetchIntervalWhileAuthenticated(3_000),
   });
+  const { items, isLoading, isError, error, refetch, search } = table;
 
   const { data: peekOrder } = useQuery({
     queryKey: ['sales-orders', peekOrderId],
@@ -464,11 +476,7 @@ export function SalesOrdersPage() {
     refetchInterval: peekOrderId ? refetchIntervalWhileAuthenticated(3_000) : false,
   });
 
-  const filtered = useMemo(() => {
-    if (!data) return [];
-    if (!statusFilter) return data;
-    return data.filter((o) => o.status === statusFilter);
-  }, [data, statusFilter]);
+  const filtered = items;
 
   const orderPresets = [
     { id: 'all', label: t('sales.filterAll'), filters: {} as Record<string, string> },
@@ -499,19 +507,29 @@ export function SalesOrdersPage() {
 
       <div className="shrink-0 px-6 pt-4">
         <DataListToolbar gridId="sales-orders">
-          <SavedFilterViews
-            className="mb-0"
-            storageKey="sales-orders-filters"
-            activeFilters={{ status: statusFilter }}
-            onApply={(f) => setStatusFilter(f.status ?? '')}
-            defaultPresets={orderPresets}
-          />
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <DebouncedSearchInput
+              value={search}
+              onDebouncedChange={table.setSearch}
+              placeholder="Search orders or customers…"
+            />
+            <SavedFilterViews
+              className="mb-0"
+              storageKey="sales-orders-filters"
+              activeFilters={{ status: statusFilter }}
+              onApply={(f) => {
+                setStatusFilter(f.status ?? '');
+                table.setPage(1);
+              }}
+              defaultPresets={orderPresets}
+            />
+          </div>
         </DataListToolbar>
       </div>
 
       <div className="min-h-0 min-w-0 flex-1 overflow-auto" data-list-scrollport="true">
       <ListPageState
-        isLoading={isLoading}
+        isLoading={isLoading && items.length === 0}
         isError={isError}
         error={error}
         data={filtered}
@@ -530,12 +548,22 @@ export function SalesOrdersPage() {
           ) : undefined
         }
       >
-        {(items) => (
-          <SalesOrdersTable
-            items={items}
-            onPeek={setPeekOrderId}
-            renderActions={(so) => <RowActions order={so} />}
-          />
+        {(rows) => (
+          <>
+            <SalesOrdersTable
+              items={rows}
+              onPeek={setPeekOrderId}
+              renderActions={(so) => <RowActions order={so} />}
+            />
+            <Pagination
+              page={table.page}
+              totalPages={table.totalPages}
+              totalElements={table.totalElements}
+              size={table.size}
+              onPageChange={table.setPage}
+              onSizeChange={table.setSize}
+            />
+          </>
         )}
       </ListPageState>
       </div>
