@@ -71,6 +71,7 @@ describe('SalesOrderDetailPage ledger lock', () => {
   it('enables inline editors on drafts', async () => {
     renderWorkspace(['WAREHOUSE_MANAGER']);
     expect(await screen.findByTestId('so-workspace')).toHaveAttribute('data-locked', 'false');
+    expect(screen.getByTestId('so-credit-status')).toHaveTextContent(/Credit CLEAR/i);
     expect(screen.getByTestId('submit-so')).toBeInTheDocument();
     expect(screen.getByTestId('so-line-qty-line-1')).toBeInTheDocument();
   });
@@ -81,6 +82,18 @@ describe('SalesOrderDetailPage ledger lock', () => {
     expect(screen.getByTestId('so-line-qty-locked-line-1')).toBeInTheDocument();
     expect(screen.getByTestId('cancel-so')).toBeInTheDocument();
     expect(screen.queryByTestId('reverse-fulfillment')).not.toBeInTheDocument();
+  });
+
+  it('shows credit-hold override only for finance or admin', async () => {
+    renderWorkspace(['ADMIN'], 'CREDIT_HOLD');
+    expect(await screen.findByTestId('override-credit-hold')).toBeInTheDocument();
+    expect(screen.getByTestId('so-credit-status')).toHaveTextContent(/Credit HOLD/i);
+  });
+
+  it('hides credit-hold override from warehouse managers', async () => {
+    renderWorkspace(['WAREHOUSE_MANAGER'], 'CREDIT_HOLD');
+    expect(await screen.findByTestId('so-workspace')).toBeInTheDocument();
+    expect(screen.queryByTestId('override-credit-hold')).not.toBeInTheDocument();
   });
 
   it('shows reverse fulfillment only for managers after ship', async () => {

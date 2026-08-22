@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { Bom, ProductionOrder } from '@/api/types';
 import { RequireRole } from '@/components/auth/RequireRole';
@@ -35,9 +35,12 @@ export function ProductionOrderDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [confirm, setConfirm] = useState<'release' | 'scrap' | null>(null);
+  const [confirm, setConfirm] = useState<'release' | 'scrap' | 'labor' | 'complete' | null>(null);
   const [scrapQty, setScrapQty] = useState('1');
   const [scrapVariantId, setScrapVariantId] = useState('');
+  const [laborHours, setLaborHours] = useState('1');
+  const [laborOperationId, setLaborOperationId] = useState('');
+  const [completeQty, setCompleteQty] = useState('');
 
   const orderQuery = useQuery({
     queryKey: ['manufacturing', 'orders', id],
@@ -81,6 +84,31 @@ export function ProductionOrderDetailPage() {
       toast('Released to the floor. The BOM definition is locked.', { tone: 'success' });
     },
     onError: () => toast('Could not release this production order.', { tone: 'danger' }),
+  });
+
+  const laborMutation = useMutation({
+    mutationFn: async () =>
+      apiClient.post(`/api/v1/manufacturing/orders/${id}/labor`, {
+        operationId: laborOperationId || operations[0]?.id,
+        hours: Number(laborHours),
+      }),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Labor time absorbed into the finished-good cost.', { tone: 'success' });
+    },
+    onError: () => toast('Could not log labor time.', { tone: 'danger' }),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: async () =>
+      apiClient.post(`/api/v1/manufacturing/orders/${id}/complete`, {
+        qtyToProduce: Number(completeQty || order?.qtyTarget),
+      }),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Finished goods minted into the warehouse ledger.', { tone: 'success' });
+    },
+    onError: () => toast('Could not report completion.', { tone: 'danger' }),
   });
 
   const scrapMutation = useMutation({
@@ -152,6 +180,31 @@ export function ProductionOrderDetailPage() {
               </Button>
             ) : null}
             {locked && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' ? (
+              <Button
+                variant="secondary"
+                data-testid="log-labor"
+                onClick={() => {
+                  setLaborOperationId(operations[0]?.id ?? '');
+                  setConfirm('labor');
+                }}
+                loading={laborMutation.isPending}
+              >
+                Log Labor Time
+              </Button>
+            ) : null}
+            {locked && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' ? (
+              <Button
+                data-testid="report-completion"
+                onClick={() => {
+                  setCompleteQty(String(Number(order.qtyTarget) - Number(order.qtyProduced ?? 0)));
+                  setConfirm('complete');
+                }}
+                loading={completeMutation.isPending}
+              >
+                Report Completion
+              </Button>
+            ) : null}
+            {locked && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' ? (
               <RequireRole roles={['WAREHOUSE_MANAGER', 'PRODUCTION_SUPERVISOR', 'ADMIN']}>
                 <Button
                   variant="danger"
@@ -166,16 +219,6 @@ export function ProductionOrderDetailPage() {
           </div>
         </div>
       </header>
-
-      {locked ? (
-        <div className="mx-6 mt-4 flex items-start gap-3 rounded-lg border border-border bg-surface-overlay/60 px-4 py-3">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
-          <p className="text-sm text-text">
-            This BOM is locked for the run. Damaged components are written off with Log Scrap — weGrowStock never
-            silently edits a posted consume.
-          </p>
-        </div>
-      ) : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
         <div className="grid gap-6 lg:grid-cols-2">
@@ -251,6 +294,63 @@ export function ProductionOrderDetailPage() {
             releaseMutation.mutate();
           }}
         />
+      ) : null}
+      {confirm === 'labor' ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Log labor time?"
+          description="Hours are absorbed into the finished-good cost on Report Completion."
+          confirmLabel="Log Labor Time"
+          confirming={laborMutation.isPending}
+          onConfirm={() => {
+            setConfirm(null);
+            laborMutation.mutate();
+          }}
+        >
+          <div className="mb-4 space-y-3">
+            <Input
+              label="Routing step id"
+              value={laborOperationId}
+              onChange={(e) => setLaborOperationId(e.target.value)}
+              data-testid="log-labor-operation"
+            />
+            <Input
+              label="Hours"
+              type="number"
+              min="0.01"
+              step="0.25"
+              value={laborHours}
+              onChange={(e) => setLaborHours(e.target.value)}
+              data-testid="log-labor-hours"
+            />
+          </div>
+        </AlertDialog>
+      ) : null}
+      {confirm === 'complete' ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Report completion?"
+          description="This mints finished inventory into the warehouse ledger and consumes allocated components."
+          confirmLabel="Report Completion"
+          confirming={completeMutation.isPending}
+          onConfirm={() => {
+            setConfirm(null);
+            completeMutation.mutate();
+          }}
+        >
+          <div className="mb-4">
+            <Input
+              label="Qty to produce"
+              type="number"
+              min="0.001"
+              value={completeQty}
+              onChange={(e) => setCompleteQty(e.target.value)}
+              data-testid="report-completion-qty"
+            />
+          </div>
+        </AlertDialog>
       ) : null}
       {confirm === 'scrap' ? (
         <AlertDialog

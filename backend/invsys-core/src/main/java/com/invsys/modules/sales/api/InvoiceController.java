@@ -1,5 +1,8 @@
 package com.invsys.modules.sales.api;
 
+import com.invsys.modules.fintech.domain.FactoredInvoice;
+import com.invsys.modules.fintech.repository.FactoredInvoiceRepository;
+import com.invsys.modules.fintech.service.FintechUnderwritingService;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.sales.domain.Invoice;
 import com.invsys.domain.PaymentIntent;
@@ -38,13 +41,19 @@ public class InvoiceController {
     private final InvoiceRepository invoiceRepository;
     private final InvoicingService invoicingService;
     private final CustomerRepository customerRepository;
+    private final FactoredInvoiceRepository factoredInvoiceRepository;
+    private final FintechUnderwritingService fintechUnderwritingService;
 
     public InvoiceController(InvoiceRepository invoiceRepository,
                              InvoicingService invoicingService,
-                             CustomerRepository customerRepository) {
+                             CustomerRepository customerRepository,
+                             FactoredInvoiceRepository factoredInvoiceRepository,
+                             FintechUnderwritingService fintechUnderwritingService) {
         this.invoiceRepository = invoiceRepository;
         this.invoicingService = invoicingService;
         this.customerRepository = customerRepository;
+        this.factoredInvoiceRepository = factoredInvoiceRepository;
+        this.fintechUnderwritingService = fintechUnderwritingService;
     }
 
     private static final Set<String> INVOICE_SORT = Set.of("createdAt", "number", "status", "total", "dueAt");
@@ -102,6 +111,10 @@ public class InvoiceController {
                         line.getAmount(),
                         lineKind(line.getDescription())))
                 .toList();
+        String factoringStatus = factoredInvoiceRepository
+                .findByTenantIdAndInvoiceId(invoice.getTenantId(), invoice.getId())
+                .map(FactoredInvoice::getFundingStatus)
+                .orElse(null);
         return new InvoiceDetailResponse(
                 invoice.getId(),
                 invoice.getNumber(),
@@ -114,6 +127,7 @@ public class InvoiceController {
                 invoice.getDueAt(),
                 invoice.getSalesOrderId(),
                 invoice.getDocumentUrl(),
+                factoringStatus,
                 lines);
     }
 
@@ -156,6 +170,26 @@ public class InvoiceController {
         return invoicingService.createPaymentIntent(invoiceId);
     }
 
+    @PostMapping("/{invoiceId}/payments")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
+    public Invoice recordPayment(@PathVariable UUID invoiceId, @RequestBody RecordPaymentRequest request) {
+        return invoicingService.recordPayment(invoiceId, request.amount());
+    }
+
+    @PostMapping("/{invoiceId}/credit-memo")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','FINANCE_ADMIN')")
+    public Invoice issuePartialCreditMemo(
+            @PathVariable UUID invoiceId,
+            @RequestBody PartialCreditMemoRequest request) {
+        return invoicingService.issuePartialCreditMemo(invoiceId, request.lines());
+    }
+
+    @PostMapping("/{invoiceId}/factor")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
+    public FactoredInvoice markFactored(@PathVariable UUID invoiceId) {
+        return fintechUnderwritingService.requestFactoring(invoiceId);
+    }
+
     public record InvoiceDetailResponse(
             UUID id,
             String number,
@@ -168,8 +202,15 @@ public class InvoiceController {
             Instant dueAt,
             UUID salesOrderId,
             String documentUrl,
+            String factoringStatus,
             List<InvoiceLineResponse> lines
     ) {
+    }
+
+    public record RecordPaymentRequest(BigDecimal amount) {
+    }
+
+    public record PartialCreditMemoRequest(List<InvoicingService.PartialCreditLine> lines) {
     }
 
     public record InvoiceLineResponse(

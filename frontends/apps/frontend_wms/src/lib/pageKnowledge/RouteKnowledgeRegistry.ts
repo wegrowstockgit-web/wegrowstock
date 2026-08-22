@@ -317,14 +317,7 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
       { label: 'Scan Incoming PO', route: '/inbound/receive/scan', icon: 'Barcode', variant: 'primary' },
       { label: 'Start Put-Away Tasks', route: '/inbound/putaway', icon: 'ArrowDownToLine' },
     ],
-    troubleshooting: [
-      {
-        issue: 'The supplier sent more items than ordered (Over-receipt).',
-        solution:
-          'Depending on your tolerance settings, you may need to file an RTV (Return to Vendor) or accept the surplus.',
-        action: { label: 'Manage Returns (RTV)', route: '/returns/vendor', icon: 'Undo' },
-      },
-    ],
+    troubleshooting: [],
     rolePermissions: ['PICKER', 'WAREHOUSE_MANAGER', 'ADMIN', 'OWNER'],
     glossary: {
       LPN: 'License Plate Number scanned on the carton or pallet.',

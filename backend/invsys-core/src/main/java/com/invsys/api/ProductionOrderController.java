@@ -5,7 +5,9 @@ import com.invsys.core.common.OffsetPaging;
 import com.invsys.core.common.PageResponse;
 import com.invsys.domain.ProductionOrder;
 import com.invsys.repository.ProductionOrderRepository;
+import com.invsys.api.dto.ProductionTimesheetResponse;
 import com.invsys.service.ManufacturingDtoMapper;
+import com.invsys.service.ManufacturingLaborService;
 import com.invsys.service.ManufacturingService;
 import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.Valid;
@@ -34,13 +36,16 @@ public class ProductionOrderController {
 
     private final ProductionOrderRepository productionOrderRepository;
     private final ManufacturingService manufacturingService;
+    private final ManufacturingLaborService laborService;
     private final ManufacturingDtoMapper dtoMapper;
 
     public ProductionOrderController(ProductionOrderRepository productionOrderRepository,
                                      ManufacturingService manufacturingService,
+                                     ManufacturingLaborService laborService,
                                      ManufacturingDtoMapper dtoMapper) {
         this.productionOrderRepository = productionOrderRepository;
         this.manufacturingService = manufacturingService;
+        this.laborService = laborService;
         this.dtoMapper = dtoMapper;
     }
 
@@ -98,6 +103,20 @@ public class ProductionOrderController {
         return dtoMapper.toProductionOrderResponse(productionOrderRepository.findById(id).orElseThrow());
     }
 
+    @PostMapping("/orders/{id}/complete")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PRODUCTION_SUPERVISOR')")
+    public ProductionOrderResponse complete(@PathVariable UUID id, @Valid @RequestBody AssembleRequest request) {
+        return dtoMapper.toProductionOrderResponse(manufacturingService.executeAssembly(id, request.qtyToProduce()));
+    }
+
+    @PostMapping("/orders/{id}/labor")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PRODUCTION_SUPERVISOR','PICKER')")
+    public ProductionTimesheetResponse logLabor(
+            @PathVariable UUID id,
+            @Valid @RequestBody LogLaborRequest request) {
+        return laborService.toResponse(laborService.logHours(id, request.operationId(), request.hours()));
+    }
+
     public record CreateProductionOrderRequest(
             @NotNull UUID parentVariantId,
             @NotNull @Positive BigDecimal qtyTarget
@@ -111,6 +130,12 @@ public class ProductionOrderController {
             @NotNull UUID variantId,
             UUID locationId,
             @NotNull @Positive BigDecimal quantity
+    ) {
+    }
+
+    public record LogLaborRequest(
+            @NotNull UUID operationId,
+            @NotNull @Positive BigDecimal hours
     ) {
     }
 }

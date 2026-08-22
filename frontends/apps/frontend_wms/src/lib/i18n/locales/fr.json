@@ -322,13 +322,7 @@
           "0": "Scanner le BC entrant",
           "1": "Démarrer le rangement"
         },
-        "troubleshooting": {
-          "0": {
-            "issue": "Le fournisseur a envoyé plus d’articles que commandé (sur-réception).",
-            "solution": "Selon vos tolérances, déposez un RTV (retour fournisseur) ou acceptez le surplus.",
-            "action": "Gérer les retours (RTV)"
-          }
-        },
+        "troubleshooting": {},
         "purpose": "Enregistrez l’inventaire arrivé et générez des LPN pour le rangement.",
         "dataOrigin": "Réceptions entrantes contre des bons de commande confirmés.",
         "flow": {
@@ -340,7 +334,7 @@
           "0": "Utilisez la fenêtre d’annulation avant validation ; ensuite inversez par RTV ou correction."
         },
         "correlations": {
-          "0": "Les sur-réceptions peuvent exiger un retour fournisseur."
+          "0": "Les sur-réceptions hors tolérance exigent une dérogation manager, ou le refus des cartons en trop."
         }
       },
       "products": {

@@ -107,13 +107,89 @@ public class PurchaseOrderService {
 
     @Transactional
     public PurchaseOrder markInTransit(UUID purchaseOrderId) {
+        return markInTransit(purchaseOrderId, null);
+    }
+
+    @Transactional
+    public PurchaseOrder markInTransit(UUID purchaseOrderId, MarkInTransitDetails details) {
         PurchaseOrder po = requirePo(purchaseOrderId);
         if (!"SUBMITTED".equals(po.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
                     "Only SUBMITTED purchase orders can be marked in transit");
         }
+        if (isMeshPartnerSupplier(po.getSupplierId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "MESH_AUTOMATED",
+                    "Mesh Network suppliers update IN_TRANSIT automatically when the partner ships");
+        }
+        if (details != null) {
+            if (details.vendorReference() != null && !details.vendorReference().isBlank()) {
+                po.setVendorReference(details.vendorReference().trim());
+            }
+            if (details.expectedDeliveryDate() != null) {
+                po.setExpectedAt(details.expectedDeliveryDate());
+            }
+            if ((details.trackingNumber() != null && !details.trackingNumber().isBlank())
+                    || (details.carrier() != null && !details.carrier().isBlank())
+                    || (details.vendorReference() != null && !details.vendorReference().isBlank())) {
+                List<Map<String, Object>> metadata = new ArrayList<>(
+                        po.getTrackingMetadata() != null ? po.getTrackingMetadata() : List.of());
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("source", "MANUAL");
+                if (details.trackingNumber() != null && !details.trackingNumber().isBlank()) {
+                    entry.put("trackingNumber", details.trackingNumber().trim());
+                }
+                if (details.carrier() != null && !details.carrier().isBlank()) {
+                    entry.put("carrier", details.carrier().trim());
+                }
+                if (details.vendorReference() != null && !details.vendorReference().isBlank()) {
+                    entry.put("vendorReference", details.vendorReference().trim());
+                }
+                entry.put("recordedAt", java.time.Instant.now().toString());
+                metadata.add(entry);
+                po.setTrackingMetadata(metadata);
+            }
+        }
         po.setStatus("IN_TRANSIT");
         return purchaseOrderRepository.save(po);
+    }
+
+    @Transactional
+    public PurchaseOrder revertToSubmitted(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if (!"IN_TRANSIT".equals(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only IN_TRANSIT purchase orders can revert to SUBMITTED");
+        }
+        if (isMeshPartnerSupplier(po.getSupplierId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "MESH_AUTOMATED",
+                    "Mesh Network transit is driven by the partner shipment — do not revert by hand");
+        }
+        boolean anyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
+                .anyMatch(l -> l.getQtyReceived() != null && l.getQtyReceived().signum() > 0);
+        if (anyReceived) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Cannot revert after stock has been received — reverse the receipt instead");
+        }
+        po.setTrackingMetadata(new ArrayList<>());
+        po.setVendorReference(null);
+        po.setStatus("SUBMITTED");
+        return purchaseOrderRepository.save(po);
+    }
+
+    public boolean isMeshPartnerSupplier(UUID supplierId) {
+        if (supplierId == null) {
+            return false;
+        }
+        return bootstrapJdbc.findConnectedMeshByBuyerSupplier(TenantContext.requireTenantId(), supplierId)
+                .isPresent();
+    }
+
+    public record MarkInTransitDetails(
+            String vendorReference,
+            String trackingNumber,
+            String carrier,
+            java.time.Instant expectedDeliveryDate
+    ) {
     }
 
     @Transactional

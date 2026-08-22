@@ -49,6 +49,8 @@ MGR = "WAREHOUSE_MANAGER"
 ADMIN = "ADMIN"
 OWNER = "OWNER"
 PICKER = "PICKER"
+FLOOR = "FLOOR_WORKER"
+FINANCE = "FINANCE_ADMIN"
 ANY = "ANY"
 
 rows: list[str] = []
@@ -88,37 +90,62 @@ add(
 
 # --- Inbound (requested + real WMS paths) ---
 PO_SUMMARY = (
-    "Draft purchase orders to restock your warehouse. Purpose: create inbound supply contracts against approved suppliers "
-    "so the dock can receive freight against expected lines. Search, sort, and page the list — weGrowStock loads one page from the server."
+    "Owners, Administrators, and Warehouse Managers create and submit POs. Floor Pickers receive against submitted POs on Inbound Receive."
 )
 PO_PRIV = "Owners, Administrators, and Warehouse Managers create and submit POs. Floor Pickers receive against submitted POs on Inbound Receive."
 PO_ACTIONS = [
     "Click New PO, pick a supplier, and add SKU, quantity, unit cost, and UoM.",
     "Save as Draft, then Submit when the buy is firm.",
-    "Mark In Transit when the vendor ships, then hand off to Floor receive.",
-    "Never delete a PO that already has receipts — use RTV or a reversing receive.",
+    "For standard suppliers, click 'Mark In Transit' and enter the tracking number when the vendor emails you the shipping confirmation.",
+    "For Mesh Network suppliers, do nothing! weGrowStock listens to their warehouse and automatically marks your PO in transit when their truck leaves.",
+    "Use the data grid to monitor ETAs and Receiving Progress.",
 ]
 PO_MISTAKES = [
     (
-        "I typed the wrong supplier price or quantity (100 instead of 10).",
-        "If the PO is still Draft, edit the line. After Submit with no receipts, cancel the open lines and recreate. After receiving, a manager posts a Reverse Receipt / stock correction — never edit the posted ledger row.",
+        "I typed the wrong supplier price or quantity",
+        "If DRAFT, edit the line. If SUBMITTED (0 receipts), cancel and recreate. If RECEIVED, use Reverse Receipt — NEVER edit a posted ledger row.",
         MGR,
     ),
     (
-        "I accidentally created a duplicate PO.",
-        "Cancel the unused twin before anyone receives against it. If both were received, reverse the extra receipt and close the extra PO. History of both documents stays visible.",
-        MGR,
+        "I accidentally created a duplicate PO",
+        "Select the duplicate and click Cancel PO before any items are received.",
+        "BUYER",
     ),
     (
-        "I picked the wrong supplier name because of a misspelling.",
-        "Draft: change the supplier. Submitted with no receipts: cancel and recreate. Received: keep the PO, fix future buys on the supplier record, and use RTV if the freight must go back.",
-        ADMIN,
+        "I marked a PO in transit, but the truck got cancelled",
+        "Click 'Revert to Submitted' to clear the tracking number and put the order back in the waiting queue.",
+        "BUYER",
+    ),
+    (
+        "We got a surprise $500 customs bill a week after receiving the PO.",
+        "Do NOT edit the PO. Use the Landed Cost Allocation engine to distribute the $500 freight/customs bill across the received items. This accurately recalculates the inventory valuation without altering the original dock receipt.",
+        FINANCE,
     ),
 ]
 PO_TIP = "Confirm unit cost out loud before Submit. A wrong price on a submitted PO becomes a finance problem; a wrong receive becomes a ledger reversal."
 
 add("/purchase-orders", "Inbound", "Purchase Orders", PO_SUMMARY, PO_PRIV, PO_ACTIONS, PO_MISTAKES, PO_TIP)
 add("/purchasing/orders", "Inbound", "Purchase Orders", PO_SUMMARY, PO_PRIV, PO_ACTIONS, PO_MISTAKES, PO_TIP)
+add(
+    "/inventory/landed-costs",
+    "Inbound",
+    "Landed Cost Allocation",
+    "Spread late freight, duty, and customs bills across already-received inventory. Valuation updates; the original dock receipt quantity stays untouched.",
+    "Finance Admins, Owners, and Administrators allocate landed costs. Floor workers do not edit PO lines after receive.",
+    [
+        "Open the Landed Cost Allocation engine from the PO or invoice.",
+        "Enter the freight or customs amount and choose a spread (value, weight, volume, or hybrid).",
+        "Confirm — weGrowStock posts quantity-neutral valuation rows.",
+    ],
+    [
+        (
+            "We got a surprise $500 customs bill a week after receiving the PO.",
+            "Do NOT edit the PO. Use the Landed Cost Allocation engine to distribute the $500 freight/customs bill across the received items. This accurately recalculates the inventory valuation without altering the original dock receipt.",
+            FINANCE,
+        )
+    ],
+    "Late logistics bills are math on value, not a rewrite of what the dock scanned.",
+)
 
 SUP_SUMMARY = (
     "Vendor master data — legal name, payment terms, lead times, and masked banking details. "
@@ -141,6 +168,11 @@ SUP_MISTAKES = [
         "I misspelled the remittance address.",
         "Edit the supplier and save again. Address typos do not change stock. If a check already went out, finance issues a new payment — not a stock reversal.",
         ADMIN,
+    ),
+    (
+        "The AP Invoice is blocked due to a 3-Way Mismatch.",
+        "The Vendor's invoice quantities or prices do not match our PO and Dock Receipt. Compare the three documents in this workspace. If the vendor overbilled, reject the AP Invoice. If our dock miscounted, a Manager must post a stock correction.",
+        FINANCE,
     ),
 ]
 SUP_TIP = "Search before you add. A duplicate vendor is the most common purchasing master-data error and it silently splits spend reports."
@@ -202,8 +234,23 @@ RCV_MISTAKES = [
         "Receive into Quarantine (or Skip & Flag if your site uses that at the dock), photograph if asked, and let a manager disposition restock vs scrap. Do not put damaged goods on a pick face.",
         PICKER,
     ),
+    (
+        "The supplier sent more items than we ordered, and the system blocked me.",
+        "The system strictly enforces Over-Receipt Tolerances. Do not force the receive. A Warehouse Manager must review the overage and approve a tolerance override, or you must refuse the extra boxes.",
+        FLOOR,
+    ),
+    (
+        "I received 5 'Pallets' instead of 5 'Cases', blowing up our inventory value.",
+        "Unit of Measure (UoM) errors are critical. If you receive the wrong UoM, a manager must use Reverse Receipt immediately. Always verify the UoM dropdown (Eaches, Cases, Pallets) matches the physical label you are scanning.",
+        FLOOR,
+    ),
+    (
+        "I put away items that were meant for an urgent backorder.",
+        "Always check for a 'Cross-Dock' alert upon scanning. If flagged, move the items directly to the Outbound Fulfillment staging area; do not put them away in the racks.",
+        FLOOR,
+    ),
 ]
-RCV_TIP = "If the badge says Offline - Caching Scans, stay extra precise. Parked receives wait in Exceptions → Sync Conflicts for a manager."
+RCV_TIP = "For regulated items (FSMA/DSCSA), the system will hard-stop you until you enter the Manufacturer Lot Number and Expiration Date. Do not use generic lot numbers."
 
 add("/inbound/receive", "Inbound", "Inbound Receiving", RCV_SUMMARY, RCV_PRIV, RCV_ACTIONS, RCV_MISTAKES, RCV_TIP)
 add("/purchasing/receive", "Inbound", "Inbound Receiving", RCV_SUMMARY, RCV_PRIV, RCV_ACTIONS, RCV_MISTAKES, RCV_TIP)
@@ -520,6 +567,11 @@ CC_MISTAKES = [
         "Tell the manager before approval. If already approved, they post a correction after a recount of the right bin.",
         MGR,
     ),
+    (
+        "I can't find an item, so I want to edit the inventory to 0.",
+        "weGrowStock prevents silent edits to prevent 'Ghost Inventory'. You must submit a cycle count of 0. This flags a variance. A Manager will review the financial loss, assign an Accounting Reason Code (e.g., Shrinkage), and approve the ledger adjustment.",
+        FLOOR,
+    ),
 ]
 CC_TIP = "A wrong honest count is fixable. A fake count that matches 'what the system usually says' poisons every order that trusts it."
 
@@ -574,8 +626,16 @@ EXC_MISTAKES = [
 ]
 EXC_TIP = "Ninety percent of conflict resolution is looking at the shelf."
 
+QUAR_MISTAKES = EXC_MISTAKES + [
+    (
+        "The received boxes are crushed or damaged. Should I reverse the receipt?",
+        "NEVER reverse the receipt for damaged goods, or accounting won't know we received them. Receive the goods normally, but route them immediately to a Quarantine Bin. Then, use the RTV (Return to Vendor) workspace to demand a chargeback.",
+        FLOOR,
+    ),
+]
+
 add("/exceptions", "Inventory", "Exceptions Desk", EXC_SUMMARY, EXC_PRIV, EXC_ACTIONS, EXC_MISTAKES, EXC_TIP)
-add("/inventory/quarantine", "Inventory", "Quarantine / QC Hold", EXC_SUMMARY, EXC_PRIV, EXC_ACTIONS, EXC_MISTAKES, EXC_TIP)
+add("/inventory/quarantine", "Inventory", "Quarantine / QC Hold", EXC_SUMMARY, EXC_PRIV, EXC_ACTIONS, QUAR_MISTAKES, EXC_TIP)
 
 LOT_SUMMARY = "Lot / serial trace for recalls. Follow a batch from supplier receive through assembly to the customer."
 LOT_PRIV = "Warehouse Managers, Administrators, Owners, and Viewers (read-only). Pickers report expired lots."

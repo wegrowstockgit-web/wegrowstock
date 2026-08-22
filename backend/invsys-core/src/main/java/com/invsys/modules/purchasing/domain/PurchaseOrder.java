@@ -45,6 +45,9 @@ public class PurchaseOrder extends TenantScopedEntity {
     @Column(columnDefinition = "text")
     private String notes;
 
+    @Column(name = "vendor_reference")
+    private String vendorReference;
+
     public UUID getSupplierId() {
         return supplierId;
     }
@@ -115,5 +118,13 @@ public class PurchaseOrder extends TenantScopedEntity {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public String getVendorReference() {
+        return vendorReference;
+    }
+
+    public void setVendorReference(String vendorReference) {
+        this.vendorReference = vendorReference;
     }
 }

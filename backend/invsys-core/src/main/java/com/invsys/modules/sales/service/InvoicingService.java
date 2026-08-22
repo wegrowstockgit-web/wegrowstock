@@ -442,6 +442,103 @@ public class InvoicingService {
         return invoiceLineRepository.findByInvoiceId(invoiceId);
     }
 
+    @Transactional
+    public Invoice recordPayment(UUID invoiceId, BigDecimal amount) {
+        Invoice invoice = requireInvoice(invoiceId);
+        if (!List.of("OPEN", "ISSUED", "PARTIALLY_PAID").contains(invoice.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only issued invoices can receive a payment");
+        }
+        if (amount == null || amount.signum() <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "amount must be greater than zero");
+        }
+        PaymentIntent pi = new PaymentIntent();
+        pi.setTenantId(invoice.getTenantId());
+        pi.setInvoiceId(invoiceId);
+        pi.setExternalId("manual_" + invoiceId + "_" + Instant.now().toEpochMilli());
+        pi.setAmount(amount);
+        pi.setCurrency(invoice.getCurrency());
+        pi.setStatus("SUCCEEDED");
+        pi.setRawPayload(Map.of("source", "MANUAL_WORKSPACE"));
+        pi = paymentIntentRepository.save(pi);
+
+        Payment payment = new Payment();
+        payment.setTenantId(invoice.getTenantId());
+        payment.setPaymentIntentId(pi.getId());
+        payment.setAmount(amount);
+        payment.setFeeAmount(BigDecimal.ZERO);
+        payment.setBalanceTxnRef("manual_" + pi.getExternalId());
+        paymentRepository.save(payment);
+
+        boolean paidInFull = amount.compareTo(invoice.getTotal()) >= 0;
+        invoice.setStatus(paidInFull ? "PAID" : "PARTIALLY_PAID");
+        invoiceRepository.save(invoice);
+        if (paidInFull) {
+            InvoicePaymentSettledEvent settled = new InvoicePaymentSettledEvent(invoice.getId(), amount);
+            eventPublisher.publishEvent(settled);
+            outboxService.append("INVOICE", invoice.getId(), "INVOICE_PAID", Map.of(
+                    "invoiceId", invoice.getId().toString(),
+                    "factoringPayback", settled.getFactoringPayback()));
+        }
+        creditService.replenishCredit(invoice.getCustomerId(), amount);
+        return invoice;
+    }
+
+    @Transactional
+    public Invoice issuePartialCreditMemo(UUID invoiceId, List<PartialCreditLine> lines) {
+        Invoice invoice = requireInvoice(invoiceId);
+        if (!List.of("OPEN", "ISSUED", "PARTIALLY_PAID").contains(invoice.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only issued invoices can receive a partial credit memo");
+        }
+        if (lines == null || lines.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one credit line is required");
+        }
+        Invoice credit = new Invoice();
+        credit.setTenantId(invoice.getTenantId());
+        credit.setSalesOrderId(invoice.getSalesOrderId());
+        credit.setCustomerId(invoice.getCustomerId());
+        credit.setNumber(sequenceService.nextNumber("CREDIT_MEMO", "CM-{YYYY}-{seq:5}"));
+        credit.setStatus("CREDIT_MEMO");
+        credit.setCurrency(invoice.getCurrency());
+        credit.setDueAt(Instant.now());
+        credit = invoiceRepository.save(credit);
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (PartialCreditLine requested : lines) {
+            InvoiceLine source = invoiceLineRepository.findById(requested.lineId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice line not found"));
+            if (!invoiceId.equals(source.getInvoiceId())) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice line not found");
+            }
+            BigDecimal qty = requested.qty() != null ? requested.qty() : source.getQty();
+            if (qty.signum() <= 0 || qty.compareTo(source.getQty()) > 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                        "Credit quantity must be between 0 and the billed quantity");
+            }
+            InvoiceLine offset = new InvoiceLine();
+            offset.setTenantId(invoice.getTenantId());
+            offset.setInvoiceId(credit.getId());
+            offset.setDescription("Partial credit: " + invoice.getNumber() + " / " + source.getDescription());
+            offset.setQty(qty);
+            offset.setUnitPrice(source.getUnitPrice().negate());
+            offset.setAmount(qty.multiply(source.getUnitPrice()).negate());
+            invoiceLineRepository.save(offset);
+            subtotal = subtotal.add(offset.getAmount());
+        }
+        credit.setSubtotal(subtotal);
+        credit.setTax(BigDecimal.ZERO);
+        credit.setTotal(subtotal);
+        invoiceRepository.save(credit);
+        outboxService.append("INVOICE", invoice.getId(), "INVOICE_PARTIAL_CREDIT", Map.of(
+                "invoiceId", invoice.getId(),
+                "creditMemoId", credit.getId(),
+                "creditMemoNumber", credit.getNumber()));
+        return credit;
+    }
+
+    public record PartialCreditLine(UUID lineId, BigDecimal qty) {
+    }
+
     private void recalculateTotals(Invoice invoice) {
         BigDecimal subtotal = invoiceLineRepository.findByInvoiceId(invoice.getId()).stream()
                 .map(InvoiceLine::getAmount)

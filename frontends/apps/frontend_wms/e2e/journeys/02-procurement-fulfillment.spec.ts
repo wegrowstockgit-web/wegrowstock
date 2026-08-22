@@ -54,6 +54,12 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
         timeout: 15_000,
       });
       await expect(manager.page.getByText(po.number).first()).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: /Created Date/i })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: /^Expected$/i })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: /^Total$/i })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: /^Progress$/i })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: /Vendor Ref/i })).toHaveCount(0);
+      await expect(manager.page.getByTestId(`po-progress-${po.id}`)).toHaveText(/0\s*\/\s*500/);
 
       // Snapshot ATP before receive (best-effort)
       const levelsBefore = await manager.page.request.get(
@@ -276,6 +282,91 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
       await manager.page.reload();
       await expect(manager.page.getByTestId('cancel-po')).toHaveCount(0);
       await expect(manager.page.getByTestId('reverse-receipt')).toBeVisible();
+    } finally {
+      await manager.close();
+    }
+  });
+
+  test('Manual Transit Flow', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const supplierId = await firstSupplierId(manager.page);
+      const po = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/purchase-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId,
+          number: `PO-TRN-${Date.now()}`,
+          destinationLocationId: WH_01,
+          lines: [{ variantId, qtyOrdered: 6, unitCost: 4 }],
+        }),
+      });
+      expect((await manager.page.request.post(`/api/v1/purchase-orders/${po.id}/submit`)).ok()).toBeTruthy();
+
+      await manager.page.goto(`/purchasing/orders/${po.id}`);
+      await expect(manager.page.getByTestId('po-workspace')).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('po-workspace-status')).toContainText(/SUBMITTED/i);
+      await expect(manager.page.getByTestId('cancel-po')).toBeVisible();
+      await expect(manager.page.getByTestId('mark-in-transit')).toBeEnabled();
+
+      await manager.page.getByTestId('mark-in-transit').click();
+      await expect(manager.page.getByTestId('mark-in-transit-modal')).toBeVisible();
+      await manager.page.getByTestId('mark-in-transit-tracking').fill('1Z999AA10123456784');
+      await manager.page.getByTestId('mark-in-transit-eta').fill('2026-09-15');
+      await manager.page.getByTestId('mark-in-transit-confirm').click();
+
+      await expect(manager.page.getByTestId('po-workspace-status')).toContainText(/IN TRANSIT/i, {
+        timeout: 15_000,
+      });
+      await expect(manager.page.getByTestId('cancel-po')).toHaveCount(0);
+      await expect(manager.page.getByTestId('po-tracking-details')).toContainText(/1Z999AA10123456784/);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  test('Mesh Network Lockdown', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const supplierId = await firstSupplierId(manager.page);
+      const po = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/purchase-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId,
+          number: `PO-MESH-${Date.now()}`,
+          destinationLocationId: WH_01,
+          lines: [{ variantId, qtyOrdered: 3, unitCost: 5 }],
+        }),
+      });
+      expect((await manager.page.request.post(`/api/v1/purchase-orders/${po.id}/submit`)).ok()).toBeTruthy();
+
+      await manager.page.route(`**/api/v1/purchase-orders/${po.id}`, async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        const body = (await response.json()) as Record<string, unknown>;
+        await route.fulfill({
+          status: response.status(),
+          headers: response.headers(),
+          body: JSON.stringify({
+            ...body,
+            isMeshPartner: true,
+            trackingNumber: body.trackingNumber ?? 'MESH-TRACK-1',
+            carrier: body.carrier ?? 'Mesh Freight',
+          }),
+        });
+      });
+
+      await manager.page.goto(`/purchasing/orders/${po.id}`);
+      await expect(manager.page.getByTestId('po-workspace')).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('mark-in-transit')).toBeDisabled();
+      await expect(manager.page.getByTestId('po-mesh-badge')).toBeVisible();
+      await expect(manager.page.getByTestId('po-mesh-automation-banner')).toContainText(
+        /Automated via Mesh Network/i,
+      );
     } finally {
       await manager.close();
     }

@@ -40,6 +40,7 @@ import com.invsys.modules.sales.api.ReleaseSalesOrderAllocationsRequested;
 import com.invsys.modules.inventory.api.InventoryLedgerLookup;
 import com.invsys.modules.inventory.domain.InventoryLedger;
 import com.invsys.service.AuditService;
+import com.invsys.service.CreditService;
 import com.invsys.service.DocumentSequenceService;
 import com.invsys.service.SoftKitExplosionService;
 
@@ -59,6 +60,7 @@ public class SalesOrderService {
     private final MeterRegistry meterRegistry;
     private final WmsMetrics wmsMetrics;
     private final InventoryLedgerLookup ledgerLookup;
+    private final CreditService creditService;
 
     public SalesOrderService(SalesOrderRepository salesOrderRepository,
                              SalesOrderLineRepository lineRepository,
@@ -72,7 +74,8 @@ public class SalesOrderService {
                              DocumentSequenceService sequenceService,
                              MeterRegistry meterRegistry,
                              WmsMetrics wmsMetrics,
-                             InventoryLedgerLookup ledgerLookup) {
+                             InventoryLedgerLookup ledgerLookup,
+                             CreditService creditService) {
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
         this.eventPublisher = eventPublisher;
@@ -86,6 +89,7 @@ public class SalesOrderService {
         this.meterRegistry = Objects.requireNonNull(meterRegistry, "meterRegistry");
         this.wmsMetrics = wmsMetrics;
         this.ledgerLookup = ledgerLookup;
+        this.creditService = creditService;
     }
 
     /**
@@ -298,7 +302,7 @@ public class SalesOrderService {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order is not in DRAFT");
         }
         String before = order.getStatus();
-        order.setStatus("CONFIRMED");
+        order.setStatus(isCreditHeld(order) ? "CREDIT_HOLD" : "CONFIRMED");
         order = salesOrderRepository.save(order);
         outboxService.append("SALES_ORDER", order.getId(), "SALES_ORDER_CONFIRMED", Map.of("orderId", order.getId()));
         auditService.record("SALES_ORDER_CONFIRM", "SALES_ORDER", order.getId(), Map.of(
@@ -311,6 +315,12 @@ public class SalesOrderService {
         Timer.Sample allocationSample = wmsMetrics.startAllocation();
         try {
             SalesOrder order = getOrder(orderId);
+            if (isCreditHeld(order)) {
+                order.setStatus("CREDIT_HOLD");
+                salesOrderRepository.save(order);
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "CREDIT_HOLD",
+                        "Customer is on credit hold. Request a finance override or split a backorder.");
+            }
             if (!SalesOrderStatus.canAllocate(order.getStatus())) {
                 throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be allocated");
             }
@@ -462,6 +472,77 @@ public class SalesOrderService {
             return SalesOrderStatus.BACKORDERED.name();
         }
         return SalesOrderStatus.PARTIALLY_ALLOCATED.name();
+    }
+
+    @Transactional
+    public SalesOrder overrideCreditHold(UUID orderId) {
+        SalesOrder order = getOrder(orderId);
+        if ("CANCELLED".equals(order.getStatus()) || "CLOSED".equals(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Cannot override credit hold on a closed order");
+        }
+        order.setCreditHoldOverride(true);
+        if ("CREDIT_HOLD".equals(order.getStatus()) || "HOLD".equals(order.getStatus())) {
+            order.setStatus("CONFIRMED");
+        }
+        order = salesOrderRepository.save(order);
+        auditService.record("SALES_ORDER_CREDIT_OVERRIDE", "SALES_ORDER", order.getId(), Map.of(
+                "status", order.getStatus(),
+                "creditHoldOverride", true));
+        return order;
+    }
+
+    @Transactional
+    public SalesOrderLine splitBackorder(UUID orderId, UUID lineId, BigDecimal qtyToShipNow) {
+        SalesOrder order = getOrder(orderId);
+        if ("DRAFT".equals(order.getStatus()) || "CANCELLED".equals(order.getStatus()) || "CLOSED".equals(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Line cannot be split in this status");
+        }
+        SalesOrderLine line = lineRepository.findById(lineId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+        if (!orderId.equals(line.getSalesOrderId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found");
+        }
+        if (qtyToShipNow == null || qtyToShipNow.signum() < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "qtyToShipNow must be zero or greater");
+        }
+        BigDecimal shipped = line.getQtyShipped() != null ? line.getQtyShipped() : BigDecimal.ZERO;
+        BigDecimal remaining = line.getQtyOrdered().subtract(shipped);
+        if (qtyToShipNow.compareTo(remaining) >= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "Split / Backorder needs an unfulfilled remainder");
+        }
+        if (qtyToShipNow.compareTo(shipped) < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "qtyToShipNow cannot be less than already shipped quantity");
+        }
+        line.setQtyBackordered(remaining.subtract(qtyToShipNow));
+        line = lineRepository.save(line);
+        if (!"PARTIALLY_SHIPPED".equals(order.getStatus()) && !"SHIPPED".equals(order.getStatus())) {
+            order.setStatus("BACKORDERED");
+            salesOrderRepository.save(order);
+        }
+        return line;
+    }
+
+    public String creditStatus(SalesOrder order) {
+        if (order.isCreditHoldOverride()) {
+            return "OVERRIDDEN";
+        }
+        if ("CREDIT_HOLD".equals(order.getStatus()) || isCreditHeld(order)) {
+            return "HOLD";
+        }
+        return "CLEAR";
+    }
+
+    private boolean isCreditHeld(SalesOrder order) {
+        if (order.isCreditHoldOverride()) {
+            return false;
+        }
+        Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
+        if (customer != null && "HOLD".equalsIgnoreCase(customer.getCustomerStatus())) {
+            return true;
+        }
+        return creditService.isOnHold(order.getCustomerId());
     }
 
     private SalesOrder getOrder(UUID orderId) {

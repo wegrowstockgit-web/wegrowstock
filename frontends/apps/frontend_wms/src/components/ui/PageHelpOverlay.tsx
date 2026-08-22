@@ -171,7 +171,7 @@ function KnowledgeBody({
   );
 
   return (
-    <div className={cn('space-y-8 text-text', density.typography)} data-testid="page-help-body">
+    <div className={cn('space-y-8 text-text', density.typography)}>
       <section>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-text">{t('pageHelp.overview')}</h3>
         <p className={cn('mt-2 leading-relaxed', density.typography)}>{description}</p>
@@ -456,11 +456,13 @@ export function PageHelpOverlay() {
   );
   const dynamic = usePageKnowledge(location.pathname, location.search);
 
-  const title = knowledge
-    ? knowledge.i18nKey
-      ? String(t(`pageHelp.playbooks.${knowledge.i18nKey}.title`, { defaultValue: knowledge.title }))
-      : knowledge.title
-    : dynamic?.title ?? t('pageHelp.fallbackTitle');
+  const title = dynamic?.title
+    ? dynamic.title
+    : knowledge
+      ? knowledge.i18nKey
+        ? String(t(`pageHelp.playbooks.${knowledge.i18nKey}.title`, { defaultValue: knowledge.title }))
+        : knowledge.title
+      : t('pageHelp.fallbackTitle');
 
   useEffect(() => {
     if (!open) return;
@@ -541,16 +543,15 @@ export function PageHelpOverlay() {
                   data-testid="page-help-context"
                   data-route-key={routeKey}
                 >
-                  {dynamic || knowledge ? (
-                    <div className="space-y-8">
-                      {dynamic ? <DynamicKnowledgeBody knowledge={dynamic} /> : null}
-                      {knowledge ? (
-                        <KnowledgeBody knowledge={knowledge} onRunAction={runAction} />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <FallbackBody routeKey={routeKey} />
-                  )}
+                  <div className="space-y-8" data-testid="page-help-body">
+                    {dynamic ? (
+                      <DynamicKnowledgeBody knowledge={dynamic} />
+                    ) : knowledge ? (
+                      <KnowledgeBody knowledge={knowledge} onRunAction={runAction} />
+                    ) : (
+                      <FallbackBody routeKey={routeKey} />
+                    )}
+                  </div>
                 </div>
               </div>
             </aside>

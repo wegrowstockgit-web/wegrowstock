@@ -5,8 +5,9 @@ import { ArrowLeft, Scale } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PendingVariance } from '@/api/types';
 import { RequireRole } from '@/components/auth/RequireRole';
-import { AlertDialog } from '@/components/ui/AlertDialog';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { Select } from '@/components/ui/Select';
 import {
   Table,
   TableBody,
@@ -31,6 +32,7 @@ export function VarianceApprovalWorkspace() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [reasonCode, setReasonCode] = useState('SHRINKAGE');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const pendingQuery = useQuery({
@@ -44,7 +46,7 @@ export function VarianceApprovalWorkspace() {
   const approve = useMutation({
     mutationFn: async (id: string) => {
       setBusyId(id);
-      await apiClient.post(`/api/v1/cycle-counts/lines/${id}/approve-adjustment`);
+      await apiClient.post(`/api/v1/cycle-counts/lines/${id}/approve-adjustment`, { reasonCode });
     },
     onSuccess: async () => {
       toast('Variance approved. A stock correction is on the ledger.', { tone: 'success' });
@@ -81,10 +83,6 @@ export function VarianceApprovalWorkspace() {
           <Scale className="mt-1 h-5 w-5 text-text-muted" aria-hidden />
           <div>
             <h1 className="text-2xl font-bold text-text">Variance approval</h1>
-            <p className="mt-1 text-sm text-text-muted">
-              Blind counts that miss the ledger become a variance. weGrowStock never overwrites on-hand until a
-              manager posts the correction.
-            </p>
           </div>
         </div>
       </header>
@@ -165,23 +163,46 @@ export function VarianceApprovalWorkspace() {
       </div>
 
       {confirmId ? (
-        <AlertDialog
+        <Modal
           open
-          onOpenChange={(open) => !open && setConfirmId(null)}
+          onClose={() => setConfirmId(null)}
           title="Approve this variance?"
-          description="This posts a stock correction to the immutable ledger and closes the count cycle. It does not rewrite the original expected quantity."
-          confirmLabel="Approve Variance"
-          confirming={approve.isPending}
-          onConfirm={() => {
-            const id = confirmId;
-            setConfirmId(null);
-            approve.mutate(id, {
-              onSuccess: () => {
-                if (lineId) navigate('/inventory/variances');
-              },
-            });
-          }}
-        />
+          description="Choose why the count missed the ledger before posting the stock correction."
+        >
+          <div className="space-y-4">
+            <Select
+              label="Accounting reason code"
+              value={reasonCode}
+              onChange={(e) => setReasonCode(e.target.value)}
+              data-testid="variance-reason-code"
+            >
+              <option value="SHRINKAGE">Shrinkage</option>
+              <option value="DAMAGED">Damaged</option>
+              <option value="EXPIRED">Expired</option>
+              <option value="CYCLE_COUNT">Cycle count other</option>
+            </Select>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmId(null)}>
+                Cancel
+              </Button>
+              <Button
+                data-testid="approve-variance-confirm"
+                loading={approve.isPending}
+                onClick={() => {
+                  const id = confirmId;
+                  setConfirmId(null);
+                  approve.mutate(id, {
+                    onSuccess: () => {
+                      if (lineId) navigate('/inventory/variances');
+                    },
+                  });
+                }}
+              >
+                Approve Variance
+              </Button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

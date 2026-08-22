@@ -14,7 +14,9 @@ import type {
   TenantLocation,
 } from '@/api/types';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency, formatMediumDate } from '@/lib/utils';
+import { selectColumnVisible, useGridColumnStore } from '@/stores/gridColumnStore';
+import type { ColumnVisibilityItem } from '@/components/ui/ColumnVisibilityMenu';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -40,6 +42,22 @@ import { unwrapPageItems } from '@/api/page';
 import { listPurchaseOrders } from '@/api/operational';
 
 const RECEIVABLE = new Set(['SUBMITTED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED']);
+const PO_GRID_ID = 'purchase-orders';
+const PO_COLUMN_ITEMS: ColumnVisibilityItem[] = [
+  { id: 'number', label: 'Number' },
+  { id: 'supplier', label: 'Supplier' },
+  { id: 'status', label: 'Status' },
+  { id: 'createdAt', label: 'Created Date' },
+  { id: 'expected', label: 'Expected' },
+  { id: 'total', label: 'Total' },
+  { id: 'progress', label: 'Progress' },
+  { id: 'vendorRef', label: 'Vendor Ref' },
+];
+const PO_OPS_COLUMN_IDS = ['number', 'supplier', 'status', 'expected', 'progress'] as const;
+
+function etaOf(po: PurchaseOrder): string {
+  return po.expectedDeliveryDate ?? po.expectedAt ?? '';
+}
 
 function PurchaseOrdersTable({
   items,
@@ -48,14 +66,38 @@ function PurchaseOrdersTable({
   items: PurchaseOrder[];
   onPeek: (id: string) => void;
 }) {
+  const ensureColumns = useGridColumnStore((s) => s.ensureColumns);
+  const showNumber = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'number'));
+  const showSupplier = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'supplier'));
+  const showStatus = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'status'));
+  const showCreated = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'createdAt'));
+  const showExpected = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'expected'));
+  const showTotal = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'total'));
+  const showProgress = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'progress'));
+  const showVendorRef = useGridColumnStore((s) => selectColumnVisible(s, PO_GRID_ID, 'vendorRef'));
+
+  useEffect(() => {
+    ensureColumns(
+      PO_GRID_ID,
+      PO_COLUMN_ITEMS.map((c) => c.id),
+      {
+        columnOrder: PO_COLUMN_ITEMS.map((c) => c.id),
+        columnVisibility: { vendorRef: false },
+      },
+    );
+  }, [ensureColumns]);
+
   const { sort, toggle, sorted } = useClientSort(
     items,
     {
       number: (po) => po.number,
       supplier: (po) => po.supplierName,
       status: (po) => po.status,
-      expected: (po) => po.expectedAt ?? '',
-      freight: (po) => po.freightAmount ?? 0,
+      createdAt: (po) => po.createdAt ?? '',
+      expected: (po) => etaOf(po),
+      total: (po) => po.totalAmount ?? 0,
+      progress: (po) => po.totalQtyReceived ?? 0,
+      vendorRef: (po) => po.vendorReference ?? '',
     },
     { key: 'number', dir: 'desc' },
   );
@@ -63,44 +105,84 @@ function PurchaseOrdersTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
-            Number
-          </TableHead>
-          <TableHead sortable sortKey="supplier" sort={sort} onSort={toggle}>
-            Supplier
-          </TableHead>
-          <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
-            Status
-          </TableHead>
-          <TableHead sortable sortKey="expected" sort={sort} onSort={toggle}>
-            Expected
-          </TableHead>
-          <TableHead sortable sortKey="freight" sort={sort} onSort={toggle} align="right">
-            Freight
-          </TableHead>
+          {showNumber ? (
+            <TableHead sortable sortKey="number" sort={sort} onSort={toggle}>
+              Number
+            </TableHead>
+          ) : null}
+          {showSupplier ? (
+            <TableHead sortable sortKey="supplier" sort={sort} onSort={toggle}>
+              Supplier
+            </TableHead>
+          ) : null}
+          {showStatus ? (
+            <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
+              Status
+            </TableHead>
+          ) : null}
+          {showCreated ? (
+            <TableHead sortable sortKey="createdAt" sort={sort} onSort={toggle}>
+              Created Date
+            </TableHead>
+          ) : null}
+          {showExpected ? (
+            <TableHead sortable sortKey="expected" sort={sort} onSort={toggle}>
+              Expected
+            </TableHead>
+          ) : null}
+          {showTotal ? (
+            <TableHead sortable sortKey="total" sort={sort} onSort={toggle} align="right">
+              Total
+            </TableHead>
+          ) : null}
+          {showProgress ? (
+            <TableHead sortable sortKey="progress" sort={sort} onSort={toggle}>
+              Progress
+            </TableHead>
+          ) : null}
+          {showVendorRef ? (
+            <TableHead sortable sortKey="vendorRef" sort={sort} onSort={toggle}>
+              Vendor Ref
+            </TableHead>
+          ) : null}
         </TableRow>
       </TableHeader>
       <TableBody>
         {sorted.map((po) => (
           <TableRow key={po.id} className="cursor-pointer" onClick={() => onPeek(po.id)}>
-            <TableCell mono>{po.number}</TableCell>
-            <TableCell>{po.supplierName}</TableCell>
-            <TableCell>
-              <span
-                className={cn(
-                  'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                  STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted',
-                )}
-              >
-                {po.status.replaceAll('_', ' ')}
-              </span>
-            </TableCell>
-            <TableCell className="text-text-muted">
-              {po.expectedAt ? new Date(po.expectedAt).toLocaleDateString() : '—'}
-            </TableCell>
-            <TableCell align="right" mono>
-              {po.freightAmount != null ? po.freightAmount.toFixed(2) : '—'}
-            </TableCell>
+            {showNumber ? <TableCell mono>{po.number}</TableCell> : null}
+            {showSupplier ? <TableCell>{po.supplierName}</TableCell> : null}
+            {showStatus ? (
+              <TableCell>
+                <span
+                  className={cn(
+                    'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                    STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted',
+                  )}
+                >
+                  {po.status.replaceAll('_', ' ')}
+                </span>
+              </TableCell>
+            ) : null}
+            {showCreated ? (
+              <TableCell className="text-text-muted">{formatMediumDate(po.createdAt)}</TableCell>
+            ) : null}
+            {showExpected ? (
+              <TableCell className="text-text-muted">{formatMediumDate(etaOf(po) || null)}</TableCell>
+            ) : null}
+            {showTotal ? (
+              <TableCell align="right" mono>
+                {po.totalAmount != null ? formatCurrency(Number(po.totalAmount)) : '—'}
+              </TableCell>
+            ) : null}
+            {showProgress ? (
+              <TableCell mono data-testid={`po-progress-${po.id}`}>
+                {po.totalQtyReceived ?? 0} / {po.totalQtyOrdered ?? 0}
+              </TableCell>
+            ) : null}
+            {showVendorRef ? (
+              <TableCell className="text-text-muted">{po.vendorReference || '—'}</TableCell>
+            ) : null}
           </TableRow>
         ))}
       </TableBody>
@@ -760,6 +842,18 @@ export function PurchaseOrdersPage() {
   });
   const { items, isLoading, isError, error, refetch, search } = table;
   const peekPo = items.find((po) => po.id === peekPoId) ?? null;
+  const ensureColumns = useGridColumnStore((s) => s.ensureColumns);
+
+  useEffect(() => {
+    ensureColumns(
+      PO_GRID_ID,
+      PO_COLUMN_ITEMS.map((c) => c.id),
+      {
+        columnOrder: PO_COLUMN_ITEMS.map((c) => c.id),
+        columnVisibility: { vendorRef: false },
+      },
+    );
+  }, [ensureColumns]);
 
   return (
     <TableDensityScope gridId="purchase-orders">
@@ -789,7 +883,11 @@ export function PurchaseOrdersPage() {
       </div>
 
       <div className="shrink-0 px-6 pt-4">
-        <DataListToolbar gridId="purchase-orders">
+        <DataListToolbar
+          gridId={PO_GRID_ID}
+          columnItems={PO_COLUMN_ITEMS}
+          opsOnlyColumnIds={PO_OPS_COLUMN_IDS}
+        >
           <DebouncedSearchInput
             value={search}
             onDebouncedChange={table.setSearch}
@@ -892,15 +990,35 @@ export function PurchaseOrdersPage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Created</dt>
+                <dd>{formatMediumDate(peekPo.createdAt)}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
                 <dt className="text-text-muted">Expected</dt>
-                <dd>
-                  {peekPo.expectedAt ? new Date(peekPo.expectedAt).toLocaleDateString() : '—'}
+                <dd>{formatMediumDate(peekPo.expectedDeliveryDate ?? peekPo.expectedAt)}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Total</dt>
+                <dd className="font-mono tabular-nums">
+                  {peekPo.totalAmount != null ? formatCurrency(Number(peekPo.totalAmount)) : '—'}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
+                <dt className="text-text-muted">Progress</dt>
+                <dd className="font-mono tabular-nums">
+                  {peekPo.totalQtyReceived ?? 0} / {peekPo.totalQtyOrdered ?? 0}
+                </dd>
+              </div>
+              {peekPo.vendorReference ? (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-muted">Vendor Ref</dt>
+                  <dd>{peekPo.vendorReference}</dd>
+                </div>
+              ) : null}
+              <div className="flex justify-between gap-4">
                 <dt className="text-text-muted">Freight</dt>
                 <dd className="font-mono tabular-nums">
-                  {peekPo.freightAmount != null ? peekPo.freightAmount.toFixed(2) : '—'}
+                  {peekPo.freightAmount != null ? formatCurrency(Number(peekPo.freightAmount)) : '—'}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">

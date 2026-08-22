@@ -259,6 +259,7 @@ public class SalesOrderController {
                 order.getQuoteExpiresAt(),
                 order.getManualDiscountTotal(),
                 order.getQuoteNotes(),
+                salesOrderService.creditStatus(order),
                 lines);
     }
 
@@ -328,6 +329,21 @@ public class SalesOrderController {
         return salesOrderService.cancel(id);
     }
 
+    @PostMapping("/sales-orders/{id}/override-credit-hold")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
+    public SalesOrder overrideCreditHold(@PathVariable UUID id) {
+        return salesOrderService.overrideCreditHold(id);
+    }
+
+    @PostMapping("/sales-orders/{id}/lines/{lineId}/split-backorder")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public SalesOrderLine splitBackorder(
+            @PathVariable UUID id,
+            @PathVariable UUID lineId,
+            @RequestBody SplitBackorderRequest request) {
+        return salesOrderService.splitBackorder(id, lineId, request.qtyToShipNow());
+    }
+
     public record CreateCustomerRequest(
             @NotBlank String name,
             String email,
@@ -372,6 +388,9 @@ public class SalesOrderController {
     public record UpdateLineRequest(BigDecimal qtyOrdered, BigDecimal unitPrice) {
     }
 
+    public record SplitBackorderRequest(BigDecimal qtyToShipNow) {
+    }
+
     public record SalesOrderResponse(
             UUID id,
             String number,
@@ -395,6 +414,7 @@ public class SalesOrderController {
             java.time.Instant quoteExpiresAt,
             java.math.BigDecimal manualDiscountTotal,
             String quoteNotes,
+            String creditStatus,
             List<SalesOrderLineResponse> lines
     ) {
     }

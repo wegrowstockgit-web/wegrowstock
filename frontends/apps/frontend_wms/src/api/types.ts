@@ -666,7 +666,13 @@ export interface PurchaseOrder {
   supplierId?: string;
   supplierName: string;
   status: string;
+  createdAt?: string;
   expectedAt?: string;
+  expectedDeliveryDate?: string;
+  totalAmount?: number;
+  totalQtyOrdered?: number;
+  totalQtyReceived?: number;
+  vendorReference?: string | null;
   destinationLocationId?: string;
   freightAmount?: number;
   dutiesAmount?: number;
@@ -683,6 +689,10 @@ export interface PurchaseOrderLineDetail {
 
 export interface PurchaseOrderDetail extends PurchaseOrder {
   lines: PurchaseOrderLineDetail[];
+  isMeshPartner?: boolean;
+  trackingNumber?: string | null;
+  carrier?: string | null;
+  trackingMetadata?: Array<Record<string, unknown>>;
 }
 
 export interface SalesOrder {
@@ -772,6 +782,7 @@ export interface SalesOrderDetail {
   quoteExpiresAt?: string | null;
   manualDiscountTotal?: number;
   quoteNotes?: string | null;
+  creditStatus?: 'CLEAR' | 'HOLD' | 'OVERRIDDEN' | string;
   lines: SalesOrderLineDetail[];
 }
 
@@ -955,6 +966,7 @@ export interface InvoiceDetail extends Invoice {
   documentUrl?: string | null;
   subtotal?: number;
   tax?: number;
+  factoringStatus?: string | null;
   lines?: InvoiceLineDetail[];
 }
 

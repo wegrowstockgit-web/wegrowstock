@@ -126,4 +126,95 @@ class InvoiceWorkspaceHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("VOID"));
     }
+
+    @Test
+    void partialCreditAndPaymentLeaveOriginalInvoiceInHistory() throws Exception {
+        String slug = "invpc-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Invoice Partial Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+        TenantContext.setTenantId(owner.tenantId());
+
+        Product product = new Product();
+        product.setTenantId(owner.tenantId());
+        product.setSkuRoot("INVPC");
+        product.setName("Partial Widget");
+        product = productRepository.save(product);
+
+        String variantId = objectMapper.readTree(mockMvc.perform(post("/api/v1/variants")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "productId":"%s",
+                                  "sku":"INVPC-1",
+                                  "price":20,
+                                  "currency":"USD",
+                                  "weight":1,
+                                  "weightUnit":"lb",
+                                  "length":2,
+                                  "width":2,
+                                  "height":2,
+                                  "dimUnit":"in"
+                                }
+                                """.formatted(product.getId())))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String customerId = objectMapper.readTree(mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Partial Buyer\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String orderId = objectMapper.readTree(mockMvc.perform(post("/api/v1/sales-orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerId":"%s","number":"SO-PC-1","lines":[{"variantId":"%s","qtyOrdered":5,"unitPrice":20}]}
+                                """.formatted(customerId, variantId)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String invoiceId = objectMapper.readTree(mockMvc.perform(post("/api/v1/invoices/from-sales-order/" + orderId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OPEN"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String lineId = objectMapper.readTree(mockMvc.perform(get("/api/v1/invoices/" + invoiceId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("lines").get(0).get("id").asString();
+
+        mockMvc.perform(post("/api/v1/invoices/" + invoiceId + "/credit-memo")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lines\":[{\"lineId\":\"%s\",\"qty\":1}]}".formatted(lineId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CREDIT_MEMO"));
+
+        mockMvc.perform(get("/api/v1/invoices/" + invoiceId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OPEN"));
+
+        mockMvc.perform(post("/api/v1/invoices/" + invoiceId + "/payments")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":40}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PARTIALLY_PAID"));
+    }
 }

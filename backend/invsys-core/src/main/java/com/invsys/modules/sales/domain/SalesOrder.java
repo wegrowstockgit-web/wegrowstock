@@ -49,6 +49,9 @@ public class SalesOrder extends TenantScopedEntity {
     @Column(name = "quote_notes")
     private String quoteNotes;
 
+    @Column(name = "credit_hold_override", nullable = false)
+    private boolean creditHoldOverride = false;
+
     public UUID getCustomerId() {
         return customerId;
     }
@@ -135,5 +138,13 @@ public class SalesOrder extends TenantScopedEntity {
 
     public void setQuoteNotes(String quoteNotes) {
         this.quoteNotes = quoteNotes;
+    }
+
+    public boolean isCreditHoldOverride() {
+        return creditHoldOverride;
+    }
+
+    public void setCreditHoldOverride(boolean creditHoldOverride) {
+        this.creditHoldOverride = creditHoldOverride;
     }
 }

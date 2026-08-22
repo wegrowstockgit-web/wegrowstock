@@ -56,10 +56,10 @@ test.describe('Reactive page help + granular components', () => {
 
       await manager.page.getByTestId('page-help-trigger').click();
       await expect(manager.page.getByTestId('page-help-body')).toBeVisible({ timeout: 15_000 });
-      await expect(manager.page.getByTestId('page-help-statuses').first()).toBeVisible();
+      await expect(manager.page.getByTestId('page-help-dynamic')).toBeVisible();
       await expect(manager.page.getByTestId('page-help-body')).toContainText(/ALLOCATED/i);
-      await expect(manager.page.getByTestId('page-help-body')).toContainText(/Where this comes from/i);
-      await expect(manager.page.getByTestId('page-help-component').first()).toBeVisible();
+      await expect(manager.page.getByTestId('page-help-key-actions')).toBeVisible();
+      await expect(manager.page.getByTestId('page-help-privileges')).toContainText(/Warehouse Managers/i);
     } finally {
       await manager.close();
     }

@@ -322,13 +322,7 @@
           "0": "Escanear OC entrante",
           "1": "Iniciar tareas de ubicación"
         },
-        "troubleshooting": {
-          "0": {
-            "issue": "El proveedor envió más artículos de los pedidos (sobre-recibo).",
-            "solution": "Según tus tolerancias, puedes abrir un RTV (devolución a proveedor) o aceptar el excedente.",
-            "action": "Gestionar devoluciones (RTV)"
-          }
-        },
+        "troubleshooting": {},
         "purpose": "Da de alta inventario recién llegado y genera LPN para ubicación.",
         "dataOrigin": "Recibos de entrada contra órdenes de compra confirmadas.",
         "flow": {
@@ -340,7 +334,7 @@
           "0": "Usa la ventana de deshacer antes de confirmar; después revierte por RTV o corrección."
         },
         "correlations": {
-          "0": "Los sobre-recibos pueden requerir devolución a proveedor."
+          "0": "Los sobre-recibos fuera de tolerancia requieren anulación de un gerente, o rechazar las cajas extra."
         }
       },
       "products": {

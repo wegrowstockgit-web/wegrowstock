@@ -123,7 +123,7 @@ test.describe('Page help overlay', () => {
     }
   });
 
-  test('quick action navigates from sales orders into fulfillment', async ({ browser }) => {
+  test('sales orders overlay is seed-backed and closes before fulfillment', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
     try {
       await manager.page.setViewportSize({ width: 1280, height: 800 });
@@ -132,10 +132,13 @@ test.describe('Page help overlay', () => {
       await dismissOnboardingTourIfPresent(manager.page);
 
       await manager.page.getByTestId('page-help-trigger').click();
-      await expect(manager.page.getByTestId('page-help-quick-actions')).toBeVisible({ timeout: 15_000 });
-      await manager.page.getByTestId('page-help-quick-action').filter({ hasText: /Go to Fulfillment/i }).click();
-      await expect(manager.page).toHaveURL(/\/fulfillment/, { timeout: 15_000 });
+      await expect(manager.page.getByTestId('page-help-dynamic')).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('page-help-key-actions')).toBeVisible();
+      await manager.page.getByTestId('page-help-panel').getByRole('button', { name: 'Close', exact: true }).click();
       await expect(manager.page.getByTestId('page-help-body')).toHaveCount(0);
+
+      await manager.page.goto('/fulfillment');
+      await expect(manager.page).toHaveURL(/\/fulfillment/, { timeout: 15_000 });
     } finally {
       await manager.close();
     }

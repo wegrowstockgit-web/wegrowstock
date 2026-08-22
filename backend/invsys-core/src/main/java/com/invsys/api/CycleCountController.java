@@ -73,8 +73,10 @@ public class CycleCountController {
 
     @PostMapping("/lines/{lineId}/approve-adjustment")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
-    public CycleCountService.CycleCountLineView approveAdjustment(@PathVariable UUID lineId) {
-        return cycleCountService.approveLedgerAdjustment(lineId);
+    public CycleCountService.CycleCountLineView approveAdjustment(
+            @PathVariable UUID lineId,
+            @RequestBody(required = false) ApproveAdjustmentRequest body) {
+        return cycleCountService.approveLedgerAdjustment(lineId, body == null ? null : body.reasonCode());
     }
 
     @PostMapping("/lines/{lineId}/request-recount")
@@ -84,6 +86,9 @@ public class CycleCountController {
     }
 
     public record StartCountRequest(@NotNull UUID locationId) {
+    }
+
+    public record ApproveAdjustmentRequest(String reasonCode) {
     }
 
     public record SubmitCountRequest(

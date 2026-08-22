@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { InvoiceDetail } from '@/api/types';
 import { RequireRole } from '@/components/auth/RequireRole';
 import { AlertDialog } from '@/components/ui/AlertDialog';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import {
   Table,
@@ -36,7 +37,10 @@ export function InvoiceDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [confirm, setConfirm] = useState<'issue' | 'void' | null>(null);
+  const [confirm, setConfirm] = useState<'issue' | 'void' | 'factor' | 'pay' | 'partial' | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [partialLineId, setPartialLineId] = useState<string | null>(null);
+  const [partialQty, setPartialQty] = useState('1');
 
   const invoiceQuery = useQuery({
     queryKey: ['invoices', id],
@@ -64,6 +68,34 @@ export function InvoiceDetailPage() {
       toast('Invoice voided. A reversing credit memo was posted to the ledger.', { tone: 'success' });
     },
     onError: () => toast('Could not void this invoice.', { tone: 'danger' }),
+  });
+
+  const factorMutation = useMutation({
+    mutationFn: async () => apiClient.post(`/api/v1/invoices/${id}/factor`),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Invoice marked as factored.', { tone: 'success' });
+    },
+    onError: () => toast('Could not factor this invoice. Check fintech eligibility.', { tone: 'danger' }),
+  });
+
+  const payMutation = useMutation({
+    mutationFn: async (amount: number) => apiClient.post(`/api/v1/invoices/${id}/payments`, { amount }),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Payment logged on the ledger.', { tone: 'success' });
+    },
+    onError: () => toast('Could not log this payment.', { tone: 'danger' }),
+  });
+
+  const partialCreditMutation = useMutation({
+    mutationFn: async ({ lineId, qty }: { lineId: string; qty: number }) =>
+      apiClient.post(`/api/v1/invoices/${id}/credit-memo`, { lines: [{ lineId, qty }] }),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Partial credit memo posted. The original invoice stays in history.', { tone: 'success' });
+    },
+    onError: () => toast('Could not issue a partial credit memo.', { tone: 'danger' }),
   });
 
   const updateLineMutation = useMutation({
@@ -136,6 +168,34 @@ export function InvoiceDetailPage() {
               </Button>
             ) : null}
             {issued ? (
+              <RequireRole roles={['OWNER', 'ADMIN', 'FINANCE_ADMIN']}>
+                <Button
+                  variant="secondary"
+                  data-testid="mark-factored"
+                  onClick={() => setConfirm('factor')}
+                  loading={factorMutation.isPending}
+                  disabled={!!invoice.factoringStatus && invoice.factoringStatus !== 'ELIGIBLE'}
+                >
+                  {invoice.factoringStatus === 'FUNDED' ? 'Factored' : 'Mark as Factored'}
+                </Button>
+              </RequireRole>
+            ) : null}
+            {issued ? (
+              <RequireRole roles={['OWNER', 'ADMIN', 'FINANCE_ADMIN']}>
+                <Button
+                  variant="secondary"
+                  data-testid="log-payment"
+                  onClick={() => {
+                    setPaymentAmount(String(invoice.total));
+                    setConfirm('pay');
+                  }}
+                  loading={payMutation.isPending}
+                >
+                  Log Payment
+                </Button>
+              </RequireRole>
+            ) : null}
+            {issued ? (
               <RequireRole roles={['FINANCE_ADMIN', 'WAREHOUSE_MANAGER', 'ADMIN']}>
                 <Button
                   variant="danger"
@@ -151,19 +211,6 @@ export function InvoiceDetailPage() {
         </div>
       </header>
 
-      {!draft ? (
-        <div
-          className="mx-6 mt-4 flex items-start gap-3 rounded-lg border border-border bg-surface-overlay/60 px-4 py-3"
-          data-testid="invoice-workspace-lock"
-        >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
-          <p className="text-sm text-text">
-            Issued invoices are immutable in weGrowStock. Deleting one is forbidden — void it to post a reversing
-            credit memo.
-          </p>
-        </div>
-      ) : null}
-
       <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
         <Table>
           <TableHeader>
@@ -173,12 +220,13 @@ export function InvoiceDetailPage() {
               <TableHead align="right">Qty</TableHead>
               <TableHead align="right">Price</TableHead>
               <TableHead align="right">Amount</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {lines.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-text-muted">
+                <TableCell colSpan={6} className="text-text-muted">
                   No billed lines on this invoice.
                 </TableCell>
               </TableRow>
@@ -221,11 +269,31 @@ export function InvoiceDetailPage() {
                   <TableCell align="right">
                     <span className="font-mono tabular-nums">{formatCurrency(Number(line.amount), invoice.currency)}</span>
                   </TableCell>
+                  <TableCell>
+                    {issued && line.kind !== 'TAX' && line.kind !== 'SURCHARGE' && line.kind !== 'CREDIT' ? (
+                      <RequireRole roles={['FINANCE_ADMIN', 'WAREHOUSE_MANAGER', 'ADMIN']}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          data-testid={`partial-credit-${line.id}`}
+                          onClick={() => {
+                            setPartialLineId(line.id);
+                            setPartialQty(String(line.qty));
+                            setConfirm('partial');
+                          }}
+                        >
+                          Issue Partial Credit Memo
+                        </Button>
+                      </RequireRole>
+                    ) : (
+                      <span className="text-xs text-text-muted">—</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))
             )}
             <TableRow>
-              <TableCell colSpan={4} className="text-right text-text-muted">
+              <TableCell colSpan={5} className="text-right text-text-muted">
                 Tax
               </TableCell>
               <TableCell align="right" className="font-mono">
@@ -233,7 +301,7 @@ export function InvoiceDetailPage() {
               </TableCell>
             </TableRow>
             <TableRow>
-              <TableCell colSpan={4} className="text-right font-medium">
+              <TableCell colSpan={5} className="text-right font-medium">
                 Total
               </TableCell>
               <TableCell align="right" className="font-mono font-semibold" data-testid="invoice-workspace-total">
@@ -257,6 +325,72 @@ export function InvoiceDetailPage() {
             issueMutation.mutate();
           }}
         />
+      ) : null}
+      {confirm === 'factor' ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Mark this invoice as factored?"
+          description="weGrowStock advances cash against this open invoice. Customer remittance still settles the original document."
+          confirmLabel="Mark as Factored"
+          confirming={factorMutation.isPending}
+          onConfirm={() => {
+            setConfirm(null);
+            factorMutation.mutate();
+          }}
+        />
+      ) : null}
+      {confirm === 'pay' ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Log a payment?"
+          description="This records cash against the issued invoice. Partial amounts leave the document PARTIALLY PAID."
+          confirmLabel="Log Payment"
+          confirming={payMutation.isPending}
+          onConfirm={() => {
+            setConfirm(null);
+            payMutation.mutate(Number(paymentAmount));
+          }}
+        >
+          <div className="mb-4">
+            <Input
+              label="Amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              data-testid="log-payment-amount"
+            />
+          </div>
+        </AlertDialog>
+      ) : null}
+      {confirm === 'partial' && partialLineId ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Issue a partial credit memo?"
+          description="Credit only the returned quantity. Do not void the whole invoice."
+          confirmLabel="Issue Partial Credit Memo"
+          confirming={partialCreditMutation.isPending}
+          onConfirm={() => {
+            const lineId = partialLineId;
+            setConfirm(null);
+            partialCreditMutation.mutate({ lineId, qty: Number(partialQty) });
+          }}
+        >
+          <div className="mb-4">
+            <Input
+              label="Qty to credit"
+              type="number"
+              min="0.001"
+              value={partialQty}
+              onChange={(e) => setPartialQty(e.target.value)}
+              data-testid="partial-credit-qty"
+            />
+          </div>
+        </AlertDialog>
       ) : null}
       {confirm === 'void' ? (
         <AlertDialog

@@ -20,7 +20,30 @@ import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { useSessionStore } from '@/stores/session';
 
-type Tab = 'pos' | 'rtv';
+type Tab = 'pos' | 'rtv' | 'ap';
+
+type ApDocIngestion = {
+  id: string;
+  fileStorageKey: string;
+  ingestionStatus: string;
+  parsedMetadata?: Record<string, unknown>;
+  matchedPurchaseOrderId?: string | null;
+  createdAt: string;
+};
+
+function threeWayLabel(row: ApDocIngestion): 'Matched' | 'Discrepancy' | 'Pending' {
+  const status = String(row.parsedMetadata?.matchStatus ?? row.ingestionStatus ?? '').toUpperCase();
+  if (status === 'MATCHED') return 'Matched';
+  if (
+    status === 'PROCESSING' ||
+    status === 'PENDING' ||
+    status === '' ||
+    status === 'QUEUED'
+  ) {
+    return 'Pending';
+  }
+  return 'Discrepancy';
+}
 
 type RtvRow = {
   id: string;
@@ -59,6 +82,12 @@ export function SupplierDetailPage() {
     enabled: !!id,
   });
 
+  const apQuery = useQuery({
+    queryKey: ['ap', 'ingestions', 'by-supplier', id],
+    queryFn: async () => (await apiClient.get<ApDocIngestion[]>('/api/v1/ap-ingestions')).data,
+    enabled: !!id,
+  });
+
   const rtvQuery = useQuery({
     queryKey: ['rtv', 'by-supplier', id],
     queryFn: async () => (await apiClient.get<RtvRow[]>('/api/v1/rtv')).data,
@@ -90,6 +119,14 @@ export function SupplierDetailPage() {
     () => (rtvQuery.data ?? []).filter((row) => !id || row.supplierId === id),
     [rtvQuery.data, id],
   );
+  const apInvoices = useMemo(() => {
+    const poIds = new Set(pos.map((po) => po.id));
+    return (apQuery.data ?? []).filter((row) => {
+      if (row.matchedPurchaseOrderId && poIds.has(row.matchedPurchaseOrderId)) return true;
+      const supplierId = row.parsedMetadata?.supplierId;
+      return typeof supplierId === 'string' && supplierId === id;
+    });
+  }, [apQuery.data, pos, id]);
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -191,9 +228,70 @@ export function SupplierDetailPage() {
               >
                 RTV & Chargebacks
               </Button>
+              <Button
+                size="sm"
+                variant={tab === 'ap' ? 'primary' : 'secondary'}
+                data-testid="supplier-tab-ap"
+                onClick={() => setTab('ap')}
+              >
+                AP Invoices
+              </Button>
             </div>
 
-            {tab === 'pos' ? (
+            {tab === 'ap' ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Document</TableHead>
+                    <TableHead>3-Way Match</TableHead>
+                    <TableHead>PO</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {apInvoices.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-text-muted">
+                        No ingested vendor bills for this supplier.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    apInvoices.map((row) => {
+                      const match = threeWayLabel(row);
+                      return (
+                        <TableRow key={row.id} data-testid={`ap-invoice-${row.id}`}>
+                          <TableCell mono>{row.fileStorageKey.split('/').pop() ?? row.id.slice(0, 8)}</TableCell>
+                          <TableCell>
+                            <span
+                              className={cn(
+                                'text-sm',
+                                match === 'Matched' && 'text-success',
+                                match === 'Discrepancy' && 'text-danger',
+                                match === 'Pending' && 'text-text-muted',
+                              )}
+                              data-testid={`ap-match-status-${row.id}`}
+                            >
+                              {match}
+                            </span>
+                          </TableCell>
+                          <TableCell mono>
+                            {row.matchedPurchaseOrderId ? (
+                              <Link
+                                to={`/purchasing/orders/${row.matchedPurchaseOrderId}`}
+                                className="text-accent hover:underline"
+                              >
+                                Open PO
+                              </Link>
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            ) : tab === 'pos' ? (
               <Table>
                 <TableHeader>
                   <TableRow>

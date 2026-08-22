@@ -1,5 +1,6 @@
 package com.invsys.modules.purchasing.api;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.invsys.core.common.OffsetPaging;
 import com.invsys.core.common.PageResponse;
 import com.invsys.modules.purchasing.domain.PurchaseOrder;
@@ -194,14 +195,16 @@ public class PurchaseOrderController {
                 ? Map.of()
                 : supplierRepository.findAllById(supplierIds).stream()
                         .collect(Collectors.toMap(Supplier::getId, Supplier::getName, (a, b) -> a));
+        List<UUID> poIds = result.getContent().stream().map(PurchaseOrder::getId).toList();
+        Map<UUID, List<PurchaseOrderLine>> linesByPo = poIds.isEmpty()
+                ? Map.of()
+                : lineRepository.findByPurchaseOrderIdIn(poIds).stream()
+                        .collect(Collectors.groupingBy(PurchaseOrderLine::getPurchaseOrderId));
         List<PurchaseOrderResponse> items = result.getContent().stream()
-                .map(po -> new PurchaseOrderResponse(
-                        po.getId(),
-                        po.getNumber(),
-                        po.getSupplierId(),
+                .map(po -> toListResponse(
+                        po,
                         supplierNames.getOrDefault(po.getSupplierId(), "—"),
-                        po.getStatus(),
-                        po.getExpectedAt()))
+                        linesByPo.getOrDefault(po.getId(), List.of())))
                 .toList();
         return PageResponse.of(result, items);
     }
@@ -222,6 +225,12 @@ public class PurchaseOrderController {
         }
         if (request.dutiesAmount() != null) {
             po.setDutiesAmount(request.dutiesAmount());
+        }
+        if (request.expectedAt() != null) {
+            po.setExpectedAt(request.expectedAt());
+        }
+        if (request.vendorReference() != null && !request.vendorReference().isBlank()) {
+            po.setVendorReference(request.vendorReference().trim());
         }
         po = purchaseOrderRepository.save(po);
         for (CreateLineRequest line : request.lines()) {
@@ -250,8 +259,23 @@ public class PurchaseOrderController {
 
     @PostMapping("/purchase-orders/{id}/mark-in-transit")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
-    public PurchaseOrder markInTransit(@PathVariable UUID id) {
-        return purchaseOrderService.markInTransit(id);
+    public PurchaseOrder markInTransit(
+            @PathVariable UUID id,
+            @RequestBody(required = false) MarkInTransitRequest request) {
+        if (request == null) {
+            return purchaseOrderService.markInTransit(id);
+        }
+        return purchaseOrderService.markInTransit(id, new PurchaseOrderService.MarkInTransitDetails(
+                request.vendorReference(),
+                request.trackingNumber(),
+                request.carrier(),
+                request.expectedDeliveryDate() != null ? request.expectedDeliveryDate() : request.expectedAt()));
+    }
+
+    @PostMapping("/purchase-orders/{id}/revert-to-submitted")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','BUYER')")
+    public PurchaseOrder revertToSubmitted(@PathVariable UUID id) {
+        return purchaseOrderService.revertToSubmitted(id);
     }
 
     @PostMapping("/purchase-orders/{id}/cancel")
@@ -310,9 +334,17 @@ public class PurchaseOrderController {
                 .map(l -> new PurchaseOrderLineDetail(
                         l.getId(), l.getVariantId(), l.getQtyOrdered(), l.getQtyReceived(), l.getUnitCost()))
                 .toList();
+        String trackingNumber = latestTrackingField(po.getTrackingMetadata(), "trackingNumber");
+        String carrier = latestTrackingField(po.getTrackingMetadata(), "carrier");
         return new PurchaseOrderDetailResponse(
                 po.getId(), po.getNumber(), supplierName, po.getStatus(), po.getExpectedAt(),
-                po.getDestinationLocationId(), po.getFreightAmount(), po.getDutiesAmount(), po.getNotes(), lines);
+                po.getDestinationLocationId(), po.getFreightAmount(), po.getDutiesAmount(), po.getNotes(), lines,
+                po.getSupplierId(),
+                po.getVendorReference(),
+                purchaseOrderService.isMeshPartnerSupplier(po.getSupplierId()),
+                trackingNumber,
+                carrier,
+                po.getTrackingMetadata());
     }
 
     @PostMapping("/purchase-orders/lines/{lineId}/receive")
@@ -343,6 +375,8 @@ public class PurchaseOrderController {
             UUID destinationLocationId,
             BigDecimal freightAmount,
             BigDecimal dutiesAmount,
+            java.time.Instant expectedAt,
+            String vendorReference,
             List<CreateLineRequest> lines
     ) {
     }
@@ -367,7 +401,15 @@ public class PurchaseOrderController {
             UUID supplierId,
             String supplierName,
             String status,
-            java.time.Instant expectedAt
+            java.time.Instant createdAt,
+            java.time.Instant expectedAt,
+            java.time.Instant expectedDeliveryDate,
+            BigDecimal totalAmount,
+            Integer totalQtyOrdered,
+            Integer totalQtyReceived,
+            String vendorReference,
+            BigDecimal freightAmount,
+            BigDecimal dutiesAmount
     ) {
     }
 
@@ -380,6 +422,51 @@ public class PurchaseOrderController {
             String defaultCurrency,
             String contactEmail,
             Map<String, Object> address
+    ) {
+    }
+
+    private static PurchaseOrderResponse toListResponse(
+            PurchaseOrder po, String supplierName, List<PurchaseOrderLine> lines) {
+        BigDecimal qtyOrdered = BigDecimal.ZERO;
+        BigDecimal qtyReceived = BigDecimal.ZERO;
+        BigDecimal lineAmount = BigDecimal.ZERO;
+        for (PurchaseOrderLine line : lines) {
+            BigDecimal ordered = line.getQtyOrdered() != null ? line.getQtyOrdered() : BigDecimal.ZERO;
+            BigDecimal received = line.getQtyReceived() != null ? line.getQtyReceived() : BigDecimal.ZERO;
+            BigDecimal cost = line.getUnitCost() != null ? line.getUnitCost() : BigDecimal.ZERO;
+            qtyOrdered = qtyOrdered.add(ordered);
+            qtyReceived = qtyReceived.add(received);
+            lineAmount = lineAmount.add(ordered.multiply(cost));
+        }
+        BigDecimal freight = po.getFreightAmount() != null ? po.getFreightAmount() : BigDecimal.ZERO;
+        BigDecimal duties = po.getDutiesAmount() != null ? po.getDutiesAmount() : BigDecimal.ZERO;
+        String vendorRef = po.getVendorReference();
+        if (vendorRef == null || vendorRef.isBlank()) {
+            vendorRef = po.getNotes();
+        }
+        return new PurchaseOrderResponse(
+                po.getId(),
+                po.getNumber(),
+                po.getSupplierId(),
+                supplierName,
+                po.getStatus(),
+                po.getCreatedAt(),
+                po.getExpectedAt(),
+                po.getExpectedAt(),
+                lineAmount.add(freight).add(duties),
+                qtyOrdered.intValue(),
+                qtyReceived.intValue(),
+                vendorRef,
+                freight,
+                duties);
+    }
+
+    public record MarkInTransitRequest(
+            String vendorReference,
+            String trackingNumber,
+            String carrier,
+            java.time.Instant expectedDeliveryDate,
+            java.time.Instant expectedAt
     ) {
     }
 
@@ -402,7 +489,26 @@ public class PurchaseOrderController {
             BigDecimal freightAmount,
             BigDecimal dutiesAmount,
             String notes,
-            List<PurchaseOrderLineDetail> lines
+            List<PurchaseOrderLineDetail> lines,
+            UUID supplierId,
+            String vendorReference,
+            @JsonProperty("isMeshPartner") boolean isMeshPartner,
+            String trackingNumber,
+            String carrier,
+            List<Map<String, Object>> trackingMetadata
     ) {
+    }
+
+    private static String latestTrackingField(List<Map<String, Object>> metadata, String key) {
+        if (metadata == null || metadata.isEmpty()) {
+            return null;
+        }
+        for (int i = metadata.size() - 1; i >= 0; i--) {
+            Object value = metadata.get(i).get(key);
+            if (value != null && !value.toString().isBlank()) {
+                return value.toString();
+            }
+        }
+        return null;
     }
 }

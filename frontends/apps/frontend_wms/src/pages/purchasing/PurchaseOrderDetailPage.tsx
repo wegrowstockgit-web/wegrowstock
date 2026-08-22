@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, Plus, Undo2 } from 'lucide-react';
+import { ArrowLeft, Lock, Network, Plus, Truck, Undo2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { PaginatedResponse, ProductVariant, PurchaseOrderDetail } from '@/api/types';
 import { RequireRole } from '@/components/auth/RequireRole';
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { formatMediumDate } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -50,7 +52,11 @@ export function PurchaseOrderDetailPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const reverseMutation = useReverseTransactionMutation();
-  const [confirm, setConfirm] = useState<'submit' | 'cancel' | 'reverse' | null>(null);
+  const [confirm, setConfirm] = useState<'submit' | 'cancel' | 'reverse' | 'revert' | null>(null);
+  const [transitOpen, setTransitOpen] = useState(false);
+  const [transitVendorRef, setTransitVendorRef] = useState('');
+  const [transitTracking, setTransitTracking] = useState('');
+  const [transitEta, setTransitEta] = useState('');
   const [newVariantId, setNewVariantId] = useState('');
   const [newQty, setNewQty] = useState('1');
   const [newCost, setNewCost] = useState('');
@@ -83,6 +89,33 @@ export function PurchaseOrderDetailPage() {
       toast('Purchase order submitted. Lines are locked.', { tone: 'success' });
     },
     onError: () => toast('Could not submit this purchase order.', { tone: 'danger' }),
+  });
+
+  const transitMutation = useMutation({
+    mutationFn: async () =>
+      apiClient.post(`/api/v1/purchase-orders/${id}/mark-in-transit`, {
+        vendorReference: transitVendorRef.trim() || undefined,
+        trackingNumber: transitTracking.trim() || undefined,
+        expectedDeliveryDate: transitEta ? `${transitEta}T12:00:00Z` : undefined,
+      }),
+    onSuccess: async () => {
+      setTransitOpen(false);
+      setTransitVendorRef('');
+      setTransitTracking('');
+      setTransitEta('');
+      await invalidate();
+      toast('Purchase order marked in transit.', { tone: 'success' });
+    },
+    onError: () => toast('Could not mark this purchase order in transit.', { tone: 'danger' }),
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: async () => apiClient.post(`/api/v1/purchase-orders/${id}/revert-to-submitted`),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Purchase order returned to Submitted. Tracking cleared.', { tone: 'success' });
+    },
+    onError: () => toast('Could not revert this purchase order.', { tone: 'danger' }),
   });
 
   const cancelMutation = useMutation({
@@ -145,9 +178,16 @@ export function PurchaseOrderDetailPage() {
 
   const po = poQuery.data;
   const draft = po?.status === 'DRAFT';
+  const submitted = po?.status === 'SUBMITTED';
+  const inTransit = po?.status === 'IN_TRANSIT';
+  const meshPartner = Boolean(po?.isMeshPartner);
   const received = receivedQuantity(po);
-  const canCancel = po?.status === 'SUBMITTED' && received === 0;
+  const canCancel = submitted && received === 0;
+  const canMarkInTransit = submitted;
+  const canRevert = inTransit && !meshPartner && received === 0;
   const canReverse = received > 0;
+  const trackingNumber = po?.trackingNumber || null;
+  const carrier = po?.carrier || null;
 
   if (poQuery.isLoading) {
     return (
@@ -193,8 +233,28 @@ export function PurchaseOrderDetailPage() {
               >
                 {po.status.replaceAll('_', ' ')}
               </span>
+              {meshPartner ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-accent-muted px-2.5 py-0.5 text-xs font-medium text-accent"
+                  data-testid="po-mesh-badge"
+                >
+                  <Network className="h-3 w-3" aria-hidden />
+                  Mesh Network
+                </span>
+              ) : null}
             </div>
             <p className="mt-1 text-sm text-text-muted">{po.supplierName}</p>
+            {trackingNumber || carrier || po.expectedAt ? (
+              <p className="mt-1 font-mono text-xs text-text-muted" data-testid="po-tracking-details">
+                {[
+                  carrier ? `Carrier ${carrier}` : null,
+                  trackingNumber ? `Tracking ${trackingNumber}` : null,
+                  po.expectedAt ? `ETA ${formatMediumDate(po.expectedAt)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {draft ? (
@@ -204,6 +264,29 @@ export function PurchaseOrderDetailPage() {
                 loading={submitMutation.isPending}
               >
                 Submit PO
+              </Button>
+            ) : null}
+            {canMarkInTransit ? (
+              <span title={meshPartner ? 'Automated via Mesh Network' : undefined}>
+                <Button
+                  data-testid="mark-in-transit"
+                  disabled={meshPartner}
+                  onClick={() => setTransitOpen(true)}
+                  loading={transitMutation.isPending}
+                >
+                  <Truck className="h-4 w-4" aria-hidden />
+                  Mark In Transit
+                </Button>
+              </span>
+            ) : null}
+            {canRevert ? (
+              <Button
+                variant="secondary"
+                data-testid="revert-to-submitted"
+                onClick={() => setConfirm('revert')}
+                loading={revertMutation.isPending}
+              >
+                Revert to Submitted
               </Button>
             ) : null}
             {canCancel ? (
@@ -233,16 +316,23 @@ export function PurchaseOrderDetailPage() {
         </div>
       </header>
 
+      {meshPartner && (submitted || inTransit) ? (
+        <div
+          className="mx-6 mt-4 rounded-lg border border-accent/30 bg-accent-muted/40 px-4 py-3 text-sm text-text"
+          data-testid="po-mesh-automation-banner"
+        >
+          Automated via Mesh Network: This PO will automatically update to IN TRANSIT and populate tracking
+          details as soon as the supplier ships the order.
+        </div>
+      ) : null}
+
       {!draft ? (
         <div
-          className="mx-6 mt-4 flex items-start gap-3 rounded-lg border border-border bg-surface-overlay/60 px-4 py-3"
+          className="mx-6 mt-4 inline-flex items-center gap-2 self-start rounded-md border border-border bg-surface-overlay/60 px-3 py-1.5"
           data-testid="po-workspace-lock"
         >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
-          <p className="text-sm text-text">
-            This document is locked. weGrowStock never edits a posted receive — correct a fat-fingered quantity
-            with Reverse Receipt, which posts an offsetting ledger entry.
-          </p>
+          <Lock className="h-3.5 w-3.5 text-text-muted" aria-hidden />
+          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">Locked</span>
         </div>
       ) : null}
 
@@ -394,6 +484,65 @@ export function PurchaseOrderDetailPage() {
           onConfirm={() => {
             setConfirm(null);
             cancelMutation.mutate();
+          }}
+        />
+      ) : null}
+      {transitOpen ? (
+        <Modal
+          open
+          onClose={() => setTransitOpen(false)}
+          title="Mark in transit"
+          description="Optional tracking helps the dock anticipate the freight."
+        >
+          <form
+            className="space-y-4"
+            data-testid="mark-in-transit-modal"
+            onSubmit={(e) => {
+              e.preventDefault();
+              transitMutation.mutate();
+            }}
+          >
+            <Input
+              label="Vendor reference"
+              value={transitVendorRef}
+              onChange={(e) => setTransitVendorRef(e.target.value)}
+              data-testid="mark-in-transit-vendor-ref"
+            />
+            <Input
+              label="Tracking number"
+              value={transitTracking}
+              onChange={(e) => setTransitTracking(e.target.value)}
+              data-testid="mark-in-transit-tracking"
+            />
+            <Input
+              label="Expected delivery date"
+              type="date"
+              value={transitEta}
+              onChange={(e) => setTransitEta(e.target.value)}
+              data-testid="mark-in-transit-eta"
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setTransitOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" data-testid="mark-in-transit-confirm" loading={transitMutation.isPending}>
+                Mark In Transit
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+      {confirm === 'revert' ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Revert to Submitted?"
+          description="This clears the tracking number and puts the purchase order back in the waiting queue."
+          confirmLabel="Revert to Submitted"
+          confirming={revertMutation.isPending}
+          onConfirm={() => {
+            setConfirm(null);
+            revertMutation.mutate();
           }}
         />
       ) : null}

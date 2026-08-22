@@ -4,8 +4,8 @@ slug: "sop-inventory-compliance"
 sourcePath: "docs/sops/03_inventory_and_compliance.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
 audienceLevel: "beginner"
-routeHints: ["/products", "/import", "/settings/import", "/cycle-counts", "/compliance/lot-trace", "/replenishments", "/reports", "/exceptions", "/pallet-manifests"]
-keywords: ["cycle count", "blind count", "variance", "LPN", "license plate", "lost pallet", "lot", "expired lot", "recall", "trace", "replenishment", "reverse transaction", "stock correction", "ledger history"]
+routeHints: ["/products", "/import", "/settings/import", "/cycle-counts", "/inventory/cycle-counts", "/inventory/quarantine", "/inventory/variances", "/compliance/lot-trace", "/replenishments", "/reports", "/exceptions", "/pallet-manifests", "/inbound/receive"]
+keywords: ["cycle count", "blind count", "variance", "reason code", "shrinkage", "damaged", "expired", "ghost inventory", "quarantine", "RTV", "LPN", "license plate", "lost pallet", "lot", "expired lot", "recall", "trace", "FSMA", "DSCSA", "manufacturer lot", "expiration date", "replenishment", "reverse transaction", "stock correction", "ledger history"]
 ---
 
 # Inventory Control & Compliance — Beginner Playbook
@@ -84,6 +84,33 @@ PICKER (or any floor role) performs the count. Only a WAREHOUSE_MANAGER or above
 - **Counted the wrong bin:** Tell the manager before approval; they'll request a recount on the right bin. If it was already approved, the manager posts a correction — same ledger rule as always.
 - **Tempted to type the number a coworker remembers ("it's always 48"):** Never. The entire point of blind counting is eyes-on-shelf. A wrong honest count is fixable; a fake count poisons every order that trusts it.
 - **Count parked in Sync Conflicts:** You counted while the badge said **Offline - Caching Scans** and the bin changed meanwhile. A manager resolves it under **Inventory → Exceptions → Sync Conflicts** (see SOP 04).
+- **Can't find the item and want to type 0 into on-hand:** Stop. That is **Ghost Inventory** — see **Ghost Inventory & Variances** below.
+
+---
+
+### Damaged Goods & Quarantine
+
+**What is this?**
+Crushed, leaking, or otherwise damaged inbound boxes are still **received inventory**. Accounting must know the freight arrived so AP can match the vendor bill and we can demand a chargeback. If you reverse or refuse the receipt, the books think the truck never came — then finance cannot recover the money.
+
+**Who can do this? (Privileges Required)**
+Floor workers receive and move stock into a **Quarantine Bin**. **WAREHOUSE_MANAGER** (or above) dispositions restock vs scrap and opens the **RTV (Return to Vendor)** workspace for the chargeback.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Quarantine** (`/inventory/quarantine`)
+🖥️ Chargeback: **Inbound** → **Returns** (RTV)
+
+**Step-by-Step Instructions:**
+1. **NEVER reverse the receipt** for damaged goods. Do not delete the receive so "it looks like we refused the truck."
+2. **Receive the goods normally** — the units exist; we physically have them.
+3. Route them **immediately to a Quarantine Bin**. Quarantine stock cannot be picked for a customer.
+4. Photograph damage if your site asks for it.
+5. Open the **RTV** workspace and demand a **chargeback** (credit memo) from the vendor.
+6. A manager later restocks (if cosmetic and released) or scraps with a signed correction.
+
+**⚠️ What if I make a mistake?**
+- **Already reversed the receipt:** Tell finance and a manager. Re-receive into quarantine, then RTV. The reverse stays in history.
+- **Put damaged goods on a pick face:** Move them to quarantine now. If a picker already took a unit, stop the wave and tell a manager.
 
 ---
 
@@ -138,6 +165,31 @@ WAREHOUSE_MANAGER, ADMIN, OWNER run traces and exports. VIEWER can trace read-on
 
 ---
 
+### Lot Traceability and Expiry Dates
+
+**What is this?**
+A **lot** is the manufacturer's batch on the label (plus an **expiration date**). Food (FSMA) and pharma (DSCSA) rules require weGrowStock to know *which* batch sat in *which* bin and *which* customer received it. At receive, regulated SKUs **hard-stop** until the floor types the real Manufacturer Lot Number and Expiration Date. Generic placeholders ("LOT1", the PO number, today's date) break a recall: you cannot tell the FDA or a customer which units are safe.
+
+**Who can do this? (Privileges Required)**
+Floor workers capture lot + expiry at **Inbound Receive**. WAREHOUSE_MANAGER / ADMIN / OWNER run **Lot Trace** and quarantine expired stock. Nobody may skip the hard-stop or back-fill a fake lot after the fact.
+
+**Where to go in weGrowStock:**
+🖥️ Capture: **Inbound** → **Inbound Receive** (`/purchasing/receive`)
+🖥️ Trace: **Inventory** → **Lot Trace** (`/compliance/lot-trace`)
+
+**Step-by-Step Instructions:**
+1. At receive, when the screen asks for lot and expiry, copy them from the **manufacturer label** — not from memory, not from the ASN guess.
+2. If the field is required and you do not have a label, **stop the receive**. Call a manager. Do not type a generic lot to dismiss the hard-stop.
+3. Putaway only after lot + expiry save. FEFO allocation later prefers the earliest expiry.
+4. For a recall or expired shelf find: **quarantine** remaining units, then **Lot Trace** that exact manufacturer lot, then export affected customers.
+5. Disposal is a signed manager correction with reason **Expired** — never a silent quantity edit.
+
+**⚠️ What if I make a mistake?**
+- **Typed a generic lot to get past the hard-stop:** Tell a manager immediately. The ledger now points at a fake batch. Reverse/re-receive with the real lot if the receive is still isolated; otherwise quarantine and document the miss — do not overwrite history.
+- **Expired stock still in a pick face:** Do not pick it. Quarantine → Lot Trace → manager disposal (see **How to Trace a Lot** above).
+
+---
+
 ### How to Replenish a Pick Face (refill the small shelf)
 
 **What is this?**
@@ -185,6 +237,53 @@ ADMIN or OWNER (managers where permitted). Not PICKER/VIEWER.
 
 ---
 
+### Variance Reason Codes
+
+**What is this?**
+When a floor worker does a **blind count** and the number is different from the ledger, weGrowStock does **not** silently change on-hand. It creates a **Variance**. Accounting needs to know *why* inventory was missing: **Shrinkage** (it vanished), **Damaged** (it broke), or **Expired** (it went bad). Those reasons post to different books.
+
+**Who can do this? (Privileges Required)**
+Only a **WAREHOUSE_MANAGER** can **Approve Variance**. Anyone on the count can ask for a **Request Recount**. Pickers cannot pick the reason code or post the ledger offset.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Cycle Counts** → **Open Workspace** (or **Inventory → Variances**)
+
+**Step-by-Step Instructions:**
+1. Open the variance row. Compare **Expected Quantity** vs **Counted Quantity**.
+2. If it looks like a typo, click **Request Recount** — the floor counts again.
+3. If the miss is real, click **Approve Variance**. A modal **forces** an Accounting Reason Code (Shrinkage, Damaged, Expired).
+4. Confirm. weGrowStock posts a stock correction with that reason. The original expected quantity stays in history.
+
+**⚠️ What if I make a mistake?**
+- **Picked Damaged when it was Shrinkage:** Tell finance. The reason code is part of the signed ledger row; a manager posts another correction if the books need a reclass. Do not edit the first row.
+
+---
+
+### Ghost Inventory & Variances
+
+**What is this?**
+**Ghost Inventory** is an on-hand number that nobody can find on the shelf — usually because someone typed a silent edit (or never counted a miss). weGrowStock **bans silent edits**. You cannot open a product and type the quantity to 0. That would hide the loss from finance and leave every downstream order trusting a lie.
+
+**Who can do this? (Privileges Required)**
+Floor workers submit a **cycle count of 0**. Only a **WAREHOUSE_MANAGER** reviews the financial loss in the **Variance Approval Workspace**, assigns an **Accounting Reason Code** (e.g. **Shrinkage**), and approves the ledger adjustment.
+
+**Where to go in weGrowStock:**
+🖥️ Floor: **Inventory** → **Cycle counts** (`/inventory/cycle-counts`)
+🖥️ Manager: **Inventory** → **Variances** (`/inventory/variances`) — the Variance Approval Workspace
+
+**Step-by-Step Instructions:**
+1. If you cannot find an item, do **not** edit inventory to 0 and do **not** ask someone to "just change the number."
+2. Submit a **cycle count of 0** on that bin/SKU. This flags a **variance** (expected vs counted).
+3. Keep working. The miss parks for manager review — it does **not** silently zero the ledger.
+4. A Manager opens the **Variance Approval Workspace**, reviews the financial loss, and must pick a reason code (**Shrinkage**, **Damaged**, **Expired**, or **CYCLE_COUNT**).
+5. **Approve Variance** posts the signed ledger adjustment. The original expected quantity stays in history.
+
+**⚠️ What if I make a mistake?**
+- **Counted 0 but the box was in the next aisle:** Ask for a **Request Recount** before approval. If already approved, the manager posts another correction after a real count.
+- **Tempted to skip the count and "fix it in Products":** That button does not exist on purpose. The only legal zero is a counted, approved variance.
+
+---
+
 ## Quick reference: "I messed up" cheat sheet (Inventory)
 
 | Mistake | Can I fix it myself? | The fix |
@@ -194,6 +293,9 @@ ADMIN or OWNER (managers where permitted). Not PICKER/VIEWER.
 | Lost an LPN / pallet missing | No — Manager | Search → cycle count last location → attributed write-off |
 | Moved pallet without scanning | Yes, immediately | Do the **LPN Move** scan now, or tell a manager |
 | Found expired lot on shelf | Report it | Quarantine → **Lot Trace** → manager posts disposal |
+| Skipped / faked a manufacturer lot at receive | No — Manager | Hard-stop is the law. Reverse/re-receive with the real lot; never invent LOT1 |
+| Damaged inbound boxes | Receive, then quarantine | **Never reverse the receipt.** Quarantine Bin, then RTV chargeback |
+| Can't find an item / want to type 0 | No — cycle count | Submit a count of **0**. Manager approves the variance with Shrinkage (no silent edits — that is Ghost Inventory) |
 | Wrong/duplicate receive in history | No — Manager | **Reverse transaction** → **Confirm Reversal** on Ledger History |
 | Import row errors | Yes (Admin) | Fix file, re-run preflight; never force red rows |
 | Count/move parked offline | No — Manager | **Exceptions → Sync Conflicts** (SOP 04) |

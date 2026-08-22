@@ -5,7 +5,7 @@ sourcePath: "docs/sops/02_outbound_and_fulfillment.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
 audienceLevel: "beginner"
 routeHints: ["/sales-orders", "/customers", "/invoices", "/fulfillment", "/cluster-pick", "/pallet-manifests", "/replenishments", "/dashboard", "/exceptions"]
-keywords: ["sales order", "allocate", "backorder", "wave", "cluster pick", "tote", "cartonization", "pack", "ship", "shipped too early", "wrong SKU", "wrong address", "broken item", "invoice"]
+keywords: ["sales order", "allocate", "backorder", "credit hold", "override credit hold", "split backorder", "wave", "cluster pick", "tote", "cartonization", "pack", "ship", "shipped too early", "wrong SKU", "wrong address", "broken item", "invoice"]
 ---
 
 # Outbound Sales & Fulfillment — Beginner Playbook
@@ -215,6 +215,30 @@ OWNER or ADMIN (per company policy, WAREHOUSE_MANAGER may also invoice). **Voidi
 - **Invoiced the wrong amount / wrong price:** An ADMIN/OWNER with **Void Invoices** voids or credits it and re-issues correctly. Money documents follow the same ledger rule as stock: correct forward, never delete. (Full detail in SOP 05.)
 - **Invoiced before it really shipped (because of an early "Shipped" click):** Fix the ship status first (manager reversal, previous section), then void/credit the invoice.
 - **Invoice remaining is greyed out:** Nothing left to bill, or the order hasn't shipped far enough. That's the system protecting you from billing air.
+
+---
+
+### Handling Credit Holds & Backorders
+
+**What is this?**
+Think of a credit hold like a grown-up version of "you cannot have more candy until you pay for the last bag." If a customer already owes money (or their account is marked **HOLD**), weGrowStock will not let the warehouse reserve stock or ship more goods. A **backorder** is the honest leftover: "we can ship 6 now; we still owe them 4."
+
+**Who can do this? (Privileges Required)**
+- **WAREHOUSE_MANAGER / OWNER / ADMIN** can **Split / Backorder** unfulfilled lines on the Sales Order Workspace.
+- **FINANCE_ADMIN or ADMIN** (Owner also, in the demo) can click **Override Credit Hold**. Floor pickers never see that button.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Sales Orders** → **Open Workspace**
+Badge in the header: **Credit CLEAR / HOLD / OVERRIDDEN**
+
+**Step-by-Step Instructions:**
+1. Open the sales order workspace. If the Credit Status badge says **HOLD**, do **not** try to force a pick.
+2. If some quantity can ship today, click **Split / Backorder** on the unfulfilled line and type how many to ship now. The rest stays as a backorder.
+3. If finance has cleared the account, a Finance Admin clicks **Override Credit Hold**. The customer record can stay on hold; only this order is released so Allocate can run.
+
+**⚠️ What if I make a mistake?**
+- **Customer over credit limit:** Split the order or request a finance override. Do not invent picks around the hold.
+- **Override clicked too early:** Tell finance. The override is a signed decision, not a delete. Future orders still see the customer hold until AR is paid down.
 
 ---
 

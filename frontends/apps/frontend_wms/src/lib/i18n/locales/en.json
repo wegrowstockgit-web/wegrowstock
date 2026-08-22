@@ -322,13 +322,7 @@
           "0": "Scan Incoming PO",
           "1": "Start Put-Away Tasks"
         },
-        "troubleshooting": {
-          "0": {
-            "issue": "The supplier sent more items than ordered (Over-receipt).",
-            "solution": "Depending on your tolerance settings, you may need to file an RTV (Return to Vendor) or accept the surplus.",
-            "action": "Manage Returns (RTV)"
-          }
-        },
+        "troubleshooting": {},
         "purpose": "Check in newly arrived inventory from suppliers and generate LPNs for putaway.",
         "dataOrigin": "Inbound receipts against confirmed purchase orders.",
         "flow": {
@@ -340,7 +334,7 @@
           "0": "Use the undo window before commit; after commit reverse via RTV or stock correction."
         },
         "correlations": {
-          "0": "Over-receipts may require a return-to-vendor."
+          "0": "Over-receipts beyond tolerance need a Warehouse Manager override, or refuse the extra boxes."
         }
       },
       "products": {

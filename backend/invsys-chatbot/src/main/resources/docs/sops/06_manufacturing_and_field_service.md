@@ -5,7 +5,7 @@ sourcePath: "docs/sops/06_manufacturing_and_field_service.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
 audienceLevel: "beginner"
 routeHints: ["/manufacturing/boms", "/manufacturing/orders", "/manufacturing/terminal", "/issue-supplies", "/field/truck", "/settings", "/reports"]
-keywords: ["BOM", "bill of materials", "production order", "build", "complete build", "disassemble", "wrong BOM", "kit", "timesheet", "punch clock", "clock in", "wrong hours", "labor", "issue supplies", "cost center", "technician truck", "van stock"]
+keywords: ["BOM", "bill of materials", "production order", "build", "complete build", "report completion", "log labor", "disassemble", "wrong BOM", "kit", "timesheet", "punch clock", "clock in", "wrong hours", "labor", "issue supplies", "cost center", "technician truck", "van stock"]
 ---
 
 # Manufacturing & Field Service — Beginner Playbook
@@ -212,6 +212,31 @@ Field technicians (PICKER-type roles) run their own truck; managers oversee tran
 - **Consume shows less than the van holds:** Count the van. Never borrow unlabeled stock from another truck — each van's ledger is per-technician.
 - **Offline in the field:** Scans cache like the warehouse floor; anything parked resolves later under **Exceptions → Sync Conflicts** (SOP 04).
 - **Assign to me fails:** Another tech holds the truck — coordinate the handoff instead of sharing a session; attribution is what makes mistakes fixable.
+
+---
+
+### Logging Labor and Reporting Yield
+
+**What is this?**
+**Log Scrap** is for mistakes — a damaged component is written off to the scrap ledger. **Report Completion** is for success — finished goods are minted into the warehouse ledger. **Log Labor Time** is the hours people spent on a routing step (Cutting, Assembly, QA). Those hours are added to the **cost of the finished good** when you report yield.
+
+**Who can do this? (Privileges Required)**
+- **WAREHOUSE_MANAGER or PRODUCTION_SUPERVISOR** (plus ADMIN): **Log Scrap**.
+- Floor operators and managers: **Log Labor Time** on an active production order.
+- **WAREHOUSE_MANAGER / PRODUCTION_SUPERVISOR / ADMIN:** **Report Completion** after components are allocated / WIP.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Manufacturing** → **Production Orders** → **Open Workspace**
+
+**Step-by-Step Instructions:**
+1. **Release to Floor** locks the BOM and moves the order to WIP.
+2. On each routing step, click **Log Labor Time**, pick the step, and enter hours.
+3. If a part is ruined, **Log Scrap** (manager/supervisor). That is a write-off, not a completion.
+4. When units are really finished, click **Report Completion** and enter the yield quantity. weGrowStock consumes allocated components and receives finished goods.
+
+**⚠️ What if I make a mistake?**
+- **Forgot to log labor before completion:** Post a **manual labor adjustment** on the same workspace, then complete (or tell a manager to add the hours next to the original timesheet). Do not pretend the build was free.
+- **Clicked Report Completion too early:** A manager reverses with an attributed correction or **Disassemble**. The mint stays in history.
 
 ---
 

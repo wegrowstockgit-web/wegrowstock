@@ -100,6 +100,38 @@ public class ManufacturingLaborService {
     }
 
     @Transactional
+    public ProductionTimesheet logHours(UUID productionOrderId, UUID operationId, BigDecimal hours) {
+        UUID tenantId = TenantContext.requireTenantId();
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "User required"));
+        ProductionOrder order = productionOrderRepository.findById(productionOrderId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Production order not found"));
+        if (List.of("DRAFT", "CANCELLED", "COMPLETED").contains(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Labor can only be logged while the order is on the floor");
+        }
+        if (hours == null || hours.signum() <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "hours must be greater than zero");
+        }
+        ManufacturingOperation operation = operationRepository.findById(operationId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Operation not found"));
+        BigDecimal hourlyRate = laborRateRepository.findByTenantIdAndUserId(tenantId, userId)
+                .map(TeamLaborRate::getHourlyRate)
+                .orElse(operation.getDefaultHourlyRate() != null ? operation.getDefaultHourlyRate() : BigDecimal.ZERO);
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minusSeconds(hours.multiply(BigDecimal.valueOf(3600)).longValue());
+        ProductionTimesheet timesheet = new ProductionTimesheet();
+        timesheet.setTenantId(tenantId);
+        timesheet.setProductionOrderId(productionOrderId);
+        timesheet.setOperationId(operationId);
+        timesheet.setUserId(userId);
+        timesheet.setStartTime(startTime);
+        timesheet.setEndTime(endTime);
+        timesheet.setTotalCost(hours.multiply(hourlyRate).setScale(4, RoundingMode.HALF_UP));
+        return timesheetRepository.save(timesheet);
+    }
+
+    @Transactional
     public ProductionTimesheet stopTimesheet(UUID timesheetId) {
         UUID tenantId = TenantContext.requireTenantId();
         ProductionTimesheet timesheet = timesheetRepository.findById(timesheetId)

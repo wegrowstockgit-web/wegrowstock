@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, Undo2 } from 'lucide-react';
+import { ArrowLeft, Undo2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { SalesOrderDetail } from '@/api/types';
 import { RequireRole } from '@/components/auth/RequireRole';
 import { AlertDialog } from '@/components/ui/AlertDialog';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
 import {
   Table,
@@ -57,7 +58,11 @@ export function SalesOrderDetailPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const reverseMutation = useReverseTransactionMutation();
-  const [confirm, setConfirm] = useState<'submit' | 'allocate' | 'cancel' | 'reverse' | null>(null);
+  const [confirm, setConfirm] = useState<'submit' | 'allocate' | 'cancel' | 'reverse' | 'override' | 'split' | null>(
+    null,
+  );
+  const [splitLineId, setSplitLineId] = useState<string | null>(null);
+  const [splitQty, setSplitQty] = useState('1');
 
   const orderQuery = useQuery({
     queryKey: ['sales-orders', id],
@@ -112,6 +117,25 @@ export function SalesOrderDetailPage() {
     onError: () => toast('Line is locked after submit. Reverse fulfillment to correct stock.', { tone: 'danger' }),
   });
 
+  const overrideHoldMutation = useMutation({
+    mutationFn: async () => apiClient.post(`/api/v1/sales-orders/${id}/override-credit-hold`),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Credit hold overridden. Allocation can proceed.', { tone: 'success' });
+    },
+    onError: () => toast('Could not override credit hold.', { tone: 'danger' }),
+  });
+
+  const splitMutation = useMutation({
+    mutationFn: async ({ lineId, qtyToShipNow }: { lineId: string; qtyToShipNow: number }) =>
+      apiClient.post(`/api/v1/sales-orders/${id}/lines/${lineId}/split-backorder`, { qtyToShipNow }),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Unfulfilled remainder moved to backorder.', { tone: 'success' });
+    },
+    onError: () => toast('Could not split this line into a backorder.', { tone: 'danger' }),
+  });
+
   const reverseFulfillment = async () => {
     if (!id) return;
     const { data } = await apiClient.get<FulfillmentLedgerRow[]>(`/api/v1/sales-orders/${id}/fulfillment-ledger`);
@@ -132,6 +156,8 @@ export function SalesOrderDetailPage() {
   const shipped = shippedQuantity(order);
   const canCancel = !!order && order.status !== 'CANCELLED' && order.status !== 'CLOSED' && shipped === 0;
   const canReverse = shipped > 0;
+  const creditStatus = order?.creditStatus ?? (order?.status === 'CREDIT_HOLD' ? 'HOLD' : 'CLEAR');
+  const onHold = creditStatus === 'HOLD' || order?.status === 'CREDIT_HOLD';
 
   if (orderQuery.isLoading) {
     return (
@@ -177,6 +203,19 @@ export function SalesOrderDetailPage() {
               >
                 {order.status.replaceAll('_', ' ')}
               </span>
+              <span
+                className={cn(
+                  'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  onHold
+                    ? 'bg-danger/10 text-danger'
+                    : creditStatus === 'OVERRIDDEN'
+                      ? 'bg-warning/10 text-warning'
+                      : 'bg-success/10 text-success',
+                )}
+                data-testid="so-credit-status"
+              >
+                Credit {creditStatus.replaceAll('_', ' ')}
+              </span>
             </div>
             <p className="mt-1 text-sm text-text-muted">{order.customerName}</p>
           </div>
@@ -206,6 +245,18 @@ export function SalesOrderDetailPage() {
                 Cancel Order
               </Button>
             ) : null}
+            {onHold ? (
+              <RequireRole roles={['FINANCE_ADMIN', 'ADMIN', 'OWNER']}>
+                <Button
+                  variant="secondary"
+                  data-testid="override-credit-hold"
+                  onClick={() => setConfirm('override')}
+                  loading={overrideHoldMutation.isPending}
+                >
+                  Override Credit Hold
+                </Button>
+              </RequireRole>
+            ) : null}
             {canReverse ? (
               <RequireRole roles={['WAREHOUSE_MANAGER', 'ADMIN']}>
                 <Button
@@ -223,19 +274,6 @@ export function SalesOrderDetailPage() {
         </div>
       </header>
 
-      {!draft ? (
-        <div
-          className="mx-6 mt-4 flex items-start gap-3 rounded-lg border border-border bg-surface-overlay/60 px-4 py-3"
-          data-testid="so-workspace-lock"
-        >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
-          <p className="text-sm text-text">
-            This document is locked. weGrowStock never rewrites a posted shipment — correct a fat-fingered quantity
-            with Reverse Fulfillment, which posts an offsetting ledger entry.
-          </p>
-        </div>
-      ) : null}
-
       <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
         <Table>
           <TableHeader>
@@ -245,6 +283,7 @@ export function SalesOrderDetailPage() {
               <TableHead align="right">Price</TableHead>
               <TableHead>Allocation</TableHead>
               <TableHead align="right">Shipped</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -297,6 +336,25 @@ export function SalesOrderDetailPage() {
                 <TableCell align="right">
                   <span className="font-mono tabular-nums text-text-muted">{line.qtyShipped}</span>
                 </TableCell>
+                <TableCell>
+                  {!draft && Number(line.qtyOrdered) - Number(line.qtyShipped ?? 0) > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      data-testid={`split-backorder-${line.id}`}
+                      onClick={() => {
+                        const remaining = Number(line.qtyOrdered) - Number(line.qtyShipped ?? 0);
+                        setSplitLineId(line.id);
+                        setSplitQty(String(Math.max(1, remaining - 1)));
+                        setConfirm('split');
+                      }}
+                    >
+                      Split / Backorder
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-text-muted">—</span>
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -344,6 +402,46 @@ export function SalesOrderDetailPage() {
             cancelMutation.mutate();
           }}
         />
+      ) : null}
+      {confirm === 'override' ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Override credit hold?"
+          description="Finance is releasing this order so the warehouse can allocate. The customer record stays on hold until AR is cleared."
+          confirmLabel="Override Credit Hold"
+          confirming={overrideHoldMutation.isPending}
+          onConfirm={() => {
+            setConfirm(null);
+            overrideHoldMutation.mutate();
+          }}
+        />
+      ) : null}
+      {confirm === 'split' && splitLineId ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => !open && setConfirm(null)}
+          title="Split remaining quantity to a backorder?"
+          description="Ship what you can now. The remainder stays as a backorder instead of forcing a full allocation."
+          confirmLabel="Split / Backorder"
+          confirming={splitMutation.isPending}
+          onConfirm={() => {
+            const lineId = splitLineId;
+            setConfirm(null);
+            splitMutation.mutate({ lineId, qtyToShipNow: Number(splitQty) });
+          }}
+        >
+          <div className="mb-4">
+            <Input
+              label="Qty to ship now"
+              type="number"
+              min="0"
+              value={splitQty}
+              onChange={(e) => setSplitQty(e.target.value)}
+              data-testid="split-backorder-qty"
+            />
+          </div>
+        </AlertDialog>
       ) : null}
       {confirm === 'reverse' ? (
         <AlertDialog

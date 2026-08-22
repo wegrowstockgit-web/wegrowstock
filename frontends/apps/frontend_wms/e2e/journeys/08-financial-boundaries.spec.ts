@@ -199,7 +199,9 @@ test.describe('Journey 08: Strict owner-gated financial boundaries', () => {
       await expect(manager.page.getByTestId(`variance-expected-${lineId}`)).toHaveText('10');
       await expect(manager.page.getByTestId(`variance-counted-${lineId}`)).toHaveText('0');
       await manager.page.getByTestId(`approve-variance-${lineId}`).click();
-      await manager.page.getByRole('dialog').getByTestId('alert-dialog-confirm').click();
+      await expect(manager.page.getByTestId('variance-reason-code')).toBeVisible();
+      await manager.page.getByTestId('variance-reason-code').selectOption('SHRINKAGE');
+      await manager.page.getByTestId('approve-variance-confirm').click();
       await expect(manager.page.getByTestId('variance-workspace-empty')).toBeVisible({ timeout: 15_000 });
     } finally {
       await manager.close();

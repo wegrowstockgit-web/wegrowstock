@@ -4,8 +4,8 @@ slug: "sop-b2b-showroom-fintech"
 sourcePath: "docs/sops/05_b2b_showroom_and_fintech.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "B2B_CUSTOMER", "VIEWER"]
 audienceLevel: "beginner"
-routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/sales-orders", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations", "/settings?tab=retailPos"]
-keywords: ["wholesale application", "showroom", "checkout", "credit hold", "credit line", "capital", "financing", "invoice", "wrong price invoice", "duplicate invoice", "void invoice", "credit note", "refund", "billing"]
+routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/sales-orders", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations", "/settings?tab=retailPos", "/purchase-orders", "/inventory/landed-costs"]
+keywords: ["wholesale application", "showroom", "checkout", "credit hold", "credit line", "capital", "financing", "factoring", "partial credit", "invoice", "wrong price invoice", "duplicate invoice", "void invoice", "credit note", "refund", "billing", "landed cost", "freight", "customs", "allocation"]
 ---
 
 # B2B Showroom & Commercial Finance — Beginner Playbook
@@ -179,6 +179,63 @@ ADMIN for most tabs; OWNER for **Billing** and **Cash Flow & Financing**.
 
 ---
 
+### Factoring & Partial Credits
+
+**What is this?**
+**Factoring** is selling an open invoice to a lender so the company gets cash now. The customer still pays the original invoice; weGrowStock just marks it **Factored**. A **partial credit memo** is for "they returned 1 of 5" — you credit that one line instead of voiding the whole bill.
+
+**Who can do this? (Privileges Required)**
+- **OWNER / ADMIN / FINANCE_ADMIN:** **Mark as Factored** and **Log Payment** on the Invoice Workspace.
+- **FINANCE_ADMIN, WAREHOUSE_MANAGER, or ADMIN:** **Issue Partial Credit Memo** on a line, or **Void & Issue Credit Memo** for the whole document. Pickers never see Void.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Invoices** → **Open Workspace**
+
+**Step-by-Step Instructions:**
+1. Open an **OPEN / ISSUED** invoice.
+2. To advance cash, click **Mark as Factored** (fintech must accept the invoice).
+3. When cash arrives, click **Log Payment** and enter the amount. A partial amount leaves the invoice **PARTIALLY PAID**.
+4. If the customer returned one SKU, click **Issue Partial Credit Memo** on that line and type the returned qty. Do **not** void the whole invoice.
+
+**⚠️ What if I make a mistake?**
+- **Customer returned 1 of 5 items:** Issue a Partial Credit Memo. Voiding would reverse all five.
+- **Factored the wrong invoice:** Tell the Owner. Factoring posts a funded advance — it is not deleted; finance settles it on the next remittance.
+
+---
+
+### Landed Costs & Freight Allocation
+
+**What is this?**
+The PO unit cost is what you agreed to pay the vendor for the goods. A week later a **freight**, **duty**, or **customs** bill often arrives ($500 is a typical surprise). That bill is part of what the inventory *actually cost* to land in the warehouse. **Landed Cost Allocation** spreads that dollar amount across the SKUs that already arrived, so margins and inventory valuation stay honest. It does **not** change how many units the dock scanned.
+
+**Who can do this? (Privileges Required)**
+**FINANCE_ADMIN**, OWNER, or ADMIN. Floor workers never edit a received PO to "add freight" onto a line.
+
+**Where to go in weGrowStock:**
+🖥️ **Inbound** → **Purchase Orders** (`/purchasing/orders`) → open the received PO / invoice → Landed Cost Allocation
+🖥️ Help overlay also seeds `/inventory/landed-costs`
+
+**How the math is spread:**
+1. Finance enters the late bill total (e.g. $500) and the event type (freight, customs, duty).
+2. weGrowStock picks a **strategy**:
+   - **By value** — each SKU pays a share equal to (line value ÷ PO value) × $500. Expensive lines absorb more.
+   - **By weight / volume** — heavier or bulkier lines absorb more (used when the carrier billed by cube or kilos).
+   - **Hybrid** — the engine uses the best available physical data, then falls back (weight → volume → value) when a SKU is missing a measurement.
+3. The engine writes **quantity-neutral** ledger rows: on-hand qty stays the same; each unit's **landed-cost component** goes up so inventory valuation = original receive + allocated freight.
+4. The original dock receipt is **not edited**. AP still matches the vendor merchandise invoice to the PO and receipt. The logistics bill is a second, signed allocation.
+
+**Step-by-Step Instructions:**
+1. Do **not** open the PO and change line prices or quantities to "bake in" the $500.
+2. Open the **Landed Cost Allocation** engine on the received PO / supplier invoice.
+3. Enter $500 (or the real bill), choose freight vs customs, and confirm the spread.
+4. Check that on-hand quantity is unchanged and that unit valuation rose.
+
+**⚠️ What if I make a mistake?**
+- **Edited the PO after receive to add freight:** Stop. Reverse that commercial edit if it is still draft-side; the dock receipt must stay as scanned. Then run Landed Cost Allocation.
+- **Allocated $500 to the wrong PO:** Tell finance. Allocation rows stay in history; a reversing allocation (or a second allocation to the correct PO) is the fix — never delete the first.
+
+---
+
 ## Quick reference: "I messed up" cheat sheet (B2B & money)
 
 | Mistake | Can I fix it myself? | The fix |
@@ -191,6 +248,7 @@ ADMIN for most tabs; OWNER for **Billing** and **Cash Flow & Financing**.
 | Buyer placed a wrong order | Buyer + rep | Cancel before ship, or **Return Items** after |
 | Buyer blocked at checkout (credit) | Buyer pays / Owner decides | Pay down **Billing**, or Owner adjusts the limit visibly |
 | Wrong credit hold / limit | Yes (Owner/Admin) | Correct the customer record |
+| Surprise freight/customs bill after receive | Finance | **Landed Cost Allocation** — do not edit the PO or the dock receipt |
 
 **Golden rule:** money documents follow the same law as stock: **posted is permanent; corrections are new signed documents.** A void next to a wrong invoice is not embarrassing — it's what a trustworthy books looks like. And the stock side of any refund always goes through the RMA flow, never through editing a shipment.
 

@@ -27,7 +27,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -42,6 +44,8 @@ public class CycleCountService {
     private static final int VELOCITY_THRESHOLD = 25;
     private static final int NEGATIVE_ADJUST_THRESHOLD = 3;
     private static final String REASON_CYCLE_COUNT = "CYCLE_COUNT";
+    private static final Set<String> VARIANCE_REASONS = Set.of(
+            "SHRINKAGE", "DAMAGED", "EXPIRED", "CYCLE_COUNT");
 
     private final InventoryLedgerRepository ledgerRepository;
     private final CycleCountRepository cycleCountRepository;
@@ -267,6 +271,11 @@ public class CycleCountService {
 
     @Transactional
     public CycleCountLineView approveLedgerAdjustment(UUID lineId) {
+        return approveLedgerAdjustment(lineId, null);
+    }
+
+    @Transactional
+    public CycleCountLineView approveLedgerAdjustment(UUID lineId, String reasonCode) {
         UUID tenantId = TenantContext.requireTenantId();
         CycleCountLine line = cycleCountLineRepository.findByIdAndTenantId(lineId, tenantId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LINE_NOT_FOUND", "Count line not found"));
@@ -284,7 +293,7 @@ public class CycleCountService {
                     count.getLocationId(),
                     line.getLotId(),
                     ledgerDelta,
-                    REASON_CYCLE_COUNT);
+                    normalizeVarianceReason(reasonCode));
         }
         line.setVarianceStatus(VARIANCE_APPROVED);
         cycleCountLineRepository.save(line);
@@ -525,6 +534,18 @@ public class CycleCountService {
             BigDecimal maxAutoAdjustValue,
             List<CycleCountLineView> lines
     ) {
+    }
+
+    private static String normalizeVarianceReason(String reasonCode) {
+        if (reasonCode == null || reasonCode.isBlank()) {
+            return REASON_CYCLE_COUNT;
+        }
+        String normalized = reasonCode.trim().toUpperCase(Locale.ROOT);
+        if (!VARIANCE_REASONS.contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "reasonCode must be SHRINKAGE, DAMAGED, EXPIRED, or CYCLE_COUNT");
+        }
+        return normalized;
     }
 
     public record CycleCountLineView(

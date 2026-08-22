@@ -67,7 +67,7 @@ describe('InvoiceDetailPage void RBAC', () => {
 
   it('hides void from pickers', async () => {
     renderInvoice(['PICKER'], 'OPEN');
-    expect(await screen.findByTestId('invoice-workspace-lock')).toBeInTheDocument();
+    expect(await screen.findByTestId('invoice-workspace')).toHaveAttribute('data-locked', 'true');
     expect(screen.queryByTestId('void-credit-memo')).not.toBeInTheDocument();
   });
 });

@@ -16,12 +16,17 @@ vi.mock('@/api/client', () => ({
   },
 }));
 
-function po(status: string, qtyReceived = 0): PurchaseOrderDetail {
+function po(
+  status: string,
+  qtyReceived = 0,
+  extras: Partial<PurchaseOrderDetail> = {},
+): PurchaseOrderDetail {
   return {
     id: 'po-1',
     number: 'PO-WS-1',
     supplierName: 'Acme Supply',
     status,
+    isMeshPartner: false,
     lines: [
       {
         id: 'line-1',
@@ -31,6 +36,7 @@ function po(status: string, qtyReceived = 0): PurchaseOrderDetail {
         unitCost: 4.5,
       },
     ],
+    ...extras,
   };
 }
 
@@ -96,7 +102,35 @@ describe('PurchaseOrderDetailPage ledger lock', () => {
     expect(screen.queryByTestId('po-add-item')).not.toBeInTheDocument();
     expect(screen.getByTestId('po-line-qty-locked-line-1')).toBeInTheDocument();
     expect(screen.getByTestId('cancel-po')).toBeInTheDocument();
+    expect(screen.getByTestId('mark-in-transit')).toBeEnabled();
     expect(screen.queryByTestId('reverse-receipt')).not.toBeInTheDocument();
+  });
+
+  it('hides cancel after the PO is in transit and shows tracking', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (String(url).includes('/variants')) {
+        return { data: { items: [] } };
+      }
+      return { data: po('IN_TRANSIT', 0, { trackingNumber: '1Z999', carrier: 'UPS' }) };
+    });
+    renderWorkspace(['WAREHOUSE_MANAGER']);
+    expect(await screen.findByTestId('po-workspace-status')).toHaveTextContent(/IN TRANSIT/i);
+    expect(screen.queryByTestId('cancel-po')).not.toBeInTheDocument();
+    expect(screen.getByTestId('po-tracking-details')).toHaveTextContent(/1Z999/);
+    expect(screen.getByTestId('revert-to-submitted')).toBeInTheDocument();
+  });
+
+  it('disables manual transit for mesh partners', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (String(url).includes('/variants')) {
+        return { data: { items: [] } };
+      }
+      return { data: po('SUBMITTED', 0, { isMeshPartner: true }) };
+    });
+    renderWorkspace(['WAREHOUSE_MANAGER']);
+    expect(await screen.findByTestId('mark-in-transit')).toBeDisabled();
+    expect(screen.getByTestId('po-mesh-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('po-mesh-automation-banner')).toBeInTheDocument();
   });
 
   it('shows reverse receipt only for managers after stock is received', async () => {

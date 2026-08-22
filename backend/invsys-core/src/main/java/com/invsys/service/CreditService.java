@@ -34,6 +34,13 @@ public class CreditService {
                 });
     }
 
+    @Transactional(readOnly = true)
+    public boolean isOnHold(UUID customerId) {
+        CustomerCreditLine line = getOrDefault(customerId);
+        String status = line.getStatus() == null ? "ACTIVE" : line.getStatus().trim();
+        return "HOLD".equalsIgnoreCase(status) || "CREDIT_HOLD".equalsIgnoreCase(status);
+    }
+
     @Transactional
     public void reserveCredit(UUID customerId, BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) {
