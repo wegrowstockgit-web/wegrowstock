@@ -9,6 +9,7 @@ interface InlineEditableCellProps {
   className?: string;
   inputType?: 'text' | 'number';
   formatDisplay?: (value: string | number) => string;
+  testId?: string;
 }
 
 export function InlineEditableCell({
@@ -18,6 +19,7 @@ export function InlineEditableCell({
   className,
   inputType = 'text',
   formatDisplay,
+  testId,
 }: InlineEditableCellProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(value));
@@ -63,6 +65,7 @@ export function InlineEditableCell({
             setEditing(false);
           }
         }}
+        data-testid={testId ? `${testId}-input` : undefined}
         className={cn(
           'w-full rounded border border-accent bg-surface-raised px-2 py-1 text-sm font-mono tabular-nums outline-none focus:ring-2 focus:ring-accent/30',
           className
@@ -81,6 +84,7 @@ export function InlineEditableCell({
         !disabled && 'hover:bg-surface-overlay',
         className
       )}
+      data-testid={testId}
       title={disabled ? undefined : 'Double-click to edit'}
       aria-label={disabled ? undefined : `Edit value ${formatDisplay ? formatDisplay(value) : value}`}
     >

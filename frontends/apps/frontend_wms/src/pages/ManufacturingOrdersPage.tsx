@@ -27,6 +27,7 @@ import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
 import { listManufacturingOrders } from '@/api/operational';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-surface-overlay text-text-muted',
@@ -184,12 +185,14 @@ function ProductionOrdersTable({
   allocatePending,
   onAllocate,
   onOpenTerminal,
+  onPeek,
 }: {
   orders: ProductionOrder[];
   canManage: boolean;
   allocatePending: boolean;
   onAllocate: (orderId: string) => void;
   onOpenTerminal: () => void;
+  onPeek: (orderId: string) => void;
 }) {
   const { sort, toggle, sorted } = useClientSort(
     orders,
@@ -230,7 +233,12 @@ function ProductionOrdersTable({
       </TableHeader>
       <TableBody>
         {sorted.map((order) => (
-          <TableRow key={order.id}>
+          <TableRow
+            key={order.id}
+            className="cursor-pointer"
+            data-testid={`mo-row-${order.id}`}
+            onClick={() => onPeek(order.id)}
+          >
             <TableCell mono>{order.number}</TableCell>
             <TableCell>{order.parentSku ?? order.parentName ?? order.parentVariantId}</TableCell>
             <TableCell>
@@ -257,7 +265,7 @@ function ProductionOrdersTable({
             <TableCell align="right" mono>
               {order.qtyProduced}
             </TableCell>
-            <TableCell>
+            <TableCell onClick={(e) => e.stopPropagation()}>
               {canManage && order.status === 'DRAFT' && (
                 <Button
                   variant="secondary"
@@ -286,6 +294,7 @@ export function ManufacturingOrdersPage() {
   const canManage = useSessionStore((s) => s.canManageInventory());
   const [modalOpen, setModalOpen] = useState(false);
   const [disassembleOpen, setDisassembleOpen] = useState(false);
+  const [peekId, setPeekId] = useState<string | null>(null);
 
   const table = useServerTableQuery<ProductionOrder>({
     queryKey: ['manufacturing', 'orders'],
@@ -366,6 +375,7 @@ export function ManufacturingOrdersPage() {
               allocatePending={allocateMutation.isPending}
               onAllocate={(id) => allocateMutation.mutate(id)}
               onOpenTerminal={() => navigate('/manufacturing/terminal')}
+              onPeek={setPeekId}
             />
             <Pagination
               page={table.page}
@@ -381,6 +391,27 @@ export function ManufacturingOrdersPage() {
 
       <CreateProductionOrderModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <DisassembleModal open={disassembleOpen} onClose={() => setDisassembleOpen(false)} />
+      <RightPeekDrawer
+        open={!!peekId}
+        onClose={() => setPeekId(null)}
+        title={items.find((order) => order.id === peekId)?.number ?? 'Production order'}
+      >
+        {peekId ? (
+          <Button
+            className="w-full"
+            data-testid="open-mo-workspace"
+            onClick={() => {
+              const id = peekId;
+              setPeekId(null);
+              navigate(`/manufacturing/orders/${id}`);
+            }}
+          >
+            Open Workspace
+          </Button>
+        ) : (
+          <p className="text-sm text-text-muted">Loading…</p>
+        )}
+      </RightPeekDrawer>
     </div>
     </TableDensityScope>
   );

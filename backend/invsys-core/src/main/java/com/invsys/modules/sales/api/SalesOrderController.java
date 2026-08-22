@@ -25,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -288,10 +289,31 @@ public class SalesOrderController {
                 id, prices, request.manualDiscountTotal(), request.quoteExpiresAt(), request.quoteNotes());
     }
 
+    @PostMapping("/sales-orders/{id}/submit")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public SalesOrder submit(@PathVariable UUID id) {
+        return salesOrderService.submit(id);
+    }
+
     @PostMapping("/sales-orders/{id}/confirm")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public SalesOrder confirm(@PathVariable UUID id) {
         return salesOrderService.confirm(id);
+    }
+
+    @PatchMapping("/sales-orders/{id}/lines/{lineId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public SalesOrderLine updateDraftLine(
+            @PathVariable UUID id,
+            @PathVariable UUID lineId,
+            @RequestBody UpdateLineRequest request) {
+        return salesOrderService.updateDraftLine(id, lineId, request.qtyOrdered(), request.unitPrice());
+    }
+
+    @GetMapping("/sales-orders/{id}/fulfillment-ledger")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public List<SalesOrderService.FulfillmentLedgerRow> fulfillmentLedger(@PathVariable UUID id) {
+        return salesOrderService.listFulfillmentLedger(id);
     }
 
     @PostMapping("/sales-orders/{id}/allocate")
@@ -345,6 +367,9 @@ public class SalesOrderController {
     }
 
     public record CreateLineRequest(@NotNull UUID variantId, @NotNull BigDecimal qtyOrdered, BigDecimal unitPrice) {
+    }
+
+    public record UpdateLineRequest(BigDecimal qtyOrdered, BigDecimal unitPrice) {
     }
 
     public record SalesOrderResponse(

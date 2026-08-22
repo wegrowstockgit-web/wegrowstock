@@ -18,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -98,6 +99,60 @@ public class PurchaseOrderController {
         return supplierRepository.save(supplier);
     }
 
+    @GetMapping("/suppliers/{id}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER','BUYER')")
+    public Supplier getSupplier(@PathVariable UUID id) {
+        Supplier supplier = supplierRepository.findById(id)
+                .orElseThrow(() -> new com.invsys.core.common.ApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Supplier not found"));
+        if (!supplier.getTenantId().equals(TenantContext.requireTenantId())) {
+            throw new com.invsys.core.common.ApiException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Supplier not found");
+        }
+        return supplier;
+    }
+
+    @PatchMapping("/suppliers/{id}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','BUYER')")
+    public Supplier updateSupplier(@PathVariable UUID id, @RequestBody UpdateSupplierRequest request) {
+        Supplier supplier = supplierRepository.findById(id)
+                .orElseThrow(() -> new com.invsys.core.common.ApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Supplier not found"));
+        if (!supplier.getTenantId().equals(TenantContext.requireTenantId())) {
+            throw new com.invsys.core.common.ApiException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Supplier not found");
+        }
+        if (request.name() != null && !request.name().isBlank()) {
+            supplier.setName(request.name().trim());
+        }
+        if (request.paymentTerms() != null && !request.paymentTerms().isBlank()) {
+            supplier.setPaymentTerms(normalizePaymentTerms(request.paymentTerms()));
+        }
+        if (request.defaultLeadTimeDays() != null) {
+            supplier.setDefaultLeadTimeDays(request.defaultLeadTimeDays());
+        }
+        if (request.minimumOrderQuantityValue() != null) {
+            supplier.setMinimumOrderQuantityValue(request.minimumOrderQuantityValue());
+        }
+        if (request.supplierRating() != null) {
+            supplier.setSupplierRating(request.supplierRating());
+        }
+        if (request.defaultCurrency() != null && !request.defaultCurrency().isBlank()) {
+            supplier.setDefaultCurrency(request.defaultCurrency().trim().toUpperCase());
+        }
+        Map<String, Object> contact = supplier.getContact() != null
+                ? new java.util.LinkedHashMap<>(supplier.getContact())
+                : new java.util.LinkedHashMap<>();
+        if (request.contactEmail() != null) {
+            contact.put("email", request.contactEmail());
+        }
+        if (request.address() != null) {
+            contact.put("address", request.address());
+        }
+        supplier.setContact(contact);
+        return supplierRepository.save(supplier);
+    }
+
     private static String normalizePaymentTerms(String raw) {
         String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_');
         return switch (key) {
@@ -143,6 +198,7 @@ public class PurchaseOrderController {
                 .map(po -> new PurchaseOrderResponse(
                         po.getId(),
                         po.getNumber(),
+                        po.getSupplierId(),
                         supplierNames.getOrDefault(po.getSupplierId(), "—"),
                         po.getStatus(),
                         po.getExpectedAt()))
@@ -196,6 +252,40 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public PurchaseOrder markInTransit(@PathVariable UUID id) {
         return purchaseOrderService.markInTransit(id);
+    }
+
+    @PostMapping("/purchase-orders/{id}/cancel")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrder cancel(@PathVariable UUID id) {
+        return purchaseOrderService.cancel(id);
+    }
+
+    @PostMapping("/purchase-orders/{id}/lines")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrderLine addLine(@PathVariable UUID id, @Valid @RequestBody CreateLineRequest request) {
+        return purchaseOrderService.addDraftLine(id, request.variantId(), request.qtyOrdered(), request.unitCost());
+    }
+
+    @PatchMapping("/purchase-orders/{id}/lines/{lineId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrderLine updateLine(
+            @PathVariable UUID id,
+            @PathVariable UUID lineId,
+            @RequestBody UpdateLineRequest request) {
+        return purchaseOrderService.updateDraftLine(id, lineId, request.qtyOrdered(), request.unitCost());
+    }
+
+    @GetMapping("/purchase-orders/{id}/receipt-ledger")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public List<PurchaseOrderService.ReceiptLedgerRow> receiptLedger(@PathVariable UUID id) {
+        return purchaseOrderService.listReceiptLedger(id);
+    }
+
+    @PostMapping("/purchase-orders/{id}/sync-receipts")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public PurchaseOrderDetailResponse syncReceipts(@PathVariable UUID id) {
+        purchaseOrderService.syncReceiptsFromLedger(id);
+        return getPurchaseOrder(id);
     }
 
     @PostMapping("/purchase-orders/{id}/send-magic-link")
@@ -260,6 +350,9 @@ public class PurchaseOrderController {
     public record CreateLineRequest(@NotNull UUID variantId, @NotNull BigDecimal qtyOrdered, BigDecimal unitCost) {
     }
 
+    public record UpdateLineRequest(BigDecimal qtyOrdered, BigDecimal unitCost) {
+    }
+
     public record ReceiveLineRequest(
             @NotNull UUID locationId,
             UUID lotId,
@@ -271,9 +364,22 @@ public class PurchaseOrderController {
     public record PurchaseOrderResponse(
             UUID id,
             String number,
+            UUID supplierId,
             String supplierName,
             String status,
             java.time.Instant expectedAt
+    ) {
+    }
+
+    public record UpdateSupplierRequest(
+            String name,
+            String paymentTerms,
+            Integer defaultLeadTimeDays,
+            BigDecimal minimumOrderQuantityValue,
+            BigDecimal supplierRating,
+            String defaultCurrency,
+            String contactEmail,
+            Map<String, Object> address
     ) {
     }
 

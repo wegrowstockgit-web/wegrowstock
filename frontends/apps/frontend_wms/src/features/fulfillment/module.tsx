@@ -6,6 +6,7 @@ import { ExceptionsPage } from '@/features/fulfillment/ExceptionsPage';
 import { FulfillmentPage } from '@/features/fulfillment/FulfillmentPage';
 import { PalletManifestWorkspace } from '@/features/fulfillment/PalletManifestWorkspace';
 import { ReplenishmentsPage } from '@/features/fulfillment/ReplenishmentsPage';
+import { VarianceApprovalWorkspace } from '@/features/inventory/VarianceApprovalWorkspace';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
 
 export const fulfillmentModule = defineModule({
@@ -17,6 +18,22 @@ export const fulfillmentModule = defineModule({
       element: (
         <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
           <ExceptionsPage />
+        </EnterpriseRouteGate>
+      ),
+    },
+    {
+      path: 'inventory/variances',
+      element: (
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+          <VarianceApprovalWorkspace />
+        </EnterpriseRouteGate>
+      ),
+    },
+    {
+      path: 'inventory/variances/:lineId',
+      element: (
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
+          <VarianceApprovalWorkspace />
         </EnterpriseRouteGate>
       ),
     },

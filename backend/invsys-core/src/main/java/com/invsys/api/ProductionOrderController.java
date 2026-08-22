@@ -85,6 +85,19 @@ public class ProductionOrderController {
         return dtoMapper.toProductionOrderResponse(manufacturingService.executeAssembly(id, request.qtyToProduce()));
     }
 
+    @PostMapping("/orders/{id}/release")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PRODUCTION_SUPERVISOR')")
+    public ProductionOrderResponse release(@PathVariable UUID id) {
+        return dtoMapper.toProductionOrderResponse(manufacturingService.releaseToFloor(id));
+    }
+
+    @PostMapping("/orders/{id}/scrap")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PRODUCTION_SUPERVISOR')")
+    public ProductionOrderResponse scrap(@PathVariable UUID id, @Valid @RequestBody ScrapRequest request) {
+        manufacturingService.logScrap(id, request.variantId(), request.locationId(), request.quantity());
+        return dtoMapper.toProductionOrderResponse(productionOrderRepository.findById(id).orElseThrow());
+    }
+
     public record CreateProductionOrderRequest(
             @NotNull UUID parentVariantId,
             @NotNull @Positive BigDecimal qtyTarget
@@ -92,5 +105,12 @@ public class ProductionOrderController {
     }
 
     public record AssembleRequest(@NotNull @Positive BigDecimal qtyToProduce) {
+    }
+
+    public record ScrapRequest(
+            @NotNull UUID variantId,
+            UUID locationId,
+            @NotNull @Positive BigDecimal quantity
+    ) {
     }
 }

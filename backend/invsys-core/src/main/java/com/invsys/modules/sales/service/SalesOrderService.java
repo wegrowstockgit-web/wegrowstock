@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,8 @@ import java.util.Optional;
 import java.util.UUID;
 import com.invsys.modules.sales.api.AllocateSalesOrderRequested;
 import com.invsys.modules.sales.api.ReleaseSalesOrderAllocationsRequested;
+import com.invsys.modules.inventory.api.InventoryLedgerLookup;
+import com.invsys.modules.inventory.domain.InventoryLedger;
 import com.invsys.service.AuditService;
 import com.invsys.service.DocumentSequenceService;
 import com.invsys.service.SoftKitExplosionService;
@@ -55,6 +58,7 @@ public class SalesOrderService {
     private final DocumentSequenceService sequenceService;
     private final MeterRegistry meterRegistry;
     private final WmsMetrics wmsMetrics;
+    private final InventoryLedgerLookup ledgerLookup;
 
     public SalesOrderService(SalesOrderRepository salesOrderRepository,
                              SalesOrderLineRepository lineRepository,
@@ -67,7 +71,8 @@ public class SalesOrderService {
                              SoftKitExplosionService softKitExplosionService,
                              DocumentSequenceService sequenceService,
                              MeterRegistry meterRegistry,
-                             WmsMetrics wmsMetrics) {
+                             WmsMetrics wmsMetrics,
+                             InventoryLedgerLookup ledgerLookup) {
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
         this.eventPublisher = eventPublisher;
@@ -80,6 +85,7 @@ public class SalesOrderService {
         this.sequenceService = sequenceService;
         this.meterRegistry = Objects.requireNonNull(meterRegistry, "meterRegistry");
         this.wmsMetrics = wmsMetrics;
+        this.ledgerLookup = ledgerLookup;
     }
 
     /**
@@ -258,6 +264,34 @@ public class SalesOrderService {
     }
 
     @Transactional
+    public SalesOrderLine updateDraftLine(UUID orderId, UUID lineId, BigDecimal qtyOrdered, BigDecimal unitPrice) {
+        SalesOrder order = requireDraft(orderId);
+        SalesOrderLine line = lineRepository.findById(lineId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Order line not found"));
+        if (!order.getId().equals(line.getSalesOrderId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Order line not found");
+        }
+        if (qtyOrdered != null) {
+            if (qtyOrdered.signum() <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "qtyOrdered must be greater than zero");
+            }
+            line.setQtyOrdered(qtyOrdered);
+        }
+        if (unitPrice != null) {
+            if (unitPrice.signum() < 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "unitPrice cannot be negative");
+            }
+            line.setUnitPrice(unitPrice);
+        }
+        return lineRepository.save(line);
+    }
+
+    @Transactional
+    public SalesOrder submit(UUID orderId) {
+        return confirm(orderId);
+    }
+
+    @Transactional
     public SalesOrder confirm(UUID orderId) {
         SalesOrder order = getOrder(orderId);
         if (!"DRAFT".equals(order.getStatus())) {
@@ -313,11 +347,38 @@ public class SalesOrderService {
         }
     }
 
+    public List<FulfillmentLedgerRow> listFulfillmentLedger(UUID orderId) {
+        SalesOrder order = getOrder(orderId);
+        UUID tenantId = order.getTenantId();
+        List<FulfillmentLedgerRow> rows = new ArrayList<>();
+        for (SalesOrderLine line : lineRepository.findBySalesOrderId(order.getId())) {
+            List<InventoryLedger> entries = ledgerLookup.findByTenantIdAndReferenceTypeAndReferenceId(
+                    tenantId, "SALES_ORDER_LINE", line.getId());
+            for (InventoryLedger entry : entries) {
+                boolean reversed = entry.getReversalOfLedgerId() != null
+                        || "ERROR_CORRECTION".equals(entry.getReasonCode())
+                        || entries.stream().anyMatch(other -> entry.getId().equals(other.getReversalOfLedgerId()));
+                rows.add(new FulfillmentLedgerRow(
+                        entry.getId(),
+                        line.getId(),
+                        entry.getQuantityDelta(),
+                        reversed));
+            }
+        }
+        return rows;
+    }
+
     @Transactional
     public SalesOrder cancel(UUID orderId) {
         SalesOrder order = getOrder(orderId);
         if ("CLOSED".equals(order.getStatus()) || "CANCELLED".equals(order.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Order cannot be cancelled");
+        }
+        boolean shipped = lineRepository.findBySalesOrderId(order.getId()).stream()
+                .anyMatch(line -> line.getQtyShipped() != null && line.getQtyShipped().signum() > 0);
+        if (shipped) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Cannot cancel after fulfillment — reverse the shipment instead");
         }
         String before = order.getStatus();
         eventPublisher.publishEvent(new ReleaseSalesOrderAllocationsRequested(orderId));
@@ -408,6 +469,18 @@ public class SalesOrderService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
     }
 
+    private SalesOrder requireDraft(UUID orderId) {
+        SalesOrder order = getOrder(orderId);
+        if (!"DRAFT".equals(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "IMMUTABLE_LEDGER",
+                    "Submitted sales orders are locked. Reverse fulfillment or cancel before goods ship.");
+        }
+        return order;
+    }
+
     public record QuoteLinePrice(UUID lineId, BigDecimal unitPrice) {
+    }
+
+    public record FulfillmentLedgerRow(UUID id, UUID lineId, BigDecimal quantityDelta, boolean alreadyReversed) {
     }
 }

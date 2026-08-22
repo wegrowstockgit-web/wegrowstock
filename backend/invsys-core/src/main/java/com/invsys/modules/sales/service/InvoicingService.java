@@ -353,4 +353,106 @@ public class InvoicingService {
                 "factoringPayback", settled.getFactoringPayback()));
         creditService.replenishCredit(invoice.getCustomerId(), pi.getAmount());
     }
+
+    @Transactional
+    public InvoiceLine updateDraftLine(UUID invoiceId, UUID lineId, BigDecimal qty, BigDecimal unitPrice) {
+        Invoice invoice = requireInvoice(invoiceId);
+        if (!"DRAFT".equals(invoice.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "IMMUTABLE_LEDGER",
+                    "Issued invoices cannot be edited. Void and issue a credit memo instead.");
+        }
+        InvoiceLine line = invoiceLineRepository.findById(lineId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice line not found"));
+        if (!invoiceId.equals(line.getInvoiceId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice line not found");
+        }
+        if (qty != null) {
+            if (qty.signum() <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "qty must be greater than zero");
+            }
+            line.setQty(qty);
+        }
+        if (unitPrice != null) {
+            if (unitPrice.signum() < 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "unitPrice cannot be negative");
+            }
+            line.setUnitPrice(unitPrice);
+        }
+        line.setAmount(line.getQty().multiply(line.getUnitPrice()));
+        invoiceLineRepository.save(line);
+        recalculateTotals(invoice);
+        return line;
+    }
+
+    @Transactional
+    public Invoice issue(UUID invoiceId) {
+        Invoice invoice = requireInvoice(invoiceId);
+        if ("VOID".equals(invoice.getStatus()) || "CREDIT_MEMO".equals(invoice.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE", "Cannot issue a voided invoice");
+        }
+        if ("DRAFT".equals(invoice.getStatus())) {
+            invoice.setStatus("OPEN");
+            invoice = invoiceRepository.save(invoice);
+            outboxService.append("INVOICE", invoice.getId(), "INVOICE_OPEN", Map.of("invoiceId", invoice.getId()));
+        }
+        archiveOpenInvoicePdf(invoice.getId());
+        return requireInvoice(invoiceId);
+    }
+
+    @Transactional
+    public Invoice voidAndIssueCreditMemo(UUID invoiceId) {
+        Invoice invoice = requireInvoice(invoiceId);
+        if (!List.of("OPEN", "ISSUED", "PARTIALLY_PAID").contains(invoice.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only issued invoices can be voided with a credit memo");
+        }
+        Invoice credit = new Invoice();
+        credit.setTenantId(invoice.getTenantId());
+        credit.setSalesOrderId(invoice.getSalesOrderId());
+        credit.setCustomerId(invoice.getCustomerId());
+        credit.setNumber(sequenceService.nextNumber("CREDIT_MEMO", "CM-{YYYY}-{seq:5}"));
+        credit.setStatus("CREDIT_MEMO");
+        credit.setCurrency(invoice.getCurrency());
+        credit.setDueAt(Instant.now());
+        credit.setSubtotal(invoice.getSubtotal().negate());
+        credit.setTax(invoice.getTax().negate());
+        credit.setTotal(invoice.getTotal().negate());
+        credit = invoiceRepository.save(credit);
+        for (InvoiceLine source : invoiceLineRepository.findByInvoiceId(invoice.getId())) {
+            InvoiceLine offset = new InvoiceLine();
+            offset.setTenantId(invoice.getTenantId());
+            offset.setInvoiceId(credit.getId());
+            offset.setDescription("Credit: " + invoice.getNumber() + " / " + source.getDescription());
+            offset.setQty(source.getQty());
+            offset.setUnitPrice(source.getUnitPrice().negate());
+            offset.setAmount(source.getAmount().negate());
+            invoiceLineRepository.save(offset);
+        }
+        invoice.setStatus("VOID");
+        invoiceRepository.save(invoice);
+        outboxService.append("INVOICE", invoice.getId(), "INVOICE_VOIDED", Map.of(
+                "invoiceId", invoice.getId(),
+                "creditMemoId", credit.getId(),
+                "creditMemoNumber", credit.getNumber()));
+        return credit;
+    }
+
+    public List<InvoiceLine> linesFor(UUID invoiceId) {
+        requireInvoice(invoiceId);
+        return invoiceLineRepository.findByInvoiceId(invoiceId);
+    }
+
+    private void recalculateTotals(Invoice invoice) {
+        BigDecimal subtotal = invoiceLineRepository.findByInvoiceId(invoice.getId()).stream()
+                .map(InvoiceLine::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        invoice.setSubtotal(subtotal);
+        invoice.setTotal(subtotal.add(invoice.getTax() != null ? invoice.getTax() : BigDecimal.ZERO));
+        invoiceRepository.save(invoice);
+    }
+
+    private Invoice requireInvoice(UUID invoiceId) {
+        return invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice not found"));
+    }
 }

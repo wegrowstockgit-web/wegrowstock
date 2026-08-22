@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
 import type { PendingVariance, PriorityAudit } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -92,11 +93,13 @@ function PendingVariancesTable({
   rows,
   onApprove,
   onRecount,
+  onOpenWorkspace,
   busyId,
 }: {
   rows: PendingVariance[];
   onApprove: (lineId: string) => void;
   onRecount: (lineId: string) => void;
+  onOpenWorkspace: (lineId: string) => void;
   busyId: string | null;
 }) {
   const { sort, toggle, sorted } = useClientSort(
@@ -157,6 +160,14 @@ function PendingVariancesTable({
                 >
                   Request Recount
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-testid={`open-variance-workspace-${row.lineId}`}
+                  onClick={() => onOpenWorkspace(row.lineId)}
+                >
+                  Open Workspace
+                </Button>
               </div>
             </TableCell>
           </TableRow>
@@ -168,6 +179,7 @@ function PendingVariancesTable({
 }
 
 export function CycleCountsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canReview = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
@@ -277,6 +289,7 @@ export function CycleCountsPage() {
                 busyId={busyId}
                 onApprove={(id) => approve.mutate(id)}
                 onRecount={(id) => recount.mutate(id)}
+                onOpenWorkspace={(id) => navigate(`/inventory/variances/${id}`)}
               />
             )}
           </ListPageState>

@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react';
@@ -450,6 +450,7 @@ function RowActions({ order }: { order: SalesOrder }) {
 export function SalesOrdersPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [modalOpen, setModalOpen] = useState(false);
@@ -578,6 +579,16 @@ export function SalesOrdersPage() {
       >
         {peekOrder ? (
           <div className="space-y-4">
+            <Button
+              className="w-full"
+              data-testid="open-so-workspace"
+              onClick={() => {
+                setPeekOrderId(null);
+                navigate(`/sales/orders/${peekOrder.id}`);
+              }}
+            >
+              Open Workspace
+            </Button>
             <AllocationHoldBadge
               status={peekOrder.status}
               allocationPolicy={peekOrder.allocationPolicy}

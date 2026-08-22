@@ -379,6 +379,61 @@ public class ManufacturingService {
     }
 
     @Transactional
+    public ProductionOrder releaseToFloor(UUID productionOrderId) {
+        ProductionOrder order = getOrder(productionOrderId);
+        if ("DRAFT".equals(order.getStatus())) {
+            order = allocateComponents(productionOrderId);
+        }
+        if (!List.of("COMPONENTS_ALLOCATED", "WIP", "IN_ROUTING").contains(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only draft or allocated production orders can be released to the floor");
+        }
+        if ("COMPONENTS_ALLOCATED".equals(order.getStatus())) {
+            order.setStatus("WIP");
+            assignFirstWorkCenter(order);
+            if (!"IN_ROUTING".equals(order.getStatus())) {
+                order.setStatus("WIP");
+            }
+            return productionOrderRepository.save(order);
+        }
+        return order;
+    }
+
+    @Transactional
+    public InventoryLedger logScrap(UUID productionOrderId, UUID variantId, UUID locationId, BigDecimal quantity) {
+        ProductionOrder order = getOrder(productionOrderId);
+        if ("DRAFT".equals(order.getStatus()) || "CANCELLED".equals(order.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Release the order to the floor before logging scrap");
+        }
+        if (variantId == null || quantity == null || quantity.signum() <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "variantId and a positive quantity are required");
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        UUID resolvedLocation = locationId;
+        if (resolvedLocation == null) {
+            resolvedLocation = allocationRepository.findByProductionOrderIdAndStatus(productionOrderId, "ACTIVE")
+                    .stream()
+                    .map(Allocation::getLocationId)
+                    .filter(id -> id != null)
+                    .findFirst()
+                    .or(() -> locationRepository.findByTenantIdOrderByPathAsc(tenantId).stream().map(Location::getId).findFirst())
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "NO_LOCATION", "No warehouse location"));
+        }
+        InventoryLedger scrap = new InventoryLedger();
+        scrap.setTenantId(tenantId);
+        scrap.setVariantId(variantId);
+        scrap.setLocationId(resolvedLocation);
+        scrap.setMovementType("ADJUST");
+        scrap.setReasonCode("SCRAP");
+        scrap.setQuantityDelta(quantity.negate());
+        scrap.setReferenceType("PRODUCTION_ORDER");
+        scrap.setReferenceId(productionOrderId);
+        scrap.setCreatedBy(TenantContext.getUserId().orElse(null));
+        return saveLedger(scrap);
+    }
+
+    @Transactional
     public ProductionOrder advanceWorkCenter(UUID orderId) {
         UUID tenantId = TenantContext.requireTenantId();
         ProductionOrder order = getOrder(orderId);

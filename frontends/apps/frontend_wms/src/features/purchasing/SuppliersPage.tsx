@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Truck, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -24,8 +25,9 @@ import { useClientSort } from '@/hooks/useClientSort';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { listSuppliers } from '@/api/operational';
+import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 
-function SuppliersTable({ items }: { items: Supplier[] }) {
+function SuppliersTable({ items, onPeek }: { items: Supplier[]; onPeek: (id: string) => void }) {
   const { sort, toggle, sorted } = useClientSort(
     items,
     {
@@ -55,7 +57,12 @@ function SuppliersTable({ items }: { items: Supplier[] }) {
         </TableHeader>
         <TableBody>
           {sorted.map((s) => (
-            <TableRow key={s.id} data-testid={`supplier-row-${s.id}`}>
+            <TableRow
+              key={s.id}
+              className="cursor-pointer"
+              data-testid={`supplier-row-${s.id}`}
+              onClick={() => onPeek(s.id)}
+            >
               <TableCell>{s.name}</TableCell>
               <TableCell>{s.contactEmail ?? '—'}</TableCell>
               <TableCell>{s.paymentTerms ?? '—'}</TableCell>
@@ -198,9 +205,11 @@ function AddSupplierModal({ open, onClose }: { open: boolean; onClose: () => voi
 }
 
 export function SuppliersPage() {
+  const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [modalOpen, setModalOpen] = useState(false);
+  const [peekId, setPeekId] = useState<string | null>(null);
 
   const table = useServerTableQuery<Supplier>({
     queryKey: 'suppliers',
@@ -260,7 +269,7 @@ export function SuppliersPage() {
       >
         {(rows) => (
           <>
-            <SuppliersTable items={rows} />
+            <SuppliersTable items={rows} onPeek={setPeekId} />
             <Pagination
               page={table.page}
               totalPages={table.totalPages}
@@ -274,6 +283,27 @@ export function SuppliersPage() {
       </ListPageState>
 
       <AddSupplierModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <RightPeekDrawer
+        open={!!peekId}
+        onClose={() => setPeekId(null)}
+        title={items.find((s) => s.id === peekId)?.name ?? 'Supplier'}
+      >
+        {peekId ? (
+          <Button
+            className="w-full"
+            data-testid="open-supplier-workspace"
+            onClick={() => {
+              const id = peekId;
+              setPeekId(null);
+              navigate(`/suppliers/${id}`);
+            }}
+          >
+            Open Workspace
+          </Button>
+        ) : (
+          <p className="text-sm text-text-muted">Loading…</p>
+        )}
+      </RightPeekDrawer>
     </div>
     </TableDensityScope>
   );

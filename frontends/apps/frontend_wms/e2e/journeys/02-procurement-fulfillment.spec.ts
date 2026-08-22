@@ -214,4 +214,70 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
       await manager.close();
     }
   });
+
+  test('Draft to submitted locking, cancel, and reverse-receipt RBAC', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const supplierId = await firstSupplierId(manager.page);
+      const po = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/purchase-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId,
+          number: `PO-WS-${Date.now()}`,
+          destinationLocationId: WH_01,
+          lines: [{ variantId, qtyOrdered: 8, unitCost: 3.25 }],
+        }),
+      });
+
+      await manager.page.goto('/purchase-orders');
+      await expect(manager.page.getByText(po.number).first()).toBeVisible({ timeout: 15_000 });
+      await manager.page.getByText(po.number).first().click();
+      await manager.page.getByTestId('open-po-workspace').click();
+      await expect(manager.page).toHaveURL(new RegExp(`/purchasing/orders/${po.id}`));
+      await expect(manager.page.getByTestId('po-workspace')).toHaveAttribute('data-locked', 'false');
+      await expect(manager.page.getByTestId('submit-po')).toBeVisible();
+      await expect(manager.page.getByTestId('po-add-item')).toBeVisible();
+
+      const qtyCell = manager.page.locator('[data-testid^="po-line-qty-"]').first();
+      await qtyCell.dblclick();
+      const qtyInput = manager.page.locator('[data-testid$="-input"]').first();
+      await expect(qtyInput).toBeVisible();
+      await qtyInput.fill('9');
+      await qtyInput.blur();
+      await expect(manager.page.getByTestId('submit-po')).toBeVisible();
+
+      await manager.page.getByTestId('submit-po').click();
+      await manager.page.getByRole('dialog').getByTestId('alert-dialog-confirm').click();
+      await expect(manager.page.getByTestId('po-workspace')).toHaveAttribute('data-locked', 'true', {
+        timeout: 15_000,
+      });
+      await expect(manager.page.getByTestId('po-workspace-status')).toContainText(/SUBMITTED/i);
+      await expect(manager.page.locator('[data-testid$="-input"]')).toHaveCount(0);
+      await expect(manager.page.getByTestId('po-add-item')).toHaveCount(0);
+      await expect(manager.page.getByTestId('cancel-po')).toBeVisible();
+
+      await manager.page.route(`**/api/v1/purchase-orders/${po.id}`, async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        const body = (await response.json()) as {
+          lines: Array<{ qtyReceived: number }>;
+        };
+        body.lines = body.lines.map((line) => ({ ...line, qtyReceived: 8 }));
+        await route.fulfill({
+          status: response.status(),
+          headers: response.headers(),
+          body: JSON.stringify({ ...body, status: 'PARTIALLY_RECEIVED' }),
+        });
+      });
+      await manager.page.reload();
+      await expect(manager.page.getByTestId('cancel-po')).toHaveCount(0);
+      await expect(manager.page.getByTestId('reverse-receipt')).toBeVisible();
+    } finally {
+      await manager.close();
+    }
+  });
 });

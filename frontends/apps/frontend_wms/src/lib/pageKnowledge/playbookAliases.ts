@@ -10,6 +10,7 @@ export const PLAYBOOK_ROUTE_ALIASES: ReadonlyArray<{ from: string; to: string }>
   { from: '/fulfillment/pick', to: '/fulfillment' },
   { from: '/fulfillment/pack', to: '/fulfillment' },
   { from: '/purchase-orders/new', to: '/purchase-orders' },
+  { from: '/purchasing/orders', to: '/purchase-orders' },
   { from: '/inbound/receive/scan', to: '/inbound/receive' },
   { from: '/inbound/putaway', to: '/replenishments' },
   { from: '/products/new', to: '/products' },

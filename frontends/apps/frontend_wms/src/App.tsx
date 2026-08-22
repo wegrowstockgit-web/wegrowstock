@@ -29,6 +29,7 @@ import { IntegrationsHubPage } from '@/pages/IntegrationsHubPage';
 import { RtlsWorkspacePage } from '@/pages/RtlsWorkspacePage';
 import { ManufacturingBomsPage } from '@/pages/ManufacturingBomsPage';
 import { ManufacturingOrdersPage } from '@/pages/ManufacturingOrdersPage';
+import { ProductionOrderDetailPage } from '@/pages/manufacturing/ProductionOrderDetailPage';
 import { ProductionTerminalPage } from '@/pages/ProductionTerminalPage';
 import { ReturnsPage } from '@/pages/ReturnsPage';
 import { ReturnsReceivePage } from '@/pages/ReturnsReceivePage';
@@ -284,6 +285,7 @@ export function App() {
             >
               <Route path="manufacturing/boms" element={<ManufacturingBomsPage />} />
               <Route path="manufacturing/orders" element={<ManufacturingOrdersPage />} />
+              <Route path="manufacturing/orders/:id" element={<ProductionOrderDetailPage />} />
             </Route>
             <Route
               path="returns"

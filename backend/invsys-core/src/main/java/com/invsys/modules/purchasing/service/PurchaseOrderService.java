@@ -22,7 +22,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.invsys.modules.inventory.api.InventoryLedgerLookup;
 import com.invsys.modules.inventory.api.InventoryOperations;
+import com.invsys.modules.inventory.domain.InventoryLedger;
 import com.invsys.service.CrossDockService;
 import com.invsys.service.UomConversionService;
 
@@ -38,6 +40,7 @@ public class PurchaseOrderService {
     private final CrossDockService crossDockService;
     private final BootstrapJdbc bootstrapJdbc;
     private final CrossTenantMeshBridgeService meshBridgeService;
+    private final InventoryLedgerLookup ledgerLookup;
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderLineRepository lineRepository,
@@ -47,7 +50,8 @@ public class PurchaseOrderService {
                                 OutboxService outboxService,
                                 CrossDockService crossDockService,
                                 BootstrapJdbc bootstrapJdbc,
-                                CrossTenantMeshBridgeService meshBridgeService) {
+                                CrossTenantMeshBridgeService meshBridgeService,
+                                InventoryLedgerLookup ledgerLookup) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.inventoryService = inventoryService;
@@ -57,6 +61,7 @@ public class PurchaseOrderService {
         this.crossDockService = crossDockService;
         this.bootstrapJdbc = bootstrapJdbc;
         this.meshBridgeService = meshBridgeService;
+        this.ledgerLookup = ledgerLookup;
     }
 
     @Transactional
@@ -109,6 +114,124 @@ public class PurchaseOrderService {
         }
         po.setStatus("IN_TRANSIT");
         return purchaseOrderRepository.save(po);
+    }
+
+    @Transactional
+    public PurchaseOrder cancel(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if (!"SUBMITTED".equals(po.getStatus()) && !"DRAFT".equals(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Only DRAFT or SUBMITTED purchase orders with no receipts can be cancelled");
+        }
+        boolean anyReceived = lineRepository.findByPurchaseOrderId(po.getId()).stream()
+                .anyMatch(l -> l.getQtyReceived() != null && l.getQtyReceived().signum() > 0);
+        if (anyReceived) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Cannot cancel a purchase order after stock has been received — reverse the receipt instead");
+        }
+        po.setStatus("CANCELLED");
+        return purchaseOrderRepository.save(po);
+    }
+
+    @Transactional
+    public PurchaseOrderLine addDraftLine(UUID purchaseOrderId, UUID variantId, BigDecimal qtyOrdered, BigDecimal unitCost) {
+        PurchaseOrder po = requireDraft(purchaseOrderId);
+        if (variantId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "variantId is required");
+        }
+        if (qtyOrdered == null || qtyOrdered.signum() <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "qtyOrdered must be greater than zero");
+        }
+        PurchaseOrderLine line = new PurchaseOrderLine();
+        line.setTenantId(po.getTenantId());
+        line.setPurchaseOrderId(po.getId());
+        line.setVariantId(variantId);
+        line.setQtyOrdered(qtyOrdered);
+        line.setUnitCost(unitCost != null ? unitCost : BigDecimal.ZERO);
+        return lineRepository.save(line);
+    }
+
+    @Transactional
+    public PurchaseOrderLine updateDraftLine(UUID purchaseOrderId, UUID lineId, BigDecimal qtyOrdered, BigDecimal unitCost) {
+        requireDraft(purchaseOrderId);
+        PurchaseOrderLine line = lineRepository.findById(lineId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found"));
+        if (!purchaseOrderId.equals(line.getPurchaseOrderId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found");
+        }
+        if (qtyOrdered != null) {
+            if (qtyOrdered.signum() <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "qtyOrdered must be greater than zero");
+            }
+            line.setQtyOrdered(qtyOrdered);
+        }
+        if (unitCost != null) {
+            if (unitCost.signum() < 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "unitCost cannot be negative");
+            }
+            line.setUnitCost(unitCost);
+        }
+        return lineRepository.save(line);
+    }
+
+    public List<ReceiptLedgerRow> listReceiptLedger(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        UUID tenantId = po.getTenantId();
+        List<ReceiptLedgerRow> rows = new ArrayList<>();
+        for (PurchaseOrderLine line : lineRepository.findByPurchaseOrderId(po.getId())) {
+            List<InventoryLedger> entries = ledgerLookup.findByTenantIdAndReferenceTypeAndReferenceId(
+                    tenantId, "PURCHASE_ORDER_LINE", line.getId());
+            for (InventoryLedger entry : entries) {
+                boolean reversed = entry.getReversalOfLedgerId() != null
+                        || "ERROR_CORRECTION".equals(entry.getReasonCode())
+                        || entries.stream().anyMatch(other ->
+                        entry.getId().equals(other.getReversalOfLedgerId()));
+                rows.add(new ReceiptLedgerRow(
+                        entry.getId(),
+                        line.getId(),
+                        entry.getQuantityDelta(),
+                        reversed));
+            }
+        }
+        return rows;
+    }
+
+    @Transactional
+    public PurchaseOrder syncReceiptsFromLedger(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        for (PurchaseOrderLine line : lineRepository.findByPurchaseOrderId(po.getId())) {
+            List<InventoryLedger> entries = ledgerLookup.findByTenantIdAndReferenceTypeAndReferenceId(
+                    po.getTenantId(), "PURCHASE_ORDER_LINE", line.getId());
+            BigDecimal qty = BigDecimal.ZERO;
+            for (InventoryLedger entry : entries) {
+                boolean isReversal = entry.getReversalOfLedgerId() != null
+                        || "ERROR_CORRECTION".equals(entry.getReasonCode());
+                if (isReversal) {
+                    continue;
+                }
+                boolean alreadyReversed = entries.stream()
+                        .anyMatch(other -> entry.getId().equals(other.getReversalOfLedgerId()));
+                if (!alreadyReversed && entry.getQuantityDelta() != null && entry.getQuantityDelta().signum() > 0) {
+                    qty = qty.add(entry.getQuantityDelta());
+                }
+            }
+            line.setQtyReceived(qty);
+            lineRepository.save(line);
+        }
+        refreshPoStatus(po);
+        return requirePo(purchaseOrderId);
+    }
+
+    private PurchaseOrder requireDraft(UUID purchaseOrderId) {
+        PurchaseOrder po = requirePo(purchaseOrderId);
+        if (!"DRAFT".equals(po.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "IMMUTABLE_LEDGER",
+                    "Submitted purchase orders are locked. Reverse a receipt or cancel before goods are received.");
+        }
+        return po;
+    }
+
+    public record ReceiptLedgerRow(UUID id, UUID lineId, BigDecimal quantityDelta, boolean alreadyReversed) {
     }
 
     @Transactional
@@ -254,6 +377,8 @@ public class PurchaseOrderService {
             po.setStatus("RECEIVED");
         } else if (anyReceived) {
             po.setStatus("PARTIALLY_RECEIVED");
+        } else if (List.of("RECEIVED", "PARTIALLY_RECEIVED").contains(po.getStatus())) {
+            po.setStatus("SUBMITTED");
         }
         purchaseOrderRepository.save(po);
     }

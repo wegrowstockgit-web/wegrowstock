@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileText, Mail, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -185,6 +186,7 @@ function CreateInvoiceModal({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 export function InvoicesPage() {
+  const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN');
   const { toast } = useToast();
@@ -333,6 +335,16 @@ export function InvoicesPage() {
       >
         {peekInvoice ? (
           <div className="space-y-4">
+            <Button
+              className="w-full"
+              data-testid="open-invoice-workspace"
+              onClick={() => {
+                setPeekInvoiceId(null);
+                navigate(`/invoices/${peekInvoice.id}`);
+              }}
+            >
+              Open Workspace
+            </Button>
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <dt className="text-text-muted">Total</dt>

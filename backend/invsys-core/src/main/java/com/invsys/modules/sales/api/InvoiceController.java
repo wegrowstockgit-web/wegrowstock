@@ -13,9 +13,12 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.invsys.modules.sales.domain.InvoiceLine;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,7 +50,7 @@ public class InvoiceController {
     private static final Set<String> INVOICE_SORT = Set.of("createdAt", "number", "status", "total", "dueAt");
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','FINANCE_ADMIN')")
     public PageResponse<InvoiceResponse> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size,
@@ -83,23 +86,56 @@ public class InvoiceController {
     }
 
     @GetMapping("/{invoiceId}")
-    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','FINANCE_ADMIN')")
     public InvoiceDetailResponse get(@PathVariable UUID invoiceId) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new com.invsys.core.common.ApiException(
                         org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Invoice not found"));
         String customerName = customerRepository.findById(invoice.getCustomerId())
                 .map(Customer::getName).orElse("—");
+        List<InvoiceLineResponse> lines = invoicingService.linesFor(invoiceId).stream()
+                .map(line -> new InvoiceLineResponse(
+                        line.getId(),
+                        line.getDescription(),
+                        line.getQty(),
+                        line.getUnitPrice(),
+                        line.getAmount(),
+                        lineKind(line.getDescription())))
+                .toList();
         return new InvoiceDetailResponse(
                 invoice.getId(),
                 invoice.getNumber(),
                 customerName,
                 invoice.getStatus(),
+                invoice.getSubtotal(),
+                invoice.getTax(),
                 invoice.getTotal(),
                 invoice.getCurrency(),
                 invoice.getDueAt(),
                 invoice.getSalesOrderId(),
-                invoice.getDocumentUrl());
+                invoice.getDocumentUrl(),
+                lines);
+    }
+
+    @PatchMapping("/{invoiceId}/lines/{lineId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
+    public InvoiceLine updateDraftLine(
+            @PathVariable UUID invoiceId,
+            @PathVariable UUID lineId,
+            @RequestBody UpdateInvoiceLineRequest request) {
+        return invoicingService.updateDraftLine(invoiceId, lineId, request.qty(), request.unitPrice());
+    }
+
+    @PostMapping("/{invoiceId}/issue")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
+    public Invoice issue(@PathVariable UUID invoiceId) {
+        return invoicingService.issue(invoiceId);
+    }
+
+    @PostMapping("/{invoiceId}/void")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','FINANCE_ADMIN')")
+    public Invoice voidAndCreditMemo(@PathVariable UUID invoiceId) {
+        return invoicingService.voidAndIssueCreditMemo(invoiceId);
     }
 
     @PostMapping("/from-sales-order/{salesOrderId}")
@@ -125,12 +161,45 @@ public class InvoiceController {
             String number,
             String customerName,
             String status,
+            BigDecimal subtotal,
+            BigDecimal tax,
             BigDecimal total,
             String currency,
             Instant dueAt,
             UUID salesOrderId,
-            String documentUrl
+            String documentUrl,
+            List<InvoiceLineResponse> lines
     ) {
+    }
+
+    public record InvoiceLineResponse(
+            UUID id,
+            String description,
+            BigDecimal qty,
+            BigDecimal unitPrice,
+            BigDecimal amount,
+            String kind
+    ) {
+    }
+
+    public record UpdateInvoiceLineRequest(BigDecimal qty, BigDecimal unitPrice) {
+    }
+
+    private static String lineKind(String description) {
+        if (description == null) {
+            return "ITEM";
+        }
+        String upper = description.toUpperCase();
+        if (upper.contains("TAX")) {
+            return "TAX";
+        }
+        if (upper.contains("SURCHARGE") || upper.contains("FREIGHT") || upper.contains("DUTY")) {
+            return "SURCHARGE";
+        }
+        if (upper.startsWith("CREDIT:")) {
+            return "CREDIT";
+        }
+        return "ITEM";
     }
 
     public record InvoiceResponse(

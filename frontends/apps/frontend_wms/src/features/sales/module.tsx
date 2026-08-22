@@ -1,6 +1,8 @@
 import { CustomersPage } from '@/features/sales/CustomersPage';
 import { InvoicesPage } from '@/features/sales/InvoicesPage';
 import { SalesOrdersPage } from '@/features/sales/SalesOrdersPage';
+import { InvoiceDetailPage } from '@/pages/sales/InvoiceDetailPage';
+import { SalesOrderDetailPage } from '@/pages/sales/SalesOrderDetailPage';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
 
 export const salesModule = defineModule({
@@ -8,8 +10,11 @@ export const salesModule = defineModule({
   enabled: isModuleBuildEnabled('VITE_ENABLE_SALES'),
   officeRoutes: [
     { path: 'sales-orders', element: <SalesOrdersPage /> },
+    { path: 'sales-orders/:id', element: <SalesOrderDetailPage /> },
     { path: 'sales/orders', element: <SalesOrdersPage /> },
+    { path: 'sales/orders/:id', element: <SalesOrderDetailPage /> },
     { path: 'invoices', element: <InvoicesPage /> },
+    { path: 'invoices/:id', element: <InvoiceDetailPage /> },
     { path: 'customers', element: <CustomersPage /> },
     { path: 'sales/customers', element: <CustomersPage /> },
   ],

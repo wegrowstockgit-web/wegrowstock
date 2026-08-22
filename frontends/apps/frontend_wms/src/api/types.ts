@@ -663,6 +663,7 @@ export interface PaginatedResponse<T> {
 export interface PurchaseOrder {
   id: string;
   number: string;
+  supplierId?: string;
   supplierName: string;
   status: string;
   expectedAt?: string;
@@ -941,8 +942,20 @@ export interface Invoice {
   salesOrderId?: string;
 }
 
+export interface InvoiceLineDetail {
+  id: string;
+  description: string;
+  qty: number;
+  unitPrice: number;
+  amount: number;
+  kind?: 'ITEM' | 'TAX' | 'SURCHARGE' | 'CREDIT' | string;
+}
+
 export interface InvoiceDetail extends Invoice {
   documentUrl?: string | null;
+  subtotal?: number;
+  tax?: number;
+  lines?: InvoiceLineDetail[];
 }
 
 export interface Customer {
@@ -991,6 +1004,7 @@ export interface ShowroomBillingAccruals {
 export interface Supplier {
   id: string;
   name: string;
+  contact?: Record<string, unknown>;
   contactEmail?: string;
   paymentTerms?: 'NET30' | 'NET60' | 'DUE_ON_RECEIPT' | string | null;
   taxId?: string | null;

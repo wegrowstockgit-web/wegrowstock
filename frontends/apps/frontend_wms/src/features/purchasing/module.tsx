@@ -5,6 +5,8 @@ import { MrpReorderWorkspace } from '@/features/purchasing/MrpReorderWorkspace';
 import { PurchaseOrdersPage } from '@/features/purchasing/PurchaseOrdersPage';
 import { RtvWorkspace } from '@/features/purchasing/RtvWorkspace';
 import { SuppliersPage } from '@/features/purchasing/SuppliersPage';
+import { PurchaseOrderDetailPage } from '@/pages/purchasing/PurchaseOrderDetailPage';
+import { SupplierDetailPage } from '@/pages/purchasing/SupplierDetailPage';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
 
 export const purchasingModule = defineModule({
@@ -12,7 +14,10 @@ export const purchasingModule = defineModule({
   enabled: isModuleBuildEnabled('VITE_ENABLE_PURCHASING'),
   officeRoutes: [
     { path: 'purchase-orders', element: <PurchaseOrdersPage /> },
+    { path: 'purchase-orders/:id', element: <PurchaseOrderDetailPage /> },
+    { path: 'purchasing/orders/:id', element: <PurchaseOrderDetailPage /> },
     { path: 'suppliers', element: <SuppliersPage /> },
+    { path: 'suppliers/:id', element: <SupplierDetailPage /> },
     {
       path: 'mrp',
       element: (

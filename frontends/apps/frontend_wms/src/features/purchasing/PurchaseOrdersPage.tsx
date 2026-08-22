@@ -910,9 +910,20 @@ export function PurchaseOrdersPage() {
                 </dd>
               </div>
             </dl>
+            <Button
+              className="w-full"
+              data-testid="open-po-workspace"
+              onClick={() => {
+                setPeekPoId(null);
+                navigate(`/purchasing/orders/${peekPo.id}`);
+              }}
+            >
+              Open Workspace
+            </Button>
             {canReceive && RECEIVABLE.has(peekPo.status) && (
               <Button
                 className="w-full"
+                variant="secondary"
                 data-testid="open-receive-po"
                 onClick={() => {
                   setReceivePoId(peekPo.id);
