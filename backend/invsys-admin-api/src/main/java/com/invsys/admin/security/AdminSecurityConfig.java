@@ -97,6 +97,8 @@ public class AdminSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
                         .access(actuatorScrapeAuthorizationManager)
                         .requestMatchers("/api/v1/control-plane/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/v1/admin/page-knowledge", "/api/v1/admin/page-knowledge/**")
+                        .hasRole("SUPER_ADMIN")
                         .anyRequest().denyAll())
                 .addFilterBefore(adminJwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new CsrfCookieFilter(), UsernamePasswordAuthenticationFilter.class);

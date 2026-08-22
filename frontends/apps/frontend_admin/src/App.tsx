@@ -6,6 +6,7 @@ import { AdminCommercialReports } from '@/features/reports/AdminCommercialReport
 import { AdminHealthReports } from '@/features/reports/AdminHealthReports';
 import { PlatformBillingPanel } from '@/features/billing/PlatformBillingPanel';
 import { CopilotKnowledgeManager } from '@/features/copilot/CopilotKnowledgeManager';
+import { PageHelpManager } from '@/features/copilot/PageHelpManager';
 import { IntegrationsHubPanel } from '@/features/integrations/IntegrationsHubPanel';
 import { PlatformAuditTrail } from '@/features/audit/PlatformAuditTrail';
 import { ShardRoutingPanel } from '@/features/infrastructure/ShardRoutingPanel';
@@ -34,6 +35,7 @@ export function App() {
           <Route path="billing" element={<PlatformBillingPanel />} />
           <Route path="packaging" element={<PlatformPackagingPanel />} />
           <Route path="copilot/knowledge" element={<CopilotKnowledgeManager />} />
+          <Route path="knowledge/page-help" element={<PageHelpManager />} />
           <Route path="integrations" element={<IntegrationsHubPanel />} />
           <Route path="audit" element={<PlatformAuditTrail />} />
           <Route path="shards" element={<ShardRoutingPanel />} />

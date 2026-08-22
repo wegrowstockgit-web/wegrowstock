@@ -2,7 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Info, Layers, Undo2, Users, Workflow, Wrench, X, Zap } from 'lucide-react';
+import {
+  AlertTriangle,
+  BookOpen,
+  Check,
+  Info,
+  Layers,
+  Lightbulb,
+  MessageCircle,
+  Shield,
+  Undo2,
+  Users,
+  Workflow,
+  Wrench,
+  X,
+  Zap,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { DENSITY_STYLES } from '@/stores/preferencesStore';
 import { cn } from '@/lib/utils';
@@ -10,6 +25,8 @@ import {
   knowledgeContextKey,
   normalizeColumns,
   resolveKnowledgeContext,
+  usePageKnowledge,
+  type DynamicPageKnowledge,
   type PageAction,
   type ResolvedRouteKnowledge,
   type RouteKnowledgeComponent,
@@ -295,6 +312,103 @@ function KnowledgeBody({
   );
 }
 
+function DynamicKnowledgeBody({ knowledge }: { knowledge: DynamicPageKnowledge }) {
+  const [openMistake, setOpenMistake] = useState<string | null>(knowledge.commonMistakes[0]?.mistake ?? null);
+
+  return (
+    <div className={cn('space-y-6 text-text', density.typography)} data-testid="page-help-dynamic">
+      <div className="flex flex-wrap items-center gap-2" data-testid="page-help-category-row">
+        <span className="inline-flex rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent">
+          {knowledge.category}
+        </span>
+        <span className="font-mono text-xs text-text-muted">{knowledge.routePattern}</span>
+      </div>
+
+      <section>
+        <p className="leading-relaxed" data-testid="page-help-summary">
+          {knowledge.summary}
+        </p>
+      </section>
+
+      <section
+        className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3"
+        data-testid="page-help-privileges"
+      >
+        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text">
+          <Shield className="h-3.5 w-3.5" aria-hidden />
+          Required Privileges / RBAC
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed">{knowledge.rolePrivileges}</p>
+      </section>
+
+      {knowledge.keyActions.length > 0 ? (
+        <section data-testid="page-help-key-actions">
+          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text">
+            <Check className="h-3.5 w-3.5" aria-hidden />
+            Key Actions
+          </h3>
+          <ul className="mt-3 space-y-2">
+            {knowledge.keyActions.map((action) => (
+              <li key={action} className="flex items-start gap-2 text-sm leading-relaxed">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+                <span>{action}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {knowledge.commonMistakes.length > 0 ? (
+        <section data-testid="page-help-mistakes">
+          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text">
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+            Common Mistakes & How to Recover
+          </h3>
+          <ul className="mt-3 space-y-2">
+            {knowledge.commonMistakes.map((item) => {
+              const open = openMistake === item.mistake;
+              return (
+                <li key={item.mistake} className="rounded-xl border border-warning/30 bg-warning/10">
+                  <button
+                    type="button"
+                    className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left"
+                    aria-expanded={open}
+                    onClick={() => setOpenMistake(open ? null : item.mistake)}
+                    data-testid="page-help-mistake-toggle"
+                  >
+                    <span className="font-semibold leading-snug">⚠️ {item.mistake}</span>
+                    <span className="shrink-0 rounded-md bg-surface px-1.5 py-0.5 font-mono text-[10px] uppercase text-text-muted">
+                      {item.requiredRole}
+                    </span>
+                  </button>
+                  {open ? (
+                    <p className="border-t border-warning/20 px-3 py-2.5 text-sm leading-relaxed">
+                      {item.solution}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      {knowledge.proTip ? (
+        <section
+          className="rounded-xl border border-accent/25 bg-accent/10 px-4 py-3"
+          data-testid="page-help-pro-tip"
+        >
+          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text">
+            <Lightbulb className="h-3.5 w-3.5" aria-hidden />
+            Pro Tip
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed">💡 {knowledge.proTip}</p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function FallbackBody({ routeKey }: { routeKey: string }) {
   const { t } = useTranslation();
   return (
@@ -304,6 +418,18 @@ function FallbackBody({ routeKey }: { routeKey: string }) {
         <span className="font-mono text-sm">{routeKey}</span>
       </p>
       <p>{t('pageHelp.fallbackHint')}</p>
+      <Button
+        type="button"
+        variant="secondary"
+        className="mt-2"
+        data-testid="page-help-open-copilot"
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('invsys:open-copilot'));
+        }}
+      >
+        <MessageCircle className="h-4 w-4" aria-hidden />
+        Ask the AI Copilot
+      </Button>
     </div>
   );
 }
@@ -328,12 +454,13 @@ export function PageHelpOverlay() {
     () => resolveKnowledgeContext(location.pathname, location.search),
     [location.pathname, location.search],
   );
+  const dynamic = usePageKnowledge(location.pathname, location.search);
 
   const title = knowledge
     ? knowledge.i18nKey
       ? String(t(`pageHelp.playbooks.${knowledge.i18nKey}.title`, { defaultValue: knowledge.title }))
       : knowledge.title
-    : t('pageHelp.fallbackTitle');
+    : dynamic?.title ?? t('pageHelp.fallbackTitle');
 
   useEffect(() => {
     if (!open) return;
@@ -378,6 +505,11 @@ export function PageHelpOverlay() {
               </div>
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3 md:py-4">
                 <div className="min-w-0">
+                  {dynamic ? (
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-accent">
+                      {dynamic.category}
+                    </p>
+                  ) : null}
                   <h2
                     id="page-help-title"
                     className="text-lg font-semibold text-text"
@@ -409,8 +541,13 @@ export function PageHelpOverlay() {
                   data-testid="page-help-context"
                   data-route-key={routeKey}
                 >
-                  {knowledge ? (
-                    <KnowledgeBody knowledge={knowledge} onRunAction={runAction} />
+                  {dynamic || knowledge ? (
+                    <div className="space-y-8">
+                      {dynamic ? <DynamicKnowledgeBody knowledge={dynamic} /> : null}
+                      {knowledge ? (
+                        <KnowledgeBody knowledge={knowledge} onRunAction={runAction} />
+                      ) : null}
+                    </div>
                   ) : (
                     <FallbackBody routeKey={routeKey} />
                   )}

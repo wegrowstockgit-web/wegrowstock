@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   BarChart3,
   BookOpen,
+  CircleHelp,
   Building2,
   CreditCard,
   Database,
@@ -50,6 +51,7 @@ const navGroups: NavGroup[] = [
     label: 'Platform',
     items: [
       { to: '/copilot/knowledge', label: 'Copilot Knowledge', icon: BookOpen },
+      { to: '/knowledge/page-help', label: 'Page Help', icon: CircleHelp },
       { to: '/integrations', label: 'Webhooks & Integrations', icon: Webhook },
       { to: '/audit', label: 'Audit Trail', icon: ScrollText },
       { to: '/compliance', label: 'Global Compliance', icon: ShieldCheck },

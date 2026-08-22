@@ -1,183 +1,234 @@
 ---
-title: "Manufacturing & Field Service SOP"
+title: "Manufacturing & Field Service SOP (Beginner Guide)"
 slug: "sop-manufacturing-field"
 sourcePath: "docs/sops/06_manufacturing_and_field_service.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
-routeHints: ["/manufacturing/boms", "/manufacturing/orders", "/manufacturing/terminal", "/issue-supplies", "/field/truck", "/settings"]
+audienceLevel: "beginner"
+routeHints: ["/manufacturing/boms", "/manufacturing/orders", "/manufacturing/terminal", "/issue-supplies", "/field/truck", "/settings", "/reports"]
+keywords: ["BOM", "bill of materials", "production order", "build", "complete build", "disassemble", "wrong BOM", "kit", "timesheet", "punch clock", "clock in", "wrong hours", "labor", "issue supplies", "cost center", "technician truck", "van stock"]
 ---
 
-# Manufacturing & Field Service — Operations Playbook
+# Manufacturing & Field Service — Beginner Playbook
 
-Bills of materials, production orders, the shop-floor terminal, issuing supplies, and technician van stock. Keep language on buttons, statuses, and physical steps.
+This guide covers building products from parts (manufacturing) and taking parts out of the warehouse for jobs (field service). Written for someone who has never seen a Bill of Materials or a production order.
 
 ---
 
-### Bills of materials (BOMs)
+## Before you start: the 3 ideas behind these screens
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER, ADMIN, OWNER; VIEWER read-only.
-- **Route Location:** Manufacturing → **BOMs**
-- **Primary Operational Goal:** Define which components build a finished item before anyone starts a production order.
+**1. A BOM (Bill of Materials) is a recipe.**
+"1 Gift Basket = 2 candles + 1 mug + 1 box." The BOM lists exactly which component SKUs, and how many of each, make one finished item.
 
-#### 1. Step-by-Step Action Plan
+**2. A Production Order is one cooking session.**
+"Build 50 Gift Baskets using that recipe." When the build completes, the ledger records components leaving stock and finished goods entering — one honest transformation, never a silent edit.
+
+**3. Labor time is part of the cost.**
+Clocking in/out and running build timesheets tells the company what an hour of work costs per product. Honest time in = honest product cost out.
+
+**Who does what:**
+
+| Role | Manufacturing & field powers |
+|---|---|
+| **OWNER / ADMIN** | Everything, incl. BOM edits and module settings |
+| **WAREHOUSE_MANAGER** | Creates BOMs and production orders, approves corrections, fixes labor entries |
+| **PICKER / operator / technician** | Runs the shop-floor terminal, clocks in/out, issues supplies, manages van stock. Cannot edit BOMs or approve corrections |
+| **VIEWER** | Read-only |
+
+---
+
+### How to Create or Fix a BOM (the recipe)
+
+**What is this?**
+Before anyone can build, the recipe must exist: which components, how many of each, for one unit of the finished good.
+
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER, ADMIN, or OWNER (requires the MANUFACTURING module). VIEWER read-only; operators don't edit BOMs.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Manufacturing** → **BOMs**
+
+**Step-by-Step Instructions:**
 1. Open **BOMs**.
-2. Create or open a bill that lists component SKUs and quantities.
-3. Save using the on-screen save/confirm control for that form.
-4. Verify the finished good also exists under **Products** with scannable identity for later **Complete build**.
+2. Create a bill: pick the finished good, then add each component SKU with its quantity **per one finished unit** (a classic beginner error is entering totals for the whole batch — don't).
+3. Save with the on-screen confirm.
+4. Check the finished good exists under **Inventory → Products** with a scannable barcode — you'll need it at **Complete build**.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Production orders consume component availability and eventually add finished goods.
-- Pick faces may need replenishment when kits pull many components.
-- ATP for components drops when builds allocate; finished-good ATP rises after **Complete build**.
-- Finance sees manufacturing completion in valuation/COGS-oriented reports—not as a silent spreadsheet edit.
-
-#### 3. Safety, Reversal & Undo Rules
-- Correct BOM mistakes before releasing many production orders.
-- If a bad build already completed, use attributed stock corrections / new orders—do not erase completion history.
-
-#### 4. Troubleshooting Common Blockers
-- **Cannot save BOM?** Missing component SKU—create it under **Products** or **Import** first.
-- **VIEWER cannot edit?** Expected—ask a Warehouse Manager.
+**⚠️ What if I make a mistake?**
+- **Wrong component or wrong quantity in the BOM, nothing built yet:** Just edit the BOM. Recipes are master data — free to fix before use.
+- **Wrong BOM and builds already completed:** See "How to Disassemble" below — that's the purpose-built undo.
+- **Component SKU doesn't exist:** Create it under **Products** (or **Import**) first; the BOM form can't reference a ghost part.
 
 ---
 
-### Production orders (office)
+### How to Create and Run a Production Order
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER, ADMIN, OWNER.
-- **Route Location:** Manufacturing → **Production Orders**
-- **Primary Operational Goal:** Plan and track builds from draft through completion.
+**What is this?**
+The work order: "build N units of X." It reserves components, hands work to the floor, and tracks status: **DRAFT → COMPONENTS ALLOCATED → WIP → COMPLETED / CANCELLED**.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Production Orders**.
-2. Click **Create order** and select the BOM / finished good and quantity.
-3. Track status chips with spaces (for example **DRAFT**, **COMPONENTS ALLOCATED**, **WIP**, **COMPLETED**, **CANCELLED**).
-4. Use modal **Cancel** when abandoning a build that should not start.
-5. Hand work to the floor via **Manufacturing terminal** once the order is ready to run.
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER, ADMIN, or OWNER create and cancel orders. Operators run them at the terminal (next section).
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Terminal operators start timesheets and complete builds against these orders.
-- Component shortages surface as blocked builds—trigger POs or transfers.
-- Completed builds change what sales can promise on finished goods.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Manufacturing** → **Production Orders** (search box and pagination at the top of the list)
 
-#### 3. Safety, Reversal & Undo Rules
-- Prefer **Cancel** while still **DRAFT** / early states.
-- After **COMPLETED**, reverse with careful corrections and, if needed, a new rework order—history stays.
+**Step-by-Step Instructions:**
+1. Open **Production Orders** and click **Create order**.
+2. Pick the finished good (its BOM comes along) and the quantity to build.
+3. Let the system allocate components — chip shows **COMPONENTS ALLOCATED**. If it stalls, components are short: check on-hand and inbound POs.
+4. Hand it to the floor: the operator takes over at the **Manufacturing terminal**.
+5. Track the chip to **COMPLETED**.
 
-#### 4. Troubleshooting Common Blockers
-- **Stuck before WIP?** Components may be short—check **Products** on-hand and inbound POs.
-- **Create order missing?** Role or module access—ask Admin.
+**⚠️ What if I make a mistake?**
+- **Wrong quantity (typed 500, meant 50), not started:** **Cancel** the order and create the right one. Cancelled orders stay in the list as history — normal.
+- **Wrong finished good / wrong BOM selected, not started:** Same — **Cancel** and recreate. Cancelling releases the reserved components back to stock automatically.
+- **Order already WIP:** Talk to the floor first — stop work, then a manager cancels; components already consumed come back via correction or disassembly, depending how far the build got.
+- **Duplicate production order:** Cancel the twin before it allocates components away from real work.
 
 ---
 
-### Manufacturing terminal (shop floor)
+### How to Work the Manufacturing Terminal (shop floor)
 
-- **Target Audience & Roles:** PICKER / production operators; managers supervise.
-- **Route Location:** Floor → **Manufacturing terminal**
-- **Primary Operational Goal:** Capture labor time and finish builds with scanner discipline.
+**What is this?**
+The floor screen where the actual build happens: start the clock, consume components by scanning, finish with **Complete build** — which is the moment the ledger swaps components for finished goods.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Manufacturing terminal** on the floor device.
-2. Select the production order you are running.
-3. Click **Start timesheet** when work begins.
-4. Consume/scan components as the terminal prompts (follow on-screen scan targets).
-5. Click **Stop timesheet** for breaks or end of shift segments as your site requires.
-6. When the finished good is truly done, click **Complete build**.
-7. Stage finished goods into the directed bin if prompted after completion.
+**Who can do this? (Privileges Required)**
+Operators (PICKER-type floor roles). Managers supervise and fix mistakes.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Office production order moves toward **COMPLETED**.
-- Component on-hand decreases; finished-good on-hand increases for later **Allocate** on sales orders.
-- Labor & Velocity report tabs gain usable time signals.
-- Field/issue flows remain separate unless your BOM consumes van-issued parts by design.
+**Where to go in weGrowStock:**
+🖥️ Floor device → **Manufacturing terminal**
 
-#### 3. Safety, Reversal & Undo Rules
-- Do not **Complete build** if components were skipped or damaged—escalate.
-- Time mistakes: stop/start honestly on the next segment rather than inventing hours.
-- Stock mistakes after completion need manager corrections, not silent edits.
+**Step-by-Step Instructions:**
+1. Open the terminal and select your production order.
+2. Click **Start timesheet** when you begin working — not when you arrive at the building (the header punch clock covers your shift; the timesheet covers this build).
+3. Scan components as prompted while assembling.
+4. Click **Stop timesheet** for breaks/end of segment, per site rules.
+5. When units are truly finished, click **Complete build**.
+6. If prompted, put finished goods away into the directed bin.
 
-#### 4. Troubleshooting Common Blockers
-- **Complete build disabled?** Timesheet still running, scans missing, or order not in a runnable status.
-- **Offline parking mid-build?** Resolve **Sync Conflicts** before completing another build on that device.
-- **Damaged component?** Quarantine and tell a manager—do not substitute an unlabeled part.
+**⚠️ What if I make a mistake?**
+- **Clicked Complete build too early (units not actually finished):** Tell a manager immediately. The completion is a ledger event — the manager reverses it with an attributed correction (or a disassembly if goods were partially real). Same rule as clicking "Shipped" early in SOP 02: the fast confession is the cheap fix.
+- **Damaged a component mid-build:** Don't substitute an unlabeled part and don't stay quiet. Quarantine the damaged part, tell the manager (correction records the loss), scan a replacement.
+- **Forgot to stop the timesheet before lunch:** See "Fixing labor time" below.
+- **Complete build disabled?** Timesheet still running, scans missing, or the order isn't in a runnable status — check the chip.
 
 ---
 
-### Issue supplies (cost centers / requisitions)
+### How to Fix Labor Time Mistakes (punch clock & timesheets)
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER, PICKER/ops as permitted; Admin configures cost centers under Settings.
-- **Route Location:** Field → **Issue Supplies**; Settings → **Cost Centers & Requisitions**
-- **Primary Operational Goal:** Hand out internal supplies against a cost center without pretending it is a customer shipment.
+**What is this?**
+Two clocks exist: the **shift punch clock** (the **Clock in / Clock out** control in the floor header — are you at work?) and **build timesheets** (Start/Stop on the terminal — which order is your time charged to?). Both feed the **Labor & Velocity** report and product costing.
 
-#### 1. Step-by-Step Action Plan
-1. Admins maintain cost centers under **Settings → Cost Centers & Requisitions**.
-2. Operators open **Issue Supplies**.
-3. Select the requisition/cost center context shown on screen.
-4. Scan or confirm items, then submit with **Issue Fact**.
-5. Use **Back to list** to take the next request.
+**Who can do this? (Privileges Required)**
+Everyone clocks their own time. **Correcting a wrong time entry requires a WAREHOUSE_MANAGER or above** — you cannot edit your own past hours.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Warehouse on-hand drops for issued consumables; customer ATP usually unchanged unless the same SKU is sellable stock.
-- Finance/cost-center reporting sees the issue event.
-- Pick waves should not steal quantities already issued to a job—coordinate timing.
+**Where to go in weGrowStock:**
+🖥️ Shift clock: the **Clock in** button in the floor header
+🖥️ Build time: **Manufacturing terminal** → **Start timesheet** / **Stop timesheet**
+🖥️ Manager review: **Admin** → **Reports** → **Labor & Velocity** tab
 
-#### 3. Safety, Reversal & Undo Rules
-- Wrong issue: stop and ask a manager for a correction / return-to-stock process used at your site.
-- Do not “put it back” by deleting the issue fact—add a correcting movement.
+**Step-by-Step Instructions:**
+1. Arriving: tap **Clock in** in the header.
+2. Starting a build: **Start timesheet** on that order.
+3. Breaks and handoffs: **Stop timesheet**, and start again on return.
+4. Leaving: **Clock out**.
 
-#### 4. Troubleshooting Common Blockers
-- **Issue Fact disabled?** Missing cost center or quantity—complete required fields/scans.
-- **No cost centers listed?** Admin must configure **Cost Centers & Requisitions** first.
+**⚠️ What if I make a mistake?**
+- **Typo'd / forgot hours (worked 2h, the clock says 12h because you forgot to clock out):** Tell your manager the real times ("I actually left at 4pm"). The manager posts the correction — the original entry stays, the correction sits next to it with the manager's name. **Never** try to balance it yourself by clocking weird hours tomorrow; two wrong entries are harder to fix than one.
+- **Charged time to the wrong production order:** Same path — manager reassigns/corrects the timesheet segment.
+- **Forgot to clock in at all:** Report it same day; the manager enters the attributed correction. Memory fades — same-day fixes are accurate fixes.
 
 ---
 
-### Technician truck (van stock)
+### How to Disassemble a Built Kit (undo a build made with the wrong BOM)
 
-- **Target Audience & Roles:** Field technicians / PICKER-like field roles; managers oversee transfers.
-- **Route Location:** Field → **Technician Truck**
-- **Primary Operational Goal:** Move stock onto a van, consume on-site, and keep the truck inventory honest.
+**What is this?**
+The purpose-built "undo" for manufacturing: **Disassemble** splits finished goods back into their component parts on the ledger — used when a build used the wrong BOM, or when you need the parts back more than the kits.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Technician Truck**.
-2. Click **Assign to me** when claiming the truck session/device context.
-3. To load the van from the warehouse, use **Transfer to van** and complete the scans/confirms shown.
-4. On site, use **Consume from van** when parts are used on the job.
-5. End the day with counts if your manager requires a cycle count on van bins.
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER, ADMIN, or OWNER. Operators report the problem; managers run the disassembly.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Warehouse pickable ATP drops when stock moves to the van.
-- Office can see field consumption separate from customer parcel shipping.
-- Manufacturing may still need warehouse components—even if vans hold service parts.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Manufacturing** → **Production Orders** → **Disassemble** button (top of the page)
 
-#### 3. Safety, Reversal & Undo Rules
-- Mis-transfers: stop and reverse with a manager-approved transfer back—do not hide usage.
-- Consumptions are attributed usage events; fix with corrections, not deletion.
+**Step-by-Step Instructions:**
+1. First fix the recipe: if the BOM was wrong, correct it under **BOMs** — otherwise disassembly returns the wrong parts too.
+2. Open **Production Orders** and click **Disassemble**.
+3. In the "Disassemble — Split finished goods back into components" dialog, choose the finished-good variant, the location holding the built units, and the quantity to break down.
+4. Click **Disassemble**. The ledger writes: finished goods out, components back in — one attributed event.
+5. Physically break the kits down and put components back in their bins (follow any directed putaway).
+6. If the goal was a correct rebuild: create a new production order against the fixed BOM.
 
-#### 4. Troubleshooting Common Blockers
-- **Assign to me fails?** Another tech may hold the truck—coordinate handoff.
-- **Consume from van short?** Perform a van count; do not borrow unlabeled stock from another truck.
-- **Offline in the field?** Be precise; resolve any parked moves under **Exceptions → Sync Conflicts** when back online.
+**⚠️ What if I make a mistake?**
+- **"Could not disassemble. Check stock and BOM."** — the on-screen error means either the finished units aren't at the location you selected (find where they actually are — Ledger History helps) or the BOM math can't be applied. Fix the input, retry.
+- **Disassembled more than intended:** Build them again with a production order — the two events sit honestly in history.
+- **Components came back damaged from teardown:** Quarantine and let the manager post the loss correction, exactly like a damaged pick.
 
 ---
 
-### Cross-module coordination checklist
+### How to Issue Supplies (internal use, not customer shipping)
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER, ADMIN.
-- **Route Location:** Across Manufacturing, Fulfillment, Purchase Orders, Settings
-- **Primary Operational Goal:** Keep builds, vans, and outbound waves from fighting over the same components.
+**What is this?**
+Handing out internal supplies (gloves, tape, service parts) charged to a **cost center** — so internal use never masquerades as customer shipments or theft-shrink.
 
-#### 1. Step-by-Step Action Plan
-1. Before releasing a large production batch, confirm component POs are **RECEIVED** into usable bins.
-2. Before **Release to floor** on sales waves, check manufacturing is not holding the last components in **WIP**.
-3. Before **Transfer to van**, confirm sales allocations will not immediately go **BACKORDERED**.
-4. Use **Dashboard** low-stock and exception cards daily.
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER, or PICKER/ops where permitted. ADMIN configures cost centers first.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Honest prioritization protects customer ship dates and field SLAs together.
-- Finance sees fewer emergency corrections and write-offs.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Field** → **Issue Supplies**
+🖥️ Admin setup: **Admin** → **Organization** → **Cost Centers & Requisitions**
 
-#### 3. Safety, Reversal & Undo Rules
-- When two teams need the same SKU, managers decide openly—then record moves with the proper buttons.
-- Never delete competing history to favor one team.
+**Step-by-Step Instructions:**
+1. Open **Issue Supplies** and select the requisition/cost center shown.
+2. Scan or confirm the items being handed out.
+3. Submit with **Issue Fact**.
+4. **Back to list** for the next request.
 
-#### 4. Troubleshooting Common Blockers
-- **Everything looks allocated but bins are empty?** Run **Cycle counts**, clear **Sync Conflicts**, then rebuild the wave.
-- **Complete build succeeded but sales still BACKORDERED?** Finished goods may sit in a non-sellable location—putaway/transfer into a pickable bin.
+**⚠️ What if I make a mistake?**
+- **Issued the wrong item or quantity:** Stop and tell a manager — the fix is a correcting movement (return-to-stock), not deleting the issue. **Issue Fact disabled** usually means a missing cost center or quantity.
+- **No cost centers listed:** An Admin must set up **Cost Centers & Requisitions** first.
+
+---
+
+### How to Manage a Technician Truck (van stock)
+
+**What is this?**
+A service van is a tiny warehouse on wheels. Stock moves onto the van (**Transfer to van**), gets used at customer sites (**Consume from van**), and the van's inventory must stay honest like any bin.
+
+**Who can do this? (Privileges Required)**
+Field technicians (PICKER-type roles) run their own truck; managers oversee transfers and corrections.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Field** → **Technician Truck**
+
+**Step-by-Step Instructions:**
+1. Open **Technician Truck** and click **Assign to me** to claim the truck.
+2. Load up: **Transfer to van**, completing the scans shown.
+3. On site: **Consume from van** for each part used on the job.
+4. End of day: run a van count if your manager requires it.
+
+**⚠️ What if I make a mistake?**
+- **Transferred the wrong parts to the van:** Transfer back with a manager-approved reverse transfer — don't quietly restock the shelf without scanning.
+- **Used a part but forgot to Consume:** Do it when you notice, or report same-day. The van count at day's end will catch it otherwise — better it catches nothing.
+- **Consume shows less than the van holds:** Count the van. Never borrow unlabeled stock from another truck — each van's ledger is per-technician.
+- **Offline in the field:** Scans cache like the warehouse floor; anything parked resolves later under **Exceptions → Sync Conflicts** (SOP 04).
+- **Assign to me fails:** Another tech holds the truck — coordinate the handoff instead of sharing a session; attribution is what makes mistakes fixable.
+
+---
+
+## Quick reference: "I messed up" cheat sheet (Manufacturing & field)
+
+| Mistake | Can I fix it myself? | The fix |
+|---|---|---|
+| Wrong qty/BOM on order, not started | Yes (order creators) | **Cancel**, recreate — components auto-release |
+| Built kits with the wrong BOM | No — Manager | Fix the BOM → **Disassemble** → rebuild on a new order |
+| Clicked **Complete build** early | No — Manager | Manager reverses with an attributed correction |
+| Broke a component mid-build | Report it | Quarantine + manager loss correction; scan a replacement |
+| Wrong hours on the punch clock (typo / forgot to clock out) | No — Manager | Report the real times same-day; manager posts a signed correction |
+| Time charged to wrong order | No — Manager | Manager reassigns the timesheet segment |
+| Issued wrong supplies | No — Manager | Correcting return-to-stock movement |
+| Wrong parts on the van | Manager-approved | Reverse transfer with scans |
+| Van count doesn't match | Count honestly | Variance goes through the same manager approval as any cycle count |
+
+**Golden rule:** a build is a trade recorded in ink — parts out, product in. Every undo is another recorded trade (**Disassemble**, corrections), never an eraser. And your hours follow the same law: you can't edit your own past time, but a manager can always write the honest correction next to it — so report time mistakes the same day, while everyone still remembers.
+
+**Still stuck?** Ask the chat bubble (e.g. *"I completed a build with the wrong BOM — 20 units"*). Where a safe fix exists, the assistant proposes an **Action Draft** for a Manager to **Approve**.

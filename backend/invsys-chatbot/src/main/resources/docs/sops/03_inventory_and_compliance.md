@@ -1,176 +1,203 @@
 ---
-title: "Inventory Control & Compliance SOP"
+title: "Inventory Control & Compliance SOP (Beginner Guide)"
 slug: "sop-inventory-compliance"
 sourcePath: "docs/sops/03_inventory_and_compliance.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
-routeHints: ["/products", "/import", "/settings/import", "/cycle-counts", "/compliance/lot-trace", "/reports", "/rtls", "/warehouses/add"]
+audienceLevel: "beginner"
+routeHints: ["/products", "/import", "/settings/import", "/cycle-counts", "/compliance/lot-trace", "/replenishments", "/reports", "/exceptions", "/pallet-manifests"]
+keywords: ["cycle count", "blind count", "variance", "LPN", "license plate", "lost pallet", "lot", "expired lot", "recall", "trace", "replenishment", "reverse transaction", "stock correction", "ledger history"]
 ---
 
-# Inventory Control & Compliance — Operations Playbook
+# Inventory Control & Compliance — Beginner Playbook
 
-Products, imports, ledger visibility, lots, cycle counts, lot trace, reports, warehouses, and RTLS awareness—without talking about databases or services.
-
----
-
-### Products catalog & ledger history
-
-- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER maintain; VIEWER reviews; PICKER rarely needs desktop Products.
-- **Route Location:** Inventory → **Products** (peek → **Ledger History**)
-- **Primary Operational Goal:** Keep SKUs, units of measure, and movement history understandable for office and floor.
-
-#### 1. Step-by-Step Action Plan
-1. Open **Products**.
-2. Click **Add product** for a new SKU, or **Import** to bulk load.
-3. Edit details and click **Save UoM** when units of measure change.
-4. Open a product peek; choose tab **Details** or **Ledger History**.
-5. To reverse a mistaken movement shown in history, use the control with label **Reverse transaction**, confirm in **Reverse Transaction?** with **Confirm Reversal** when policy allows.
-
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Floor scans depend on correct barcodes/UoM on the product.
-- ATP and allocation quality follow the on-hand story told by ledger history.
-- Finance valuation and COGS views in **Reports** read the same operational truth.
-
-#### 3. Safety, Reversal & Undo Rules
-- Use **Confirm Reversal** / stock correction patterns—never “delete the past.”
-- Reversal creates an attributed counter-entry; history stays auditable.
-
-#### 4. Troubleshooting Common Blockers
-- **Import button missing?** Role may be VIEWER—ask Admin.
-- **Reverse transaction disabled?** Movement type may not be reversible online—ask a manager for a stock correction count instead.
+This guide covers keeping the stock numbers honest: counting shelves (cycle counts), tracking pallets (LPNs), following batches (lots), refilling pick shelves (replenishment), and fixing wrong numbers the safe way.
 
 ---
 
-### CSV import & settings import
+## Before you start: 3 ideas that explain everything on these screens
 
-- **Target Audience & Roles:** ADMIN, OWNER (and managers when permitted); legacy path **Settings → Import**.
-- **Route Location:** **Import** (also **Settings → Import** for Admin/Owner)
-- **Primary Operational Goal:** Load products/locations cleanly with preflight checks before hurting the floor.
+**1. The shelf and the computer must agree.**
+Every screen in this section exists to answer one question: *does the physical shelf match what the system believes?* When they disagree, we never "just change the number" — we record *why* with a signed correction.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Import**.
-2. Click **Download Template** and fill rows offline.
-3. Upload and review preflight chips such as **READY TO IMPORT**, **MISSING PRODUCT**, **MISSING LOCATION**, **MISSING UOM**, **VALIDATION ERROR**.
-4. Use **Create missing products based on CSV data** or **Map to existing** as prompted.
-5. Re-check with the re-run preflight control when offered.
-6. Click **Import N ready row(s)** only when rows are green/ready.
+**2. What is an LPN (License Plate Number)?**
+An LPN is a barcode sticker for a whole pallet or container — like a license plate for a car. Instead of scanning 500 individual boxes, you scan one plate and the system knows everything riding on it. Plates are created with **Mint New LPN** and moved with the scanner's **LPN Move** mode.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- New SKUs appear on **Products** and become receivable/pickable.
-- Bad imports create exception noise and blocked scans—preflight exists to protect ATP.
-- Finance suddenly sees new items in valuation reports after successful import.
+**3. What is a lot?**
+A lot is a batch of product made/received together (e.g. "all the yogurt from Tuesday's truck," with one expiry date). Lots matter for expiry-first picking (FEFO) and for recalls — if lot #123 is bad, we must find every customer who got it.
 
-#### 3. Safety, Reversal & Undo Rules
-- Prefer fixing the file and re-importing clean rows over silent edits after the floor already scanned.
-- Quantity truth still goes through receive, counts, and corrections—not spreadsheet reloads alone.
+**Who does what here:**
 
-#### 4. Troubleshooting Common Blockers
-- **Stuck on MISSING LOCATION?** Create warehouse bins/locations first (**Warehouses** / floor setup).
-- **VALIDATION ERROR?** Fix required columns from the template—do not force import.
+| Role | Inventory powers |
+|---|---|
+| **OWNER / ADMIN** | Everything, including product master edits, imports, ledger reversals |
+| **WAREHOUSE_MANAGER** | Approves count variances (**Approve Ledger Adjustment**), posts stock corrections (needs the **Adjust Inventory** permission), runs lot traces |
+| **PICKER** | Performs counts, replenishment moves, LPN moves on the scanner. Cannot approve adjustments |
+| **VIEWER** | Read-only everywhere |
 
 ---
 
-### Cycle counts
+### How to Look Up a Product and Its History (Ledger History)
 
-- **Target Audience & Roles:** PICKER performs scans; WAREHOUSE_MANAGER approves variances.
-- **Route Location:** Floor → **Cycle counts**
-- **Primary Operational Goal:** Compare system expectation to physical bin quantity and approve honest adjustments.
+**What is this?**
+Every product page has a **Ledger History** tab — the permanent diary of every receive, pick, count, and correction for that SKU. When someone asks "why does the system say 40 when the shelf has 35?", the answer is always in this diary.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Cycle counts** on the handheld/floor shell.
-2. Scan bin and product as directed.
-3. When the count matches, tap **Confirm Match**.
-4. When variance needs a manager: wait for status **PENDING MANAGER REVIEW**.
-5. Manager clicks **Approve Ledger Adjustment** or **Request Recount**.
-6. Watch chips such as **PENDING**, **AUTO APPROVED**, **APPROVED**, **RECOUNT REQUESTED**.
+**Who can do this? (Privileges Required)**
+Everyone can look (VIEWER included). **Reversing** a movement requires a WAREHOUSE_MANAGER or above with the **Adjust Inventory** permission.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Approved adjustments change on-hand and ATP for sales orders.
-- Pickers may see fewer phantom picks after honest counts.
-- Office **Reports → Inventory Audit** and valuation reflect the adjustment trail.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Products** → click a product → tab **Ledger History**
 
-#### 3. Safety, Reversal & Undo Rules
-- Prefer **Request Recount** over guessing.
-- Approvals write attributed adjustments; they do not erase earlier movements.
-- Never type a “convenient” quantity to clear a variance quietly.
+**Step-by-Step Instructions:**
+1. Open **Products** and use the search box to find the SKU.
+2. Click the product row to open its peek panel.
+3. Choose the **Ledger History** tab.
+4. Read entries newest-first: each shows what happened, when, and **who did it**.
 
-#### 4. Troubleshooting Common Blockers
-- **Confirm Match disabled?** Scan sequence incomplete—rescan bin/product.
-- **Why did my count park in Sync Conflicts?** You counted while **Offline - Caching Scans** and the bin changed—use **Discard Transaction** or **Approve & Re-process**.
-- **Picker cannot Approve Ledger Adjustment?** Manager-only control—escalate.
+**⚠️ What if I make a mistake? (Reversing a wrong movement)**
+- Found a movement that should never have happened (e.g. an accidental double receive)? A manager clicks **Reverse transaction** on that entry, then **Confirm Reversal** in the "Reverse Transaction?" dialog. This writes an equal-and-opposite entry next to the original — the mistake stays visible, the math becomes correct.
+- **Reverse transaction greyed out?** Some movement types can't be reversed online (e.g. part of a completed shipment). Use a cycle count or a manager stock correction instead.
+- You can also ask the assistant: *"Reverse the duplicate receive on SKU WIDGET-S from this morning."* It proposes an **Action Draft**; a Manager clicks **Approve**.
 
 ---
 
-### Lot / serial trace & compliance export
+### How to Do a Cycle Count (counting a shelf)
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER, ADMIN, OWNER; VIEWER may trace read-only.
-- **Route Location:** Inventory → **Lot Trace**
-- **Primary Operational Goal:** Follow a lot through customers/orders when quality or recall questions appear.
+**What is this?**
+Instead of shutting the warehouse once a year to count everything, we count a few bins every day. It is a **blind count**: the scanner does NOT show you how many the system expects — because if you saw "system says 48," you'd be tempted to just type 48. You count what your eyes see.
 
-#### 1. Step-by-Step Action Plan
+**Who can do this? (Privileges Required)**
+PICKER (or any floor role) performs the count. Only a WAREHOUSE_MANAGER or above can approve a large variance (**Approve Ledger Adjustment**) or order a **Request Recount**.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Cycle counts** (on the handheld/floor device)
+
+**Step-by-Step Instructions:**
+1. Open **Cycle counts** and take the next task.
+2. Walk to the bin, scan the **bin barcode**, then scan the **product barcode**.
+3. Physically count every unit. Count twice if you were interrupted.
+4. Type the number you counted and confirm. If it matches the system, tap **Confirm Match** — done.
+5. If it doesn't match, the count is submitted as a variance. Small variances may show **AUTO APPROVED**; large ones show **PENDING MANAGER REVIEW** — that is normal, keep working.
+6. *Manager:* open the pending count and click **Approve Ledger Adjustment** (writes the correction) or **Request Recount** (sends someone to count again). Chips: **PENDING**, **AUTO APPROVED**, **APPROVED**, **RECOUNT REQUESTED**.
+
+**⚠️ What if I make a mistake?**
+- **Fat-fingered the number (typed 1000 instead of 10):** Don't panic — the system is built for exactly this. A huge variance does **not** silently change stock; it parks as **PENDING MANAGER REVIEW**. Tell your manager "that 1000 was a typo," and they click **Request Recount**. Count again, submit the real number. Your typo remains in the log — and that's fine.
+- **Counted the wrong bin:** Tell the manager before approval; they'll request a recount on the right bin. If it was already approved, the manager posts a correction — same ledger rule as always.
+- **Tempted to type the number a coworker remembers ("it's always 48"):** Never. The entire point of blind counting is eyes-on-shelf. A wrong honest count is fixable; a fake count poisons every order that trusts it.
+- **Count parked in Sync Conflicts:** You counted while the badge said **Offline - Caching Scans** and the bin changed meanwhile. A manager resolves it under **Inventory → Exceptions → Sync Conflicts** (see SOP 04).
+
+---
+
+### How to Work with LPNs / Pallets (and what to do when one goes missing)
+
+**What is this?**
+An LPN is the pallet's "license plate." Building a pallet = **Mint New LPN**, stack cartons, scan them to the plate. Moving a pallet = scanner **LPN Move** mode: scan plate, scan destination. One scan moves everything on the plate at once.
+
+**Who can do this? (Privileges Required)**
+PICKER and WAREHOUSE_MANAGER on the scanner. Declaring an LPN lost (writing off its contents) is a manager decision.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Fulfillment** → scan mode **LPN Move** or **Build Pallet**
+🖥️ Pallet paperwork: **Outbound** → **Pallet manifests**
+
+**Step-by-Step Instructions (moving a pallet):**
+1. In **Fulfillment**, set scan mode to **LPN Move**.
+2. Scan the LPN label on the pallet.
+3. Move the pallet physically.
+4. Scan the destination location barcode. Done — every carton on the plate now "lives" at the new spot.
+
+**⚠️ What if I make a mistake?**
+- **Physically lost an LPN (plate exists in the system, pallet is nowhere):** Do not ignore it and do not zero it out yourself. Tell a WAREHOUSE_MANAGER. The honest sequence is: search the likely spots → cycle count the last known location → if truly gone, the manager posts an attributed write-off correction for the LPN contents. The loss becomes a visible ledger event (which finance needs for shrink reporting), not a mystery.
+- **Moved the pallet but forgot to scan the move:** The system still shows the old location, and the next picker walks to an empty spot. Go back and do the **LPN Move** scan now, or tell a manager — never leave the shelf and computer disagreeing.
+- **Scanned the wrong destination:** Do another **LPN Move** to the correct location. Two honest moves in the log are perfectly fine.
+- **LPN label torn/unreadable:** Ask a manager to reprint; never handwrite a guess or borrow a plate from another pallet.
+
+---
+
+### How to Trace a Lot (recalls & expired stock)
+
+**What is this?**
+Lot Trace answers "where did this batch go?" — which bins still hold it and which customers received it. You use it when a supplier announces a recall or when you find expired product on a shelf.
+
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER, ADMIN, OWNER run traces and exports. VIEWER can trace read-only. PICKERs report suspicious/expired stock to a manager.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Lot Trace**
+
+**Step-by-Step Instructions:**
 1. Open **Lot Trace**.
-2. Enter the lot / identifier and click **Trace**.
-3. Review affected customers and order touchpoints on screen.
-4. Click **Export affected customers** when outreach is required.
+2. Type the lot number (from the product label) and click **Trace**.
+3. Review the results: on-hand bins holding the lot, and orders/customers that received it.
+4. If customers are affected, click **Export affected customers** and hand the list to customer service.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Operations may pause picks for quarantined lots (coordinate with **Exceptions**).
-- Sales/customer service uses the export for notifications.
-- Finance may need to prepare credits after approved returns.
-
-#### 3. Safety, Reversal & Undo Rules
-- Trace is investigative—do not “edit history” to hide a lot.
-- Physical quarantine + returns/receive flows correct the floor state.
-
-#### 4. Troubleshooting Common Blockers
-- **No results?** Confirm lot spelling and that receive captured the lot at inbound.
-- **Export empty?** Trace found no customer shipments yet—still quarantine on-hand.
+**⚠️ What if I make a mistake? (and: "I found expired lots on the shelf")**
+- **Found expired product while picking or counting:** Do not pick it, do not bin-trash it quietly. Tell a manager. The correct sequence: quarantine the stock (move it to a quarantine location so it can't be picked), run **Lot Trace** to see if any of that lot already shipped, then the manager posts the disposal as an attributed correction. FEFO picking exists to prevent this, but late discoveries still happen — reporting one is doing your job well, not causing trouble.
+- **Traced the wrong lot number:** Just trace again — tracing is read-only and changes nothing.
+- **No results for a real lot:** The lot may not have been captured at receive (someone skipped the lot field). Escalate — this is a receiving-discipline problem a manager must fix at the dock.
+- **Never** edit history to "hide" a lot. Quarantine + trace + corrections is the entire recall playbook.
 
 ---
 
-### Reports (valuation, fulfillment, labor, audit)
+### How to Replenish a Pick Face (refill the small shelf)
 
-- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER; VIEWER as permitted.
-- **Route Location:** Admin → **Reports** (tabs)
-- **Primary Operational Goal:** Understand valuation, movement, fulfillment performance, and audit posture without changing stock.
+**What is this?**
+Pickers pick from small, easy-to-reach bins ("pick faces"). Bulk stock lives higher up in reserve. Replenishment is the directed move that refills a pick face from reserve before waves stall.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Reports**.
-2. Choose a tab: Inventory valuation, Time-travel valuation, Stock turnover, COGS ledger, Profit & margin, Sales performance, Fulfillment, Purchase spend, Returns, Demand sensing, Labor & Velocity, Inventory Audit.
-3. Apply on-screen filters/date ranges.
-4. Use outputs to coach floor and purchasing—not to silently rewrite counts.
+**Who can do this? (Privileges Required)**
+PICKER or WAREHOUSE_MANAGER.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Insights drive POs, waves, and cycle-count priorities.
-- No direct picker task is created until someone acts on **Purchase Orders**, **Fulfillment**, or **Cycle counts**.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Replenishments** (the Fulfillment screen links here when it shows **Replenishments Needed**)
 
-#### 3. Safety, Reversal & Undo Rules
-- Reports are read-only; corrections still happen on operational screens with attribution.
+**Step-by-Step Instructions:**
+1. Open **Replenishments** and take a task.
+2. Scan the **from** bin (reserve), move the stock physically, scan the **to** bin (pick face).
+3. Return to **Fulfillment** and keep picking.
 
-#### 4. Troubleshooting Common Blockers
-- **Numbers look stale?** Finish pending **Approve Ledger Adjustment** / sync conflict decisions first.
-- **Audit log link redirects?** Some audit views open under **Settings → Operations**—follow the redirect.
+**⚠️ What if I make a mistake?**
+- **Moved to the wrong bin:** Ask a manager for a corrective move. Don't improvise a reverse scan unless the screen offers one.
+- **No tasks but the pick face is empty:** Reserve may be empty too — the real fix is inbound (a PO), not a workaround. Tell your manager.
 
 ---
 
-### Add warehouse & RTLS map
+### How to Bulk-Import Products (CSV)
 
-- **Target Audience & Roles:** ADMIN, OWNER (warehouse add); RTLS for ops leaders.
-- **Route Location:** **Warehouses → Add**; Admin → **RTLS map**
-- **Primary Operational Goal:** Open a new site context and visualize floor telemetry when enabled.
+**What is this?**
+Loading many SKUs at once from a spreadsheet instead of typing them one by one. The system pre-checks ("preflight") every row before anything is created, so a bad spreadsheet can't hurt the floor.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Warehouses → Add** and complete the wizard fields; save.
-2. Switch active warehouse context in the header when working that site.
-3. Open **RTLS map**; use **Inject sample telemetry** only in training/demo situations.
+**Who can do this? (Privileges Required)**
+ADMIN or OWNER (managers where permitted). Not PICKER/VIEWER.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- All POs, SOs, and waves are warehouse-scoped—wrong context causes empty queues.
-- Pickers on locked hardware contexts may be pinned to one site (SSID/geofence messaging in the shell).
+**Where to go in weGrowStock:**
+🖥️ **Import** screen (also **Settings → Import** for Admin/Owner)
 
-#### 3. Safety, Reversal & Undo Rules
-- Do not move historical stock by renaming warehouses; use proper transfers/corrections.
-- Sample telemetry is not a stock correction.
+**Step-by-Step Instructions:**
+1. Open **Import** and click **Download Template**.
+2. Fill the spreadsheet offline, one product per row.
+3. Upload it. Read the preflight chips per row: **READY TO IMPORT**, **MISSING PRODUCT**, **MISSING LOCATION**, **MISSING UOM**, **VALIDATION ERROR**.
+4. Fix issues using **Create missing products based on CSV data** or **Map to existing**, or edit the file and re-upload.
+5. Click **Import N ready row(s)** only when the rows you want are green.
 
-#### 4. Troubleshooting Common Blockers
-- **Screens empty after login?** Check the active warehouse chip/lock reason in the header.
-- **Cannot add warehouse?** Owner/Admin only.
+**⚠️ What if I make a mistake?**
+- **Imported with a typo'd product name:** Edit the product under **Products** — master-data fixes are safe.
+- **Imported duplicates:** Point future work at the correct SKU and ask an Admin to retire the twin. Movement history on both stays.
+- **Wrong quantities in your head?** Imports don't set stock levels by themselves — quantity truth only enters through receiving, counts, and corrections. So a bad import can't corrupt on-hand.
+
+---
+
+## Quick reference: "I messed up" cheat sheet (Inventory)
+
+| Mistake | Can I fix it myself? | The fix |
+|---|---|---|
+| Typed 1000 instead of 10 in a blind count | Parks automatically | Variance goes **PENDING MANAGER REVIEW**; manager clicks **Request Recount** |
+| Counted the wrong bin | Tell manager | Recount the right bin; correction if already approved |
+| Lost an LPN / pallet missing | No — Manager | Search → cycle count last location → attributed write-off |
+| Moved pallet without scanning | Yes, immediately | Do the **LPN Move** scan now, or tell a manager |
+| Found expired lot on shelf | Report it | Quarantine → **Lot Trace** → manager posts disposal |
+| Wrong/duplicate receive in history | No — Manager | **Reverse transaction** → **Confirm Reversal** on Ledger History |
+| Import row errors | Yes (Admin) | Fix file, re-run preflight; never force red rows |
+| Count/move parked offline | No — Manager | **Exceptions → Sync Conflicts** (SOP 04) |
+
+**Golden rule:** big variances don't auto-apply — the system parks them for a human. So the fastest way through any counting mistake is the honest sentence: *"I typed it wrong, please recount."*
+
+**Still stuck?** Click the chat bubble and describe it plainly (e.g. *"Bin A-3 count is pending review because I typo'd it"*). Action Drafts that adjust stock always wait for a Manager's **Approve**.

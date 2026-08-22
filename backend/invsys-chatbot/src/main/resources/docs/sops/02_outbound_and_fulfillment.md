@@ -1,186 +1,239 @@
 ---
-title: "Outbound Sales & Fulfillment SOP"
+title: "Outbound Sales & Fulfillment SOP (Beginner Guide)"
 slug: "sop-outbound-fulfillment"
 sourcePath: "docs/sops/02_outbound_and_fulfillment.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
-routeHints: ["/sales-orders", "/customers", "/invoices", "/fulfillment", "/replenishments", "/dashboard"]
+audienceLevel: "beginner"
+routeHints: ["/sales-orders", "/customers", "/invoices", "/fulfillment", "/cluster-pick", "/pallet-manifests", "/replenishments", "/dashboard", "/exceptions"]
+keywords: ["sales order", "allocate", "backorder", "wave", "cluster pick", "tote", "cartonization", "pack", "ship", "shipped too early", "wrong SKU", "wrong address", "broken item", "invoice"]
 ---
 
-# Outbound Sales & Fulfillment — Operations Playbook
+# Outbound Sales & Fulfillment — Beginner Playbook
 
-Cover customer orders, FEFO-minded allocation, wave release, handheld picking, packing, and shipping visibility. Use exact on-screen labels only.
-
----
-
-### Sales Orders (create, confirm, allocate, invoice)
-
-- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER; VIEWER reviews; PICKER fulfills waves, does not build office sales orders.
-- **Route Location:** Outbound → **Sales Orders** (also **New sales order** on Dashboard)
-- **Primary Operational Goal:** Turn a customer need into a confirmed order, reserve FEFO-appropriate stock, and prepare invoicing after ship progress.
-
-#### 1. Step-by-Step Action Plan
-1. Open **Sales Orders** or click **New sales order** / **New order** on the Dashboard.
-2. Enter customer, warehouse, and lines; click **Create order** / **Create sales order**.
-3. While status is **DRAFT**, edit carefully, then click **Confirm** so the chip moves to **CONFIRMED**.
-4. Click **Allocate** to reserve inventory (FEFO-aware lots when the product requires dating).
-5. Watch chips: **ALLOCATED**, **BACKORDERED**, **PARTIALLY SHIPPED**, **SHIPPED**, **CLOSED**, **CANCELLED**.
-6. Filter the grid with **All** / **Open** / **Allocated** / **Shipped** as needed.
-7. When ready to bill, use **Invoice** or **Invoice remaining**.
-8. To stop an order that should not ship, use **Cancel** while policy still allows it.
-
-#### 2. Correlated Flow & Downstream Ripple Effect
-- **Pickers:** After managers **Release to floor**, handheld tasks appear under **Fulfillment**.
-- **Managers:** Dashboard cards such as **Needs allocation** and **Ready to invoice** update.
-- **ATP:** Allocation reserves sellable stock for that order; other orders may show **BACKORDERED** if supply is short.
-- **Finance / credit:** Invoicing creates receivable pressure; a customer on **Credit Hold** (proactive banner/copy) can block progress until billing clears the hold.
-
-#### 3. Safety, Reversal & Undo Rules
-- Prefer **Cancel** before the order is far into shipping.
-- If reservations must be released before ship, use the on-screen release/cancel controls available on that order—never delete history.
-- After ship mistakes, use returns / RMA paths and attributed corrections.
-- Core rule: past stock history is permanent; fix with attributed corrections.
-
-#### 4. Troubleshooting Common Blockers
-- **Why is Allocate greyed out?** Common causes: order still **DRAFT**, customer **Credit Hold**, insufficient received stock, or wrong warehouse context.
-- **Why is the order BACKORDERED?** Not enough available stock after FEFO rules—receive inbound or free other reservations.
-- **VIEWER cannot Allocate?** Expected—ask a Warehouse Manager.
+This guide takes a customer order from "the customer wants it" to "it left on a truck" — and explains **how to undo every common mistake** along the way. Written for people brand new to warehouses.
 
 ---
 
-### Customers
+## Before you start: how an order flows (60-second picture)
 
-- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER; VIEWER read-only.
-- **Route Location:** Outbound → **Customers**
-- **Primary Operational Goal:** Keep bill-to / ship-to and commercial terms accurate before sales orders and showroom checkout.
+1. **Sales Order created** — the promise: "Customer X gets 10 widgets."
+2. **Confirm** — the order is locked in and visible to the warehouse.
+3. **Allocate** — the system *reserves* real stock on the shelf for this order (oldest expiry first, so nothing goes stale — this is called FEFO).
+4. **Wave released to floor** — the picking work appears on handheld scanners.
+5. **Pick** — a floor worker scans bins and products into totes.
+6. **Pack** — items go into cartons, get weighed, get labels (cartonization).
+7. **Ship** — the carton leaves; the order chip turns **SHIPPED**.
+8. **Invoice** — the customer gets billed for what actually shipped.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Customers**.
-2. Confirm the customer record before **Create sales order**.
-3. Coordinate with billing owners when credit posture changes (watch Dashboard / support banners mentioning **Credit Hold**).
+Status chips you will see on the Sales Orders screen: **DRAFT → CONFIRMED → ALLOCATED → (BACKORDERED) → PARTIALLY SHIPPED → SHIPPED → CLOSED / CANCELLED**.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Bad customer data breaks packing slips and invoices.
-- Credit posture affects whether **Allocate** / checkout can proceed.
-- Pickers see customer only as stop/ship labels on the wave—not master-data screens.
+**Who does what:**
 
-#### 3. Safety, Reversal & Undo Rules
-- Correct customer details before **Confirm** when possible.
-- Do not “fix” a shipped order by editing history—use returns and credit memos with finance.
+| Role | Their part of outbound |
+|---|---|
+| **OWNER / ADMIN** | Everything, plus voiding invoices and overriding prices |
+| **WAREHOUSE_MANAGER** | Creates/confirms orders, allocates, builds and releases waves, approves fixes |
+| **PICKER** | Claims waves on the scanner, picks, packs, ships. Cannot create orders or invoices |
+| **VIEWER** | Read-only |
 
-#### 4. Troubleshooting Common Blockers
-- **Cannot select customer on New order?** Customer may be inactive—ask Admin.
-- **B2B buyer asking for warehouse bins?** Direct them to Showroom only—never share bin maps.
-
----
-
-### Invoices
-
-- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER (per policy); VIEWER may review.
-- **Route Location:** Outbound → **Invoices** (also invoice actions on Sales Orders)
-- **Primary Operational Goal:** Turn shipped/fulfillment progress into customer billing documents.
-
-#### 1. Step-by-Step Action Plan
-1. From **Sales Orders**, click **Invoice** or **Invoice remaining**, or open **Invoices**.
-2. Review amounts and customer.
-3. Complete the on-screen confirmations until the order shows invoicing progress (for example **Invoiced** cues on the sales order).
-
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Finance AR and Dashboard **Open AR** / **Ready to invoice** queues update.
-- Floor picking is unchanged by invoicing itself.
-- Customer credit utilization rises when invoices post.
-
-#### 3. Safety, Reversal & Undo Rules
-- Reverse billing mistakes through finance-approved credit/re-invoice steps—not by deleting stock movements.
-- Shipping mistakes still need RMA / receive-return flows.
-
-#### 4. Troubleshooting Common Blockers
-- **Invoice remaining unavailable?** Nothing left to bill, or order not far enough through ship.
-- **Credit Hold banner?** Clear hold with Owner/billing before forcing allocation or new invoices.
+**Remember the ledger rule:** shipped stock, picks, and invoices are permanent entries. Mistakes are fixed with *new* attributed entries (reversals, returns, credit notes) — never by deleting. When in doubt, ask the chat assistant (blue bubble, bottom-right); if it proposes an **Action Draft**, a Manager clicks **Approve** to run the fix.
 
 ---
 
-### Fulfillment waves, picking, packing
+### How to Set Up a Customer
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER builds/releases waves; PICKER claims and scans; VIEWER typically blocked from floor actions.
-- **Route Location:** Floor → **Fulfillment**
-- **Primary Operational Goal:** Turn allocated orders into physical picks, totes, packs, and ship-ready cartons.
+**What is this?**
+The customer record holds the bill-to and ship-to address and payment terms. Every packing slip, shipping label, and invoice copies from here — a typo here becomes a typo on the box.
 
-#### 1. Step-by-Step Action Plan
-1. Manager opens **Fulfillment** and clicks **Generate draft wave**.
-2. Optionally click **Optimize pick path** to sequence bins.
-3. Click **Release to floor** when the wave is ready.
-4. On the device, click **Claim wave (device lock)** so only that scanner owns the work.
-5. Choose work mode **Single** / **Batch** / **Pack** as directed.
-6. Set scan mode **Pick** (use **Receive**, **LPN Move**, or **Build Pallet** only when that is the task).
-7. Scan location and product barcodes as prompted; in batch, follow **Place in tote**.
-8. For packing: **Connect packing scale** or **Connect Bluetooth scale**, then **Complete Pack**; **Disconnect** when finished.
-9. For pallet builds: **Mint New LPN**, then **Finish / new pallet** when the pallet is complete.
-10. If a barcode is unreadable, tap **Skip & Flag Barcode**—do not invent digits.
-11. If a next-action card appears, use **Dismiss** when done reading; use **Retry** after fixing a transient device issue.
-12. Watch **Replenishments Needed** and jump to **Replenishments** when pick faces are empty.
+**Who can do this? (Privileges Required)**
+OWNER, ADMIN, or WAREHOUSE_MANAGER (the **Manage Customers** permission). VIEWER read-only. PICKERs don't see this screen.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- **Office:** Sales order chips move through **PARTIALLY SHIPPED** / **SHIPPED**; Dashboard fulfillment KPIs refresh.
-- **Other pickers:** Device lock prevents two scanners fighting the same wave.
-- **ATP:** Picked/shipped stock leaves sellable availability; short picks can resurface backorder risk.
-- **Finance:** Completing pack/ship unblocks **Invoice** / **Invoice remaining**.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Customers**
 
-#### 3. Safety, Reversal & Undo Rules
-- Wrong pick: use **Skip & Flag Barcode** or ask a manager—do not silently overstate quantities.
-- Do not erase prior scans; managers post stock corrections when the ledger must move.
-- Packing mistakes: stop before **Complete Pack** if the scale weight is wrong; reopen with a manager if already completed.
+**Step-by-Step Instructions:**
+1. Open **Customers** and **search first** so you don't create a duplicate.
+2. Create the customer with the exact legal name, email, ship-to address, and payment terms.
+3. Double-read the address — street number, unit, ZIP. Say it out loud if it helps; wrong addresses are the #1 outbound mistake.
 
-#### 4. Troubleshooting Common Blockers
-- **No tasks after Release to floor?** Confirm you **Claim wave (device lock)** and that orders were **Allocate**d.
-- **Why did my scan park in Sync Conflicts?** Bin quantity likely changed while the badge showed **Offline - Caching Scans**—resolve under **Exceptions → Sync Conflicts**.
-- **What if an item is damaged on the floor?** Use **Skip & Flag Barcode**, photograph/escalate per site rules, never type a guessed barcode.
+**⚠️ What if I make a mistake?**
+- **Misspelled name or wrong address, order not shipped yet:** Fix the customer record, and check any open sales order for that customer — correct the ship-to on the order before it reaches packing.
+- **Misspelled address and the box ALREADY shipped:** You cannot edit history. Act fast in the real world: contact the carrier for an address correction/intercept, and log the incident. If it bounces back, receive it as a return (RMA) so stock re-enters the ledger honestly.
+- **Duplicate customer:** Point new orders at the correct record and ask an ADMIN to deactivate the duplicate. Old orders keep their history.
 
 ---
 
-### Replenishments
+### How to Create and Confirm a Sales Order
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER, PICKER.
-- **Route Location:** Inventory / Floor → **Replenishments**
-- **Primary Operational Goal:** Move stock from reserve into pick faces before waves stall.
+**What is this?**
+The Sales Order (SO) records what a customer wants to buy. Until you **Confirm**, it's just a draft the warehouse ignores.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Replenishments** when **Fulfillment** shows **Replenishments Needed**.
-2. Follow directed moves: scan from-bin and to-bin as prompted.
-3. Return to **Fulfillment** and continue **Pick**.
+**Who can do this? (Privileges Required)**
+OWNER, ADMIN, or WAREHOUSE_MANAGER. Changing a price below list may require the **Override Pricing** permission. PICKERs and VIEWERs cannot create orders.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Pickers regain bin quantity for the wave.
-- Office sees fewer short picks and **BACKORDERED** surprises.
-- ATP in pickable locations improves even if total warehouse on-hand was already there.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Sales Orders** (shortcut: **New sales order** on the Dashboard)
 
-#### 3. Safety, Reversal & Undo Rules
-- Wrong bin move: stop and request a manager correction—do not invent a reverse scan sequence unless the screen offers one.
+**Step-by-Step Instructions:**
+1. Open **Sales Orders**. Use the search box to check the customer doesn't already have an identical open order (prevents duplicates).
+2. Click **New sales order**.
+3. Pick the customer and warehouse.
+4. Add lines: SKU, **quantity** (read it twice), and unit price.
+5. Click **Create order**. Status: **DRAFT**.
+6. Re-check lines, then click **Confirm**. Status: **CONFIRMED** — the warehouse can now see it.
 
-#### 4. Troubleshooting Common Blockers
-- **No replenishment tasks?** Reserve may already be empty—trigger inbound receive or purchase.
-- **Offline parking?** Resolve parked moves in **Sync Conflicts** before releasing more waves.
+**⚠️ What if I make a mistake?**
+- **Wrong quantity or price, still DRAFT:** Just edit the line. Drafts are freely editable.
+- **Wrong quantity/price, already CONFIRMED but not allocated/shipped:** Open the order and use **Cancel** (or edit if your screen allows), then recreate correctly. A cancelled order stays visible as **CANCELLED** — that's normal.
+- **Duplicate order (clicked create twice):** **Cancel** the twin while nothing is allocated. If it was already allocated, un-allocate first (ask the assistant: *"Un-allocate SO-1042"* — it drafts the action for a manager to **Approve**), then cancel.
+- **Wrong customer selected:** Cancel and recreate. Don't ship to the wrong customer and "fix it later."
+- **Price below list is blocked:** You need someone with **Override Pricing** — that's a control, not a bug.
 
 ---
 
-### Dashboard outbound cues
+### How to Allocate Stock (reserve inventory)
 
-- **Target Audience & Roles:** Office roles; pickers use **Start scanning** / **Open fulfillment scanner**.
-- **Route Location:** **Dashboard**
-- **Primary Operational Goal:** Jump to allocation, invoicing, or exception work in one tap.
+**What is this?**
+**Allocate** means "put a hold on real shelf stock for this order." If there isn't enough stock, the order (or part of it) shows **BACKORDERED** — an honest "we owe the customer" flag, not an error.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Dashboard**.
-2. Use **New sales order** when taking demand.
-3. In the work queue, follow **Do this next** cards (**Needs allocation**, **Ready to invoice**, **Open AR**, **Low stock**).
-4. For exceptions, click **Open queue (N)** or **Resolve**.
-5. Pickers: **Open fulfillment scanner** / **Start scanning**.
+**Who can do this? (Privileges Required)**
+OWNER, ADMIN, or WAREHOUSE_MANAGER. VIEWERs and PICKERs cannot allocate.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Same destinations as sidebar routes; clears blockers faster for floor and finance.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Sales Orders** → open the order
 
-#### 3. Safety, Reversal & Undo Rules
-- Dashboard never skips confirmation dialogs on the destination page.
+**Step-by-Step Instructions:**
+1. Open a **CONFIRMED** order.
+2. Click **Allocate**. The system reserves stock, oldest-expiry-first (FEFO).
+3. Watch the chip: **ALLOCATED** = fully reserved; **BACKORDERED** = short.
 
-#### 4. Troubleshooting Common Blockers
-- **Credit Hold messaging?** Resolve billing hold before hammering **Allocate**.
-- **Picker sees office cards?** Rare mixed-role sessions—switch to fulfillment scanner workflow.
+**⚠️ What if I make a mistake?**
+- **Allocated the wrong order first (stole stock from a more urgent order):** Un-allocate this order (release the reservation via the on-screen control or an assistant Action Draft approved by a Manager), then allocate the urgent one.
+- **Allocate is greyed out:** Common causes — order still **DRAFT** (Confirm it), the customer is on **Credit Hold** (an OWNER/billing person must clear the hold; do not try to force it), no stock (receive inbound first), or wrong warehouse context.
+
+---
+
+### How to Build, Release, and Pick a Wave
+
+**What is this?**
+A "wave" is a batch of orders bundled into one efficient walking route. The manager builds it at a desk; the picker claims it on a handheld scanner and follows the screen bin-by-bin. In **Cluster Picking**, you pick for several orders at once into separate totes on one cart — the scanner always tells you *which tote* each item goes into.
+
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER builds and releases waves (**Generate draft wave**, **Release to floor**). PICKER claims and scans. VIEWERs are blocked from floor actions.
+
+**Where to go in weGrowStock:**
+🖥️ Manager: Sidebar Navigation → **Outbound** → **Fulfillment**
+🖥️ Picker: **Outbound** → **Fulfillment** (or **Cluster pick** for multi-order carts) on the handheld
+
+**Step-by-Step Instructions:**
+1. *Manager:* open **Fulfillment**, click **Generate draft wave**.
+2. *Manager:* optionally click **Optimize pick path** (sorts the route so pickers don't zig-zag).
+3. *Manager:* click **Release to floor**.
+4. *Picker:* on the scanner, click **Claim wave (device lock)** — this locks the wave to your device so two people can't fight over it.
+5. *Picker:* choose the work mode the screen directs (**Single** / **Batch** / **Pack**) and make sure scan mode says **Pick**.
+6. *Picker:* the screen names a bin → walk there → scan the **bin barcode** → scan the **product barcode** → confirm quantity → **Place in tote** (in batch/cluster mode it names the exact tote).
+7. Repeat until the wave is done. If the screen shows **Replenishments Needed**, a pick face is empty — see Replenishments below.
+
+**⚠️ What if I make a mistake?**
+- **Picked the wrong SKU into a tote:** If you notice immediately, put it back in its bin and rescan the correct item. If you already confirmed the scan, tell your manager — do **not** just swap items between totes by hand, because the system believes what was scanned, not what your hands did. The manager corrects the pick before packing.
+- **Dropped and broke an item mid-pick:** Do not scan the broken unit into the tote and do not hide it. Use **Skip & Flag Barcode** (or your site's damage flag), set the broken item aside for quarantine, and pick a replacement unit if the bin has one. A manager posts the breakage as an attributed stock correction — the ledger records that the company lost one unit, honestly.
+- **Barcode won't scan / label ruined:** Tap **Skip & Flag Barcode**. **Never type digits from memory** — a wrong-but-plausible barcode is the hardest error to find later.
+- **Scanner shows "Offline - Caching Scans":** Keep going carefully; scans are saved and sync later. If one conflicts (someone else touched the same bin), it parks in **Inventory → Exceptions → Sync Conflicts** for a manager to **Approve & Re-process** or **Discard Transaction**.
+- **Claimed the wrong wave:** Ask the manager to release the device lock so the right picker can claim it.
+
+---
+
+### How to Pack and Ship (Cartonization)
+
+**What is this?**
+Packing turns picked totes into sealed, weighed, labeled cartons. The system suggests carton sizes (cartonization), verifies weight on a scale to catch missing/extra items, and prints the shipping label. **Ship** is the moment the order legally leaves — it's the step you must never click early.
+
+**Who can do this? (Privileges Required)**
+PICKER or WAREHOUSE_MANAGER at a pack station. Reopening a completed pack requires a WAREHOUSE_MANAGER.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Fulfillment** → work mode **Pack**
+(pallet shipments: **Outbound** → **Pallet manifests**)
+
+**Step-by-Step Instructions:**
+1. Switch the station to **Pack** mode.
+2. Click **Connect packing scale** (or **Connect Bluetooth scale**).
+3. Scan the tote, follow the suggested carton, and place items in.
+4. Put the carton on the scale. If the weight looks wrong (too light = something missing; too heavy = extra item), **stop and recount before continuing**.
+5. Click **Complete Pack**. Labels/manifest generate.
+6. For pallets: **Mint New LPN** to start a pallet, stack cartons, then **Finish / new pallet**.
+7. Mark shipped **only when the carton is physically on/committed to the truck**. The order chip turns **PARTIALLY SHIPPED** or **SHIPPED**.
+8. Click **Disconnect** when leaving the scale.
+
+**⚠️ What if I make a mistake?**
+- **Clicked "Shipped" too early (it's still on the dock):** Tell a WAREHOUSE_MANAGER *immediately* — before invoicing runs. The ship event is a ledger entry, so it can't be deleted, but a manager can post the reversing correction and restore the order's real state. The worst thing you can do is stay quiet: an early "Shipped" triggers customer emails and invoicing on goods that haven't left.
+- **Packed the wrong item (scale caught it):** Reopen the carton, fix contents, re-weigh. This is exactly why the scale step exists.
+- **Completed Pack, then found a wrong item:** A manager reopens the pack. Do not tear open a sealed, system-completed carton without telling anyone.
+- **Wrong shipping address on the label:** If not shipped: fix the address on the order/customer and reprint. If shipped: carrier intercept + incident log (see Customers section above).
+
+---
+
+### How to Handle Replenishments (empty pick face)
+
+**What is this?**
+Pick bins are small and go empty. Replenishment is a directed move that refills them from bulk/reserve shelves so waves don't stall.
+
+**Who can do this? (Privileges Required)**
+PICKER or WAREHOUSE_MANAGER.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inventory** → **Replenishments** (the Fulfillment screen links you there when it shows **Replenishments Needed**)
+
+**Step-by-Step Instructions:**
+1. Open **Replenishments**.
+2. Follow the directed move: scan the **from** bin, move the stock, scan the **to** bin.
+3. Go back to **Fulfillment** and continue picking.
+
+**⚠️ What if I make a mistake?**
+- **Moved stock to the wrong bin:** Stop and request a manager correction/move. Don't invent a reverse scan unless the screen offers one.
+- **No tasks but the shelf is empty:** Reserve stock may be gone — the fix is inbound (receive a PO), not a workaround.
+
+---
+
+### How to Invoice a Shipped Order
+
+**What is this?**
+Invoicing turns "we shipped it" into "the customer owes us money." It should reflect exactly what shipped — which is why the system only lets you bill shipped progress.
+
+**Who can do this? (Privileges Required)**
+OWNER or ADMIN (per company policy, WAREHOUSE_MANAGER may also invoice). **Voiding an invoice requires the Void Invoices permission (ADMIN/OWNER).** VIEWERs can only look.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Invoices** (or the **Invoice** / **Invoice remaining** buttons on the Sales Order)
+
+**Step-by-Step Instructions:**
+1. Open the shipped (or partially shipped) Sales Order.
+2. Click **Invoice** (first bill) or **Invoice remaining** (bill the rest after a partial shipment).
+3. Check the amounts and customer, confirm.
+
+**⚠️ What if I make a mistake?**
+- **Invoiced the wrong amount / wrong price:** An ADMIN/OWNER with **Void Invoices** voids or credits it and re-issues correctly. Money documents follow the same ledger rule as stock: correct forward, never delete. (Full detail in SOP 05.)
+- **Invoiced before it really shipped (because of an early "Shipped" click):** Fix the ship status first (manager reversal, previous section), then void/credit the invoice.
+- **Invoice remaining is greyed out:** Nothing left to bill, or the order hasn't shipped far enough. That's the system protecting you from billing air.
+
+---
+
+## Quick reference: "I messed up" cheat sheet (Outbound)
+
+| Mistake | Can I fix it myself? | The fix |
+|---|---|---|
+| Typo in customer name/address, not shipped | Yes (office roles) | Edit customer + open order ship-to |
+| Address wrong, already shipped | No — Manager/office | Carrier intercept; return (RMA) if it bounces |
+| Wrong qty/price on DRAFT order | Yes | Edit the line |
+| Wrong qty/price after Confirm | Order creators | **Cancel** + recreate (un-allocate first if needed) |
+| Duplicate sales order | Order creators | Cancel the twin; ask assistant for an un-allocate **Action Draft** if reserved |
+| Picked wrong SKU (confirmed) | No — Manager | Manager corrects the pick before pack |
+| Broke an item during pick | Picker flags | **Skip & Flag Barcode**, quarantine, manager posts loss |
+| Clicked **Shipped** too early | No — Manager | Manager posts a reversing correction; then fix any invoice |
+| Wrong item found at pack (scale) | Yes at station | Reopen carton, recount, re-weigh |
+| Scan parked after offline work | No — Manager | **Exceptions → Sync Conflicts** → **Approve & Re-process** / **Discard** |
+| Allocate greyed out | Depends | Confirm the order / clear Credit Hold (Owner) / receive stock |
+
+**Golden rule:** the truck and the ledger must always tell the same story. If they ever disagree — you clicked something the truck didn't do, or did something you didn't scan — say so immediately. Every fix is a new signed entry; silence is the only unfixable mistake.
+
+**Still stuck?** Click the chat bubble and describe it plainly (e.g. *"I marked SO-1042 shipped but it's still on the dock"*). If the assistant offers an **Action Draft**, a Manager reviews and clicks **Approve** — nothing executes without a human.

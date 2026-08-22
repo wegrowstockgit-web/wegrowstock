@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useSessionHydrated, useIsAuthenticated, useSessionStore } from '@/stores/session';
 import { apiClient, endSessionOnAuthFailure } from '@/api/client';
 import { readImpersonationHandoff } from '@/lib/impersonationHandoff';
+import { pageKnowledgeQueryOptions } from '@/lib/pageKnowledge/usePageKnowledge';
 
 type MeEntitlements = {
   userId: string;
@@ -70,6 +71,7 @@ export function SessionHydrationGate({ children }: { children: ReactNode }) {
           tier: data.tier,
         });
         void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+        void queryClient.prefetchQuery(pageKnowledgeQueryOptions());
       } catch (error) {
         if (axios.isAxiosError(error) && error.response?.status === 401) {
           // Cookies expired (idle access TTL or refresh revoked). Do not keep polling /me.

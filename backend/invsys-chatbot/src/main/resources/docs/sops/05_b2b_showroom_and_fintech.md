@@ -1,203 +1,197 @@
 ---
-title: "B2B Showroom & Commercial Finance SOP"
+title: "B2B Showroom & Commercial Finance SOP (Beginner Guide)"
 slug: "sop-b2b-showroom-fintech"
 sourcePath: "docs/sops/05_b2b_showroom_and_fintech.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "B2B_CUSTOMER", "VIEWER"]
-routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/mesh-network", "/settings", "/settings?tab=retailPos", "/settings/billing", "/settings/fintech", "/settings/integrations"]
+audienceLevel: "beginner"
+routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/sales-orders", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations", "/settings?tab=retailPos"]
+keywords: ["wholesale application", "showroom", "checkout", "credit hold", "credit line", "capital", "financing", "invoice", "wrong price invoice", "duplicate invoice", "void invoice", "credit note", "refund", "billing"]
 ---
 
-# B2B Showroom & Commercial Finance — Operations Playbook
+# B2B Showroom & Commercial Finance — Beginner Playbook
 
-Wholesale buyers shop the Showroom; Owners manage billing, financing, and integrations. Warehouse bin maps stay hidden from B2B buyers.
-
----
-
-### Showroom catalog
-
-- **Target Audience & Roles:** B2B_CUSTOMER (primary); OWNER/ADMIN may support commercially but buyers live here.
-- **Route Location:** Wholesale Portal → **Catalog**
-- **Primary Operational Goal:** Browse sellable items and start an order without seeing warehouse bin topology.
-
-#### 1. Step-by-Step Action Plan
-1. Sign in as a B2B customer (lands on Showroom).
-2. Open **Catalog**.
-3. Browse items and add lines per on-screen cart controls.
-4. Continue toward **Checkout** when ready (nav: Catalog / Orders / Checkout / Billing).
-
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Warehouse managers later see demand as sales orders to **Confirm** / **Allocate**.
-- Pickers never take direction from the Showroom—only from **Fulfillment** waves.
-- ATP shown to the buyer reflects sellable availability, not reserve-bin secrets.
-- Credit posture can block checkout if the account is on hold.
-
-#### 3. Safety, Reversal & Undo Rules
-- Remove cart lines before **Place order** if the basket is wrong.
-- After placement, use **Orders** / **Return Items** flows—not warehouse tools.
-
-#### 4. Troubleshooting Common Blockers
-- **Item shows unavailable?** Stock may be unreceived or reserved—contact your supplier rep; do not ask pickers for bin codes.
-- **Why can’t I open Fulfillment?** B2B sessions stay in Showroom by design.
+Two audiences share this guide: **wholesale buyers** (your B2B customers shopping the Showroom) and **your own office staff** (managing applications, invoices, credit, and financing). Each section says clearly which side it is for.
 
 ---
 
-### Showroom checkout & place order
+## Before you start: how the money side works (in plain words)
 
-- **Target Audience & Roles:** B2B_CUSTOMER.
-- **Route Location:** **Checkout**
-- **Primary Operational Goal:** Submit a wholesale order against catalog availability and account terms.
+1. **Wholesale application** — a business asks to become your B2B customer. You review and approve; they get Showroom access and payment terms.
+2. **Showroom** — the buyer's private storefront: Catalog → Checkout → Orders → Billing. Buyers never see your warehouse screens, stock locations, or other customers.
+3. **Credit line** — instead of paying upfront, approved buyers can owe you up to a limit (e.g. $10,000 at NET30 = pay within 30 days). Unpaid invoices consume the limit; payments free it.
+4. **Credit Hold** — when a buyer owes too much or is overdue, the system blocks new allocations/checkouts until billing clears. This protects you automatically.
+5. **Invoices are ledger documents** — like stock movements, a posted invoice is never deleted. Mistakes are fixed with **void** or **credit note** entries that sit next to the original, signed and dated.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Checkout** with a populated cart.
-2. Review quantities, ship-to, and commercial terms on screen.
-3. Click **Place order** (or **Continue** when the wizard uses staged confirms).
-4. Note confirmation and follow status under **Orders**.
+**Who does what:**
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Supplier warehouse creates/works the related sales order (**Confirm**, **Allocate**, **Release to floor**).
-- Buyer billing appears under Showroom **Billing** and supplier **Invoices**.
-- Credit utilization may rise when invoices post.
-
-#### 3. Safety, Reversal & Undo Rules
-- Before placing, edit the cart.
-- After placing, use **Return Items** / **Submit return** when goods must come back.
-- Warehouse history is not rewritten for a buyer regret—returns add a proper RMA path.
-
-#### 4. Troubleshooting Common Blockers
-- **Place order disabled?** Cart empty, item unavailable, or account credit hold—contact your rep.
-- **Checkout failed mid-way?** Retry from **Catalog** → cart; if it persists, call support with what you saw on screen (no need for technical codes).
+| Role | Commercial powers |
+|---|---|
+| **OWNER** | Everything, including **Cash Flow & Financing** (capital/credit products) and billing plan settings — Owner-only |
+| **ADMIN** | Customers, invoices, voiding (**Void Invoices** permission), integrations, users |
+| **WAREHOUSE_MANAGER** | Sales orders and invoicing per company policy; cannot open Owner financing pages |
+| **B2B_CUSTOMER** | Showroom only: Catalog, Checkout, Orders, Billing |
+| **VIEWER** | Read-only office screens |
 
 ---
 
-### Showroom orders & returns
+### How to Review and Approve a Wholesale Application (office)
 
-- **Target Audience & Roles:** B2B_CUSTOMER.
-- **Route Location:** **Orders**
-- **Primary Operational Goal:** Track order progress and start returns when needed.
+**What is this?**
+A business filled in your wholesale signup form and wants to buy from you. Approving creates their customer record and unlocks Showroom access with the terms you set.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Orders**.
-2. Review status in plain chips (progress toward shipped/closed as your supplier updates).
-3. Click **Return Items** when initiating a return, then **Submit return**.
-4. Use **Browse catalog** when you need to reorder.
+**Who can do this? (Privileges Required)**
+OWNER or ADMIN (customer management). Not visible to floor roles.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Supplier **Returns** queue shows **REQUESTED** / **PENDING_REVIEW** for staff **Approve & Buy Label** or **Deny & Close**.
-- Approved returns later hit **Returns receive** on the floor with **Condition photo** + **Confirm +1**.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Customers** → **Wholesale Applications** panel (pending applications from the showroom appear here)
 
-#### 3. Safety, Reversal & Undo Rules
-- Submit accurate quantities/reasons—photos may be required at receive.
-- Denied returns (**Deny & Close**) mean keep or dispose per your agreement—do not ship unauthorized freight.
+**Step-by-Step Instructions:**
+1. Open **Customers** and find the **Wholesale Applications** panel (pending list).
+2. Open the application; check the business name, tax ID, and requested terms like any credit decision.
+3. Click **Approve** to create the customer and grant Showroom access — or reject per policy.
+4. After approval, verify the new customer record: payment terms (NET30/NET60), credit limit, ship-to address.
 
-#### 4. Troubleshooting Common Blockers
-- **Return Items missing?** Order may be ineligible yet—or still shipping; wait or call your rep.
-- **Status not moving?** Warehouse may be waiting on allocation/wave—your rep can check **Sales Orders** / **Fulfillment**.
+**⚠️ What if I make a mistake?**
+- **Approved with wrong terms or credit limit:** Edit the customer record — terms and limits are master data, safe to correct any time. Already-posted invoices keep the terms they were issued under.
+- **Approved a duplicate of an existing customer:** Point everything at the original record and ask an ADMIN to deactivate the twin. Order history on both remains visible.
+- **Rejected by accident:** The business can re-apply, or an Admin creates the customer manually under **Customers**.
 
 ---
 
-### Showroom billing
+### How to Shop the Showroom (B2B buyer)
 
-- **Target Audience & Roles:** B2B_CUSTOMER.
-- **Route Location:** **Billing**
-- **Primary Operational Goal:** See invoices/balances that affect whether new checkout is allowed.
+**What is this?**
+Your private wholesale storefront. You see sellable items and your negotiated terms — never the seller's warehouse internals.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Billing**.
-2. Review open invoices and payment guidance on screen.
-3. Coordinate payment with your AP team so **Credit Hold** situations clear.
+**Who can do this? (Privileges Required)**
+B2B_CUSTOMER accounts. Office/floor staff of the seller do not shop here.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- Clearing balances helps **Place order** and supplier-side **Allocate** succeed again.
-- Supplier Owner sees complementary AR in **Invoices** / Dashboard **Open AR**.
+**Where to go in weGrowStock:**
+🖥️ Sign in with your buyer account — you land in the Showroom. Navigation tabs: **Catalog** | **Orders** | **Checkout** | **Billing**
 
-#### 3. Safety, Reversal & Undo Rules
-- Billing disputes go through your rep and credits—not through asking warehouse to erase shipments.
+**Step-by-Step Instructions:**
+1. Open **Catalog** and browse items; add quantities to your cart.
+2. Open **Checkout**; review quantities, ship-to address, and terms **before** placing.
+3. Click **Place order**.
+4. Track progress under **Orders** (the seller's warehouse confirms, allocates, ships).
 
-#### 4. Troubleshooting Common Blockers
-- **Cannot checkout due to credit?** Pay down **Billing** or request a temporary commercial exception from the supplier Owner.
-
----
-
-### Customers, invoices & credit holds (supplier office)
-
-- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER (commercial policy varies).
-- **Route Location:** **Customers**, **Invoices**, **Sales Orders**, Dashboard banners
-- **Primary Operational Goal:** Keep wholesale accounts sellable without overextending credit.
-
-#### 1. Step-by-Step Action Plan
-1. Maintain the customer under **Customers**.
-2. On **Sales Orders**, use **Invoice** / **Invoice remaining** when fulfillment progress allows.
-3. Watch proactive **Credit Hold** messaging; pause **Allocate** until finance clears the account.
-4. Use Dashboard **Open AR** / **Ready to invoice** cards to prioritize collections and billing.
-
-#### 2. Correlated Flow & Downstream Ripple Effect
-- B2B **Place order** and warehouse **Allocate** both feel credit posture.
-- Pickers should not be asked to override credit—from the floor, short picks and holds look like missing work.
-
-#### 3. Safety, Reversal & Undo Rules
-- Credits and re-invoices are additive finance documents.
-- Do not “fix” AR by deleting shipment history.
-
-#### 4. Troubleshooting Common Blockers
-- **Why is Allocate greyed out on a confirmed order?** Check **Credit Hold** and stock availability first.
-- **VIEWER cannot invoice?** Escalate to Admin/Owner.
+**⚠️ What if I make a mistake?**
+- **Wrong quantity/items in the cart:** Edit the cart before **Place order** — everything is free to change until then.
+- **Placed the order with a mistake:** Contact your sales rep quickly. If the seller hasn't allocated/shipped yet, they can cancel their side and you re-order. Once shipped, use **Return Items** → **Submit return** on the order.
+- **Wrong ship-to address:** Same urgency rule — before ship, the rep fixes it; after ship, carrier intercept or a return.
+- **Checkout blocked ("credit")?** Your account hit its credit limit or is on **Credit Hold**. Check **Billing**, pay down open invoices, or ask your rep about a temporary exception. The block is automatic, not personal.
 
 ---
 
-### Settings: billing, financing, integrations, users
+### How to Issue an Invoice to a B2B Customer (office)
 
-- **Target Audience & Roles:** ADMIN for most settings; OWNER for billing & financing; others generally blocked.
-- **Route Location:** **Settings** tabs and subpages (**Billing**, **Cash Flow & Financing**, **Integrations**, **Users**, **Profile**, **Operations**, **Partner Catalog**, etc.)
-- **Primary Operational Goal:** Keep the tenant’s commercial rails, users, and connected apps healthy.
+**What is this?**
+Billing the buyer for what actually shipped. The invoice amount comes from shipped lines and agreed prices — it becomes part of the permanent financial ledger the moment it posts.
 
-#### 1. Step-by-Step Action Plan
-1. Open **Settings** (Admin/Owner).
-2. **Profile** — personal display preferences.
-3. **Users** — invite with roles such as ADMIN, WAREHOUSE_MANAGER, PICKER, VIEWER, B2B_CUSTOMER.
-4. **Billing** — subscription/plan matters for Owners.
-5. **Cash Flow & Financing** (Owner) — review financing / factoring style options your organization enabled; follow on-screen connects/confirms only.
-6. **Integrations** / Integrations Hub — connect accounting or channel apps; respect **LIVE** badges when a connection is healthy.
-7. Other tabs as needed: **Warehouses**, **Inventory Rules**, **Documents**, **Retail POS** (addon — see below), **Security & SSO**, **Reconciliation**, **Accounting Sync**, **Operations**, **Sync Conflicts**, **Cost Centers & Requisitions**, **Partner Catalog** (SKU mapping after a Mesh Network connection). Cross-tenant discover/handshake lives on **Inbound → Mesh Network**.
-8. Save each tab using its on-screen save/confirm controls before leaving.
+**Who can do this? (Privileges Required)**
+OWNER or ADMIN (WAREHOUSE_MANAGER per company policy). **Voiding requires the Void Invoices permission (ADMIN/OWNER).**
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- User invites determine who can **Release to floor** vs who only browses Showroom.
-- Financing/billing settings change cash timing—not bin quantities directly.
-- Broken integrations surface as sync/accounting exceptions for managers.
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Outbound** → **Sales Orders** → **Invoice** / **Invoice remaining**
+🖥️ Or: **Outbound** → **Invoices** for the full list (search box + status filter at the top)
 
-#### 3. Safety, Reversal & Undo Rules
-- Disable a user instead of sharing passwords.
-- Disconnect integrations deliberately; do not leave half-configured **LIVE** connections unattended.
-- Stock truth still changes only via receive, pick, count, and corrections.
+**Step-by-Step Instructions:**
+1. Open the shipped sales order.
+2. Click **Invoice** (or **Invoice remaining** after partial shipments).
+3. Check three things out loud: **customer**, **line prices**, **total**.
+4. Confirm. The invoice appears under **Invoices**; the buyer sees it in their Showroom **Billing**.
 
-#### 4. Troubleshooting Common Blockers
-- **Fintech page forbidden?** Owner-only.
-- **Invite missing OWNER role?** Owners are not created from the standard invite list—follow your provisioning process.
-- **Sync Conflicts tab in Settings?** Same decisions as **Exceptions → Sync Conflicts**: **Discard Transaction** vs **Approve & Re-process**.
-- **Retail POS tab missing?** The workspace must include the `RETAIL_POS` addon, and you must be Owner or Admin. Warehouse managers cannot open Organization settings.
+**⚠️ What if I make a mistake?**
+- **Wrong price on the invoice (typed $1,000, meant $100):** Do not try to edit the posted invoice — posted means posted. An ADMIN/OWNER with **Void Invoices** voids it (or issues a credit note for the difference), then re-invoices correctly. The buyer's Billing shows the honest trail: wrong invoice → void/credit → correct invoice.
+- **Duplicate invoice (clicked Invoice twice / two people billed the same order):** Void the duplicate. The order's billing state returns to normal, and **Invoice remaining** shows what is truly still billable. Check the buyer wasn't double-charged through an integration; if a payment already landed on the duplicate, finance applies it to the correct invoice.
+- **Invoiced the wrong customer:** Void, then re-issue on the correct account. Both events remain visible on both accounts — that is correct and protects you in a dispute.
+- **Refunded invoice — how do I reverse the ledger entry?** A refund is never a deletion. The sequence: (1) issue the **credit note / void** against the invoice (finance document), (2) if goods came back, receive them through the RMA flow — **Returns** office approval, then floor **Returns receive** with **Condition photo** + **Confirm +1** — which writes the stock back onto the ledger, (3) payment is refunded through your payment rails. Three entries, three signatures, zero erasing. If you only remember one thing: *money fixes and stock fixes are separate entries; do both, delete neither.*
 
-### Settings: Retail POS
+---
 
-- **Target Audience & Roles:** OWNER or ADMIN, and only when the tenant subscription includes `RETAIL_POS`.
-- **Route Location:** **Settings → Retail POS** (`/settings?tab=retailPos`)
-- **Primary Operational Goal:** Configure register receipts, regional compliance, and shift-end loss-prevention before cashiers open the store app.
+### How to Read Buyer Billing & Credit (both sides)
 
-#### 1. Step-by-Step Action Plan
-1. Confirm Super Admin entitled **Retail POS** for this tenant (Demo Corp in local seed; Acme/Northwind/Pacific do not have it).
-2. Sign in as Owner or Admin and open **Admin → Organization → Retail POS**.
-3. **Localization & Compliance** — set default currency to **USD** or **MXN**; turn on **Enable CFDI 4.0 Facturación (Mexico)** when Mexican electronic invoicing is required.
-4. **Receipt Configuration** — enter header (store name, address, tax ID) and footer (return policy, thank-you). Each field is limited to 2000 characters.
-5. **Security & Loss Prevention** — enable **Require Blind Closeout at Shift End** so cashiers count cash without seeing the expected drawer total.
-6. **Save POS settings**. Reload the page to confirm the values persisted.
+**What is this?**
+The buyer's **Billing** tab shows open invoices and balance. On your side, the same numbers appear as AR (accounts receivable) and drive **Credit Hold** automation.
 
-#### 2. Correlated Flow & Downstream Ripple Effect
-- These prefs persist in `tenant_settings.settings` (`pos_*` keys) via `PATCH /api/v1/settings`.
-- Cashiers still sign in on the register (`:3003`). Without the addon the register stays locked (`posEnabled=false`).
-- Changing currency or CFDI here does not rewrite historical WMS invoices.
+**Who can do this? (Privileges Required)**
+Buyer: their own Billing only. Seller: OWNER/ADMIN see all AR; Dashboard cards visible to office roles.
 
-#### 3. Safety, Reversal & Undo Rules
-- Unsupported currencies (anything other than USD/MXN) are rejected (`POS_CURRENCY_UNSUPPORTED`).
-- Warehouse managers and cashiers cannot change these settings from the register.
+**Where to go in weGrowStock:**
+🖥️ Buyer: Showroom → **Billing**
+🖥️ Seller: **Outbound** → **Invoices**, plus Dashboard cards **Open AR** and **Ready to invoice**
 
-#### 4. Troubleshooting Common Blockers
-- **Tab not in the left nav?** Check role (Owner/Admin) and entitlements (`RETAIL_POS`).
-- **Save failed?** Receipt text over 2000 characters, or a stale session — re-login as Owner/Admin.
+**Step-by-Step Instructions:**
+1. *Seller:* watch **Open AR** on the Dashboard; chase overdue invoices before they trigger holds.
+2. *Buyer:* check **Billing** before big orders — paying down balance prevents checkout blocks.
+3. When a **Credit Hold** banner appears on a customer: stop trying to **Allocate** their orders and resolve billing first (payment, credit note, or an Owner-approved limit increase).
+
+**⚠️ What if I make a mistake?**
+- **Put the wrong customer on hold / raised the wrong limit:** Credit posture is master data — correct it on the customer record; allocations resume immediately.
+- **Kept allocating around a hold:** Don't. The hold exists because the math says risk. If business wants an exception, an OWNER changes the limit — visibly — rather than staff working around it.
+
+---
+
+### Capital & Financing (Cash Flow) — Owner only
+
+**What is this?**
+Optional financing products (e.g. capital advances or factoring-style offers) that change *when* cash arrives — not what stock exists. All of it lives behind Owner-only settings.
+
+**Who can do this? (Privileges Required)**
+OWNER only. Admins and managers see a "forbidden" page by design.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Admin** → **Organization** → **Cash Flow & Financing** tab
+
+**Step-by-Step Instructions:**
+1. Open **Settings → Cash Flow & Financing** as the Owner.
+2. Review offers/status shown for your organization.
+3. Follow only the on-screen connect/confirm steps — never share credentials outside the flow.
+
+**⚠️ What if I make a mistake?**
+- **Started a financing connect flow you didn't mean to:** Stop before the final confirm — nothing binds until the flow completes. If you completed something in error, contact the financing provider through the same page's support path; this is a contractual matter, not a ledger edit.
+- **Fintech page "forbidden":** You're not the Owner. That's the control working.
+
+---
+
+### Settings Quick Map (office admins)
+
+**What is this?**
+Where the commercial rails live. One-line map so you don't hunt:
+
+**Who can do this? (Privileges Required)**
+ADMIN for most tabs; OWNER for **Billing** and **Cash Flow & Financing**.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Admin** → **Organization**
+
+- **Users** — invite staff with roles (ADMIN, WAREHOUSE_MANAGER, PICKER, VIEWER, B2B_CUSTOMER). Disable a user instead of sharing passwords.
+- **Billing** — your subscription plan (Owner).
+- **Cash Flow & Financing** — capital products (Owner).
+- **Integrations** — accounting/channel apps; a healthy connection shows **LIVE**.
+- **Sync Conflicts** — same queue as Exceptions (SOP 04).
+- **Partner Catalog** — SKU mapping after a Mesh Network connection.
+- **Retail POS** — register settings (needs the RETAIL_POS addon; Owner/Admin only).
+
+**⚠️ What if I make a mistake?**
+- **Invited someone with the wrong role:** Edit their role under **Users** — takes effect on next sign-in.
+- **Disconnected an integration by accident:** Reconnect from the same card; check for a backlog of unsynced documents afterward under Reconciliation/Accounting Sync.
+
+---
+
+## Quick reference: "I messed up" cheat sheet (B2B & money)
+
+| Mistake | Can I fix it myself? | The fix |
+|---|---|---|
+| Invoice with wrong price/total | Needs **Void Invoices** (Admin/Owner) | Void or credit note → re-invoice correctly |
+| Duplicate invoice | Needs **Void Invoices** | Void the twin; re-apply any payment to the right invoice |
+| Invoice on wrong customer | Needs **Void Invoices** | Void → re-issue on correct account |
+| Refund needed after return | Office + floor together | Credit note (money) + RMA receive (stock) — two separate entries |
+| Approved wholesale app with wrong terms | Yes (Admin) | Edit customer terms/limit; old invoices keep old terms |
+| Buyer placed a wrong order | Buyer + rep | Cancel before ship, or **Return Items** after |
+| Buyer blocked at checkout (credit) | Buyer pays / Owner decides | Pay down **Billing**, or Owner adjusts the limit visibly |
+| Wrong credit hold / limit | Yes (Owner/Admin) | Correct the customer record |
+
+**Golden rule:** money documents follow the same law as stock: **posted is permanent; corrections are new signed documents.** A void next to a wrong invoice is not embarrassing — it's what a trustworthy books looks like. And the stock side of any refund always goes through the RMA flow, never through editing a shipment.
+
+**Still stuck?** Ask the chat bubble in plain words (e.g. *"I invoiced SO-1042 twice"*). Where the assistant can help, it drafts the fix as an **Action Draft** for an Admin/Owner to **Approve**.

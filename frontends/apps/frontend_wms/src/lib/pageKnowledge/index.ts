@@ -25,3 +25,9 @@ export type {
   RouteKnowledge,
   ResolvedRouteKnowledge,
 } from './RouteKnowledgeRegistry';
+
+export { resolveDynamicPageKnowledge } from './resolveDynamicPageKnowledge';
+export { usePageKnowledge, usePageKnowledgeCatalog, pageKnowledgeQueryOptions } from './usePageKnowledge';
+export { fetchAllPageKnowledge } from './dynamicApi';
+export { PAGE_KNOWLEDGE_QUERY_KEY } from './dynamicTypes';
+export type { DynamicPageKnowledge, MistakeFix } from './dynamicTypes';
