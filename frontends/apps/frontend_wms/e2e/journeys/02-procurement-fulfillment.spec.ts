@@ -371,4 +371,64 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
       await manager.close();
     }
   });
+
+  test('AP Document Workspace renders viewer, 3-way table, and price-variance dispute', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const supplierId = await firstSupplierId(manager.page);
+      const po = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/purchase-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId,
+          number: `PO-APWS-${Date.now()}`,
+          destinationLocationId: WH_01,
+          lines: [{ variantId, qtyOrdered: 8, unitCost: 3.25 }],
+        }),
+      });
+      expect((await manager.page.request.post(`/api/v1/purchase-orders/${po.id}/submit`)).ok()).toBeTruthy();
+
+      const poDetail = await apiJson<{
+        lines: Array<{ id: string; variantId: string }>;
+      }>(manager.page, `/api/v1/purchase-orders/${po.id}`);
+      const line = poDetail.lines.find((row) => row.variantId === variantId) ?? poDetail.lines[0];
+      const receiveRes = await manager.page.request.post(`/api/v1/purchase-orders/lines/${line.id}/receive`, {
+        headers: { 'Content-Type': 'application/json', 'X-Warehouse-Id': WH_01 },
+        data: { locationId: PICK_BIN_ID, quantity: 8 },
+      });
+      expect(receiveRes.ok(), await receiveRes.text()).toBeTruthy();
+
+      await manager.page.goto('/purchasing/ap-ingestion');
+      await expect(manager.page.getByTestId('ap-document-workspace')).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('ap-document-viewer')).toBeVisible();
+      await expect(manager.page.getByText(/Extracted invoice JSON|Document URL/i)).toHaveCount(0);
+
+      const invoice = [
+        `Invoice Number: INV-${Date.now()}`,
+        'Invoice Date: 2026-08-22',
+        `PO: ${po.number}`,
+        'SKU WIDGET-S 8 @ $3.25',
+      ].join('\n');
+      await manager.page.getByTestId('ap-invoice-file-input').setInputFiles({
+        name: 'vendor-invoice.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from(invoice),
+      });
+
+      await expect(manager.page.getByTestId('ap-document-viewer')).toBeVisible();
+      await expect(manager.page.getByTestId('ap-three-way-table')).toContainText(/WIDGET-S/i, { timeout: 20_000 });
+      await expect(manager.page.getByText('Extracted invoice JSON')).toHaveCount(0);
+
+      const price = manager.page.getByTestId('ap-invoiced-price').first();
+      await price.fill('12.50');
+      await expect(manager.page.getByTestId('ap-match-status').first()).toHaveAttribute(
+        'data-status',
+        'PRICE_VARIANCE',
+      );
+      await expect(manager.page.getByTestId('ap-match-status').first()).toHaveClass(/text-danger/);
+      await expect(manager.page.getByTestId('ap-issue-debit-memo')).toBeEnabled();
+    } finally {
+      await manager.close();
+    }
+  });
 });

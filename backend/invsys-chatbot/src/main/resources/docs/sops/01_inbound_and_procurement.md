@@ -313,14 +313,15 @@ Paying a vendor is like checking three papers that must tell the same story: (1)
 **OWNER, ADMIN, or WAREHOUSE_MANAGER** reviews AP ingestions. Floor pickers receive freight; they do not approve vendor bills.
 
 **Where to go in weGrowStock:**
-🖥️ Sidebar Navigation → **Inbound** → **Suppliers** → **Open Workspace** → tab **AP Invoices**
-(Upload still lives on **Purchase Orders** if you are ingesting a new PDF.)
+🖥️ Sidebar Navigation → **Inbound** → **AP Invoices** (`/purchasing/ap-ingestion`)
+(You can also drop a PDF from **Purchase Orders** — it opens this same workspace.)
 
 **Step-by-Step Instructions:**
-1. Open the supplier workspace.
-2. Click **AP Invoices**.
-3. Read the **3-Way Match** chip: Matched / Discrepancy / Pending.
-4. If it is a discrepancy, open the linked PO and fix the receive or the bill **before** anyone pays. Do not silently edit a posted receipt.
+1. Open **AP Invoices**.
+2. Drop the vendor PDF or image — OCR fills invoice number, date, supplier, and lines. There is no JSON paste.
+3. Confirm the linked PO (auto-detected, or search the combobox).
+4. Read the 3-way table: Matched / Qty Variance / Price Variance.
+5. If it is a discrepancy, **Issue Debit Memo / Dispute** or **Request Warehouse Recount** **before** anyone pays. Do not silently edit a posted receipt.
 
 **⚠️ What if I make a mistake?**
 - **Paid a mismatched bill:** Tell finance. The OCR match log stays. Correct the receive with a reversing receipt if stock was wrong; AP then re-matches. Never delete the vendor bill.
@@ -336,18 +337,18 @@ A **3-Way Mismatch** means the AP Invoice is blocked because the vendor's quanti
 **FINANCE_ADMIN**, OWNER, ADMIN, or WAREHOUSE_MANAGER reviews the three documents. Floor workers do not reject AP invoices.
 
 **Where to go in weGrowStock:**
-🖥️ Sidebar Navigation → **Inbound** → **Suppliers** (`/purchasing/suppliers`) → **Open Workspace** → tab **AP Invoices**
+🖥️ Sidebar Navigation → **Inbound** → **AP Invoices** (`/purchasing/ap-ingestion`)
 
 **Step-by-Step Instructions (how to find the discrepancy):**
-1. Open the supplier workspace and click **AP Invoices**.
-2. Read the **3-Way Match** chip. **Discrepancy** means at least one of qty, price, or receipt is off.
+1. Open the AP Invoice Reconciliation workspace.
+2. Read **Match Status** on each line. **Qty Variance** or **Price Variance** means at least one of qty, price, or receipt is off.
 3. Compare the three documents in this workspace, side by side:
    - **PO** — what we ordered and the unit price we agreed.
    - **Dock Receipt** — what the floor actually scanned in.
    - **Vendor bill** — what they want us to pay.
 4. Decide who is wrong:
-   - **Vendor overbilled** (bill qty/price higher than PO + receipt) → **reject the AP Invoice**. Do not pay. Ask the vendor for a corrected bill.
-   - **Dock miscounted** (receipt does not match the boxes that are physically here) → a **Manager must post a stock correction** (or Reverse Receipt + re-receive). Then AP can re-match.
+   - **Vendor overbilled** (bill qty/price higher than PO + receipt) → **Issue Debit Memo / Dispute**. Do not pay. Ask the vendor for a corrected bill.
+   - **Dock miscounted** (receipt does not match the boxes that are physically here) → **Request Warehouse Recount** (opens Variance Approval). A Manager must post the stock correction. Then AP can re-match.
    - **PO price was typed wrong** and nothing should have been received at that cost → finance/admin corrects the commercial document; do not silently edit the posted receipt.
 5. Only when the three agree does the chip go **Matched** and AP can post.
 

@@ -2,15 +2,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ClipboardList, FileUp, Plus, Trash2 } from 'lucide-react';
+import { stashApInvoiceFile } from '@/features/purchasing/apInvoiceFileStore';
 import { apiClient } from '@/api/client';
-import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type {
   PaginatedResponse,
   ProductVariant,
   PurchaseOrder,
   PurchaseOrderDetail,
   Supplier,
-  SupplierInvoiceIngestion,
   TenantLocation,
 } from '@/api/types';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -608,84 +607,27 @@ function ReceivePoModal({
   );
 }
 
-interface ApDocIngestion {
-  id: string;
-  fileStorageKey: string;
-  ingestionStatus: string;
-  parsedMetadata?: Record<string, unknown>;
-  matchedPurchaseOrderId?: string | null;
-  createdAt: string;
-}
-
-function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] }) {
-  const queryClient = useQueryClient();
-  const [poId, setPoId] = useState('');
-  const [documentUrl, setDocumentUrl] = useState('');
-  const [jsonPayload, setJsonPayload] = useState(
-    '{\n  "lines": [\n    { "sku": "WIDGET-S", "qty": 100, "unitCost": 5.00 }\n  ]\n}'
-  );
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+function ApIngestionPanel() {
+  const navigate = useNavigate();
   const [dragOver, setDragOver] = useState(false);
 
-  const { data: ingestions = [] } = useQuery({
-    queryKey: ['ap', 'ingestions'],
-    queryFn: async () =>
-      (await apiClient.get<SupplierInvoiceIngestion[]>('/api/v1/ap/ingestions')).data,
-    retry: false,
-  });
-
-  const { data: docIngestions = [] } = useQuery({
-    queryKey: ['ap', 'doc-ingestions'],
-    queryFn: async () =>
-      (await apiClient.get<ApDocIngestion[]>('/api/v1/ap-ingestions')).data,
-    refetchInterval: refetchIntervalWhileAuthenticated(3000),
-    retry: false,
-  });
-
-  const submitMutation = useMutation({
-    mutationFn: async () => {
-      const extractedData = JSON.parse(jsonPayload) as Record<string, unknown>;
-      await apiClient.post('/api/v1/ap/ingestions', {
-        purchaseOrderId: poId,
-        documentUrl: documentUrl || undefined,
-        extractedData,
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['ap', 'ingestions'] });
-      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    },
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData();
-      form.append('file', file);
-      await apiClient.post('/api/v1/ap-ingestions/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-    },
-    onSuccess: () => {
-      setUploadFile(null);
-      void queryClient.invalidateQueries({ queryKey: ['ap', 'doc-ingestions'] });
-      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    },
-  });
+  function openWorkspace(file?: File | null) {
+    if (file) stashApInvoiceFile(file);
+    navigate('/purchasing/ap-ingestion');
+  }
 
   return (
     <Card className="mt-8">
       <CardHeader
-        title="AP invoice ingestion"
-        description="Upload supplier invoices for AI staging, or paste OCR JSON to reconcile against PO lines"
+        title="AP invoice reconciliation"
+        description="Open the split-screen workspace to preview the vendor bill and run a 3-way match"
       />
       <div className="space-y-4 p-4">
         <div className="space-y-3" data-testid="document-ai-upload">
-          <p className="text-sm font-medium text-text">Document AI upload</p>
           <div
             className={cn(
               'flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center transition-colors',
               dragOver ? 'border-accent bg-accent/5' : 'border-border bg-surface-overlay/40',
-              uploadMutation.isPending && 'pointer-events-none opacity-60',
             )}
             data-testid="document-ai-dropzone"
             onDragOver={(e) => {
@@ -696,8 +638,7 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              const file = e.dataTransfer.files?.[0] ?? null;
-              if (file) setUploadFile(file);
+              openWorkspace(e.dataTransfer.files?.[0] ?? null);
             }}
             onClick={() => document.getElementById('ap-invoice-file-input')?.click()}
             onKeyDown={(e) => {
@@ -712,111 +653,25 @@ function ApIngestionPanel({ purchaseOrders }: { purchaseOrders: PurchaseOrder[] 
           >
             <FileUp className="h-8 w-8 text-text-muted" aria-hidden />
             <div className="text-sm text-text">
-              {uploadFile ? (
-                <span className="font-medium">{uploadFile.name}</span>
-              ) : (
-                <>
-                  Drop a PDF or image here, or <span className="text-accent">browse</span>
-                </>
-              )}
+              Drop a PDF or image here, or <span className="text-accent">browse</span>
             </div>
-            <p className="text-xs text-text-muted">PDF, CSV, TXT, or image — AI stages lines for PO match</p>
+            <p className="text-xs text-text-muted">Opens the AP Document Workspace — no JSON paste</p>
             <input
               id="ap-invoice-file-input"
               type="file"
               accept=".pdf,.txt,.csv,image/*"
               className="hidden"
-              onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => openWorkspace(e.target.files?.[0] ?? null)}
             />
           </div>
           <Button
             className="min-h-11 touch-target"
             data-testid="document-ai-upload-btn"
-            onClick={() => uploadFile && uploadMutation.mutate(uploadFile)}
-            loading={uploadMutation.isPending}
-            disabled={!uploadFile}
+            onClick={() => navigate('/purchasing/ap-ingestion')}
           >
-            Upload invoice document
+            Open AP workspace
           </Button>
-          {docIngestions.length > 0 && (
-            <div className="space-y-2">
-              {docIngestions.slice(0, 5).map((ing) => (
-                <div key={ing.id} className="rounded-lg border border-border p-3 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{ing.ingestionStatus}</span>
-                    <span className="truncate text-xs text-text-muted">{ing.fileStorageKey}</span>
-                  </div>
-                  {ing.matchedPurchaseOrderId && (
-                    <p className="mt-1 text-xs text-text-muted">
-                      Matched PO {ing.matchedPurchaseOrderId.slice(0, 8)}…
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-
-        <Select
-          label="Purchase order"
-          value={poId}
-          onChange={(e) => setPoId(e.target.value)}
-        >
-          <option value="">Select PO…</option>
-          {purchaseOrders.map((po) => (
-            <option key={po.id} value={po.id}>
-              {po.number}
-            </option>
-          ))}
-        </Select>
-        <Input
-          label="Document URL"
-          value={documentUrl}
-          onChange={(e) => setDocumentUrl(e.target.value)}
-          placeholder="https://…/supplier-invoice.pdf"
-        />
-        <label className="block text-sm font-medium text-text">
-          Extracted invoice JSON
-          <textarea
-            className="mt-1 w-full rounded-lg border border-border bg-surface p-3 font-mono text-sm text-text"
-            rows={6}
-            value={jsonPayload}
-            onChange={(e) => setJsonPayload(e.target.value)}
-          />
-        </label>
-        <Button
-          className="min-h-11 touch-target"
-          onClick={() => submitMutation.mutate()}
-          loading={submitMutation.isPending}
-          disabled={!poId}
-        >
-          Upload & reconcile
-        </Button>
-        {ingestions.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-text">Recent reconciliations</p>
-            {ingestions.slice(0, 5).map((ing) => (
-              <div
-                key={ing.id}
-                className={cn(
-                  'rounded-lg border p-3 text-sm',
-                  ing.status === 'CONFLICT' ? 'border-warning bg-warning/10' : 'border-border'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{ing.status}</span>
-                  <span className="text-text-muted">{ing.matchConfidence.toFixed(0)}% match</span>
-                </div>
-                {ing.documentUrl && (
-                  <p className="mt-1 truncate text-xs text-text-muted">{ing.documentUrl}</p>
-                )}
-                {ing.status === 'CONFLICT' && (
-                  <p className="mt-1 text-xs text-warning">Line conflicts require review</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </Card>
   );
@@ -942,7 +797,7 @@ export function PurchaseOrdersPage() {
 
         {canCreate && (
           <div className="border-t border-border/60 px-6 pb-6">
-            <ApIngestionPanel purchaseOrders={items} />
+            <ApIngestionPanel />
           </div>
         )}
       </div>

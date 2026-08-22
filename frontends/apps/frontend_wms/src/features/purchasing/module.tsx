@@ -5,6 +5,7 @@ import { MrpReorderWorkspace } from '@/features/purchasing/MrpReorderWorkspace';
 import { PurchaseOrdersPage } from '@/features/purchasing/PurchaseOrdersPage';
 import { RtvWorkspace } from '@/features/purchasing/RtvWorkspace';
 import { SuppliersPage } from '@/features/purchasing/SuppliersPage';
+import { ApDocumentWorkspace } from '@/pages/purchasing/ApDocumentWorkspace';
 import { PurchaseOrderDetailPage } from '@/pages/purchasing/PurchaseOrderDetailPage';
 import { SupplierDetailPage } from '@/pages/purchasing/SupplierDetailPage';
 import { defineModule, isModuleBuildEnabled } from '@/lib/router/moduleRegistry';
@@ -38,6 +39,16 @@ export const purchasingModule = defineModule({
         </EnterpriseRouteGate>
       ),
     },
+    {
+      path: 'purchasing/ap-ingestion',
+      element: (
+        <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}>
+          <ErrorBoundary boundaryName="ap-document-workspace">
+            <ApDocumentWorkspace />
+          </ErrorBoundary>
+        </EnterpriseRouteGate>
+      ),
+    },
   ],
   standaloneRoutes: [
     {
@@ -56,5 +67,6 @@ export const purchasingModule = defineModule({
     { to: '/suppliers', label: 'Suppliers', moduleId: 'purchasing' },
     { to: '/mrp', label: 'MRP reorder', moduleId: 'purchasing' },
     { to: '/purchasing/rtv', label: 'RTV / Chargebacks', moduleId: 'purchasing' },
+    { to: '/purchasing/ap-ingestion', label: 'AP Invoices', moduleId: 'purchasing' },
   ],
 });

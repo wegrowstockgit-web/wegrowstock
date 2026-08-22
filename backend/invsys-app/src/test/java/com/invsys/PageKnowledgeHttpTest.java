@@ -65,6 +65,14 @@ class PageKnowledgeHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.title").value("Settings — Users"));
 
         mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/purchasing/ap-ingestion")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("AP Invoice Reconciliation"))
+                .andExpect(jsonPath("$.summary").value(containsString("3-way match")))
+                .andExpect(jsonPath("$.commonMistakes[0].mistake").value(containsString("3-Way Mismatch")));
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
                         .param("route", "/totally-unknown-route")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
