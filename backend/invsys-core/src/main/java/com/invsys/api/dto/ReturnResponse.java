@@ -18,6 +18,14 @@ public record ReturnResponse(
         String labelPurchaseMode,
         List<String> evidenceUrls,
         List<ReturnLineResponse> lines,
-        Instant createdAt
+        Instant createdAt,
+        BigDecimal estimatedReturnValue,
+        int itemCount,
+        String trackingNumber,
+        String resolutionType,
+        UUID creditMemoId,
+        String creditMemoNumber,
+        UUID rtvOrderId,
+        String rtvNumber
 ) {
 }

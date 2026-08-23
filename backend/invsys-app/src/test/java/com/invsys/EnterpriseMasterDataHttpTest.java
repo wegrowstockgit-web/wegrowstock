@@ -99,7 +99,7 @@ class EnterpriseMasterDataHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.customerStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.billingAddress.city").value("Austin"));
 
-        mockMvc.perform(post("/api/v1/suppliers")
+        MvcResult supplierResult = mockMvc.perform(post("/api/v1/suppliers")
                         .header("Authorization", "Bearer " + owner.accessToken())
                         .header("X-Warehouse-Id", warehouseId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,7 +114,11 @@ class EnterpriseMasterDataHttpTest extends AbstractIntegrationTest {
                                   "routingNumber": "021000021",
                                   "defaultLeadTimeDays": 14,
                                   "minimumOrderQuantityValue": 500,
-                                  "supplierRating": 4.5
+                                  "supplierRating": 4.5,
+                                  "defaultCurrency": "EUR",
+                                  "supplierClass": "PACKAGING",
+                                  "incoterms": "DDP",
+                                  "inviteToPortal": true
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -122,7 +126,19 @@ class EnterpriseMasterDataHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.defaultLeadTimeDays").value(14))
                 .andExpect(jsonPath("$.supplierRating").value(4.5))
                 .andExpect(jsonPath("$.bankAccountIban").value("****5432"))
-                .andExpect(jsonPath("$.contactEmail").value("buy@parts.test"));
+                .andExpect(jsonPath("$.contactEmail").value("buy@parts.test"))
+                .andExpect(jsonPath("$.defaultCurrency").value("EUR"))
+                .andExpect(jsonPath("$.supplierClass").value("PACKAGING"))
+                .andExpect(jsonPath("$.incoterms").value("DDP"))
+                .andExpect(jsonPath("$.portalAccess").value(true))
+                .andExpect(jsonPath("$.isMeshPartner").value(false))
+                .andReturn();
+        String supplierId = objectMapper.readTree(supplierResult.getResponse().getContentAsString()).get("id").asText();
+        mockMvc.perform(get("/api/v1/suppliers/" + supplierId)
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .header("X-Warehouse-Id", warehouseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.portalAccess").value(true));
 
         mockMvc.perform(patch("/api/v1/users/me/profile")
                         .header("Authorization", "Bearer " + owner.accessToken())

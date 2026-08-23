@@ -60,7 +60,47 @@ class DesktopIdleTimeoutHttpTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + owner.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.desktopIdleTimeoutMinutes").value(15));
+                .andExpect(jsonPath("$.desktopIdleTimeoutMinutes").value(15))
+                .andExpect(jsonPath("$.sessionLocked").value(false));
+
+        mockMvc.perform(post("/api/v1/auth/lock")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sessionLocked").value(true));
+
+        mockMvc.perform(get("/api/v1/settings")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.title").value("SESSION_LOCKED"));
+
+        mockMvc.perform(post("/api/v1/auth/unlock")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"wrong-password\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/settings")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isLocked());
+
+        mockMvc.perform(post("/api/v1/auth/unlock")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"password123\"}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sessionLocked").value(false));
+
+        mockMvc.perform(get("/api/v1/settings")
+                        .header("Authorization", "Bearer " + owner.accessToken()))
+                .andExpect(status().isOk());
 
         mockMvc.perform(patch("/api/v1/settings")
                         .header("Authorization", "Bearer " + owner.accessToken())

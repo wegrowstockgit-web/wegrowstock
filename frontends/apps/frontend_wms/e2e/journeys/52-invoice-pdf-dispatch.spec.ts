@@ -5,11 +5,11 @@ const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'password123';
 const API = process.env.E2E_API_URL ?? 'http://localhost:8080';
 
 /**
- * Functional e2e: owner opens Invoices, peeks an OPEN invoice (seeded via API when possible),
- * and exercises Download PDF + Email invoice controls.
+ * Functional e2e: owner opens Invoices, opens the invoice workspace, and sees
+ * Download PDF + Email invoice controls.
  */
 test.describe('Invoice PDF generation & dispatch', () => {
-  test('owner can download and email invoice PDF from peek drawer', async ({ page, request }) => {
+  test('owner can download and email invoice PDF from the workspace', async ({ page, request }) => {
     test.setTimeout(90_000);
 
     const login = await request.post(`${API}/api/v1/auth/login`, {
@@ -42,6 +42,11 @@ test.describe('Invoice PDF generation & dispatch', () => {
 
     await page.goto('/invoices');
     await expect(page.getByRole('heading', { name: 'Invoices' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('invoices-page')).toBeVisible();
+    const skipTour = page.getByRole('button', { name: 'Not now' });
+    if (await skipTour.isVisible({ timeout: 8_000 }).catch(() => false)) {
+      await skipTour.click();
+    }
 
     const openInvoice = invoices.find((i) => i.status === 'OPEN') ?? invoices[0];
     if (!openInvoice) {
@@ -65,7 +70,12 @@ test.describe('Invoice PDF generation & dispatch', () => {
     // Email may 400 if customer has no email — still a valid functional response path
     expect([200, 400]).toContain(emailRes.status());
 
-    await page.getByText(openInvoice.number, { exact: false }).first().click();
+    if (await skipTour.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await skipTour.click();
+    }
+    await page.getByTestId(`invoice-row-${openInvoice.id}`).click();
+    await expect(page).toHaveURL(new RegExp(`/invoices/${openInvoice.id}`), { timeout: 15_000 });
+    await expect(page.getByTestId('invoice-workspace')).toBeVisible();
     await expect(page.getByTestId('invoice-download-pdf')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('invoice-email-pdf')).toBeVisible();
   });

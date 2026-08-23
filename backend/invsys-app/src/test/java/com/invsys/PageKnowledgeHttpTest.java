@@ -110,10 +110,46 @@ class PageKnowledgeHttpTest extends AbstractIntegrationTest {
                         .param("route", "/purchasing/suppliers")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keyActions[*]")
+                        .value(hasItem(containsString("Connect Mesh Partner"))))
                 .andExpect(jsonPath("$.commonMistakes[*].mistake")
                         .value(hasItem(containsString("3-Way Mismatch"))))
                 .andExpect(jsonPath("$.commonMistakes[*].solution")
-                        .value(hasItem(containsString("Compare the three documents"))));
+                        .value(hasItem(containsString("Compare the three documents"))))
+                .andExpect(jsonPath("$.commonMistakes[*].mistake")
+                        .value(hasItem(containsString("bank details"))))
+                .andExpect(jsonPath("$.commonMistakes[*].solution")
+                        .value(hasItem(containsString("future invoices only"))));
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/purchasing/mrp")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(containsString("Min/Max")))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Filter by Supplier"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Suggested Qty"))))
+                .andExpect(jsonPath("$.commonMistakes[*].mistake")
+                        .value(hasItem(containsString("cases of 10"))))
+                .andExpect(jsonPath("$.commonMistakes[*].solution")
+                        .value(hasItem(containsString("manually override"))));
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/returns")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(containsString("credit memos")))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("New RMA"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Credit Memo"))))
+                .andExpect(jsonPath("$.commonMistakes[*].mistake")
+                        .value(hasItem(containsString("broken"))))
+                .andExpect(jsonPath("$.commonMistakes[*].solution")
+                        .value(hasItem(containsString("SCRAP"))));
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/inbound/returns")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(containsString("credit memos")));
 
         mockMvc.perform(get("/api/v1/page-knowledge")
                         .param("route", "/inventory/cycle-counts")
@@ -162,5 +198,79 @@ class PageKnowledgeHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.title").value("Landed Cost Allocation"))
                 .andExpect(jsonPath("$.commonMistakes[*].solution")
                         .value(hasItem(containsString("Do NOT edit the PO"))));
+    }
+
+    @Test
+    void newSalesOrderWorkspaceKnowledgeIsSeeded() throws Exception {
+        String slug = "pk-so-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Help Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/sales/orders/new")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("New Sales Order"))
+                .andExpect(jsonPath("$.summary").value(containsString("customer pricing")))
+                .andExpect(jsonPath("$.keyActions[*]")
+                        .value(hasItem(containsString("Available-to-Promise"))))
+                .andExpect(jsonPath("$.keyActions[*]")
+                        .value(hasItem(containsString("Grand Total"))))
+                .andExpect(jsonPath("$.commonMistakes[*].mistake")
+                        .value(hasItem(containsString("Available stock says 0"))))
+                .andExpect(jsonPath("$.commonMistakes[*].solution")
+                        .value(hasItem(containsString("Backorder"))))
+                .andExpect(jsonPath("$.commonMistakes[*].requiredRole")
+                        .value(hasItem("SALES_REP")));
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/sales-orders/new")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(containsString("customer pricing")));
+    }
+
+    @Test
+    void customerMasterKnowledgeCoversPriceTiersAndCreditHold() throws Exception {
+        String slug = "pk-cu-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Help Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/customers")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(containsString("pricing tiers")))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Price Tier"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Credit Limit"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("B2B Showroom"))))
+                .andExpect(jsonPath("$.commonMistakes[*].mistake")
+                        .value(hasItem(containsString("Credit Hold"))))
+                .andExpect(jsonPath("$.commonMistakes[*].requiredRole")
+                        .value(hasItem("FINANCE_ADMIN")));
+    }
+
+    @Test
+    void invoiceArKnowledgeCoversBalanceDueAndCollections() throws Exception {
+        String slug = "pk-ar-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Help Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+
+        mockMvc.perform(get("/api/v1/page-knowledge")
+                        .param("route", "/invoices")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(containsString("Accounts Receivable")))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("shipped Sales Orders"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Balance Due"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("email the invoice"))))
+                .andExpect(jsonPath("$.keyActions[*]").value(hasItem(containsString("Email Invoices"))))
+                .andExpect(jsonPath("$.commonMistakes[*].mistake")
+                        .value(hasItem(containsString("paid half their bill"))))
+                .andExpect(jsonPath("$.commonMistakes[*].requiredRole")
+                        .value(hasItem("FINANCE_ADMIN")));
     }
 }

@@ -165,6 +165,43 @@ class MeshHandshakeHttpTest extends AbstractIntegrationTest {
                 .isEqualTo("Mesh Buyer Hub");
     }
 
+    @Test
+    void directoryLookupAndHandshakeCreatesLinkedSupplier() throws Exception {
+        String buyerSlug = "meshdir-b-" + UUID.randomUUID().toString().substring(0, 8);
+        String sellerSlug = "meshdir-s-" + UUID.randomUUID().toString().substring(0, 8);
+        String buyerEmail = "owner@" + buyerSlug + ".test";
+        String sellerEmail = "owner@" + sellerSlug + ".test";
+
+        TokenResponse buyerTokens = authService.signup(new SignupRequest(
+                "Directory Buyer", buyerSlug, buyerEmail, "password123", "Owner"));
+        TokenResponse sellerTokens = authService.signup(new SignupRequest(
+                "Directory Seller", sellerSlug, sellerEmail, "password123", "Owner"));
+        UUID sellerTenant = sellerTokens.tenantId();
+
+        var buyerCookie = loginCookie(buyerEmail);
+        mockMvc.perform(get("/api/v1/mesh/directory").cookie(buyerCookie).param("q", sellerSlug))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].tenantId").value(sellerTenant.toString()))
+                .andExpect(jsonPath("$[0].name").value("Directory Seller"))
+                .andExpect(jsonPath("$[0].slug").value(sellerSlug))
+                .andExpect(jsonPath("$[0].catalogPublished").value(false));
+
+        mockMvc.perform(post("/api/v1/mesh/handshake/initiate")
+                        .cookie(buyerCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("partnerTenantId", sellerTenant))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supplierId").isNotEmpty())
+                .andExpect(jsonPath("$.partnerTenantId").value(sellerTenant.toString()))
+                .andExpect(jsonPath("$.partnerName").value("Directory Seller"))
+                .andExpect(jsonPath("$.connectionStatus").value("REQUESTED"));
+
+        mockMvc.perform(get("/api/v1/suppliers").cookie(buyerCookie).param("search", "Directory Seller"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].name").value("Directory Seller"))
+                .andExpect(jsonPath("$.items[0].isMeshPartner").value(true));
+    }
+
     private jakarta.servlet.http.Cookie loginCookie(String email) throws Exception {
         var login = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

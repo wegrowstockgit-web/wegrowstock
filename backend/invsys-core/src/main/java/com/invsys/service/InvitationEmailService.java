@@ -63,6 +63,17 @@ public class InvitationEmailService {
                 "This welcome link remains valid for 15 minutes.");
     }
 
+    public boolean sendSupplierPortalInvite(String toEmail) {
+        return dispatch(
+                toEmail,
+                frontendUrl + "/supplier-portal",
+                "You're invited to the weGrowStock Supplier Portal",
+                "Supplier Portal access",
+                "Your buyer invited you to the weGrowStock Supplier Portal. Use this link to view purchase orders and print receiving labels.",
+                "Open Supplier Portal",
+                "Bookmark this page. Your buyer can resend this invite from Suppliers if you lose the link.");
+    }
+
     public boolean sendInvitation(String toEmail, String inviteUrl) {
         if (toEmail == null || toEmail.isBlank() || inviteUrl == null || inviteUrl.isBlank()) {
             return false;

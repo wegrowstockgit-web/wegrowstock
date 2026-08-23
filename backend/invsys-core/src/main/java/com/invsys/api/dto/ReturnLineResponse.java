@@ -15,6 +15,8 @@ public record ReturnLineResponse(
         String putawayTarget,
         String reasonCode,
         UUID mediaObjectId,
-        String evidenceUrl
+        String evidenceUrl,
+        UUID restockLocationId,
+        BigDecimal restockingFeePct
 ) {
 }

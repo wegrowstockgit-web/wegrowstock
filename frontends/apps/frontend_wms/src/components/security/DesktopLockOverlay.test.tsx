@@ -41,7 +41,7 @@ describe('DesktopLockOverlay', () => {
     await user.type(screen.getByTestId('desktop-unlock-password'), 'password123');
     await user.click(screen.getByTestId('desktop-unlock-submit'));
     await waitFor(() => {
-      expect(post).toHaveBeenCalledWith('/api/v1/auth/desktop-unlock', { password: 'password123' });
+      expect(post).toHaveBeenCalledWith('/api/v1/auth/unlock', { password: 'password123' });
       expect(onUnlocked).toHaveBeenCalled();
     });
   });
@@ -88,7 +88,7 @@ describe('DesktopLockOverlay', () => {
     render(<DesktopLockOverlay open onUnlocked={onUnlocked} />);
 
     await waitFor(() => {
-      expect(post).toHaveBeenCalledWith('/api/v1/auth/desktop-unlock', {
+      expect(post).toHaveBeenCalledWith('/api/v1/auth/unlock', {
         mfaCredentialId: 'cred_1',
         mfaChallenge: 'chal',
         mfaSignature: 'sig',

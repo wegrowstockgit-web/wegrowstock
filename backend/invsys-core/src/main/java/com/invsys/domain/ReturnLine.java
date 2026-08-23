@@ -32,6 +32,12 @@ public class ReturnLine extends TenantScopedEntity {
     @Column(name = "media_object_id")
     private UUID mediaObjectId;
 
+    @Column(name = "restock_location_id")
+    private UUID restockLocationId;
+
+    @Column(name = "restocking_fee_pct")
+    private BigDecimal restockingFeePct = BigDecimal.ZERO;
+
     public UUID getReturnId() {
         return returnId;
     }
@@ -86,5 +92,21 @@ public class ReturnLine extends TenantScopedEntity {
 
     public void setMediaObjectId(UUID mediaObjectId) {
         this.mediaObjectId = mediaObjectId;
+    }
+
+    public UUID getRestockLocationId() {
+        return restockLocationId;
+    }
+
+    public void setRestockLocationId(UUID restockLocationId) {
+        this.restockLocationId = restockLocationId;
+    }
+
+    public BigDecimal getRestockingFeePct() {
+        return restockingFeePct;
+    }
+
+    public void setRestockingFeePct(BigDecimal restockingFeePct) {
+        this.restockingFeePct = restockingFeePct != null ? restockingFeePct : BigDecimal.ZERO;
     }
 }

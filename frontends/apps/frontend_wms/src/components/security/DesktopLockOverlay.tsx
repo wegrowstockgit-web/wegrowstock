@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiClient } from '@/api/client';
+import { waitForDesktopLockRequest } from '@/hooks/useDesktopIdle';
 import { completeMfaAssertion, type MfaChallengeBody } from '@/features/settings/networkAccess';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -55,7 +56,8 @@ export function DesktopLockOverlay({ open, onUnlocked }: DesktopLockOverlayProps
       setError('');
       try {
         const assertion = await completeMfaAssertion(options);
-        await apiClient.post('/api/v1/auth/desktop-unlock', {
+        await waitForDesktopLockRequest();
+        await apiClient.post('/api/v1/auth/unlock', {
           mfaCredentialId: assertion.mfaCredentialId,
           mfaChallenge: assertion.mfaChallenge,
           mfaSignature: assertion.mfaSignature,
@@ -76,7 +78,8 @@ export function DesktopLockOverlay({ open, onUnlocked }: DesktopLockOverlayProps
     setBusy(true);
     setError('');
     try {
-      await apiClient.post('/api/v1/auth/desktop-unlock', { password });
+      await waitForDesktopLockRequest();
+      await apiClient.post('/api/v1/auth/unlock', { password });
       onUnlocked();
     } catch {
       setError('Password is incorrect.');

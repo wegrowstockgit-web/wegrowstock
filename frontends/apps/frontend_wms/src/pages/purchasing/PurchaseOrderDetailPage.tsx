@@ -1,21 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, Network, Plus, Truck, Undo2 } from 'lucide-react';
+import { ArrowLeft, Lock, Network, Plus, Trash2, Truck, Undo2 } from 'lucide-react';
 import { apiClient } from '@/api/client';
-import type { PaginatedResponse, ProductVariant, PurchaseOrderDetail } from '@/api/types';
+import type { PurchaseOrderDetail } from '@/api/types';
 import { RequireRole } from '@/components/auth/RequireRole';
 import { AlertDialog } from '@/components/ui/AlertDialog';
 import { Button } from '@/components/ui/Button';
 import { InlineEditableCell } from '@/components/ui/InlineEditableCell';
-import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import { formatMediumDate } from '@/lib/utils';
+import { SkuSearchCombobox } from '@/features/purchasing/SkuSearchCombobox';
+import { formatCurrency, formatMediumDate } from '@/lib/utils';
 import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -58,6 +59,7 @@ export function PurchaseOrderDetailPage() {
   const [transitTracking, setTransitTracking] = useState('');
   const [transitEta, setTransitEta] = useState('');
   const [newVariantId, setNewVariantId] = useState('');
+  const [newVariantLabel, setNewVariantLabel] = useState('');
   const [newQty, setNewQty] = useState('1');
   const [newCost, setNewCost] = useState('');
 
@@ -66,17 +68,6 @@ export function PurchaseOrderDetailPage() {
     queryFn: async () => (await apiClient.get<PurchaseOrderDetail>(`/api/v1/purchase-orders/${id}`)).data,
     enabled: !!id,
   });
-
-  const { data: variantsPage } = useQuery({
-    queryKey: ['variants', 'all'],
-    queryFn: async () =>
-      (await apiClient.get<PaginatedResponse<ProductVariant>>('/api/v1/variants?limit=200')).data,
-  });
-  const variants = variantsPage?.items ?? [];
-  const skuById = useMemo(
-    () => Object.fromEntries(variants.map((variant) => [variant.id, `${variant.sku} — ${variant.name}`])),
-    [variants],
-  );
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -152,12 +143,23 @@ export function PurchaseOrderDetailPage() {
       }),
     onSuccess: async () => {
       setNewVariantId('');
+      setNewVariantLabel('');
       setNewQty('1');
       setNewCost('');
       await invalidate();
       toast('Line added.', { tone: 'success' });
     },
     onError: () => toast('Could not add that item to a locked order.', { tone: 'danger' }),
+  });
+
+  const deleteLineMutation = useMutation({
+    mutationFn: async (lineId: string) =>
+      apiClient.delete(`/api/v1/purchase-orders/${id}/lines/${lineId}`),
+    onSuccess: async () => {
+      await invalidate();
+      toast('Line removed.', { tone: 'success' });
+    },
+    onError: () => toast('Could not remove that line from a locked order.', { tone: 'danger' }),
   });
 
   const reverseReceipts = async () => {
@@ -188,6 +190,11 @@ export function PurchaseOrderDetailPage() {
   const canReverse = received > 0;
   const trackingNumber = po?.trackingNumber || null;
   const carrier = po?.carrier || null;
+  const grandTotal = useMemo(
+    () => (po?.lines ?? []).reduce((sum, line) => sum + Number(line.qtyOrdered) * Number(line.unitCost), 0),
+    [po],
+  );
+  const colCount = draft ? 6 : 5;
 
   if (poQuery.isLoading) {
     return (
@@ -343,23 +350,30 @@ export function PurchaseOrderDetailPage() {
               <TableHead>SKU</TableHead>
               <TableHead align="right">Quantity</TableHead>
               <TableHead align="right">Unit cost</TableHead>
+              <TableHead align="right">Extended Cost</TableHead>
               <TableHead align="right">Received</TableHead>
+              {draft ? <TableHead align="right">Actions</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {po.lines.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-text-muted">
+                <TableCell colSpan={colCount} className="text-text-muted">
                   No lines yet. Add an item to this draft.
                 </TableCell>
               </TableRow>
             ) : (
-              po.lines.map((line) => (
+              po.lines.map((line) => {
+                const extended = Number(line.qtyOrdered) * Number(line.unitCost);
+                const skuLabel = line.sku
+                  ? line.name
+                    ? `${line.sku} — ${line.name}`
+                    : line.sku
+                  : line.variantId.slice(0, 8);
+                return (
                 <TableRow key={line.id} data-testid="po-workspace-line">
                   <TableCell>
-                    <span className="font-mono text-sm">
-                      {skuById[line.variantId] ?? line.variantId.slice(0, 8)}
-                    </span>
+                    <span className="font-mono text-sm">{skuLabel}</span>
                   </TableCell>
                   <TableCell align="right">
                     {draft ? (
@@ -395,12 +409,47 @@ export function PurchaseOrderDetailPage() {
                     )}
                   </TableCell>
                   <TableCell align="right">
+                    <span className="font-mono tabular-nums" data-testid="po-extended-cost">
+                      {formatCurrency(extended)}
+                    </span>
+                  </TableCell>
+                  <TableCell align="right">
                     <span className="font-mono tabular-nums text-text-muted">{line.qtyReceived}</span>
                   </TableCell>
+                  {draft ? (
+                    <TableCell align="right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        data-testid="po-delete-line"
+                        aria-label={`Remove ${skuLabel}`}
+                        onClick={() => deleteLineMutation.mutate(line.id)}
+                        loading={deleteLineMutation.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </Button>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
+          <TableFooter>
+            <TableRow data-testid="po-grand-total-row">
+              <TableCell colSpan={3} className="font-semibold text-text">
+                Grand Total
+              </TableCell>
+              <TableCell align="right">
+                <span className="font-mono text-sm font-semibold tabular-nums" data-testid="po-grand-total">
+                  {formatCurrency(grandTotal)}
+                </span>
+              </TableCell>
+              <TableCell>{null}</TableCell>
+              {draft ? <TableCell>{null}</TableCell> : null}
+            </TableRow>
+          </TableFooter>
         </Table>
 
         {draft ? (
@@ -409,19 +458,17 @@ export function PurchaseOrderDetailPage() {
             data-testid="po-add-item"
           >
             <div className="min-w-[16rem] flex-1">
-              <Select
-                label="Add item"
+              <SkuSearchCombobox
                 value={newVariantId}
-                onChange={(e) => setNewVariantId(e.target.value)}
-                data-testid="po-add-sku"
-              >
-                <option value="">Select SKU…</option>
-                {variants.map((variant) => (
-                  <option key={variant.id} value={variant.id}>
-                    {variant.sku} — {variant.name}
-                  </option>
-                ))}
-              </Select>
+                selectedLabel={newVariantLabel}
+                onSelect={(variant) => {
+                  setNewVariantId(variant.id);
+                  setNewVariantLabel(`${variant.sku} — ${variant.name}`);
+                  if (!newCost && variant.price != null) {
+                    setNewCost(String(variant.price));
+                  }
+                }}
+              />
             </div>
             <div className="w-24">
               <Input

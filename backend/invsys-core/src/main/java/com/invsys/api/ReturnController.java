@@ -34,7 +34,19 @@ import com.invsys.modules.sales.repository.SalesOrderRepository;
 
 import com.invsys.media.MediaUploadService;
 
+import com.invsys.core.common.PageResponse;
+
+import com.invsys.domain.RtvOrder;
+
+import com.invsys.modules.sales.domain.Invoice;
+
+import com.invsys.modules.sales.repository.InvoiceRepository;
+
+import com.invsys.repository.RtvOrderRepository;
+
 import com.invsys.service.ReturnService;
+
+import com.invsys.service.ReturnToVendorService;
 
 import com.invsys.service.ScanService;
 
@@ -102,6 +114,8 @@ public class ReturnController {
 
     private final ScanService scanService;
     private final MediaUploadService mediaUploadService;
+    private final InvoiceRepository invoiceRepository;
+    private final RtvOrderRepository rtvOrderRepository;
 
     public ReturnController(ReturnOrderRepository returnOrderRepository,
                             ReturnLineRepository returnLineRepository,
@@ -112,7 +126,9 @@ public class ReturnController {
                             ProductVariantRepository variantRepository,
                             ProductRepository productRepository,
                             ScanService scanService,
-                            MediaUploadService mediaUploadService) {
+                            MediaUploadService mediaUploadService,
+                            InvoiceRepository invoiceRepository,
+                            RtvOrderRepository rtvOrderRepository) {
         this.returnOrderRepository = returnOrderRepository;
         this.returnLineRepository = returnLineRepository;
         this.returnService = returnService;
@@ -123,22 +139,36 @@ public class ReturnController {
         this.productRepository = productRepository;
         this.scanService = scanService;
         this.mediaUploadService = mediaUploadService;
+        this.invoiceRepository = invoiceRepository;
+        this.rtvOrderRepository = rtvOrderRepository;
     }
 
     @GetMapping
-
-    public List<ReturnResponse> list(@RequestParam(required = false) String status) {
-
+    public Object list(@RequestParam(required = false) String status,
+                       @RequestParam(required = false) String cursor,
+                       @RequestParam(required = false) Integer limit) {
         UUID tenantId = TenantContext.requireTenantId();
-
         List<ReturnOrder> orders = status != null && !status.isBlank()
-
                 ? returnOrderRepository.findByTenantIdAndStatusOrderByCreatedAtDesc(tenantId, status)
-
                 : returnOrderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
-
-        return orders.stream().map(this::toResponse).toList();
-
+        if (limit == null) {
+            return orders.stream().map(this::toResponse).toList();
+        }
+        int size = Math.min(Math.max(limit, 1), 100);
+        int start = 0;
+        if (cursor != null && !cursor.isBlank()) {
+            for (int i = 0; i < orders.size(); i++) {
+                if (cursor.equals(orders.get(i).getId().toString())) {
+                    start = i + 1;
+                    break;
+                }
+            }
+        }
+        int end = Math.min(start + size, orders.size());
+        List<ReturnOrder> page = start >= orders.size() ? List.of() : orders.subList(start, end);
+        boolean hasMore = end < orders.size();
+        String nextCursor = hasMore && !page.isEmpty() ? page.getLast().getId().toString() : null;
+        return new PageResponse<>(page.stream().map(this::toResponse).toList(), nextCursor, hasMore);
     }
 
     @GetMapping("/by-barcode/{barcode}")
@@ -162,12 +192,12 @@ public class ReturnController {
     public ReturnResponse create(@Valid @RequestBody CreateReturnRequest request) {
 
         List<ReturnService.ReturnLineInput> lines = request.lines().stream()
-
-                .map(l -> new ReturnService.ReturnLineInput(l.salesOrderLineId(), l.quantityExpected()))
-
+                .map(l -> new ReturnService.ReturnLineInput(
+                        l.salesOrderLineId(), l.quantityExpected(), l.reasonCode()))
                 .toList();
-
-        return toResponse(returnService.create(request.salesOrderId(), lines));
+        boolean generateLabel = Boolean.TRUE.equals(request.generateLabel());
+        return toResponse(returnService.create(
+                request.salesOrderId(), lines, request.resolutionType(), generateLabel));
 
     }
 
@@ -205,10 +235,27 @@ public class ReturnController {
 
                                                 @Valid @RequestBody UpdateDispositionRequest request) {
 
-        ReturnLine line = returnService.setDisposition(lineId, request.disposition());
+        ReturnLine line = returnService.setDisposition(
+                lineId, request.disposition(), request.restockLocationId(), request.restockingFeePct());
 
         return toLineResponse(line);
 
+    }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public ReturnResponse complete(@PathVariable UUID id) {
+        return toResponse(returnService.completeDisposition(id));
+    }
+
+    @PostMapping("/{id}/escalate-rtv")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public Map<String, Object> escalateRtv(@PathVariable UUID id) {
+        ReturnToVendorService.RtvDetail detail = returnService.escalateToRtv(id);
+        return Map.of(
+                "rtvOrderId", detail.order().getId(),
+                "rtvNumber", detail.order().getNumber(),
+                "status", detail.order().getStatus());
     }
 
     @PostMapping("/{returnId}/lines/{lineId}/receive")
@@ -278,6 +325,29 @@ public class ReturnController {
                 .distinct()
                 .toList();
 
+        BigDecimal estimatedValue = BigDecimal.ZERO;
+        int itemCount = 0;
+        for (ReturnLineResponse line : lines) {
+            SalesOrderLine sol = salesOrderLineRepository.findById(line.salesOrderLineId()).orElse(null);
+            BigDecimal qty = line.quantityExpected() != null ? line.quantityExpected() : BigDecimal.ZERO;
+            itemCount += qty.intValue();
+            if (sol != null && sol.getUnitPrice() != null) {
+                estimatedValue = estimatedValue.add(sol.getUnitPrice().multiply(qty));
+            }
+        }
+        String creditMemoNumber = null;
+        if (returnOrder.getCreditMemoId() != null) {
+            creditMemoNumber = invoiceRepository.findById(returnOrder.getCreditMemoId())
+                    .map(Invoice::getNumber)
+                    .orElse(null);
+        }
+        String rtvNumber = null;
+        if (returnOrder.getRtvOrderId() != null) {
+            rtvNumber = rtvOrderRepository.findById(returnOrder.getRtvOrderId())
+                    .map(RtvOrder::getNumber)
+                    .orElse(null);
+        }
+
         return new ReturnResponse(
                 returnOrder.getId(),
                 returnOrder.getSalesOrderId(),
@@ -291,7 +361,15 @@ public class ReturnController {
                 returnOrder.getLabelPurchaseMode(),
                 evidenceUrls,
                 lines,
-                returnOrder.getCreatedAt());
+                returnOrder.getCreatedAt(),
+                estimatedValue,
+                itemCount,
+                returnOrder.getTrackingNumber(),
+                returnOrder.getResolutionType(),
+                returnOrder.getCreditMemoId(),
+                creditMemoNumber,
+                returnOrder.getRtvOrderId(),
+                rtvNumber);
     }
 
     private ReturnLineResponse toLineResponse(ReturnLine line) {
@@ -339,14 +417,20 @@ public class ReturnController {
                 putawayTarget,
                 line.getReasonCode(),
                 line.getMediaObjectId(),
-                evidenceUrl);
+                evidenceUrl,
+                line.getRestockLocationId(),
+                line.getRestockingFeePct());
     }
 
     public record CreateReturnRequest(
 
             @NotNull UUID salesOrderId,
 
-            @NotNull List<CreateReturnLineRequest> lines
+            @NotNull List<CreateReturnLineRequest> lines,
+
+            String resolutionType,
+
+            Boolean generateLabel
 
     ) {
 
@@ -356,13 +440,19 @@ public class ReturnController {
 
             @NotNull UUID salesOrderLineId,
 
-            @NotNull @Positive BigDecimal quantityExpected
+            @NotNull @Positive BigDecimal quantityExpected,
+
+            String reasonCode
 
     ) {
 
     }
 
-    public record UpdateDispositionRequest(@NotBlank String disposition) {
+    public record UpdateDispositionRequest(
+            @NotBlank String disposition,
+            UUID restockLocationId,
+            BigDecimal restockingFeePct
+    ) {
 
     }
 

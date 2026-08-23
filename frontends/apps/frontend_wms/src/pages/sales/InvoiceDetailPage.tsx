@@ -79,6 +79,13 @@ export function InvoiceDetailPage() {
     onError: () => toast('Could not factor this invoice. Check fintech eligibility.', { tone: 'danger' }),
   });
 
+  const emailMutation = useMutation({
+    mutationFn: async () =>
+      (await apiClient.post<{ to?: string }>(`/api/v1/documents/invoice/${id}/email`)).data,
+    onSuccess: (result) => toast(`Invoice emailed to ${result.to ?? 'the customer'}`, { tone: 'success' }),
+    onError: () => toast('Could not email invoice', { tone: 'danger' }),
+  });
+
   const payMutation = useMutation({
     mutationFn: async (amount: number) => apiClient.post(`/api/v1/invoices/${id}/payments`, { amount }),
     onSuccess: async () => {
@@ -180,6 +187,38 @@ export function InvoiceDetailPage() {
                 </Button>
               </RequireRole>
             ) : null}
+            <RequireRole roles={['OWNER', 'ADMIN']}>
+              <Button
+                variant="secondary"
+                data-testid="invoice-download-pdf"
+                onClick={async () => {
+                  try {
+                    const res = await apiClient.get(`/api/v1/documents/invoice/${invoice.id}/pdf`, {
+                      responseType: 'blob',
+                    });
+                    const blob = new Blob([res.data], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${invoice.number || 'invoice'}.pdf`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch {
+                    toast('Could not download PDF', { tone: 'danger' });
+                  }
+                }}
+              >
+                Download PDF
+              </Button>
+              <Button
+                variant="secondary"
+                data-testid="invoice-email-pdf"
+                onClick={() => emailMutation.mutate()}
+                loading={emailMutation.isPending}
+              >
+                Email invoice
+              </Button>
+            </RequireRole>
             {issued ? (
               <RequireRole roles={['OWNER', 'ADMIN', 'FINANCE_ADMIN']}>
                 <Button

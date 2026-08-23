@@ -68,7 +68,7 @@ test.describe('Journey 27: Enterprise master data & Settings layout', () => {
       });
       await owner.page.getByRole('button', { name: 'Add customer' }).click();
       await expect(owner.page.getByTestId('add-customer-form')).toBeVisible();
-      await owner.page.getByLabel('Name', { exact: true }).fill(`Cust ${suffix}`);
+      await owner.page.getByLabel('Company Name').fill(`Cust ${suffix}`);
       await owner.page.getByLabel('Tax ID / EIN').fill('12-3456789');
       const custWait = owner.page.waitForResponse(
         (res) => res.url().includes('/api/v1/customers') && res.request().method() === 'POST',
@@ -86,6 +86,7 @@ test.describe('Journey 27: Enterprise master data & Settings layout', () => {
         timeout: 20_000,
       });
       await owner.page.getByRole('button', { name: 'Add supplier' }).click();
+      await owner.page.getByTestId('add-supplier-tab-manual').click();
       await expect(owner.page.getByTestId('add-supplier-form')).toBeVisible();
       await owner.page.getByLabel('Name', { exact: true }).fill(`Supp ${suffix}`);
       await owner.page.getByLabel('Default lead time (days)').fill('10');

@@ -15,6 +15,7 @@ import com.invsys.core.security.dto.TerminalSwitchResponse;
 import com.invsys.core.security.dto.TokenResponse;
 import com.invsys.core.security.dto.WarehouseLoginRequest;
 import com.invsys.core.common.ApiException;
+import com.invsys.core.tenancy.TenantContext;
 import com.invsys.service.TerminalBiometricService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -152,13 +153,20 @@ public class AuthController {
         return authService.currentUser();
     }
 
+    @PostMapping("/lock")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> desktopLock() {
+        authService.lockDesktopSession();
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/desktop-unlock/options")
     @PreAuthorize("isAuthenticated()")
     public Map<String, Object> desktopUnlockOptions() {
         return terminalBiometricService.createDesktopUnlockOptions();
     }
 
-    @PostMapping("/desktop-unlock")
+    @PostMapping({"/unlock", "/desktop-unlock"})
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> desktopUnlock(@RequestBody(required = false) DesktopUnlockRequest request) {
         DesktopUnlockRequest body = request == null
@@ -225,6 +233,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        TenantContext.getUserId().ifPresent(id -> authService.unlockDesktopSession(id));
         String refreshToken = authCookieService.readRefreshToken(request);
         authService.logout(refreshToken);
         authCookieService.clearSessionCookies(response);

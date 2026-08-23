@@ -5,7 +5,7 @@ sourcePath: "docs/sops/05_b2b_showroom_and_fintech.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "B2B_CUSTOMER", "VIEWER"]
 audienceLevel: "beginner"
 routeHints: ["/showroom/catalog", "/showroom/orders", "/showroom/checkout", "/showroom/billing", "/customers", "/invoices", "/sales-orders", "/settings", "/settings/billing", "/settings/fintech", "/settings/integrations", "/settings?tab=retailPos", "/purchase-orders", "/inventory/landed-costs"]
-keywords: ["wholesale application", "showroom", "checkout", "credit hold", "credit line", "capital", "financing", "factoring", "partial credit", "invoice", "wrong price invoice", "duplicate invoice", "void invoice", "credit note", "refund", "billing", "landed cost", "freight", "customs", "allocation"]
+keywords: ["wholesale application", "showroom", "checkout", "credit hold", "credit line", "price tier", "customer master", "portal invite", "capital", "financing", "factoring", "partial credit", "invoice", "wrong price invoice", "duplicate invoice", "void invoice", "credit note", "refund", "billing", "landed cost", "freight", "customs", "allocation"]
 ---
 
 # B2B Showroom & Commercial Finance — Beginner Playbook
@@ -55,6 +55,81 @@ OWNER or ADMIN (customer management). Not visible to floor roles.
 - **Approved with wrong terms or credit limit:** Edit the customer record — terms and limits are master data, safe to correct any time. Already-posted invoices keep the terms they were issued under.
 - **Approved a duplicate of an existing customer:** Point everything at the original record and ask an ADMIN to deactivate the twin. Order history on both remains visible.
 - **Rejected by accident:** The business can re-apply, or an Admin creates the customer manually under **Customers**.
+
+---
+
+### B2B Customer Master & Price Tiers
+
+**What is this?**
+The **Customers** grid is B2B master data: company, price tier, credit line, ship-to book, and Showroom portal status. A **Price Tier** (Wholesale, VIP, Tier 1) stores a discount percent. When a sales rep builds a New Sales Order, weGrowStock applies that tier to catalog list price so the unit price is already negotiated — it overrides standard catalog pricing for that buyer.
+
+**Who can do this? (Privileges Required)**
+OWNER or ADMIN create and edit customers and send portal invites. VIEWER can read the grid.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar → **Outbound** → **Customers** (`/customers`). **Add customer** opens the tabbed drawer (Company, Financials, Address Book, Portal). **View Details Workspace** opens `/sales/customers/{id}`.
+
+**Step-by-Step Instructions:**
+1. Open **Customers**. Read the KPI cards: Active B2B Accounts, Accounts on Credit Hold, Total Credit Extended.
+2. Click **Add customer**. Fill **Company Details**, then **Financials & Pricing** (currency, terms, credit limit, price tier, tax exempt).
+3. Add a billing address and as many shipping locations as the buyer has warehouses or stores.
+4. Optionally toggle **Provision B2B Showroom Access**, or later use **Send B2B Portal Invite**.
+5. On a new sales order, pick this customer — unit prices follow the assigned tier automatically.
+
+**⚠️ What if I make a mistake?**
+- **Wrong tier on the customer:** Change the tier on the customer record. Existing draft orders can be repriced; posted invoices keep the prices they shipped at.
+- **Duplicate company to “get a better price”:** Do not. One customer, one credit line, one portal identity.
+
+---
+
+### Credit Limits & Holds
+
+**What is this?**
+A **Credit Limit** is the most the buyer may owe you. Unpaid invoices consume **Available Credit**. **Credit Hold** (`customerStatus = HOLD` plus the credit-line hold flag) blocks **Confirm / Allocate** and Showroom checkout so warehouse does not ship into a past-due account.
+
+**Who can do this? (Privileges Required)**
+**Finance Admins** place an account on Credit Hold from the customer row menu. Owners/Admins can do the same in weGrowStock when no separate finance seat exists. **Only a Finance Admin (or Owner/Admin finance override)** should clear a hold after reviewing open invoices. Do not create a second customer to bypass the hold.
+
+**Where to go in weGrowStock:**
+🖥️ **Customers** → row actions → **Place on Credit Hold**. Order-level override remains **Override credit hold** on the sales order (OWNER / ADMIN / FINANCE_ADMIN).
+
+**Business rule:**
+1. If available credit is exhausted or the account is on hold, allocation and checkout stop.
+2. Pay down invoices or raise the limit (visible master-data change) to restore availability.
+3. Never invent a duplicate account to sneak an order past the hold — that splits AR and lies to the warehouse.
+
+**⚠️ What if I make a mistake?**
+- **Held the wrong account:** A Finance Admin reviews AR and clears the hold on the correct record.
+- **Order stuck CREDIT_HOLD after a good customer:** Check the customer status chip and outstanding invoices before asking the floor to ship.
+
+---
+
+### Accounts Receivable & Collections
+
+**What is this?**
+The **Invoices** grid is weGrowStock Accounts Receivable. Create an invoice from a **shipped** sales order, watch **Balance Due** (Total − Amount Paid), and treat **OVERDUE** as a collections flag — the system shows it automatically when `dueDate` is in the past and the invoice is not PAID.
+
+**Who can do this? (Privileges Required)**
+OWNER / ADMIN create invoices and dispatch PDFs. **Finance Admins** log payments. Do not edit Invoice Total after issue.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar → **Outbound** → **Invoices** (`/invoices`). Click a row to open the invoice workspace. Row menu (`…`): Download PDF, Email invoice, Log Payment (when Balance Due > 0). Select checkboxes, then **Email Invoices** to dispatch a batch.
+
+**Step-by-Step Instructions:**
+1. Click **New invoice**. Search shipped sales orders by number or customer. The combobox shows SO number, customer, and shipped date.
+2. Prioritize red **OVERDUE** badges and the **Balance Due** column. The system flags OVERDUE automatically when the due date has passed and the invoice is not PAID.
+3. Use the row **…** menu to **Download PDF** or **Email invoice**, or open the workspace (row click) for the same actions.
+4. When the buyer pays part of the bill, use **Log Payment**. Balance Due updates. Never change Total.
+5. Select one or more invoices and click **Email Invoices** on the bulk bar to dispatch in a single batch.
+
+**Business rule:**
+1. OVERDUE is computed (due date passed + not PAID). It does not rewrite the stored status.
+2. Partial cash is a payment, not a new invoice and not a Total edit.
+3. Only Finance / Owner / Admin should log payments so AR and credit stay aligned.
+
+**⚠️ What if I make a mistake?**
+- **Logged the wrong amount:** Post a correcting payment or credit memo from the invoice workspace. Do not invent a second invoice.
+- **Emailed the wrong buyer:** Check the customer email on the master record, then resend.
 
 ---
 

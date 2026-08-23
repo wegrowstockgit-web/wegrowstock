@@ -443,7 +443,7 @@ export function DashboardPage() {
                   <ClipboardList className="h-4 w-4" />
                   New purchase order
                 </Button>
-                <Button onClick={() => navigate('/sales-orders')}>
+                <Button onClick={() => navigate('/sales/orders/new')}>
                   <PackagePlus className="h-4 w-4" />
                   New sales order
                 </Button>

@@ -3,6 +3,7 @@ package com.invsys.repository;
 import com.invsys.domain.Invitation;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,4 +16,6 @@ public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
     List<Invitation> findByTenantIdAndAcceptedAtIsNullOrderByExpiresAtAsc(UUID tenantId);
 
     boolean existsByTenantIdAndEmailIgnoreCaseAndAcceptedAtIsNull(UUID tenantId, String email);
+
+    List<Invitation> findByTenantIdAndCustomerIdInAndAcceptedAtIsNull(UUID tenantId, Collection<UUID> customerIds);
 }

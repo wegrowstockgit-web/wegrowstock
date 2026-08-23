@@ -62,6 +62,7 @@ interface MeResponse {
   preferredLanguage?: string | null;
   tier?: string | null;
   desktopIdleTimeoutMinutes?: number;
+  sessionLocked?: boolean;
 }
 
 export function AppShell() {
@@ -110,6 +111,7 @@ export function AppShell() {
           enabledModules: data.enabledModules,
           localeLanguage: data.localeLanguage,
           tier: data.tier,
+          sessionLocked: data.sessionLocked,
         });
         if (typeof data.desktopIdleTimeoutMinutes === 'number') {
           usePreferencesStore.getState().setDesktopIdleTimeoutMinutes(data.desktopIdleTimeoutMinutes);

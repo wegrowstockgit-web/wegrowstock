@@ -19,8 +19,22 @@ export const purchasingModule = defineModule({
     { path: 'purchasing/orders/:id', element: <PurchaseOrderDetailPage /> },
     { path: 'suppliers', element: <SuppliersPage /> },
     { path: 'suppliers/:id', element: <SupplierDetailPage /> },
+    { path: 'purchasing/suppliers', element: <SuppliersPage /> },
+    { path: 'purchasing/suppliers/:id', element: <SupplierDetailPage /> },
     {
       path: 'mrp',
+      element: (
+        <EnterpriseRouteGate
+          requiredModule="MRP"
+          requiredPermission={['mrp:run']}
+          roles={['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER']}
+        >
+          <MrpReorderWorkspace />
+        </EnterpriseRouteGate>
+      ),
+    },
+    {
+      path: 'purchasing/mrp',
       element: (
         <EnterpriseRouteGate
           requiredModule="MRP"

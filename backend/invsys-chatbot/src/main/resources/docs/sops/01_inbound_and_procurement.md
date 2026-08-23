@@ -65,6 +65,34 @@ OWNER, ADMIN, or WAREHOUSE_MANAGER. VIEWERs can look but not edit. PICKERs do no
 
 ---
 
+### Connecting Suppliers via the Mesh Network
+
+**What is this?**
+The weGrowStock Mesh Network links two active tenants so purchase orders, ASNs, and invoices travel electronically. A handshake creates a `TenantMeshPartner` record and a linked Supplier on your side — no retyping of packing lists or invoice lines from email.
+
+**Who can do this? (Privileges Required)**
+OWNER, ADMIN, or WAREHOUSE_MANAGER.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inbound** → **Suppliers** → **Add supplier** → **Connect Mesh Partner**
+
+**Step-by-Step Instructions:**
+1. Open **Suppliers** and click **Add supplier**. If Mesh is enabled, **Connect Mesh Partner** is the default tab.
+2. Search by **Tenant Code**, company domain, or invite code. weGrowStock queries the live directory of other active tenants.
+3. Confirm the preview card: company name, **Verified** badge when DNS is proven, and whether they publish a mesh catalog.
+4. Click **Send Mesh Handshake**. That creates the partner link and a Supplier row marked **Mesh Connected**.
+5. After the partner accepts (or immediately for buyer-side POs), electronic PO submit, ASN / in-transit updates, and invoice sync replace manual entry.
+6. Use **Browse Mesh Catalog** on a Mesh Connected row to map their SKUs to yours.
+
+**Vendors not on weGrowStock:** use the **Manual Supplier** tab. Capture Currency, Supplier Class, Incoterms, and optionally **Invite to Supplier Portal** so they can see POs and print receiving labels from `/supplier-portal`.
+
+**⚠️ What if I make a mistake?**
+- **Handshake sent to the wrong tenant?** Do not create a second supplier. Open the partner row, stop using it for POs, and ask an ADMIN to retire the mesh link. Start a new handshake with the correct tenant code.
+- **Partner is not in the directory?** They must have an ACTIVE weGrowStock tenant. If they are offline, add them as a **Manual Supplier** and invite them to the Supplier Portal instead.
+- **Supplier changed their bank details?** Update Supplier Master Data. The new account applies to **future invoices only** — already-posted AP keeps the old settlement instructions.
+
+---
+
 ### How to Create a Purchase Order (PO)
 
 **What is this?**
@@ -301,6 +329,22 @@ OWNER, ADMIN, or WAREHOUSE_MANAGER, with the **Run MRP Reorder** permission and 
 
 **⚠️ What if I make a mistake?**
 - **Consolidated too early / created draft POs you don't want:** They are only **DRAFT** — open each and click **Cancel**. Nothing was sent to a supplier and no stock moved.
+
+---
+
+### Understanding MRP Reorder Math
+
+**What is this?**
+weGrowStock does not guess a buy quantity. It compares physical stock, reserved stock, and inbound purchase orders against your Min / Max safety-stock band (and open sales). You can still override a line before it becomes a draft PO — for example, to hit a vendor case pack.
+
+**The formula (plain language):**
+1. **Available** = (On-Hand + Inbound) − Allocated.
+2. If **Available** is less than the **Minimum** safety stock (or open sales still need coverage), the system suggests buying enough to reach the **Maximum** level.
+3. Suggested qty may then round up to the supplier MOQ. That is still advice — click **Suggested qty** to override it (for example, 14 → 20 for cases of 10).
+4. **Consolidate & Create Draft POs** sends only those sparse overrides to the server. weGrowStock recalculates the rest asynchronously and groups draft POs by supplier. The browser never posts a million suggestion rows.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inbound** → **MRP reorder** → filter by **Supplier** or **Urgency** (Stockouts / Below Minimum / Forecasted Demand)
 
 ---
 

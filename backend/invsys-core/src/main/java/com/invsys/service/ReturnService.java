@@ -18,6 +18,8 @@ import com.invsys.repository.ReturnOrderRepository;
 import com.invsys.modules.sales.repository.SalesOrderLineRepository;
 import com.invsys.modules.sales.repository.SalesOrderRepository;
 import com.invsys.core.tenancy.TenantContext;
+import com.invsys.modules.sales.domain.Invoice;
+import com.invsys.modules.sales.service.InvoicingService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import com.invsys.modules.inventory.service.InventoryService;
 
@@ -33,6 +36,12 @@ public class ReturnService {
 
     private static final List<String> FINAL_DISPOSITIONS = List.of("RESTOCK", "SCRAP", "REPAIR");
     private static final List<String> RECEIPT_DISPOSITIONS = List.of("QUARANTINE", "RESTOCK", "SCRAP", "REPAIR");
+    private static final Set<String> REASON_CODES = Set.of(
+            "DEFECTIVE_PRODUCT", "WRONG_ITEM_SHIPPED", "DAMAGED_IN_TRANSIT",
+            "BUYER_REMORSE", "SIZE_FIT_EXCHANGE");
+    private static final Set<String> RESOLUTION_TYPES = Set.of(
+            "REFUND_CREDIT_MEMO", "REPLACEMENT_ORDER", "REPAIR");
+    private static final Set<String> COMPLETABLE = Set.of("REQUESTED", "APPROVED", "EXPECTED", "RECEIVED");
 
     private final ReturnOrderRepository returnOrderRepository;
     private final ReturnLineRepository returnLineRepository;
@@ -45,6 +54,8 @@ public class ReturnService {
     private final EasyPostGateway easyPostClient;
     private final EasyPostProperties easyPostProperties;
     private final CustomerRepository customerRepository;
+    private final InvoicingService invoicingService;
+    private final ReturnToVendorService returnToVendorService;
 
     public ReturnService(ReturnOrderRepository returnOrderRepository,
                          ReturnLineRepository returnLineRepository,
@@ -56,7 +67,9 @@ public class ReturnService {
                          InventoryLedgerRepository ledgerRepository,
                          EasyPostGateway easyPostClient,
                          EasyPostProperties easyPostProperties,
-                         CustomerRepository customerRepository) {
+                         CustomerRepository customerRepository,
+                         InvoicingService invoicingService,
+                         ReturnToVendorService returnToVendorService) {
         this.returnOrderRepository = returnOrderRepository;
         this.returnLineRepository = returnLineRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -68,21 +81,41 @@ public class ReturnService {
         this.easyPostClient = easyPostClient;
         this.easyPostProperties = easyPostProperties;
         this.customerRepository = customerRepository;
+        this.invoicingService = invoicingService;
+        this.returnToVendorService = returnToVendorService;
     }
 
     @Transactional
     public ReturnOrder create(UUID salesOrderId, List<ReturnLineInput> lines) {
+        return create(salesOrderId, lines, null, false);
+    }
+
+    @Transactional
+    public ReturnOrder create(UUID salesOrderId, List<ReturnLineInput> lines,
+                              String resolutionType, boolean generateLabel) {
         UUID tenantId = TenantContext.requireTenantId();
         SalesOrder order = salesOrderRepository.findById(salesOrderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+        if (lines == null || lines.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one return line is required");
+        }
 
         ReturnOrder returnOrder = new ReturnOrder();
         returnOrder.setTenantId(tenantId);
         returnOrder.setSalesOrderId(order.getId());
         returnOrder.setNumber(sequenceService.nextNumber("RMA", "RMA-{YYYY}-{seq:5}"));
         returnOrder.setStatus("REQUESTED");
+        if (resolutionType != null && !resolutionType.isBlank()) {
+            String resolution = resolutionType.trim().toUpperCase();
+            if (!RESOLUTION_TYPES.contains(resolution)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_RESOLUTION",
+                        "resolutionType must be REFUND_CREDIT_MEMO, REPLACEMENT_ORDER, or REPAIR");
+            }
+            returnOrder.setResolutionType(resolution);
+        }
         returnOrder = returnOrderRepository.save(returnOrder);
 
+        String headerReason = null;
         for (ReturnLineInput input : lines) {
             SalesOrderLine sol = salesOrderLineRepository.findById(input.salesOrderLineId())
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
@@ -94,9 +127,22 @@ public class ReturnService {
             line.setSalesOrderLineId(sol.getId());
             line.setQuantityExpected(input.quantityExpected());
             line.setDisposition("QUARANTINE");
+            String reason = normalizeReason(input.reasonCode());
+            line.setReasonCode(reason);
+            if (headerReason == null && reason != null) {
+                headerReason = reason;
+            }
             returnLineRepository.save(line);
         }
-        return returnOrder;
+        if (headerReason != null) {
+            returnOrder.setReasonCode(headerReason);
+        }
+
+        if (generateLabel) {
+            applyPurchasedLabel(returnOrder, order);
+            returnOrder.setStatus("APPROVED");
+        }
+        return returnOrderRepository.save(returnOrder);
     }
 
     void validateReturnQuantityPublic(SalesOrderLine sol, BigDecimal quantityExpected) {
@@ -134,10 +180,7 @@ public class ReturnService {
         SalesOrder order = salesOrderRepository.findById(returnOrder.getSalesOrderId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
         EasyPostGateway.ParcelSpec parcel = buildParcel(order, new BigDecimal("2.0"));
-        var label = easyPostClient.purchaseReturnLabel(parcel, returnOrder.getNumber());
-        returnOrder.setReturnLabelUrl(label.labelRef());
-        returnOrder.setEstimatedLabelCost(label.postageAmount());
-        returnOrder.setLabelPurchaseMode("SYSTEM");
+        applyPurchasedLabel(returnOrder, order);
         returnOrder.setStatus("APPROVED");
         return returnOrderRepository.save(returnOrder);
     }
@@ -211,13 +254,75 @@ public class ReturnService {
 
     @Transactional
     public ReturnLine setDisposition(UUID returnLineId, String disposition) {
+        return setDisposition(returnLineId, disposition, null, null);
+    }
+
+    @Transactional
+    public ReturnLine setDisposition(UUID returnLineId, String disposition,
+                                     UUID restockLocationId, BigDecimal restockingFeePct) {
         if (!RECEIPT_DISPOSITIONS.contains(disposition)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DISPOSITION", "Invalid disposition");
         }
         ReturnLine line = returnLineRepository.findById(returnLineId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Return line not found"));
         line.setDisposition(disposition);
+        if (restockLocationId != null) {
+            line.setRestockLocationId(restockLocationId);
+        }
+        if (restockingFeePct != null) {
+            if (restockingFeePct.signum() < 0 || restockingFeePct.compareTo(new BigDecimal("100")) > 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_FEE",
+                        "Restocking fee must be between 0 and 100");
+            }
+            line.setRestockingFeePct(restockingFeePct);
+        }
+        if ("RESTOCK".equals(disposition) && line.getRestockLocationId() == null && restockLocationId == null) {
+            // keep existing bin; completeDisposition will require one
+        }
         return returnLineRepository.save(line);
+    }
+
+    @Transactional
+    public ReturnOrder completeDisposition(UUID returnId) {
+        ReturnOrder returnOrder = getReturn(returnId);
+        if (!COMPLETABLE.contains(returnOrder.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Return cannot be completed in its current status");
+        }
+        List<ReturnLine> lines = returnLineRepository.findByReturnId(returnOrder.getId());
+        if (lines.isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_LINES", "Return has no lines");
+        }
+        for (ReturnLine line : lines) {
+            applyCompleteInventory(line);
+            returnLineRepository.save(line);
+        }
+        if (!"REPAIR".equals(returnOrder.getResolutionType()) && returnOrder.getCreditMemoId() == null) {
+            Invoice credit = invoicingService.createDraftCreditMemoForReturn(
+                    returnOrder.getSalesOrderId(),
+                    lines.stream()
+                            .map(line -> new InvoicingService.ReturnCreditLine(
+                                    line.getSalesOrderLineId(),
+                                    line.getQuantityExpected(),
+                                    line.getRestockingFeePct()))
+                            .toList());
+            returnOrder.setCreditMemoId(credit.getId());
+        }
+        returnOrder.setStatus("CLOSED");
+        return returnOrderRepository.save(returnOrder);
+    }
+
+    @Transactional
+    public ReturnToVendorService.RtvDetail escalateToRtv(UUID returnId) {
+        ReturnOrder returnOrder = getReturn(returnId);
+        if (returnOrder.getRtvOrderId() != null) {
+            throw new ApiException(HttpStatus.CONFLICT, "ALREADY_ESCALATED",
+                    "Return already has a draft RTV");
+        }
+        ReturnToVendorService.RtvDetail detail = returnToVendorService.createDraftFromCustomerReturn(returnId);
+        returnOrder.setRtvOrderId(detail.order().getId());
+        returnOrderRepository.save(returnOrder);
+        return detail;
     }
 
     @Transactional
@@ -367,6 +472,93 @@ public class ReturnService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Return not found"));
     }
 
+    private void applyCompleteInventory(ReturnLine line) {
+        String disposition = line.getDisposition();
+        if (disposition == null || disposition.isBlank() || "QUARANTINE".equals(disposition)) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "DISPOSITION_REQUIRED",
+                    "Set RESTOCK, SCRAP, or REPAIR on every line before completing");
+        }
+        SalesOrderLine sol = salesOrderLineRepository.findById(line.getSalesOrderLineId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+        BigDecimal qty = line.getQuantityExpected();
+        boolean alreadyReceived = line.getQuantityReceived() != null && line.getQuantityReceived().signum() > 0;
+
+        if ("RESTOCK".equals(disposition)) {
+            if (line.getRestockLocationId() == null) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "RESTOCK_BIN_REQUIRED",
+                        "Choose a restock target bin for every RESTOCK line");
+            }
+            if (alreadyReceived) {
+                UUID holdLocation = ledgerRepository
+                        .findByTenantIdAndReferenceTypeAndReferenceId(
+                                TenantContext.requireTenantId(), "RETURN", line.getId())
+                        .stream()
+                        .filter(l -> "RMA_QUARANTINE".equals(l.getReasonCode()))
+                        .max(Comparator.comparing(InventoryLedger::getCreatedAt))
+                        .map(InventoryLedger::getLocationId)
+                        .orElse(null);
+                if (holdLocation != null) {
+                    inventoryService.releaseQuarantineHold(
+                            sol.getId(), sol.getVariantId(), holdLocation, null,
+                            line.getQuantityReceived(), "RESTOCK");
+                }
+            } else {
+                inventoryService.adjust(sol.getVariantId(), line.getRestockLocationId(), null, qty, "RMA_RESTOCK");
+                line.setQuantityReceived(qty);
+            }
+            return;
+        }
+        if ("SCRAP".equals(disposition)) {
+            if (alreadyReceived) {
+                List<InventoryLedger> quarantineMoves = ledgerRepository
+                        .findByTenantIdAndReferenceTypeAndReferenceId(
+                                TenantContext.requireTenantId(), "RETURN", line.getId())
+                        .stream()
+                        .filter(l -> "RMA_QUARANTINE".equals(l.getReasonCode()))
+                        .toList();
+                if (!quarantineMoves.isEmpty()) {
+                    UUID locationId = quarantineMoves.stream()
+                            .max(Comparator.comparing(InventoryLedger::getCreatedAt))
+                            .map(InventoryLedger::getLocationId)
+                            .orElseGet(() -> resolveLocationId(null));
+                    inventoryService.releaseQuarantineHold(
+                            sol.getId(), sol.getVariantId(), locationId, null,
+                            line.getQuantityReceived(), "SCRAP");
+                } else {
+                    inventoryService.adjust(sol.getVariantId(), resolveLocationId(null), null,
+                            line.getQuantityReceived().negate(), "RMA_SCRAP");
+                }
+            } else {
+                line.setQuantityReceived(qty);
+            }
+            return;
+        }
+        if ("REPAIR".equals(disposition) && !alreadyReceived) {
+            line.setQuantityReceived(qty);
+        }
+    }
+
+    private void applyPurchasedLabel(ReturnOrder returnOrder, SalesOrder order) {
+        EasyPostGateway.ParcelSpec parcel = buildParcel(order, new BigDecimal("2.0"));
+        var label = easyPostClient.purchaseReturnLabel(parcel, returnOrder.getNumber());
+        returnOrder.setReturnLabelUrl(label.labelRef());
+        returnOrder.setEstimatedLabelCost(label.postageAmount());
+        returnOrder.setLabelPurchaseMode("SYSTEM");
+        returnOrder.setTrackingNumber(label.trackingNumber());
+    }
+
+    private String normalizeReason(String reasonCode) {
+        if (reasonCode == null || reasonCode.isBlank()) {
+            return null;
+        }
+        String normalized = reasonCode.trim().toUpperCase();
+        if (!REASON_CODES.contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REASON",
+                    "reasonCode must be one of: " + String.join(", ", REASON_CODES));
+        }
+        return normalized;
+    }
+
     private EasyPostGateway.ParcelSpec buildParcel(SalesOrder order, BigDecimal weightLb) {
         Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
         EasyPostGateway.AddressSpec to = customer != null
@@ -378,6 +570,9 @@ public class ReturnService {
                 weightLb, to, from, false);
     }
 
-    public record ReturnLineInput(UUID salesOrderLineId, BigDecimal quantityExpected) {
+    public record ReturnLineInput(UUID salesOrderLineId, BigDecimal quantityExpected, String reasonCode) {
+        public ReturnLineInput(UUID salesOrderLineId, BigDecimal quantityExpected) {
+            this(salesOrderLineId, quantityExpected, null);
+        }
     }
 }

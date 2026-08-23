@@ -376,7 +376,7 @@ export const ROUTE_KNOWLEDGE: Record<string, RouteKnowledge> = {
     markdown:
       'Orders drop in here from Shopify or B2B portals. To process an order, it must have sufficient inventory to be Allocated, after which it drops into the Fulfillment queue.',
     quickActions: [
-      { label: 'Create Manual Order', route: '/sales-orders/new', icon: 'Plus' },
+      { label: 'Create Manual Order', route: '/sales/orders/new', icon: 'Plus' },
       { label: 'Go to Fulfillment', route: '/fulfillment', icon: 'Package', variant: 'primary' },
     ],
     troubleshooting: [

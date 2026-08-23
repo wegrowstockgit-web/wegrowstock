@@ -64,6 +64,12 @@ public class Customer extends TenantScopedEntity {
     @Column(name = "customer_status", nullable = false, length = 32)
     private String customerStatus = "ACTIVE";
 
+    @Column(length = 40)
+    private String phone;
+
+    @Column(name = "tax_exempt", nullable = false)
+    private boolean taxExempt = false;
+
     public String getName() {
         return name;
     }
@@ -161,5 +167,21 @@ public class Customer extends TenantScopedEntity {
 
     public void setCustomerStatus(String customerStatus) {
         this.customerStatus = customerStatus != null ? customerStatus : "ACTIVE";
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public boolean isTaxExempt() {
+        return taxExempt;
+    }
+
+    public void setTaxExempt(boolean taxExempt) {
+        this.taxExempt = taxExempt;
     }
 }

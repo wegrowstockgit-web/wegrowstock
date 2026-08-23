@@ -5,7 +5,6 @@
 export const PLAYBOOK_ROUTE_ALIASES: ReadonlyArray<{ from: string; to: string }> = [
   { from: '/tasks/my-queue', to: '/fulfillment' },
   { from: '/dashboard/labor', to: '/dashboard' },
-  { from: '/sales-orders/new', to: '/sales-orders' },
   { from: '/fulfillment/waves/new', to: '/fulfillment' },
   { from: '/fulfillment/pick', to: '/fulfillment' },
   { from: '/fulfillment/pack', to: '/fulfillment' },

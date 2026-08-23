@@ -99,32 +99,33 @@ Damaged product, skip-and-flag, offline parked scans, fulfillment holds, returns
 
 ---
 
-### Returns office (RMA) & returns receive
+### Customer Returns & RMA Processing
 
-- **Target Audience & Roles:** WAREHOUSE_MANAGER / ADMIN for RMA office; PICKER/ops on **Returns receive**.
-- **Route Location:** Inbound → **Returns**; Floor → **Returns receive**
-- **Primary Operational Goal:** Authorize customer returns, then scan them back with condition photos.
+- **Target Audience & Roles:** WAREHOUSE_MANAGER / ADMIN / OWNER for the 3-step New RMA wizard, disposition, complete, and Escalate to RTV. PICKER/ops on **Returns receive**.
+- **Route Location:** Inbound → **Returns** (`/returns` or `/inbound/returns`); Floor → **Returns receive**
+- **Primary Operational Goal:** Authorize specific returned SKUs, generate inbound labels, restock or scrap each line, and draft a credit memo when the RMA closes.
 
 #### 1. Step-by-Step Action Plan
-1. Office: open **Returns**, click **New RMA** / **Create RMA**.
-2. Review statuses such as **REQUESTED**, **PENDING_REVIEW**, **APPROVED**, **RECEIVED**, **CLOSED**, **REJECTED**.
-3. On review, choose **Approve & Buy Label**, **Approve without Label**, or **Deny & Close**.
-4. Use **Receive terminal** to jump floor operators into receive work.
-5. On **Returns receive**: scan the RMA, capture **Condition photo**, tap **Confirm +1**, then **Scan next RMA**.
+1. Click **New RMA**. Step 1: search customer name, sales order #, or customer PO # and select a shipped order.
+2. Step 2: check returned SKUs, enter return qty, and pick a reason (`DEFECTIVE_PRODUCT`, `WRONG_ITEM_SHIPPED`, `DAMAGED_IN_TRANSIT`, `BUYER_REMORSE`, `SIZE_FIT_EXCHANGE`).
+3. Step 3: choose `REFUND_CREDIT_MEMO`, `REPLACEMENT_ORDER`, or `REPAIR`. Optionally generate an EasyPost return label, then **Create RMA**.
+4. When freight arrives, receive on **Returns receive** (condition photo + Confirm +1).
+5. Expand the accordion: **RESTOCK** requires a restock target bin; **SCRAP** writes off; **Escalate to RTV** drafts a vendor return for manufacturer defects.
+6. **Complete Disposition & Close RMA** sets status **CLOSED** and drafts a Credit Memo (return value minus restocking fees) unless the resolution is Repair.
 
 #### 2. Correlated Flow & Downstream Ripple Effect
-- Customer showroom **Return Items** / **Submit return** feeds this office queue for B2B cases.
-- Good stock returned can restore ATP after putaway/quality rules.
-- Finance prepares credits after **APPROVED** / **RECEIVED** per policy.
+- Portal / showroom returns still land in the **PENDING_REVIEW** queue.
+- Restock posts `RMA_RESTOCK` to the chosen bin; scrap posts `RMA_SCRAP` when stock was already received.
+- The draft credit memo appears on **Invoices**. RTV drafts appear on **Purchasing → RTV**.
 
 #### 3. Safety, Reversal & Undo Rules
-- **Deny & Close** stops a bad return before stock is increased.
-- Do not receive damaged goods as pristine—photos exist to protect the ledger story.
-- History of the RMA remains; corrections are new adjustments if needed.
+- Do not restock a broken item. Use **Inspect / QC Details**, switch to **SCRAP**, and post a stock correction before allocation.
+- History of the RMA remains; corrections are new adjustments.
 
 #### 4. Troubleshooting Common Blockers
+- **Complete disabled / 422 RESTOCK_BIN_REQUIRED?** Choose a restock target bin on every RESTOCK line.
+- **Escalate to RTV fails?** Assign a default supplier on the SKU (or create a supplier) first.
 - **Confirm +1 disabled?** Scan the RMA barcode and attach **Condition photo** when required.
-- **Customer insists warehouse rewrote history?** Explain returns add a new receive event; nothing is erased.
 
 ---
 

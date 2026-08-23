@@ -4,8 +4,10 @@ import {
   WH_01,
   WIDGET_S_BARCODE,
   WIDGET_S_SKU,
+  DEMO_PASSWORD,
   apiJson,
   contextForRole,
+  createZeroStockSellableVariant,
   expect,
   expectFulfillmentSurface,
   findVariantId,
@@ -372,6 +374,50 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
     }
   });
 
+  test('PO workspace searchable SKU, extended cost, and draft line delete', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    try {
+      const variantId = await findVariantId(manager.page, WIDGET_S_SKU);
+      const supplierId = await firstSupplierId(manager.page);
+      const po = await apiJson<{ id: string; number: string }>(manager.page, '/api/v1/purchase-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId,
+          number: `PO-UX-${Date.now()}`,
+          destinationLocationId: WH_01,
+          lines: [{ variantId, qtyOrdered: 8, unitCost: 3.25 }],
+        }),
+      });
+
+      await manager.page.goto(`/purchasing/orders/${po.id}`);
+      await expect(manager.page.getByTestId('po-workspace')).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('po-sku-combobox')).toBeVisible();
+      await expect(manager.page.locator('#po-add-item select, [data-testid="po-add-sku"] option')).toHaveCount(0);
+      await expect(manager.page.getByTestId('po-extended-cost').first()).toContainText(/26\.00/);
+      await expect(manager.page.getByTestId('po-grand-total')).toContainText(/26\.00/);
+
+      const skuInput = manager.page.getByTestId('po-add-sku');
+      await skuInput.click();
+      await skuInput.fill('WIDGET');
+      const option = manager.page.getByTestId('po-sku-option').filter({ hasText: WIDGET_S_SKU }).first();
+      await expect(option).toBeVisible({ timeout: 15_000 });
+      await option.click();
+      await manager.page.getByTestId('po-add-qty').fill('2');
+      await manager.page.getByTestId('po-add-cost').fill('1.50');
+      await manager.page.getByTestId('po-add-item-btn').click();
+
+      await expect(manager.page.getByTestId('po-workspace-line')).toHaveCount(2, { timeout: 15_000 });
+      await expect(manager.page.getByTestId('po-grand-total')).toContainText(/29\.00/);
+
+      await manager.page.getByTestId('po-delete-line').last().click();
+      await expect(manager.page.getByTestId('po-workspace-line')).toHaveCount(1, { timeout: 15_000 });
+      await expect(manager.page.getByTestId('po-grand-total')).toContainText(/26\.00/);
+      await expect(manager.page.locator('[data-testid^="po-line-qty-"]').first()).toHaveClass(/border-dashed/);
+    } finally {
+      await manager.close();
+    }
+  });
+
   test('AP Document Workspace renders viewer, 3-way table, and price-variance dispute', async ({ browser }) => {
     const manager = await contextForRole(browser, 'manager');
     try {
@@ -429,6 +475,223 @@ test.describe('Journey 02: Procurement → Fulfillment correlation', () => {
       await expect(manager.page.getByTestId('ap-issue-debit-memo')).toBeEnabled();
     } finally {
       await manager.close();
+    }
+  });
+
+  test('manual supplier captures currency, class, incoterms, and portal invite', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    const suffix = `man-${Date.now().toString(36)}`;
+    const name = `Portal Pack ${suffix}`;
+    try {
+      await manager.page.goto('/suppliers');
+      await expect(manager.page.getByRole('heading', { name: 'Suppliers', exact: true })).toBeVisible({
+        timeout: 20_000,
+      });
+      await manager.page.getByRole('button', { name: 'Add supplier' }).click();
+      await manager.page.getByTestId('add-supplier-tab-manual').click();
+      await expect(manager.page.getByTestId('add-supplier-form')).toBeVisible();
+      await manager.page.getByLabel('Name', { exact: true }).fill(name);
+      await manager.page.getByLabel('Contact email').fill(`vendor-${suffix}@parts.test`);
+      await manager.page.getByTestId('supplier-currency').selectOption('EUR');
+      await manager.page.getByTestId('supplier-class').selectOption('PACKAGING');
+      await manager.page.getByTestId('supplier-incoterms').selectOption('DDP');
+      await manager.page.getByTestId('invite-supplier-portal').check();
+      const createWait = manager.page.waitForResponse(
+        (res) => res.url().includes('/api/v1/suppliers') && res.request().method() === 'POST',
+        { timeout: 30_000 },
+      );
+      await manager.page.getByTestId('add-supplier-submit').click();
+      const created = await createWait;
+      expect(created.ok(), await created.text()).toBeTruthy();
+      const body = (await created.json()) as {
+        defaultCurrency?: string;
+        supplierClass?: string;
+        incoterms?: string;
+        portalAccess?: boolean;
+      };
+      expect(body.defaultCurrency).toBe('EUR');
+      expect(body.supplierClass).toBe('PACKAGING');
+      expect(body.incoterms).toBe('DDP');
+      expect(body.portalAccess).toBe(true);
+
+      await manager.page.getByTestId('table-search').fill(name);
+      await expect(manager.page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('supplier-portal-badge').first()).toBeVisible();
+      await expect(manager.page.getByText('Packaging').first()).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: 'Class' })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: 'Terms' })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: 'Lead Time' })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: 'Active POs' })).toBeVisible();
+      await expect(manager.page.getByRole('columnheader', { name: 'Rating' })).toBeVisible();
+    } finally {
+      await manager.close();
+    }
+  });
+
+  test('mesh partner lookup resolves a tenant card and sends a handshake', async ({ browser }) => {
+    const manager = await contextForRole(browser, 'manager');
+    const slug = `meshp${Date.now().toString(36)}`;
+    const partnerName = `Mesh Partner ${slug}`;
+    const isolated = await browser.newContext({
+      baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+    });
+    try {
+      const signup = await isolated.request.post('/api/v1/auth/signup', {
+        data: {
+          companyName: partnerName,
+          slug,
+          email: `owner@${slug}.test`,
+          password: DEMO_PASSWORD,
+          displayName: 'Mesh Partner Owner',
+        },
+      });
+      expect(signup.ok(), await signup.text()).toBeTruthy();
+
+      await manager.page.goto('/suppliers');
+      await expect(manager.page.getByRole('heading', { name: 'Suppliers', exact: true })).toBeVisible({
+        timeout: 20_000,
+      });
+      await manager.page.getByRole('button', { name: 'Add supplier' }).click();
+      await expect(manager.page.getByTestId('add-supplier-tab-mesh')).toBeVisible();
+      await manager.page.getByTestId('add-supplier-tab-mesh').click();
+      await manager.page.getByTestId('mesh-directory-search').fill(slug);
+      const card = manager.page.getByTestId('mesh-partner-card').filter({ hasText: partnerName });
+      await expect(card).toBeVisible({ timeout: 20_000 });
+      await card.click();
+      await expect(manager.page.getByTestId('mesh-partner-preview')).toContainText(partnerName);
+      const handshakeWait = manager.page.waitForResponse(
+        (res) => res.url().includes('/api/v1/mesh/handshake/initiate') && res.request().method() === 'POST',
+        { timeout: 30_000 },
+      );
+      await manager.page.getByTestId('send-mesh-handshake').click();
+      const handshake = await handshakeWait;
+      expect(handshake.ok(), await handshake.text()).toBeTruthy();
+
+      await manager.page.getByTestId('table-search').fill(partnerName);
+      await expect(manager.page.getByText(partnerName).first()).toBeVisible({ timeout: 15_000 });
+      await expect(manager.page.getByTestId('supplier-mesh-badge').first()).toBeVisible();
+    } finally {
+      await isolated.close();
+      await manager.close();
+    }
+  });
+
+  test('MRP workspace paginates, shows inventory math, and consolidates qty overrides', async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const owner = await contextForRole(browser, 'owner');
+    try {
+      const stamp = Date.now().toString(36).toUpperCase();
+      const supplier = await apiJson<{ id: string; name: string }>(owner.page, '/api/v1/suppliers', {
+        method: 'POST',
+        body: JSON.stringify({ name: `AAA-MRP-${stamp}` }),
+      });
+      const created = await createZeroStockSellableVariant(owner.page, {
+        sku: `MRP-${stamp}`,
+      });
+      const patched = await owner.page.request.patch(`/api/v1/variants/${created.variantId}`, {
+        data: {
+          reorderPoint: 5,
+          reorderQty: 15,
+          safetyStock: 5,
+          defaultSupplierId: supplier.id,
+        },
+      });
+      expect(patched.ok(), await patched.text()).toBeTruthy();
+      const customerId = await firstCustomerId(owner.page);
+      const so = await apiJson<{ id: string }>(owner.page, '/api/v1/sales-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerId,
+          number: `SO-MRP-${Date.now()}`,
+          channel: 'MANUAL',
+          currency: 'USD',
+          lines: [{ variantId: created.variantId, qtyOrdered: 14, unitPrice: 12.5 }],
+        }),
+      });
+      await owner.page.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
+
+      const preview = await owner.page.request.get(
+        `/api/v1/purchasing/mrp/suggestions?search=${encodeURIComponent(created.sku)}&page=1&size=25&supplierId=${supplier.id}&urgency=FORECASTED`,
+        { timeout: 90_000 },
+      );
+      expect(preview.ok(), await preview.text()).toBeTruthy();
+      const previewBody = (await preview.json()) as { items?: Array<{ sku?: string }> };
+      expect(previewBody.items?.some((row) => row.sku === created.sku)).toBeTruthy();
+
+      await owner.page.goto(
+        `/mrp?search=${encodeURIComponent(created.sku)}`,
+      );
+      await expect(owner.page.getByTestId('mrp-reorder-workspace')).toBeVisible({ timeout: 20_000 });
+      await expect(owner.page.getByTestId('mrp-filter-bar')).toBeVisible();
+      await expect(owner.page.getByTestId('mrp-supplier-filter')).toBeVisible();
+      await expect(owner.page.getByTestId('mrp-urgency-filter')).toBeVisible();
+
+      await expect(
+        owner.page.getByTestId('mrp-supplier-filter').locator(`option[value="${supplier.id}"]`),
+      ).toBeAttached({ timeout: 15_000 });
+      await owner.page.getByTestId('mrp-supplier-filter').selectOption(supplier.id);
+      await owner.page.getByTestId('mrp-urgency-filter').selectOption('FORECASTED');
+
+      await expect(owner.page.getByRole('columnheader', { name: 'On-Hand' })).toBeVisible();
+      await expect(owner.page.getByRole('columnheader', { name: 'Allocated' })).toBeVisible();
+      await expect(owner.page.getByRole('columnheader', { name: 'Inbound' })).toBeVisible();
+      await expect(owner.page.getByRole('columnheader', { name: 'Min / Max' })).toBeVisible();
+      await expect(owner.page.getByRole('cell', { name: created.sku, exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(owner.page.getByTestId('mrp-minmax').first()).toContainText('/');
+
+      const lineRow = owner.page.getByRole('row').filter({ hasText: created.sku });
+      const qtyButton = lineRow.getByRole('button', { name: /^Edit value/ });
+      await expect(qtyButton).toBeVisible({ timeout: 10_000 });
+      await qtyButton.dispatchEvent('click');
+      const qtyInput = lineRow.locator('input[aria-label="Edit value"]');
+      await expect(qtyInput).toBeVisible({ timeout: 5_000 });
+      await qtyInput.fill('30');
+      await qtyInput.press('Enter');
+      await expect(lineRow.getByRole('button', { name: /^Edit value 30/ })).toHaveClass(/warning/);
+
+      const jobWait = owner.page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/v1/purchasing/mrp/calculate/jobs') &&
+          res.request().method() === 'POST' &&
+          !res.url().includes('/jobs/'),
+        { timeout: 30_000 },
+      );
+      await owner.page.getByTestId('mrp-consolidate-button').click();
+      const queued = await jobWait;
+      expect(queued.status(), await queued.text()).toBe(202);
+      const job = (await queued.json()) as { jobId: string };
+
+      let completed: {
+        status?: string;
+        result?: { createdPurchaseOrders?: Array<{ id: string }> };
+      } = {};
+      await expect
+        .poll(
+          async () => {
+            const res = await owner.page.request.get(
+              `/api/v1/purchasing/mrp/calculate/jobs/${job.jobId}`,
+            );
+            if (!res.ok()) return 'ERR';
+            completed = (await res.json()) as typeof completed;
+            return completed.status ?? 'UNKNOWN';
+          },
+          { timeout: 45_000 },
+        )
+        .toBe('COMPLETED');
+
+      const poId = completed.result?.createdPurchaseOrders?.[0]?.id;
+      expect(poId, 'expected an MRP draft PO from the async job').toBeTruthy();
+      const detail = await apiJson<{
+        lines: Array<{ variantId: string; qtyOrdered: number }>;
+      }>(owner.page, `/api/v1/purchase-orders/${poId}`);
+      const line = detail.lines.find((row) => row.variantId === created.variantId);
+      expect(Number(line?.qtyOrdered)).toBe(30);
+    } finally {
+      await owner.close();
     }
   });
 });

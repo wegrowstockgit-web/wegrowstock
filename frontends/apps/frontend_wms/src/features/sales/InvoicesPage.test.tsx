@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { InvoicesPage } from './InvoicesPage';
 import { apiClient } from '@/api/client';
+import { listInvoices } from '@/api/operational';
 import { useSessionStore } from '@/stores/session';
 import { ToastProvider } from '@/components/ui/Toast';
 
@@ -13,6 +14,10 @@ vi.mock('@/api/client', () => ({
     get: vi.fn(),
     post: vi.fn(),
   },
+}));
+
+vi.mock('@/api/operational', () => ({
+  listInvoices: vi.fn(),
 }));
 
 function renderPage() {
@@ -30,10 +35,11 @@ function renderPage() {
   );
 }
 
-describe('InvoicesPage PDF actions', () => {
+describe('InvoicesPage AR grid', () => {
   beforeEach(() => {
     vi.mocked(apiClient.get).mockReset();
     vi.mocked(apiClient.post).mockReset();
+    vi.mocked(listInvoices).mockReset();
     useSessionStore.setState({
       authenticated: true,
       user: {
@@ -49,34 +55,28 @@ describe('InvoicesPage PDF actions', () => {
       primarySession: null,
     });
 
+    vi.mocked(listInvoices).mockResolvedValue({
+      items: [
+        {
+          id: 'inv-1',
+          number: 'INV-1002',
+          customerName: 'Buyer Co',
+          status: 'OPEN',
+          total: 100,
+          amountPaid: 25,
+          balanceDue: 75,
+          currency: 'USD',
+          dueAt: '2020-01-01T00:00:00Z',
+        },
+      ],
+      totalElements: 1,
+      totalPages: 1,
+      page: 1,
+      size: 50,
+      hasMore: false,
+    });
+
     vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
-      if (url === '/api/v1/invoices') {
-        return {
-          data: [
-            {
-              id: 'inv-1',
-              number: 'INV-1002',
-              customerName: 'Buyer Co',
-              status: 'OPEN',
-              total: 20,
-              currency: 'USD',
-            },
-          ],
-        };
-      }
-      if (url === '/api/v1/invoices/inv-1') {
-        return {
-          data: {
-            id: 'inv-1',
-            number: 'INV-1002',
-            customerName: 'Buyer Co',
-            status: 'OPEN',
-            total: 20,
-            currency: 'USD',
-            documentUrl: 's3://invsys-media/t1/invoices/inv-1.pdf',
-          },
-        };
-      }
       if (String(url).includes('/documents/invoice/inv-1/pdf')) {
         return { data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }) };
       }
@@ -84,10 +84,10 @@ describe('InvoicesPage PDF actions', () => {
     });
   });
 
-  it('downloads PDF and emails invoice from peek drawer', async () => {
+  it('shows balance due, overdue badge, row PDF/email, and bulk email bar', async () => {
     const user = userEvent.setup();
     vi.mocked(apiClient.post).mockResolvedValue({
-      data: { sent: true, to: 'ap@buyer.test', documentUrl: 's3://x', invoiceNumber: 'INV-1002' },
+      data: { sent: 1, failed: 0, to: 'ap@buyer.test' },
     });
 
     const createObjectURL = vi.fn(() => 'blob:invoice');
@@ -95,11 +95,14 @@ describe('InvoicesPage PDF actions', () => {
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
 
     renderPage();
-    expect(await screen.findByText('INV-1002')).toBeInTheDocument();
-    await user.click(screen.getByText('INV-1002'));
+    expect(await screen.findByRole('columnheader', { name: 'Balance Due' })).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-balance-inv-1')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-status-inv-1')).toHaveTextContent('OVERDUE');
+    expect(screen.getByTestId('invoice-due-inv-1')).toHaveClass('text-danger');
+    expect(screen.queryByTestId('open-invoice-workspace')).not.toBeInTheDocument();
 
-    expect(await screen.findByTestId('invoice-download-pdf')).toBeInTheDocument();
-    await user.click(screen.getByTestId('invoice-download-pdf'));
+    await user.click(screen.getByTestId('invoice-row-actions-inv-1'));
+    await user.click(screen.getByTestId('invoice-download-pdf-inv-1'));
     await waitFor(() => {
       expect(apiClient.get).toHaveBeenCalledWith(
         '/api/v1/documents/invoice/inv-1/pdf',
@@ -107,9 +110,19 @@ describe('InvoicesPage PDF actions', () => {
       );
     });
 
-    await user.click(screen.getByTestId('invoice-email-pdf'));
+    await user.click(screen.getByTestId('invoice-row-actions-inv-1'));
+    await user.click(screen.getByTestId('invoice-email-inv-1'));
     await waitFor(() => {
       expect(apiClient.post).toHaveBeenCalledWith('/api/v1/documents/invoice/inv-1/email');
+    });
+
+    await user.click(screen.getByTestId('invoice-select-inv-1'));
+    expect(screen.getByTestId('invoice-bulk-bar')).toBeInTheDocument();
+    await user.click(screen.getByTestId('invoice-bulk-email'));
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith('/api/v1/documents/invoices/email', {
+        invoiceIds: ['inv-1'],
+      });
     });
   });
 });

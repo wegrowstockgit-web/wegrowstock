@@ -24,6 +24,7 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final DesktopSessionLockFilter desktopSessionLockFilter;
     private final SuspendedTenantAccessFilter suspendedTenantAccessFilter;
     private final TenantThrottleFilter tenantThrottleFilter;
     private final WarehouseAccessFilter warehouseAccessFilter;
@@ -36,6 +37,7 @@ public class SecurityConfig {
     private final boolean publicSignupEnabled;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          DesktopSessionLockFilter desktopSessionLockFilter,
                           SuspendedTenantAccessFilter suspendedTenantAccessFilter,
                           TenantThrottleFilter tenantThrottleFilter,
                           WarehouseAccessFilter warehouseAccessFilter,
@@ -47,6 +49,7 @@ public class SecurityConfig {
                           ActuatorScrapeAuthorizationManager actuatorScrapeAuthorizationManager,
                           @Value("${invsys.security.public-signup-enabled:false}") boolean publicSignupEnabled) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.desktopSessionLockFilter = desktopSessionLockFilter;
         this.suspendedTenantAccessFilter = suspendedTenantAccessFilter;
         this.tenantThrottleFilter = tenantThrottleFilter;
         this.warehouseAccessFilter = warehouseAccessFilter;
@@ -122,7 +125,8 @@ public class SecurityConfig {
                         .clientRegistrationRepository(tenantClientRegistrationRepository)
                         .successHandler(oidcLoginSuccessHandler))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(suspendedTenantAccessFilter, JwtAuthFilter.class)
+                .addFilterAfter(desktopSessionLockFilter, JwtAuthFilter.class)
+                .addFilterAfter(suspendedTenantAccessFilter, DesktopSessionLockFilter.class)
                 .addFilterAfter(tenantThrottleFilter, SuspendedTenantAccessFilter.class)
                 .addFilterAfter(warehouseAccessFilter, TenantThrottleFilter.class)
                 .addFilterAfter(redisIdempotencyFilter, WarehouseAccessFilter.class);

@@ -5,6 +5,7 @@ const sessionState = {
   authenticated: true,
   setLastRequestId: vi.fn(),
   clearSession: vi.fn(),
+  setLocked: vi.fn(),
 };
 
 const warehouseState = {
@@ -155,6 +156,7 @@ describe('apiClient 401 session teardown', () => {
 
   beforeEach(() => {
     sessionState.clearSession.mockReset();
+    sessionState.setLocked.mockReset();
   });
 
   it('clears the local session when a retried request is still 401', async () => {
@@ -168,5 +170,32 @@ describe('apiClient 401 session teardown', () => {
       }),
     ).rejects.toBeTruthy();
     expect(sessionState.clearSession).toHaveBeenCalled();
+  });
+
+  it('locks the desktop session on 423 without ending the session', async () => {
+    const rejected = rejectedHandler();
+    await expect(
+      rejected?.({
+        message: 'Locked',
+        isAxiosError: true,
+        response: { status: 423, data: { title: 'SESSION_LOCKED', code: 'SESSION_LOCKED' }, headers: {} },
+        config: { url: '/api/v1/sales-orders' },
+      }),
+    ).rejects.toBeTruthy();
+    expect(sessionState.setLocked).toHaveBeenCalledWith(true);
+    expect(sessionState.clearSession).not.toHaveBeenCalled();
+  });
+
+  it('does not tear down the session on a failed desktop unlock', async () => {
+    const rejected = rejectedHandler();
+    await expect(
+      rejected?.({
+        message: 'Unauthorized',
+        isAxiosError: true,
+        response: { status: 401, data: { title: 'INVALID_PASSWORD' }, headers: {} },
+        config: { url: '/api/v1/auth/unlock' },
+      }),
+    ).rejects.toBeTruthy();
+    expect(sessionState.clearSession).not.toHaveBeenCalled();
   });
 });

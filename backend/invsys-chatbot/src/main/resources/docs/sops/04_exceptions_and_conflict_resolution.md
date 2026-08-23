@@ -154,6 +154,35 @@ Any floor role may use on-screen manual fallbacks where offered. Managers decide
 
 ---
 
+### Customer Returns & RMA Processing
+
+**What is this?**
+The weGrowStock Returns workspace authorizes customer returns, prints inbound labels, dispositions each SKU (restock, scrap, or repair), and posts a draft credit memo when the RMA is closed.
+
+**Who can do this? (Privileges Required)**
+WAREHOUSE_MANAGER, ADMIN, or OWNER for New RMA, disposition, complete, and Escalate to RTV. Floor receive stays with PICKER/ops.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar Navigation → **Inbound** → **Returns** (`/returns` or `/inbound/returns`)
+
+**Step-by-Step Instructions:**
+1. Click **New RMA**. Step 1: search by customer name, sales order number, or customer PO, then pick a shipped order.
+2. Step 2: check the SKUs coming back. Enter return qty (cannot exceed shipped minus already returned) and a reason code: `DEFECTIVE_PRODUCT`, `WRONG_ITEM_SHIPPED`, `DAMAGED_IN_TRANSIT`, `BUYER_REMORSE`, or `SIZE_FIT_EXCHANGE`.
+3. Step 3: choose resolution `REFUND_CREDIT_MEMO`, `REPLACEMENT_ORDER`, or `REPAIR`. Optionally toggle **Generate EasyPost Return Label** (PDF + tracking), then **Create RMA**.
+4. When freight arrives, receive on **Returns receive** and photograph condition. Then expand the accordion card.
+5. Disposition rules:
+   - **RESTOCK** — sellable goods. Choose a **Restock Target Bin**. Completing the RMA adds inventory to that bin (`RMA_RESTOCK`).
+   - **SCRAP** — damaged or unsellable. Completing writes the scrap ledger (`RMA_SCRAP`) when the line was already received; otherwise the line is closed without putting stock back.
+   - **REPAIR** — hold for repair. No credit memo is drafted when the RMA resolution is Repair.
+   - **Escalate to RTV** — manufacturer defect (`DEFECTIVE_PRODUCT` or scrap). Creates a draft Return-to-Vendor on **Purchasing → RTV**.
+6. Click **Complete Disposition & Close RMA**. Status becomes **CLOSED**. For refund resolutions, weGrowStock drafts a Credit Memo on **Invoices** for the return value minus restocking fees.
+
+**⚠️ What if I make a mistake?**
+- **Restocked a broken item:** Open **Inspect / QC Details**, change disposition to **SCRAP**, and have a manager post a stock correction before the SKU is allocated outbound. Do not edit the posted ledger row.
+- **Wrong reason code after create:** Disposition and QC notes still decide restock vs scrap vs RTV. History of the original reason stays.
+
+---
+
 ### How to Receive Customer Returns (RMA receive)
 
 **What is this?**

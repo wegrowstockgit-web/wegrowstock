@@ -10,7 +10,9 @@ import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderRepository;
 import com.invsys.modules.purchasing.repository.SupplierRepository;
 import com.invsys.modules.purchasing.service.PurchaseOrderService;
+import com.invsys.service.InvitationEmailService;
 import com.invsys.service.SupplierPortalService;
+import com.invsys.core.tenancy.BootstrapJdbc;
 import com.invsys.core.tenancy.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -18,6 +20,12 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.invsys.modules.catalog.domain.Product;
+import com.invsys.modules.catalog.domain.ProductVariant;
+import com.invsys.modules.catalog.repository.ProductRepository;
+import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,9 +33,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,17 +53,32 @@ public class PurchaseOrderController {
     private final PurchaseOrderLineRepository lineRepository;
     private final PurchaseOrderService purchaseOrderService;
     private final SupplierPortalService supplierPortalService;
+    private final ProductVariantRepository productVariantRepository;
+    private final ProductRepository productRepository;
+    private final BootstrapJdbc bootstrapJdbc;
+    private final InvitationEmailService invitationEmailService;
+
+    private static final List<String> OPEN_PO_STATUSES = List.of(
+            "DRAFT", "SUBMITTED", "CONFIRMED", "IN_TRANSIT", "PARTIALLY_RECEIVED");
 
     public PurchaseOrderController(SupplierRepository supplierRepository,
                                    PurchaseOrderRepository purchaseOrderRepository,
                                    PurchaseOrderLineRepository lineRepository,
                                    PurchaseOrderService purchaseOrderService,
-                                   SupplierPortalService supplierPortalService) {
+                                   SupplierPortalService supplierPortalService,
+                                   ProductVariantRepository productVariantRepository,
+                                   ProductRepository productRepository,
+                                   BootstrapJdbc bootstrapJdbc,
+                                   InvitationEmailService invitationEmailService) {
         this.supplierRepository = supplierRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.lineRepository = lineRepository;
         this.purchaseOrderService = purchaseOrderService;
         this.supplierPortalService = supplierPortalService;
+        this.productVariantRepository = productVariantRepository;
+        this.productRepository = productRepository;
+        this.bootstrapJdbc = bootstrapJdbc;
+        this.invitationEmailService = invitationEmailService;
     }
 
     private static final Set<String> SUPPLIER_SORT = Set.of("name", "createdAt", "paymentTerms");
@@ -70,6 +95,7 @@ public class PurchaseOrderController {
                 TenantContext.requireTenantId(),
                 OffsetPaging.keyword(search),
                 OffsetPaging.of(page, size, sort, "name", Sort.Direction.ASC, SUPPLIER_SORT));
+        result.getContent().forEach(this::enrichSupplier);
         return PageResponse.of(result);
     }
 
@@ -97,7 +123,18 @@ public class PurchaseOrderController {
         if (request.defaultCurrency() != null && !request.defaultCurrency().isBlank()) {
             supplier.setDefaultCurrency(request.defaultCurrency().trim().toUpperCase());
         }
-        return supplierRepository.save(supplier);
+        if (request.supplierClass() != null && !request.supplierClass().isBlank()) {
+            supplier.setSupplierClass(normalizeSupplierClass(request.supplierClass()));
+        }
+        if (request.incoterms() != null && !request.incoterms().isBlank()) {
+            supplier.setIncoterms(normalizeIncoterms(request.incoterms()));
+        }
+        supplier = supplierRepository.save(supplier);
+        if (Boolean.TRUE.equals(request.inviteToPortal())) {
+            inviteSupplierPortal(supplier);
+            supplier = supplierRepository.save(supplier);
+        }
+        return enrichSupplier(supplier);
     }
 
     @GetMapping("/suppliers/{id}")
@@ -110,7 +147,15 @@ public class PurchaseOrderController {
             throw new com.invsys.core.common.ApiException(
                     org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Supplier not found");
         }
-        return supplier;
+        return enrichSupplier(supplier);
+    }
+
+    @PostMapping("/suppliers/{id}/portal-invite")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public Supplier resendPortalInvite(@PathVariable UUID id) {
+        Supplier supplier = getSupplier(id);
+        inviteSupplierPortal(supplier);
+        return enrichSupplier(supplierRepository.save(supplier));
     }
 
     @PatchMapping("/suppliers/{id}")
@@ -157,13 +202,60 @@ public class PurchaseOrderController {
     private static String normalizePaymentTerms(String raw) {
         String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_');
         return switch (key) {
+            case "NET15", "NET_15", "N15" -> "NET15";
             case "NET30", "NET_30", "N30" -> "NET30";
             case "NET60", "NET_60", "N60" -> "NET60";
             case "DUE_ON_RECEIPT", "DUEONRECEIPT", "COD", "DUE" -> "DUE_ON_RECEIPT";
             default -> throw new com.invsys.core.common.ApiException(
                     org.springframework.http.HttpStatus.BAD_REQUEST,
                     "VALIDATION",
-                    "paymentTerms must be NET30, NET60, or DUE_ON_RECEIPT");
+                    "paymentTerms must be NET15, NET30, NET60, or DUE_ON_RECEIPT");
+        };
+    }
+
+    private Supplier enrichSupplier(Supplier supplier) {
+        UUID tenantId = TenantContext.requireTenantId();
+        supplier.setMeshPartner(bootstrapJdbc.findMeshByBuyerSupplier(tenantId, supplier.getId()).isPresent());
+        supplier.setPortalAccess(supplier.getPortalInvitedAt() != null);
+        supplier.setActivePoCount(purchaseOrderRepository.countByTenantIdAndSupplierIdAndStatusIn(
+                tenantId, supplier.getId(), OPEN_PO_STATUSES));
+        return supplier;
+    }
+
+    private void inviteSupplierPortal(Supplier supplier) {
+        String email = supplier.getContactEmail();
+        if (email == null || email.isBlank()) {
+            throw new com.invsys.core.common.ApiException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "PORTAL_EMAIL_REQUIRED",
+                    "Contact email is required to invite a supplier to the portal");
+        }
+        invitationEmailService.sendSupplierPortalInvite(email);
+        supplier.setPortalInvitedAt(Instant.now());
+    }
+
+    private static String normalizeSupplierClass(String raw) {
+        String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_').replace('/', '_');
+        return switch (key) {
+            case "RAW_MATERIALS", "RAW", "RAW_MATERIAL" -> "RAW_MATERIALS";
+            case "PACKAGING" -> "PACKAGING";
+            case "FREIGHT", "FREIGHT_LOGISTICS", "LOGISTICS" -> "FREIGHT";
+            case "FINISHED_GOODS", "FINISHED" -> "FINISHED_GOODS";
+            default -> throw new com.invsys.core.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "VALIDATION",
+                    "supplierClass must be RAW_MATERIALS, PACKAGING, FREIGHT, or FINISHED_GOODS");
+        };
+    }
+
+    private static String normalizeIncoterms(String raw) {
+        String key = raw.trim().toUpperCase();
+        return switch (key) {
+            case "FOB", "EXW", "DDP", "CIF" -> key;
+            default -> throw new com.invsys.core.common.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "VALIDATION",
+                    "incoterms must be FOB, EXW, DDP, or CIF");
         };
     }
 
@@ -299,6 +391,13 @@ public class PurchaseOrderController {
         return purchaseOrderService.updateDraftLine(id, lineId, request.qtyOrdered(), request.unitCost());
     }
 
+    @DeleteMapping("/purchase-orders/{id}/lines/{lineId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteLine(@PathVariable UUID id, @PathVariable UUID lineId) {
+        purchaseOrderService.deleteDraftLine(id, lineId);
+    }
+
     @GetMapping("/purchase-orders/{id}/receipt-ledger")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public List<PurchaseOrderService.ReceiptLedgerRow> receiptLedger(@PathVariable UUID id) {
@@ -331,8 +430,16 @@ public class PurchaseOrderController {
         String supplierName = supplierRepository.findById(po.getSupplierId())
                 .map(Supplier::getName).orElse("—");
         List<PurchaseOrderLineDetail> lines = lineRepository.findByPurchaseOrderId(id).stream()
-                .map(l -> new PurchaseOrderLineDetail(
-                        l.getId(), l.getVariantId(), l.getQtyOrdered(), l.getQtyReceived(), l.getUnitCost()))
+                .map(l -> {
+                    ProductVariant variant = productVariantRepository.findById(l.getVariantId()).orElse(null);
+                    String sku = variant != null ? variant.getSku() : null;
+                    String name = variant != null
+                            ? productRepository.findById(variant.getProductId()).map(Product::getName).orElse(null)
+                            : null;
+                    return new PurchaseOrderLineDetail(
+                            l.getId(), l.getVariantId(), l.getQtyOrdered(), l.getQtyReceived(), l.getUnitCost(),
+                            sku, name);
+                })
                 .toList();
         String trackingNumber = latestTrackingField(po.getTrackingMetadata(), "trackingNumber");
         String carrier = latestTrackingField(po.getTrackingMetadata(), "carrier");
@@ -365,7 +472,10 @@ public class PurchaseOrderController {
             Integer defaultLeadTimeDays,
             BigDecimal minimumOrderQuantityValue,
             BigDecimal supplierRating,
-            String defaultCurrency
+            String defaultCurrency,
+            String supplierClass,
+            String incoterms,
+            Boolean inviteToPortal
     ) {
     }
 
@@ -475,7 +585,9 @@ public class PurchaseOrderController {
             UUID variantId,
             BigDecimal qtyOrdered,
             BigDecimal qtyReceived,
-            BigDecimal unitCost
+            BigDecimal unitCost,
+            String sku,
+            String name
     ) {
     }
 

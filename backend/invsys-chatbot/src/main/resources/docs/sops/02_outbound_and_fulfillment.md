@@ -4,8 +4,8 @@ slug: "sop-outbound-fulfillment"
 sourcePath: "docs/sops/02_outbound_and_fulfillment.md"
 audienceRoles: ["OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER"]
 audienceLevel: "beginner"
-routeHints: ["/sales-orders", "/customers", "/invoices", "/fulfillment", "/cluster-pick", "/pallet-manifests", "/replenishments", "/dashboard", "/exceptions"]
-keywords: ["sales order", "allocate", "backorder", "credit hold", "override credit hold", "split backorder", "wave", "cluster pick", "tote", "cartonization", "pack", "ship", "shipped too early", "wrong SKU", "wrong address", "broken item", "invoice"]
+routeHints: ["/sales-orders", "/sales/orders/new", "/customers", "/invoices", "/fulfillment", "/cluster-pick", "/pallet-manifests", "/replenishments", "/dashboard", "/exceptions"]
+keywords: ["sales order", "ATP", "available to promise", "async search", "allocate", "backorder", "credit hold", "override credit hold", "split backorder", "wave", "cluster pick", "tote", "cartonization", "pack", "ship", "shipped too early", "wrong SKU", "wrong address", "broken item", "invoice"]
 ---
 
 # Outbound Sales & Fulfillment — Beginner Playbook
@@ -88,6 +88,40 @@ OWNER, ADMIN, or WAREHOUSE_MANAGER. Changing a price below list may require the 
 - **Duplicate order (clicked create twice):** **Cancel** the twin while nothing is allocated. If it was already allocated, un-allocate first (ask the assistant: *"Un-allocate SO-1042"* — it drafts the action for a manager to **Approve**), then cancel.
 - **Wrong customer selected:** Cancel and recreate. Don't ship to the wrong customer and "fix it later."
 - **Price below list is blocked:** You need someone with **Override Pricing** — that's a control, not a bug.
+
+---
+
+### Creating Sales Orders & Checking ATP
+
+**What is this?**
+The **New sales order** workspace is a full page in weGrowStock — not a cramped modal. Customer and SKU fields are **async searchable comboboxes**, so enterprise catalogs stay fast: the UI asks the server for matches as you type instead of loading every customer and every SKU into a native `<select>`.
+
+**Who can do this? (Privileges Required)**
+OWNER, ADMIN, or WAREHOUSE_MANAGER. PICKERs and VIEWERs cannot build office orders.
+
+**Where to go in weGrowStock:**
+🖥️ Sidebar → **Outbound** → **Sales Orders** → **New order**, Dashboard **New sales order**, or `/sales/orders/new`.
+
+**How async search works:**
+1. **Customer** — type a name. weGrowStock queries `/api/v1/customers?search=…`. Selecting a customer loads **Available Credit**, **Default Price Tier**, and payment terms as a badge under the field. Unit prices then apply that tier's discount to list price.
+2. **SKU** — type a SKU or product name. weGrowStock queries `/api/v1/variants?search=…`. After you pick a line, a background ATP query shows live stock at the **Ship-from warehouse** you chose (or all warehouses if you left it blank).
+3. Add quantity and confirm the auto-filled **Unit price**. Use the trash icon to drop a mistaken line.
+
+**ATP vs On-Hand (why they differ):**
+- **On-Hand** is physical quantity sitting in bins.
+- **Available-to-Promise (ATP)** is on-hand minus stock already **allocated** to other confirmed orders. ATP can be lower than on-hand even when the shelf looks full.
+- ATP of **0** is a backorder signal, not a hard stop. You can still add the line. After **Confirm** + **Allocate**, weGrowStock flags the shortfall as **BACKORDERED** until inbound stock arrives.
+
+**How line totals are calculated:**
+- **Extended price** on each row = Qty × Unit Price (updates as you type).
+- **Subtotal** = sum of extended prices.
+- **Estimated tax / shipping** stay $0 on this screen — invoicing calculates tax later.
+- **Grand Total** = subtotal + estimated tax + estimated shipping. Review Grand Total against the credit badge before **Create order**.
+
+**⚠️ What if I make a mistake?**
+- **Wrong customer or SKU, still on the workspace:** Change the combobox or trash the line — nothing is posted until **Create order**.
+- **ATP says 0 and I still need the goods:** Create the order anyway; treat it as a backorder and receive inbound (or free another allocation).
+- **Grand Total exceeds available credit:** Pause and confirm with finance. Credit Hold can still block **Confirm** even if the draft saved.
 
 ---
 

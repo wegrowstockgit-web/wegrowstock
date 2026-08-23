@@ -47,6 +47,36 @@ Cover customer orders, FEFO-minded allocation, wave release, handheld picking, p
 
 ---
 
+### Creating Sales Orders & Checking ATP
+
+- **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER. PICKER does not build office orders.
+- **Route Location:** Outbound → **Sales Orders** → **New order**, or Dashboard **New sales order** (`/sales/orders/new`)
+- **Primary Operational Goal:** Build a B2B draft with async customer/SKU search, live Available-to-Promise (ATP), and a Grand Total before the warehouse sees the order.
+
+#### 1. Step-by-Step Action Plan
+1. Open **Sales Orders** and click **New order** (full-page workspace, not a modal).
+2. Search the customer by name. Selecting them loads **Available Credit** and **Default Price Tier**.
+3. Choose **Ship-from warehouse**, **Customer PO #**, and **Requested ship date**.
+4. Search items by SKU or name. After each pick, review **On-Hand** vs **Available** (ATP) at that warehouse.
+5. Confirm qty and unit price. **Extended** = Qty × Unit Price. The footer sums extended prices into **Grand Total**.
+6. Click **Create order**. Then **Confirm** on the list/workspace so the floor can allocate.
+
+#### 2. Correlated Flow & Downstream Ripple Effect
+- Async search queries customers and variants as you type so large catalogs stay fast.
+- **ATP is not the same as On-Hand.** On-Hand is physical stock; ATP subtracts quantities already allocated to other orders.
+- ATP of 0 still allows the line. After allocate, weGrowStock flags the shortfall as **BACKORDERED**.
+- Estimated tax/shipping stay $0 here; invoicing calculates tax later.
+
+#### 3. Safety, Reversal & Undo Rules
+- Trash a line or change the customer before **Create order** — nothing is posted yet.
+- After create, edit only while **DRAFT**. After ship, use RMA / credit memos.
+
+#### 4. Troubleshooting Common Blockers
+- **Available stock says 0:** You can still add the SKU; expect a backorder until inbound arrives or another allocation is released.
+- **Grand Total exceeds credit:** Confirm with finance before submitting a large order.
+
+---
+
 ### Customers
 
 - **Target Audience & Roles:** OWNER, ADMIN, WAREHOUSE_MANAGER; VIEWER read-only.

@@ -40,9 +40,10 @@ test.describe('Enterprise feature matrix', () => {
       // Socket may refuse on CI — accept success or printer-unreachable server errors
       expect([200, 409, 422, 500, 502, 503]).toContain(printRes.status());
 
-      const mrpSuggestions = await page.request.get('/api/v1/purchasing/mrp/suggestions');
+      const mrpSuggestions = await page.request.get('/api/v1/purchasing/mrp/suggestions?page=1&size=25');
       expect(mrpSuggestions.ok(), await mrpSuggestions.text()).toBeTruthy();
-      expect(Array.isArray(await mrpSuggestions.json())).toBeTruthy();
+      const mrpPage = (await mrpSuggestions.json()) as { items?: unknown[] };
+      expect(Array.isArray(mrpPage.items)).toBeTruthy();
 
       const mrpCalc = await page.request.post('/api/v1/purchasing/mrp/calculate', { data: {} });
       expect(mrpCalc.ok(), await mrpCalc.text()).toBeTruthy();

@@ -25,6 +25,7 @@ interface MeResponse {
   enabledModules?: string[];
   localeLanguage?: string | null;
   tier?: string | null;
+  sessionLocked?: boolean;
 }
 
 /**
@@ -77,6 +78,7 @@ export function WarehouseFloorShell() {
           enabledModules: data.enabledModules,
           localeLanguage: data.localeLanguage,
           tier: data.tier,
+          sessionLocked: data.sessionLocked,
         });
       return data;
     },

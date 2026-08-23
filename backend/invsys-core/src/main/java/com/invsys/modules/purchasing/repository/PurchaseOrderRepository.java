@@ -20,6 +20,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
     List<PurchaseOrder> findByTenantIdAndSupplierIdAndStatusInOrderByExpectedAtAsc(
             UUID tenantId, UUID supplierId, List<String> statuses);
 
+    long countByTenantIdAndSupplierIdAndStatusIn(UUID tenantId, UUID supplierId, List<String> statuses);
+
     @Query("""
             SELECT po FROM PurchaseOrder po
             WHERE po.tenantId = :tenantId

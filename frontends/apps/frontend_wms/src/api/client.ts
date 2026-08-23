@@ -78,6 +78,29 @@ function isAuthFailure(status?: number): boolean {
   return status === 401;
 }
 
+function errorCode(error: AxiosError): string | undefined {
+  const data = error.response?.data;
+  if (!data || typeof data !== 'object') return undefined;
+  const body = data as { code?: unknown; title?: unknown };
+  if (typeof body.code === 'string' && body.code.trim()) return body.code;
+  if (typeof body.title === 'string' && body.title.trim()) return body.title;
+  return undefined;
+}
+
+function isSessionLockedError(error: AxiosError): boolean {
+  const status = error.response?.status;
+  return status === 423 || errorCode(error) === 'SESSION_LOCKED';
+}
+
+function isDesktopUnlockRequest(url?: string): boolean {
+  if (!url) return false;
+  return (
+    url.includes('/api/v1/auth/unlock') ||
+    url.includes('/api/v1/auth/desktop-unlock') ||
+    url.includes('/api/v1/auth/lock')
+  );
+}
+
 function isProtectedApiRequest(url?: string): boolean {
   if (!url) return false;
   return (
@@ -191,7 +214,15 @@ apiClient.interceptors.response.use(
       _retry?: boolean;
     };
 
+    if (isSessionLockedError(error)) {
+      useSessionStore.getState().setLocked(true);
+      return Promise.reject(error);
+    }
+
     if (isAuthFailure(error.response?.status) && originalRequest) {
+      if (isDesktopUnlockRequest(originalRequest.url)) {
+        return Promise.reject(error);
+      }
       const onRefreshEndpoint = originalRequest.url?.includes('/api/v1/auth/refresh') === true;
       if (
         !originalRequest._retry &&

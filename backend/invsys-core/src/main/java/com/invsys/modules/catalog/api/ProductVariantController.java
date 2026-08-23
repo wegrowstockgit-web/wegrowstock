@@ -63,9 +63,11 @@ public class ProductVariantController {
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','PICKER','VIEWER')")
     public PageResponse<VariantListItemResponse> list(
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) String search,
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "50") int limit) {
-        return variantCatalogService.list(q, cursor, limit);
+        String query = (q != null && !q.isBlank()) ? q : search;
+        return variantCatalogService.list(query, cursor, limit);
     }
 
     @GetMapping("/product/{productId}")
@@ -137,6 +139,12 @@ public class ProductVariantController {
         }
         if (request.reorderQty() != null) {
             variant.setReorderQty(request.reorderQty());
+        }
+        if (request.safetyStock() != null) {
+            variant.setSafetyStock(request.safetyStock());
+        }
+        if (request.defaultSupplierId() != null) {
+            variant.setDefaultSupplierId(request.defaultSupplierId());
         }
         applyDims(variant, request.weight(), request.weightUnit(), request.length(),
                 request.width(), request.height(), request.dimUnit());
@@ -309,6 +317,8 @@ public class ProductVariantController {
             Map<String, Object> dims,
             BigDecimal reorderPoint,
             BigDecimal reorderQty,
+            BigDecimal safetyStock,
+            UUID defaultSupplierId,
             @Positive BigDecimal weight,
             String weightUnit,
             @Positive BigDecimal length,

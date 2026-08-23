@@ -250,6 +250,21 @@ public class PurchaseOrderService {
         return lineRepository.save(line);
     }
 
+    @Transactional
+    public void deleteDraftLine(UUID purchaseOrderId, UUID lineId) {
+        requireDraft(purchaseOrderId);
+        PurchaseOrderLine line = lineRepository.findById(lineId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found"));
+        if (!purchaseOrderId.equals(line.getPurchaseOrderId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "PO line not found");
+        }
+        if (line.getQtyReceived() != null && line.getQtyReceived().signum() > 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
+                    "Cannot remove a line after stock has been received");
+        }
+        lineRepository.delete(line);
+    }
+
     public List<ReceiptLedgerRow> listReceiptLedger(UUID purchaseOrderId) {
         PurchaseOrder po = requirePo(purchaseOrderId);
         UUID tenantId = po.getTenantId();

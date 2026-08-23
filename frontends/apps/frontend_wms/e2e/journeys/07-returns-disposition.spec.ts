@@ -1,8 +1,10 @@
 import { test } from '@playwright/test';
 import {
+  PICK_BIN_ID,
   WH_01,
   apiJson,
   contextForRole,
+  createShippedMultiLineSalesOrder,
   createShippedSalesOrder,
   createZeroStockSellableVariant,
   ensureQuarantineLocation,
@@ -194,6 +196,106 @@ test.describe('Journey 07: Advanced RMA & disposition', () => {
 
     } finally {
       await picker.close();
+      await manager.close();
+      await admin.close();
+    }
+  });
+
+  test('wizard creates RMA, infinite list, restock complete drafts credit memo', async ({ browser }) => {
+    const admin = await contextForRole(browser, 'admin');
+    const manager = await contextForRole(browser, 'manager');
+
+    try {
+      const itemA = await createZeroStockSellableVariant(manager.page);
+      const itemB = await createZeroStockSellableVariant(manager.page);
+      const customerId = await firstCustomerId(manager.page);
+      const shipped = await createShippedMultiLineSalesOrder(manager.page, {
+        customerId,
+        numberPrefix: 'SO-RMAW',
+        lines: [
+          { variantId: itemA.variantId, quantity: 2, unitPrice: 40 },
+          { variantId: itemB.variantId, quantity: 2, unitPrice: 15 },
+        ],
+      });
+
+      await admin.page.goto('/returns');
+      await expect(admin.page.getByRole('heading', { name: 'Returns (RMA)', exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+
+      await admin.page.getByTestId('new-rma-button').click();
+      await expect(admin.page.getByTestId('rma-wizard')).toBeVisible();
+      await admin.page.getByTestId('rma-wizard-search').fill(shipped.number);
+      await expect(admin.page.getByTestId(`rma-wizard-order-${shipped.number}`)).toBeVisible({
+        timeout: 15_000,
+      });
+      await admin.page.getByTestId(`rma-wizard-order-${shipped.number}`).click();
+
+      await expect(admin.page.getByTestId(`rma-line-check-${itemA.sku}`)).toBeVisible({ timeout: 10_000 });
+      await admin.page.getByTestId(`rma-line-check-${itemA.sku}`).check();
+      await expect(admin.page.getByTestId(`rma-line-check-${itemB.sku}`)).toBeVisible();
+      await admin.page.getByTestId(`rma-reason-${itemA.sku}`).selectOption('DAMAGED_IN_TRANSIT');
+      await admin.page.getByRole('button', { name: 'Continue' }).click();
+
+      const createWait = admin.page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/v1/returns') &&
+          res.request().method() === 'POST' &&
+          !res.url().includes('/complete'),
+      );
+      await admin.page.getByTestId('rma-wizard-submit').click();
+      const createRes = await createWait;
+      expect(createRes.ok(), await createRes.text()).toBeTruthy();
+      const rma = (await createRes.json()) as { id: string; number: string };
+      expect(rma.number).toBeTruthy();
+
+      await admin.page.goto('/returns');
+      const createdCard = admin.page.getByTestId(`rma-card-${rma.number}`);
+      await expect(createdCard).toBeVisible({ timeout: 20_000 });
+      await expect(admin.page.locator('[data-testid^="rma-card-"]').first()).toHaveAttribute(
+        'data-testid',
+        `rma-card-${rma.number}`,
+      );
+      await createdCard.click();
+
+      const disposition = admin.page.getByTestId(`rma-disposition-${itemA.sku}`);
+      await expect(disposition).toBeVisible({ timeout: 10_000 });
+      const putWait = admin.page.waitForResponse(
+        (res) => res.url().includes(`/api/v1/returns/${rma.id}/lines/`) && res.request().method() === 'PUT',
+      );
+      await disposition.selectOption('RESTOCK');
+      expect((await putWait).ok()).toBeTruthy();
+
+      const binWait = admin.page.waitForResponse(
+        (res) => res.url().includes(`/api/v1/returns/${rma.id}/lines/`) && res.request().method() === 'PUT',
+      );
+      await admin.page.getByTestId(`rma-restock-bin-${itemA.sku}`).selectOption(PICK_BIN_ID);
+      expect((await binWait).ok()).toBeTruthy();
+
+      const completeWait = admin.page.waitForResponse(
+        (res) => res.url().includes(`/api/v1/returns/${rma.id}/complete`) && res.request().method() === 'POST',
+      );
+      await admin.page.getByTestId('rma-complete-disposition').click();
+      const completeRes = await completeWait;
+      expect(completeRes.ok(), await completeRes.text()).toBeTruthy();
+      const closed = (await completeRes.json()) as {
+        status: string;
+        creditMemoId?: string;
+        creditMemoNumber?: string;
+      };
+      expect(closed.status).toBe('CLOSED');
+      expect(closed.creditMemoId).toBeTruthy();
+
+      const closedCard = admin.page.getByTestId(`rma-card-${rma.number}`);
+      await expect(closedCard.getByText('CLOSED', { exact: true })).toBeVisible({ timeout: 10_000 });
+      if (!(await admin.page.getByTestId('rma-credit-memo-link').isVisible().catch(() => false))) {
+        await closedCard.click();
+      }
+      await expect(admin.page.getByTestId('rma-credit-memo-link')).toBeVisible();
+      await expect(admin.page.getByTestId('rma-credit-memo-link')).toContainText(
+        closed.creditMemoNumber ?? 'CM-',
+      );
+    } finally {
       await manager.close();
       await admin.close();
     }

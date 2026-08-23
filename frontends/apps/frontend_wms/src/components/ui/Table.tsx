@@ -41,6 +41,10 @@ export function TableBody({ children }: { children: ReactNode }) {
   return <tbody className="divide-y divide-border">{children}</tbody>;
 }
 
+export function TableFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return <tfoot className={cn('border-t border-border bg-surface-overlay/50', className)}>{children}</tfoot>;
+}
+
 export function TableRow({
   children,
   className,
@@ -159,7 +163,7 @@ export function TableCell({
   colSpan,
   ...rest
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   align?: 'left' | 'right' | 'center';
   mono?: boolean;

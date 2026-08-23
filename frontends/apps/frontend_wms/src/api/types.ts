@@ -80,6 +80,16 @@ export interface LogisticsAddress {
   country?: string;
 }
 
+export interface InventoryLevel {
+  id?: string;
+  variantId: string;
+  locationId: string;
+  lotId?: string | null;
+  onHand: number;
+  allocated?: number;
+  available?: number;
+}
+
 export interface TenantLocation {
   id: string;
   parentLocationId?: string;
@@ -369,6 +379,8 @@ export interface ReturnLine {
   reasonCode?: string;
   mediaObjectId?: string;
   evidenceUrl?: string;
+  restockLocationId?: string | null;
+  restockingFeePct?: number;
 }
 
 export interface Return {
@@ -394,6 +406,14 @@ export interface Return {
   lines?: ReturnLine[];
   createdAt?: string;
   updatedAt?: string;
+  estimatedReturnValue?: number;
+  itemCount?: number;
+  trackingNumber?: string | null;
+  resolutionType?: string | null;
+  creditMemoId?: string | null;
+  creditMemoNumber?: string | null;
+  rtvOrderId?: string | null;
+  rtvNumber?: string | null;
 }
 
 export interface PortalRmaEligibleLine {
@@ -685,6 +705,8 @@ export interface PurchaseOrderLineDetail {
   qtyOrdered: number;
   qtyReceived: number;
   unitCost: number;
+  sku?: string;
+  name?: string;
 }
 
 export interface PurchaseOrderDetail extends PurchaseOrder {
@@ -710,6 +732,9 @@ export interface SalesOrder {
   allocationPolicy?: AllocationPolicy | string;
   quoteExpiresAt?: string | null;
   manualDiscountTotal?: number;
+  totalAmount?: number;
+  linesTotal?: number;
+  linesShipped?: number;
 }
 
 export interface PackLabelResponse {
@@ -951,6 +976,9 @@ export interface Invoice {
   currency: string;
   dueAt?: string;
   salesOrderId?: string;
+  amountPaid?: number;
+  balanceDue?: number;
+  overdue?: boolean;
 }
 
 export interface InvoiceLineDetail {
@@ -974,14 +1002,33 @@ export interface Customer {
   id: string;
   name: string;
   email?: string;
+  phone?: string | null;
   taxId?: string | null;
   paymentTerms?: 'NET30' | 'NET60' | 'DUE_ON_RECEIPT' | string | null;
   creditLimit?: number | null;
+  availableCredit?: number | null;
+  priceTierId?: string | null;
+  priceTierName?: string | null;
+  portalStatus?: 'NOT_INVITED' | 'PENDING' | 'ACTIVE' | string;
+  taxExempt?: boolean;
   currencyPreference?: string | null;
   defaultCurrency?: string | null;
   customerStatus?: 'ACTIVE' | 'HOLD' | 'PROSPECT' | string;
   billingAddress?: LogisticsAddress;
   shippingAddress?: LogisticsAddress;
+  shippingAddresses?: Array<LogisticsAddress & { label?: string }>;
+}
+
+export interface CustomerPriceTier {
+  id: string;
+  name: string;
+  discountPercent: number;
+}
+
+export interface CustomerKpiSummary {
+  activeB2bAccounts: number;
+  accountsOnCreditHold: number;
+  totalCreditExtended: number;
 }
 
 export interface CustomerBillingSla {
@@ -1027,6 +1074,11 @@ export interface Supplier {
   minimumOrderQuantityValue?: number | null;
   supplierRating?: number | null;
   defaultCurrency?: string | null;
+  supplierClass?: string | null;
+  incoterms?: string | null;
+  isMeshPartner?: boolean;
+  portalAccess?: boolean;
+  activePoCount?: number;
 }
 
 export interface ApiError {
@@ -1368,6 +1420,8 @@ export interface MrpSuggestionLine {
   onHand: number;
   allocated: number;
   inboundOpenPoQty: number;
+  minStock?: number;
+  maxStock?: number;
   netRequirement: number;
   suggestedOrderQty: number;
   defaultSupplierId: string | null;
@@ -1380,6 +1434,18 @@ export interface MrpSuggestionLine {
 export interface MrpCalculateResult {
   createdPurchaseOrders: Array<{ id: string; number: string; supplierId: string }>;
   suggestions: MrpSuggestionLine[];
+}
+
+export interface MrpConsolidateJob {
+  jobId: string;
+  status: 'QUEUED' | 'COMPLETED' | 'FAILED' | string;
+  error?: string | null;
+  result?: MrpCalculateResult | null;
+}
+
+export interface MrpSuggestionSummary {
+  qualifyingLineCount: number;
+  totalCapital: number;
 }
 
 export interface PalletManifest {

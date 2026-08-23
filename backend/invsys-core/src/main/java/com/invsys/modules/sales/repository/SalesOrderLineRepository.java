@@ -12,6 +12,8 @@ import java.util.UUID;
 public interface SalesOrderLineRepository extends JpaRepository<SalesOrderLine, UUID> {
     List<SalesOrderLine> findBySalesOrderId(UUID salesOrderId);
 
+    List<SalesOrderLine> findBySalesOrderIdIn(java.util.Collection<UUID> salesOrderIds);
+
     @Query("""
             SELECT line.variantId, COALESCE(SUM(line.qtyOrdered), 0)
             FROM SalesOrderLine line

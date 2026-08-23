@@ -241,4 +241,110 @@ class SalesOrderWorkspaceHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.qtyBackordered").value(4));
     }
+
+    @Test
+    void salesContextAndListGridExposeB2bFields() throws Exception {
+        String slug = "sob2b-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "SO B2B Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+        TenantContext.setTenantId(owner.tenantId());
+
+        Product product = new Product();
+        product.setTenantId(owner.tenantId());
+        product.setSkuRoot("SOB2B");
+        product.setName("B2B Widget");
+        product = productRepository.save(product);
+
+        String variantA = objectMapper.readTree(mockMvc.perform(post("/api/v1/variants")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "productId":"%s",
+                                  "sku":"SOB2B-A",
+                                  "price":10,
+                                  "currency":"USD",
+                                  "weight":1,
+                                  "weightUnit":"lb",
+                                  "length":2,
+                                  "width":2,
+                                  "height":2,
+                                  "dimUnit":"in"
+                                }
+                                """.formatted(product.getId())))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String variantB = objectMapper.readTree(mockMvc.perform(post("/api/v1/variants")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "productId":"%s",
+                                  "sku":"SOB2B-B",
+                                  "price":25,
+                                  "currency":"USD",
+                                  "weight":1,
+                                  "weightUnit":"lb",
+                                  "length":2,
+                                  "width":2,
+                                  "height":2,
+                                  "dimUnit":"in"
+                                }
+                                """.formatted(product.getId())))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String customerId = objectMapper.readTree(mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"B2B Buyer\",\"creditLimit\":5000,\"paymentTerms\":\"NET30\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        mockMvc.perform(get("/api/v1/customers/" + customerId + "/sales-context")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerId").value(customerId))
+                .andExpect(jsonPath("$.name").value("B2B Buyer"))
+                .andExpect(jsonPath("$.creditLimit").value(5000))
+                .andExpect(jsonPath("$.availableCredit").value(5000))
+                .andExpect(jsonPath("$.priceTierName").value("List"))
+                .andExpect(jsonPath("$.priceTierDiscountPercent").value(0))
+                .andExpect(jsonPath("$.paymentTerms").value("NET30"));
+
+        mockMvc.perform(post("/api/v1/sales-orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "customerId":"%s",
+                                  "number":"SO-B2B-GRID",
+                                  "customerPoNumber":"PO-ACME-99",
+                                  "requestedShipDate":"2026-09-01T00:00:00Z",
+                                  "lines":[
+                                    {"variantId":"%s","qtyOrdered":2,"unitPrice":10},
+                                    {"variantId":"%s","qtyOrdered":1,"unitPrice":25}
+                                  ]
+                                }
+                                """.formatted(customerId, variantA, variantB)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/sales-orders")
+                        .param("search", "SO-B2B-GRID")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].number").value("SO-B2B-GRID"))
+                .andExpect(jsonPath("$.items[0].customerPoNumber").value("PO-ACME-99"))
+                .andExpect(jsonPath("$.items[0].totalAmount").value(45))
+                .andExpect(jsonPath("$.items[0].linesTotal").value(2))
+                .andExpect(jsonPath("$.items[0].linesShipped").value(0));
+    }
 }

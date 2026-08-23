@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { PurchaseOrderDetailPage } from './PurchaseOrderDetailPage';
@@ -13,6 +14,7 @@ vi.mock('@/api/client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -85,7 +87,13 @@ describe('PurchaseOrderDetailPage ledger lock', () => {
     expect(await screen.findByTestId('po-workspace')).toHaveAttribute('data-locked', 'false');
     expect(screen.getByTestId('submit-po')).toBeInTheDocument();
     expect(screen.getByTestId('po-add-item')).toBeInTheDocument();
+    expect(screen.getByTestId('po-sku-combobox')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /add item/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /select sku/i })).not.toBeInTheDocument();
     expect(screen.getByTestId('po-line-qty-line-1')).toBeInTheDocument();
+    expect(screen.getByTestId('po-extended-cost')).toHaveTextContent(/45\.00/);
+    expect(screen.getByTestId('po-grand-total')).toHaveTextContent(/45\.00/);
+    expect(screen.getByTestId('po-delete-line')).toBeInTheDocument();
     expect(screen.queryByTestId('cancel-po')).not.toBeInTheDocument();
   });
 
@@ -101,6 +109,8 @@ describe('PurchaseOrderDetailPage ledger lock', () => {
     expect(screen.queryByTestId('submit-po')).not.toBeInTheDocument();
     expect(screen.queryByTestId('po-add-item')).not.toBeInTheDocument();
     expect(screen.getByTestId('po-line-qty-locked-line-1')).toBeInTheDocument();
+    expect(screen.getByTestId('po-grand-total')).toHaveTextContent(/45\.00/);
+    expect(screen.queryByTestId('po-delete-line')).not.toBeInTheDocument();
     expect(screen.getByTestId('cancel-po')).toBeInTheDocument();
     expect(screen.getByTestId('mark-in-transit')).toBeEnabled();
     expect(screen.queryByTestId('reverse-receipt')).not.toBeInTheDocument();
@@ -143,6 +153,14 @@ describe('PurchaseOrderDetailPage ledger lock', () => {
     renderWorkspace(['WAREHOUSE_MANAGER']);
     expect(await screen.findByTestId('reverse-receipt')).toBeInTheDocument();
     expect(screen.queryByTestId('cancel-po')).not.toBeInTheDocument();
+  });
+
+  it('deletes a draft line and refreshes the workspace', async () => {
+    vi.mocked(apiClient.delete).mockResolvedValue({ data: null });
+    renderWorkspace(['WAREHOUSE_MANAGER']);
+    expect(await screen.findByTestId('po-delete-line')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('po-delete-line'));
+    expect(apiClient.delete).toHaveBeenCalledWith('/api/v1/purchase-orders/po-1/lines/line-1');
   });
 
   it('hides reverse receipt from pickers even when stock is received', async () => {

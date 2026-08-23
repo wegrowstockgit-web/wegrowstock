@@ -2,15 +2,25 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionStore } from '@/stores/session';
 import { usePreferencesStore } from '@/stores/preferencesStore';
+import { apiClient } from '@/api/client';
 import { useDesktopIdle } from './useDesktopIdle';
+
+vi.mock('@/api/client', () => ({
+  apiClient: {
+    post: vi.fn(),
+  },
+}));
 
 describe('useDesktopIdle', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     sessionStorage.clear();
     usePreferencesStore.getState().setDesktopIdleTimeoutMinutes(30);
+    vi.mocked(apiClient.post).mockReset();
+    vi.mocked(apiClient.post).mockResolvedValue({ data: {} });
     useSessionStore.setState({
       authenticated: true,
+      isLocked: false,
       user: {
         id: 'u1',
         email: 'owner@demo.test',
@@ -115,10 +125,13 @@ describe('useDesktopIdle', () => {
       ).__INVSYS_DESKTOP_IDLE__?.lockNow();
     });
     expect(result.current.isLocked).toBe(true);
+    expect(useSessionStore.getState().isLocked).toBe(true);
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/auth/lock');
 
     await act(async () => {
       result.current.unlock();
     });
     expect(result.current.isLocked).toBe(false);
+    expect(useSessionStore.getState().isLocked).toBe(false);
   });
 });

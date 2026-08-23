@@ -70,4 +70,10 @@ describe('InvoiceDetailPage void RBAC', () => {
     expect(await screen.findByTestId('invoice-workspace')).toHaveAttribute('data-locked', 'true');
     expect(screen.queryByTestId('void-credit-memo')).not.toBeInTheDocument();
   });
+
+  it('shows PDF and email actions for owners', async () => {
+    renderInvoice(['OWNER'], 'OPEN');
+    expect(await screen.findByTestId('invoice-download-pdf')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-email-pdf')).toBeInTheDocument();
+  });
 });

@@ -528,6 +528,101 @@ export async function createShippedSalesOrder(
   return { salesOrderId: so.id, salesOrderLineId: line.id, number: so.number };
 }
 
+export async function createShippedMultiLineSalesOrder(
+  page: Page,
+  opts: {
+    lines: Array<{ variantId: string; quantity?: number; unitPrice?: number }>;
+    customerId: string;
+    numberPrefix?: string;
+  },
+): Promise<{
+  salesOrderId: string;
+  number: string;
+  lines: Array<{ id: string; variantId: string }>;
+}> {
+  const binId = PICK_BIN_ID;
+  for (const line of opts.lines) {
+    const qty = line.quantity ?? 2;
+    const receiveRes = await page.request.post('/api/v1/inventory/receive', {
+      data: {
+        variantId: line.variantId,
+        locationId: binId,
+        quantity: qty + 50,
+        referenceType: 'E2E_RMA_TOPUP',
+      },
+    });
+    if (!receiveRes.ok()) {
+      throw new Error(`RMA multi-line top-up failed: ${receiveRes.status()} ${await receiveRes.text()}`);
+    }
+  }
+
+  const so = await apiJson<{ id: string; number: string }>(page, '/api/v1/sales-orders', {
+    method: 'POST',
+    body: JSON.stringify({
+      customerId: opts.customerId,
+      channel: 'B2B',
+      number: `${opts.numberPrefix ?? 'SO-RMA2'}-${Date.now()}`,
+      lines: opts.lines.map((line) => ({
+        variantId: line.variantId,
+        qtyOrdered: line.quantity ?? 2,
+        unitPrice: line.unitPrice ?? 12.5,
+      })),
+    }),
+  });
+  const confirmRes = await page.request.post(`/api/v1/sales-orders/${so.id}/confirm`);
+  if (!confirmRes.ok()) {
+    throw new Error(`RMA multi-line confirm failed: ${confirmRes.status()} ${await confirmRes.text()}`);
+  }
+  let allocRes = await page.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+  if (!allocRes.ok()) {
+    for (const line of opts.lines) {
+      await page.request.post('/api/v1/inventory/receive', {
+        data: {
+          variantId: line.variantId,
+          locationId: binId,
+          quantity: (line.quantity ?? 2) + 50,
+          referenceType: 'E2E_RMA_TOPUP_RETRY',
+        },
+      });
+    }
+    allocRes = await page.request.post(`/api/v1/sales-orders/${so.id}/allocate`);
+  }
+  if (!allocRes.ok()) {
+    throw new Error(`RMA multi-line allocate failed: ${allocRes.status()} ${await allocRes.text()}`);
+  }
+
+  const detail = await apiJson<{
+    id: string;
+    status: string;
+    lines: Array<{ id: string; variantId: string; qtyOrdered: number }>;
+  }>(page, `/api/v1/sales-orders/${so.id}`);
+
+  const shipRes = await page.request.post('/api/v1/shipments', {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Warehouse-Id': WH_01,
+    },
+    data: {
+      salesOrderId: so.id,
+      carrier: 'GROUND',
+      trackingNumber: `RMA2-${Date.now()}`,
+      lines: detail.lines.map((line) => ({
+        salesOrderLineId: line.id,
+        quantity: Number(line.qtyOrdered),
+      })),
+    },
+  });
+  if (!shipRes.ok()) {
+    throw new Error(`RMA multi-line ship failed: ${shipRes.status()} ${await shipRes.text()}`);
+  }
+
+  return {
+    salesOrderId: so.id,
+    number: so.number,
+    lines: detail.lines.map((line) => ({ id: line.id, variantId: line.variantId })),
+  };
+}
+
 /** Invite + accept a B2B_CUSTOMER portal user linked to a customer. */
 export async function inviteAndAcceptB2b(
   browser: Browser,

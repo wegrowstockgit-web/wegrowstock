@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   description?: string;
-  size?: 'md' | 'lg';
+  size?: 'md' | 'lg' | 'xl';
   children: ReactNode;
 }
 
@@ -34,9 +34,11 @@ export function Modal({ open, onClose, title, description, size = 'md', children
         if (e.target === ref.current) onClose();
       }}
       className={
-        size === 'lg'
-          ? 'w-full max-w-2xl rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
-          : 'w-full max-w-lg rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
+        size === 'xl'
+          ? 'w-full max-w-4xl rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
+          : size === 'lg'
+            ? 'w-full max-w-2xl rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
+            : 'w-full max-w-lg rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]'
       }
     >
       <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">

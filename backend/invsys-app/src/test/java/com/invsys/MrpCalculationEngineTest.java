@@ -14,6 +14,8 @@ import com.invsys.modules.sales.repository.CustomerRepository;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
+import com.invsys.modules.purchasing.repository.PurchaseOrderRepository;
 import com.invsys.modules.purchasing.repository.SupplierRepository;
 import com.invsys.modules.sales.repository.SalesOrderLineRepository;
 import com.invsys.modules.sales.repository.SalesOrderRepository;
@@ -21,6 +23,8 @@ import com.invsys.service.MrpCalculationEngine;
 import com.invsys.core.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -44,6 +48,8 @@ class MrpCalculationEngineTest extends AbstractIntegrationTest {
     @Autowired ProductRepository productRepository;
     @Autowired ProductVariantRepository variantRepository;
     @Autowired SupplierRepository supplierRepository;
+    @Autowired PurchaseOrderRepository purchaseOrderRepository;
+    @Autowired PurchaseOrderLineRepository purchaseOrderLineRepository;
     @Autowired CustomerRepository customerRepository;
     @Autowired SalesOrderRepository salesOrderRepository;
     @Autowired SalesOrderLineRepository salesOrderLineRepository;
@@ -91,6 +97,7 @@ class MrpCalculationEngineTest extends AbstractIntegrationTest {
         variant.setDefaultSupplierId(supplier.getId());
         variant.setAvgCost(new BigDecimal("4.50"));
         variant = variantRepository.save(variant);
+        UUID variantId = variant.getId();
 
         Customer customer = new Customer();
         customer.setTenantId(tenantId);
@@ -118,21 +125,154 @@ class MrpCalculationEngineTest extends AbstractIntegrationTest {
         assertThat(suggestion.netRequirement()).isEqualByComparingTo(new BigDecimal("25"));
         assertThat(suggestion.suggestedOrderQty()).isEqualByComparingTo(new BigDecimal("25"));
         assertThat(suggestion.capitalEstimate()).isEqualByComparingTo(new BigDecimal("112.5"));
+        assertThat(suggestion.onHand()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(suggestion.allocated()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(suggestion.inboundOpenPoQty()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(suggestion.minStock()).isEqualByComparingTo(new BigDecimal("5"));
+        assertThat(suggestion.maxStock()).isEqualByComparingTo(new BigDecimal("5"));
         TenantContext.clear();
 
         mockMvc.perform(get("/api/v1/purchasing/mrp/suggestions")
                         .header("Authorization", "Bearer " + owner.accessToken())
+                        .header("X-Warehouse-Id", wh.getId().toString())
+                        .param("page", "1")
+                        .param("size", "50")
+                        .param("urgency", "FORECASTED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].sku").value("MRP-1"))
+                .andExpect(jsonPath("$.items[0].netRequirement").value(25.0))
+                .andExpect(jsonPath("$.items[0].onHand").value(0))
+                .andExpect(jsonPath("$.items[0].minStock").value(5.0))
+                .andExpect(jsonPath("$.totalElements").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+
+        mockMvc.perform(get("/api/v1/purchasing/mrp/suggestions/summary")
+                        .header("Authorization", "Bearer " + owner.accessToken())
                         .header("X-Warehouse-Id", wh.getId().toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].sku").value("MRP-1"))
-                .andExpect(jsonPath("$[0].netRequirement").value(25.0));
+                .andExpect(jsonPath("$.qualifyingLineCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
 
         mockMvc.perform(post("/api/v1/purchasing/mrp/calculate")
                         .header("Authorization", "Bearer " + owner.accessToken())
                         .header("X-Warehouse-Id", wh.getId().toString())
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"overrides":[{"variantId":"%s","suggestedOrderQty":30}]}
+                                """.formatted(variantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdPurchaseOrders[0].number").value(org.hamcrest.Matchers.startsWith("PO-MRP-")))
-                .andExpect(jsonPath("$.suggestions[0].suggestedOrderQty").value(25.0));
+                .andExpect(jsonPath("$.suggestions[0].suggestedOrderQty").value(30.0));
+
+        TenantContext.setTenantId(tenantId);
+        var created = purchaseOrderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(po -> po.getNumber().startsWith("PO-MRP-"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(purchaseOrderLineRepository.findByPurchaseOrderId(created.getId()))
+                .anyMatch(poLine -> variantId.equals(poLine.getVariantId())
+                        && poLine.getQtyOrdered().compareTo(new BigDecimal("30")) == 0);
+    }
+
+    @Test
+    void consolidateJobRunsAsynchronouslyAndRespectsOverrides() throws Exception {
+        String slug = "mrpj-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "MRP Job Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = owner.tenantId();
+        TenantContext.setTenantId(tenantId);
+
+        Location wh = new Location();
+        wh.setTenantId(tenantId);
+        wh.setType("WAREHOUSE");
+        wh.setCode("WH-J");
+        wh.setName("WH-J");
+        wh.setPath("/WH-J");
+        wh = locationRepository.save(wh);
+
+        Supplier supplier = new Supplier();
+        supplier.setTenantId(tenantId);
+        supplier.setName("Job Supplier");
+        supplier = supplierRepository.save(supplier);
+
+        Product product = new Product();
+        product.setTenantId(tenantId);
+        product.setSkuRoot("MRPJ");
+        product.setName("MRP Job Item");
+        product = productRepository.save(product);
+
+        ProductVariant variant = new ProductVariant();
+        variant.setTenantId(tenantId);
+        variant.setProductId(product.getId());
+        variant.setSku("MRP-JOB-1");
+        variant.setSafetyStock(new BigDecimal("2"));
+        variant.setDefaultSupplierId(supplier.getId());
+        variant.setAvgCost(new BigDecimal("1.00"));
+        variant = variantRepository.save(variant);
+        UUID jobVariantId = variant.getId();
+
+        Customer customer = new Customer();
+        customer.setTenantId(tenantId);
+        customer.setName("Job Buyer");
+        customer = customerRepository.save(customer);
+
+        SalesOrder order = new SalesOrder();
+        order.setTenantId(tenantId);
+        order.setCustomerId(customer.getId());
+        order.setNumber("SO-MRP-JOB-1");
+        order.setStatus("CONFIRMED");
+        order = salesOrderRepository.save(order);
+
+        SalesOrderLine line = new SalesOrderLine();
+        line.setTenantId(tenantId);
+        line.setSalesOrderId(order.getId());
+        line.setVariantId(variant.getId());
+        line.setQtyOrdered(new BigDecimal("4"));
+        salesOrderLineRepository.save(line);
+        TenantContext.clear();
+
+        String queued = mockMvc.perform(post("/api/v1/purchasing/mrp/calculate/jobs")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .header("X-Warehouse-Id", wh.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"overrides":[{"variantId":"%s","suggestedOrderQty":20}]}
+                                """.formatted(jobVariantId)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").isNotEmpty())
+                .andExpect(jsonPath("$.status").value("QUEUED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        ObjectMapper objectMapper = new ObjectMapper();
+        String jobId = objectMapper.readTree(queued).get("jobId").asText();
+
+        JsonNode job = null;
+        for (int attempt = 0; attempt < 40; attempt++) {
+            Thread.sleep(150);
+            String body = mockMvc.perform(get("/api/v1/purchasing/mrp/calculate/jobs/" + jobId)
+                            .header("Authorization", "Bearer " + owner.accessToken())
+                            .header("X-Warehouse-Id", wh.getId().toString()))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            job = objectMapper.readTree(body);
+            String status = job.path("status").asText();
+            if ("COMPLETED".equals(status) || "FAILED".equals(status)) {
+                break;
+            }
+        }
+        assertThat(job).isNotNull();
+        assertThat(job.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(job.path("result").path("createdPurchaseOrders").get(0).path("number").asText())
+                .startsWith("PO-MRP-");
+
+        TenantContext.setTenantId(tenantId);
+        var created = purchaseOrderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(po -> po.getNumber().startsWith("PO-MRP-"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(purchaseOrderLineRepository.findByPurchaseOrderId(created.getId()))
+                .anyMatch(poLine -> jobVariantId.equals(poLine.getVariantId())
+                        && poLine.getQtyOrdered().compareTo(new BigDecimal("20")) == 0);
     }
 }

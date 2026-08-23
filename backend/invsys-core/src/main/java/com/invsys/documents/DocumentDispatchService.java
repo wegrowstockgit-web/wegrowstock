@@ -18,6 +18,9 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -96,6 +99,34 @@ public class DocumentDispatchService {
                 "to", customer.getEmail().trim(),
                 "documentUrl", documentUrl,
                 "invoiceNumber", invoice.getNumber());
+    }
+
+    public Map<String, Object> emailInvoices(List<UUID> invoiceIds) {
+        if (invoiceIds == null || invoiceIds.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "invoiceIds is required");
+        }
+        List<Map<String, Object>> results = new ArrayList<>();
+        int sent = 0;
+        int failed = 0;
+        for (UUID invoiceId : invoiceIds) {
+            if (invoiceId == null) {
+                failed++;
+                results.add(Map.of("sent", false, "error", "invoiceId is required"));
+                continue;
+            }
+            try {
+                results.add(emailInvoice(invoiceId));
+                sent++;
+            } catch (ApiException ex) {
+                failed++;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("invoiceId", invoiceId.toString());
+                row.put("sent", false);
+                row.put("error", ex.getMessage() != null ? ex.getMessage() : "failed");
+                results.add(row);
+            }
+        }
+        return Map.of("sent", sent, "failed", failed, "results", results);
     }
 
     public boolean sendPdf(String to, String subject, String textBody, String filename, byte[] pdf) {

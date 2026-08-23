@@ -143,6 +143,78 @@ Wholesale buyers shop the Showroom; Owners manage billing, financing, and integr
 
 ---
 
+### B2B Customer Master & Price Tiers
+
+- **Target Audience & Roles:** OWNER, ADMIN create/invite; VIEWER reviews.
+- **Route Location:** Outbound → **Customers** (`/customers`). Workspace: `/sales/customers/{id}`.
+- **Primary Operational Goal:** Keep one master record per buyer with the price tier that overrides catalog list price on New Sales Order.
+
+#### 1. Step-by-Step Action Plan
+1. Open **Customers** and review Active B2B / Credit Hold / Total Credit Extended cards.
+2. **Add customer** and complete Company, Financials (tier + credit limit), Address Book, Portal tabs.
+3. Assign Wholesale / VIP / Tier 1. Sales Order unit prices use list × (1 − tier discount).
+4. Invite the buyer to the Showroom from the row menu when they should self-order.
+
+#### 2. Correlated Flow & Downstream Ripple Effect
+- New Sales Order customer search loads the tier automatically.
+- Duplicate customers split credit and hide the real AR balance.
+
+#### 3. Safety, Reversal & Undo Rules
+- Change the tier on the customer; do not rewrite posted invoices.
+
+#### 4. Troubleshooting Common Blockers
+- **List price still showing on the SO?** Confirm the customer has a price tier, then re-select the SKU.
+
+---
+
+### Credit Limits & Holds
+
+- **Target Audience & Roles:** FINANCE_ADMIN places holds; OWNER/ADMIN may operate the same control. Floor roles do not override credit.
+- **Route Location:** **Customers** → **Place on Credit Hold**. Sales order **Override credit hold** is a documented finance exception.
+- **Primary Operational Goal:** Stop Confirm/Allocate and Showroom checkout when the buyer is past due or over the credit line.
+
+#### 1. Step-by-Step Action Plan
+1. Set **Credit Limit** on the customer Financials tab.
+2. If invoices go unpaid, a Finance Admin uses **Place on Credit Hold**.
+3. Review outstanding invoices before clearing the hold. Do not create a duplicate account to bypass it.
+
+#### 2. Correlated Flow & Downstream Ripple Effect
+- Held accounts block allocation even when ATP is positive.
+- Warehouse should treat CREDIT_HOLD as a finance stop, not a pick shortage.
+
+#### 3. Safety, Reversal & Undo Rules
+- Holds are master-data status changes. Overrides are signed order actions.
+
+#### 4. Troubleshooting Common Blockers
+- **Buyer cannot place a Showroom order:** Check Credit Hold and available credit before blaming catalog stock.
+
+---
+
+### Accounts Receivable & Collections
+
+- **Target Audience & Roles:** OWNER/ADMIN create and dispatch; FINANCE_ADMIN logs payments and works Overdue.
+- **Route Location:** Outbound → **Invoices** (`/invoices`).
+- **Primary Operational Goal:** Bill shipped orders, collect Balance Due, and email/PDF without rewriting invoice totals.
+
+#### 1. Step-by-Step Action Plan
+1. **New invoice** → search **shipped** sales orders (number, customer, shipped date).
+2. Work **OVERDUE** badges first. Overdue = due date in the past and status is not PAID.
+3. Click a row to open the invoice workspace. Row menu (`…`): **Download PDF**, **Email invoice**, **Log Payment** (when Balance Due > 0).
+4. Select checkboxes and use **Email Invoices** on the bulk bar to dispatch a batch.
+5. Partial cash: Log Payment. Balance Due = Total − Amount Paid. Do not edit Total.
+
+#### 2. Correlated Flow & Downstream Ripple Effect
+- Payments replenish customer available credit.
+- Overdue invoices are the collections queue for Credit Hold decisions.
+
+#### 3. Safety, Reversal & Undo Rules
+- Issued totals are ledger history. Corrections are payments or credit memos.
+
+#### 4. Troubleshooting Common Blockers
+- **Cannot find the order in Create Invoice:** Only shipped, not-yet-fully-invoiced sales orders appear in the combobox.
+
+---
+
 ### Settings: billing, financing, integrations, users
 
 - **Target Audience & Roles:** ADMIN for most settings; OWNER for billing & financing; others generally blocked.

@@ -84,7 +84,9 @@ test.describe('Navigation', () => {
   test('sales order form includes customer PO and ship date', async ({ page }) => {
     await clickNavLink(page, 'Sales Orders');
     await page.getByRole('button', { name: 'New order' }).click();
-    await expect(page.getByLabel('Customer PO number')).toBeVisible();
+    await expect(page).toHaveURL(/\/sales\/orders\/new/);
+    await expect(page.getByTestId('new-sales-order-page')).toBeVisible();
+    await expect(page.getByLabel('Customer PO #')).toBeVisible();
     await expect(page.getByLabel('Requested ship date')).toBeVisible();
     await expect(page.getByText('Ship-from warehouse')).toBeVisible();
   });

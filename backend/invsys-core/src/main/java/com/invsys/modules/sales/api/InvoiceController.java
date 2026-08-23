@@ -80,16 +80,13 @@ public class InvoiceController {
                 ? Map.of()
                 : customerRepository.findAllById(customerIds).stream()
                         .collect(Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
+        Map<UUID, BigDecimal> paidByInvoice = invoicingService.succeededPaymentTotals(
+                result.getContent().stream().map(Invoice::getId).collect(Collectors.toSet()));
         List<InvoiceResponse> items = result.getContent().stream()
-                .map(invoice -> new InvoiceResponse(
-                        invoice.getId(),
-                        invoice.getNumber(),
+                .map(invoice -> toListItem(
+                        invoice,
                         customerNames.getOrDefault(invoice.getCustomerId(), "—"),
-                        invoice.getStatus(),
-                        invoice.getTotal(),
-                        invoice.getCurrency(),
-                        invoice.getDueAt(),
-                        invoice.getSalesOrderId()))
+                        paidByInvoice.getOrDefault(invoice.getId(), BigDecimal.ZERO)))
                 .toList();
         return PageResponse.of(result, items);
     }
@@ -115,6 +112,9 @@ public class InvoiceController {
                 .findByTenantIdAndInvoiceId(invoice.getTenantId(), invoice.getId())
                 .map(FactoredInvoice::getFundingStatus)
                 .orElse(null);
+        BigDecimal amountPaid = invoicingService.succeededPaymentTotals(List.of(invoice.getId()))
+                .getOrDefault(invoice.getId(), BigDecimal.ZERO);
+        BigDecimal balanceDue = invoice.getTotal().subtract(amountPaid).max(BigDecimal.ZERO);
         return new InvoiceDetailResponse(
                 invoice.getId(),
                 invoice.getNumber(),
@@ -128,6 +128,9 @@ public class InvoiceController {
                 invoice.getSalesOrderId(),
                 invoice.getDocumentUrl(),
                 factoringStatus,
+                amountPaid,
+                balanceDue,
+                InvoicingService.isOverdue(invoice),
                 lines);
     }
 
@@ -203,6 +206,9 @@ public class InvoiceController {
             UUID salesOrderId,
             String documentUrl,
             String factoringStatus,
+            BigDecimal amountPaid,
+            BigDecimal balanceDue,
+            boolean overdue,
             List<InvoiceLineResponse> lines
     ) {
     }
@@ -251,7 +257,27 @@ public class InvoiceController {
             BigDecimal total,
             String currency,
             Instant dueAt,
-            UUID salesOrderId
+            UUID salesOrderId,
+            BigDecimal amountPaid,
+            BigDecimal balanceDue,
+            boolean overdue
     ) {
+    }
+
+    private static InvoiceResponse toListItem(Invoice invoice, String customerName, BigDecimal amountPaid) {
+        BigDecimal paid = amountPaid != null ? amountPaid : BigDecimal.ZERO;
+        BigDecimal total = invoice.getTotal() != null ? invoice.getTotal() : BigDecimal.ZERO;
+        return new InvoiceResponse(
+                invoice.getId(),
+                invoice.getNumber(),
+                customerName,
+                invoice.getStatus(),
+                total,
+                invoice.getCurrency(),
+                invoice.getDueAt(),
+                invoice.getSalesOrderId(),
+                paid,
+                total.subtract(paid).max(BigDecimal.ZERO),
+                InvoicingService.isOverdue(invoice));
     }
 }

@@ -38,7 +38,9 @@ public class CreditService {
     public boolean isOnHold(UUID customerId) {
         CustomerCreditLine line = getOrDefault(customerId);
         String status = line.getStatus() == null ? "ACTIVE" : line.getStatus().trim();
-        return "HOLD".equalsIgnoreCase(status) || "CREDIT_HOLD".equalsIgnoreCase(status);
+        return "SUSPENDED".equalsIgnoreCase(status)
+                || "HOLD".equalsIgnoreCase(status)
+                || "CREDIT_HOLD".equalsIgnoreCase(status);
     }
 
     @Transactional
@@ -67,6 +69,35 @@ public class CreditService {
         }
         line.setAvailableCredit(next);
         creditLineRepository.save(line);
+    }
+
+    @Transactional
+    public CustomerCreditLine syncLimit(UUID customerId, BigDecimal limit) {
+        if (limit == null) {
+            return getOrDefault(customerId);
+        }
+        CustomerCreditLine line = getOrCreate(customerId);
+        BigDecimal previousLimit = line.getCreditLimit() != null ? line.getCreditLimit() : BigDecimal.ZERO;
+        line.setCreditLimit(limit);
+        if (line.getAvailableCredit() == null
+                || line.getAvailableCredit().signum() == 0
+                || line.getAvailableCredit().compareTo(previousLimit) == 0) {
+            line.setAvailableCredit(limit);
+        }
+        return creditLineRepository.save(line);
+    }
+
+    @Transactional
+    public CustomerCreditLine placeOnHold(UUID customerId, BigDecimal fallbackLimit) {
+        CustomerCreditLine line = getOrCreate(customerId);
+        line.setStatus("SUSPENDED");
+        if (fallbackLimit != null && (line.getCreditLimit() == null || line.getCreditLimit().signum() == 0)) {
+            line.setCreditLimit(fallbackLimit);
+            if (line.getAvailableCredit() == null || line.getAvailableCredit().signum() == 0) {
+                line.setAvailableCredit(fallbackLimit);
+            }
+        }
+        return creditLineRepository.save(line);
     }
 
     private CustomerCreditLine getOrCreate(UUID customerId) {

@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -470,7 +471,8 @@ public class InvoicingService {
         payment.setBalanceTxnRef("manual_" + pi.getExternalId());
         paymentRepository.save(payment);
 
-        boolean paidInFull = amount.compareTo(invoice.getTotal()) >= 0;
+        BigDecimal paid = succeededPaymentTotals(List.of(invoiceId)).getOrDefault(invoiceId, BigDecimal.ZERO);
+        boolean paidInFull = paid.compareTo(invoice.getTotal()) >= 0;
         invoice.setStatus(paidInFull ? "PAID" : "PARTIALLY_PAID");
         invoiceRepository.save(invoice);
         if (paidInFull) {
@@ -536,7 +538,66 @@ public class InvoicingService {
         return credit;
     }
 
+    /**
+     * Draft credit memo for a closed customer RMA: approved return value minus restocking fees.
+     * Does not require an existing issued invoice.
+     */
+    @Transactional
+    public Invoice createDraftCreditMemoForReturn(UUID salesOrderId, List<ReturnCreditLine> lines) {
+        UUID tenantId = TenantContext.requireTenantId();
+        SalesOrder order = salesOrderRepository.findById(salesOrderId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order not found"));
+        if (lines == null || lines.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION", "At least one credit line is required");
+        }
+        Invoice credit = new Invoice();
+        credit.setTenantId(tenantId);
+        credit.setSalesOrderId(salesOrderId);
+        credit.setCustomerId(order.getCustomerId());
+        credit.setNumber(sequenceService.nextNumber("CREDIT_MEMO", "CM-{YYYY}-{seq:5}"));
+        credit.setStatus("DRAFT");
+        credit.setCurrency("USD");
+        credit.setDueAt(Instant.now());
+        credit = invoiceRepository.save(credit);
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (ReturnCreditLine requested : lines) {
+            SalesOrderLine sol = salesOrderLineRepository.findById(requested.salesOrderLineId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+            BigDecimal qty = requested.qty() != null ? requested.qty() : BigDecimal.ZERO;
+            if (qty.signum() <= 0) {
+                continue;
+            }
+            BigDecimal feePct = requested.restockingFeePct() != null ? requested.restockingFeePct() : BigDecimal.ZERO;
+            if (feePct.signum() < 0) {
+                feePct = BigDecimal.ZERO;
+            }
+            if (feePct.compareTo(new BigDecimal("100")) > 0) {
+                feePct = new BigDecimal("100");
+            }
+            BigDecimal unit = sol.getUnitPrice() != null ? sol.getUnitPrice() : BigDecimal.ZERO;
+            BigDecimal netUnit = unit.multiply(
+                    BigDecimal.ONE.subtract(feePct.divide(new BigDecimal("100"), 6, java.math.RoundingMode.HALF_UP)));
+            BigDecimal amount = qty.multiply(netUnit).negate();
+            InvoiceLine offset = new InvoiceLine();
+            offset.setTenantId(tenantId);
+            offset.setInvoiceId(credit.getId());
+            offset.setDescription("RMA credit: " + order.getNumber());
+            offset.setQty(qty);
+            offset.setUnitPrice(netUnit.negate());
+            offset.setAmount(amount);
+            invoiceLineRepository.save(offset);
+            subtotal = subtotal.add(amount);
+        }
+        credit.setSubtotal(subtotal);
+        credit.setTax(BigDecimal.ZERO);
+        credit.setTotal(subtotal);
+        return invoiceRepository.save(credit);
+    }
+
     public record PartialCreditLine(UUID lineId, BigDecimal qty) {
+    }
+
+    public record ReturnCreditLine(UUID salesOrderLineId, BigDecimal qty, BigDecimal restockingFeePct) {
     }
 
     private void recalculateTotals(Invoice invoice) {
@@ -546,6 +607,34 @@ public class InvoicingService {
         invoice.setSubtotal(subtotal);
         invoice.setTotal(subtotal.add(invoice.getTax() != null ? invoice.getTax() : BigDecimal.ZERO));
         invoiceRepository.save(invoice);
+    }
+
+    public Map<UUID, BigDecimal> succeededPaymentTotals(Collection<UUID> invoiceIds) {
+        Map<UUID, BigDecimal> totals = new HashMap<>();
+        if (invoiceIds == null || invoiceIds.isEmpty()) {
+            return totals;
+        }
+        for (PaymentIntent intent : paymentIntentRepository.findByInvoiceIdIn(invoiceIds)) {
+            if (intent.getAmount() == null || !"SUCCEEDED".equalsIgnoreCase(intent.getStatus())) {
+                continue;
+            }
+            totals.merge(intent.getInvoiceId(), intent.getAmount(), BigDecimal::add);
+        }
+        return totals;
+    }
+
+    public static boolean isOverdue(Invoice invoice) {
+        if (invoice == null || invoice.getDueAt() == null) {
+            return false;
+        }
+        String status = invoice.getStatus() == null ? "" : invoice.getStatus().trim();
+        if ("PAID".equalsIgnoreCase(status)
+                || "VOID".equalsIgnoreCase(status)
+                || "CREDIT_MEMO".equalsIgnoreCase(status)
+                || "DRAFT".equalsIgnoreCase(status)) {
+            return false;
+        }
+        return invoice.getDueAt().isBefore(Instant.now());
     }
 
     private Invoice requireInvoice(UUID invoiceId) {

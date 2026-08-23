@@ -14,6 +14,7 @@ describe('session integrity', () => {
     useSessionStore.setState({
       authenticated: false,
       mfaVerified: false,
+      isLocked: false,
       user: null,
       primarySession: null,
       lastRequestId: null,
@@ -144,5 +145,26 @@ describe('session integrity', () => {
     const locked = renderHook(() => useCanConfigureRetailPos());
     expect(locked.result.current).toBe(false);
     locked.unmount();
+  });
+
+  it('hydrates desktop lock from /auth/me sessionLocked', () => {
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u-lock',
+      email: 'manager@demo.test',
+      displayName: 'Manager',
+      roles: ['WAREHOUSE_MANAGER'],
+      tenantId: 't1',
+      sessionLocked: true,
+    });
+    expect(useSessionStore.getState().isLocked).toBe(true);
+    useSessionStore.getState().applyMeProfile({
+      userId: 'u-lock',
+      email: 'manager@demo.test',
+      displayName: 'Manager',
+      roles: ['WAREHOUSE_MANAGER'],
+      tenantId: 't1',
+      sessionLocked: false,
+    });
+    expect(useSessionStore.getState().isLocked).toBe(false);
   });
 });

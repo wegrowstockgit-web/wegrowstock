@@ -1,15 +1,12 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Download, Plus, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
-import type { Return, ReturnLine, SalesOrder, SalesOrderDetail } from '@/api/types';
-import { unwrapPageItems } from '@/api/page';
+import type { PaginatedResponse, Return, ReturnLine, TenantLocation } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { Modal } from '@/components/ui/Modal';
-import { Select } from '@/components/ui/Select';
 import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import {
   Table,
@@ -19,13 +16,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { ListPageState, useListQuery } from '@/components/layout/ListPageState';
 import { DensityToggle } from '@/components/ui/DensityToggle';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency, formatMediumDate } from '@/lib/utils';
 import { RmaInspectionDrawer } from '@/features/returns/RmaInspectionDrawer';
+import { NewRmaWizard } from '@/features/returns/NewRmaWizard';
 
 const STATUSES = [
   'ALL',
@@ -37,126 +34,7 @@ const STATUSES = [
   'REJECTED',
 ] as const;
 const DISPOSITIONS = ['RESTOCK', 'SCRAP', 'REPAIR'] as const;
-
-const RETURNABLE_STATUSES = ['SHIPPED', 'PARTIALLY_SHIPPED', 'CLOSED'];
-
-function ReturnsCreateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [salesOrderId, setSalesOrderId] = useState('');
-  const [quantities, setQuantities] = useState<Record<string, string>>({});
-  const [error, setError] = useState('');
-
-  const { data: orders = [] } = useQuery({
-    queryKey: ['sales-orders'],
-    queryFn: async () =>
-      unwrapPageItems<SalesOrder>(
-        (await apiClient.get('/api/v1/sales-orders', { params: { page: 1, size: 100 } })).data,
-      ),
-    enabled: open,
-  });
-
-  const returnable = orders.filter((o) => RETURNABLE_STATUSES.includes(o.status));
-
-  const { data: orderDetail } = useQuery({
-    queryKey: ['sales-orders', salesOrderId],
-    queryFn: async () =>
-      (await apiClient.get<SalesOrderDetail>(`/api/v1/sales-orders/${salesOrderId}`)).data,
-    enabled: open && !!salesOrderId,
-  });
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!orderDetail) return;
-      const lines = orderDetail.lines
-        .filter((line) => Number(quantities[line.id] ?? 0) > 0)
-        .map((line) => ({
-          salesOrderLineId: line.id,
-          quantityExpected: Number(quantities[line.id]),
-        }));
-      await apiClient.post('/api/v1/returns', { salesOrderId, lines });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['returns'] });
-      setSalesOrderId('');
-      setQuantities({});
-      onClose();
-    },
-    onError: () => setError('Could not create the RMA. Check quantities vs shipped amounts.'),
-  });
-
-  return (
-    <Modal open={open} onClose={onClose} title="New RMA" description="Create a return from a shipped order">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          mutation.mutate();
-        }}
-        className="space-y-4"
-      >
-        <Select
-          label="Sales order"
-          value={salesOrderId}
-          onChange={(e) => {
-            setSalesOrderId(e.target.value);
-            setQuantities({});
-          }}
-          required
-        >
-          <option value="" disabled>
-            {returnable.length === 0 ? 'No shipped orders available' : 'Select order…'}
-          </option>
-          {returnable.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.number} — {o.customerName} ({o.status})
-            </option>
-          ))}
-        </Select>
-
-        {orderDetail && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-text">Lines to return</p>
-            {orderDetail.lines.map((line) => {
-              const max = Number(line.qtyShipped);
-              if (max <= 0) return null;
-              return (
-                <div key={line.id} className="flex items-center gap-3">
-                  <span className="flex-1 font-mono text-sm">{line.variantId.slice(0, 8)}…</span>
-                  <span className="text-xs text-text-muted">shipped {max}</span>
-                  <Input
-                    aria-label="Return quantity"
-                    type="number"
-                    min="0"
-                    max={max}
-                    className="w-20"
-                    value={quantities[line.id] ?? ''}
-                    onChange={(e) =>
-                      setQuantities((prev) => ({ ...prev, [line.id]: e.target.value }))
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            loading={mutation.isPending}
-            disabled={!salesOrderId || !orderDetail?.lines.some((l) => Number(quantities[l.id]) > 0)}
-          >
-            Create RMA
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
+const DISPOSITION_STATUSES = new Set(['REQUESTED', 'APPROVED', 'EXPECTED', 'RECEIVED']);
 
 const STATUS_STYLES: Record<string, string> = {
   REQUESTED: 'bg-warning/20 text-warning',
@@ -170,7 +48,7 @@ const STATUS_STYLES: Record<string, string> = {
 function RmaReviewQueue({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const { data: pending = [], isLoading } = useQuery({
-    queryKey: ['returns', 'PENDING_REVIEW'],
+    queryKey: ['returns', 'review-queue'],
     queryFn: async () =>
       (await apiClient.get<Return[]>('/api/v1/returns?status=PENDING_REVIEW')).data,
     retry: false,
@@ -219,10 +97,7 @@ function RmaReviewQueue({ canManage }: { canManage: boolean }) {
                 <p className="mt-1 text-sm text-text-muted">
                   Est. return label cost:{' '}
                   <span className="font-mono font-semibold text-text">
-                    {Number(rma.estimatedLabelCost ?? 0).toLocaleString(undefined, {
-                      style: 'currency',
-                      currency: 'USD',
-                    })}
+                    {formatCurrency(Number(rma.estimatedLabelCost ?? 0))}
                   </span>
                 </p>
               </div>
@@ -290,10 +165,15 @@ function DispositionSelect({
   returnId: string;
 }) {
   const queryClient = useQueryClient();
+  const sku = line.sku ?? line.id;
 
   const mutation = useMutation({
     mutationFn: async (disposition: string) => {
-      await apiClient.put(`/api/v1/returns/${returnId}/lines/${line.id}`, { disposition });
+      await apiClient.put(`/api/v1/returns/${returnId}/lines/${line.id}`, {
+        disposition,
+        restockLocationId: line.restockLocationId,
+        restockingFeePct: line.restockingFeePct ?? 0,
+      });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['returns'] });
@@ -302,6 +182,7 @@ function DispositionSelect({
 
   return (
     <select
+      data-testid={`rma-disposition-${sku}`}
       value={line.disposition ?? ''}
       onChange={(e) => mutation.mutate(e.target.value)}
       disabled={mutation.isPending}
@@ -320,12 +201,17 @@ function DispositionSelect({
 function ReturnLinesTable({
   lines,
   returnId,
+  locations,
+  canDisposition,
   onInspect,
 }: {
   lines: ReturnLine[];
   returnId: string;
+  locations: TenantLocation[];
+  canDisposition: boolean;
   onInspect: (line: ReturnLine) => void;
 }) {
+  const queryClient = useQueryClient();
   const { sort, toggle, sorted } = useClientSort(
     lines,
     {
@@ -336,6 +222,25 @@ function ReturnLinesTable({
     },
     { key: 'sku', dir: 'asc' },
   );
+
+  const patchLine = useMutation({
+    mutationFn: async (payload: {
+      line: ReturnLine;
+      restockLocationId?: string;
+      restockingFeePct?: number;
+    }) => {
+      await apiClient.put(`/api/v1/returns/${returnId}/lines/${payload.line.id}`, {
+        disposition: payload.restockLocationId
+          ? 'RESTOCK'
+          : payload.line.disposition || 'QUARANTINE',
+        restockLocationId: payload.restockLocationId ?? payload.line.restockLocationId,
+        restockingFeePct: payload.restockingFeePct ?? payload.line.restockingFeePct ?? 0,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['returns'] });
+    },
+  });
 
   return (
     <Table>
@@ -353,55 +258,173 @@ function ReturnLinesTable({
           <TableHead sortable sortKey="disposition" sort={sort} onSort={toggle}>
             Disposition
           </TableHead>
+          <TableHead>Restock Bin</TableHead>
+          <TableHead>Fee %</TableHead>
           <TableHead align="right">QC</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {sorted.map((line) => (
-          <TableRow key={line.id}>
-            <TableCell mono>{line.sku ?? line.productName ?? line.id}</TableCell>
-            <TableCell mono>{line.quantityExpected}</TableCell>
-            <TableCell mono>{line.quantityReceived}</TableCell>
-            <TableCell>
-              <DispositionSelect line={line} returnId={returnId} />
-            </TableCell>
-            <TableCell align="right">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                data-testid={`inspect-line-${line.id}`}
-                onClick={() => onInspect(line)}
-              >
-                <ClipboardCheck className="h-4 w-4" />
-                Inspect
-              </Button>
-            </TableCell>
-          </TableRow>
-        ))}
+        {sorted.map((line) => {
+          const sku = line.sku ?? line.id;
+          const restock = line.disposition === 'RESTOCK';
+          return (
+            <TableRow key={line.id}>
+              <TableCell mono>{line.sku ?? line.productName ?? line.id}</TableCell>
+              <TableCell mono>{line.quantityExpected}</TableCell>
+              <TableCell mono>{line.quantityReceived}</TableCell>
+              <TableCell>
+                {canDisposition ? (
+                  <DispositionSelect line={line} returnId={returnId} />
+                ) : (
+                  <span className="text-sm text-text-muted">{line.disposition ?? '—'}</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <select
+                  data-testid={`rma-restock-bin-${sku}`}
+                  disabled={!canDisposition || !restock || patchLine.isPending}
+                  value={line.restockLocationId ?? ''}
+                  onChange={(e) =>
+                    patchLine.mutate({ line, restockLocationId: e.target.value })
+                  }
+                  className="h-8 max-w-[12rem] rounded-md border border-border bg-surface-raised px-2 text-sm text-text disabled:opacity-50"
+                >
+                  <option value="">Target bin…</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.path || loc.code || loc.name}
+                    </option>
+                  ))}
+                </select>
+              </TableCell>
+              <TableCell>
+                <Input
+                  data-testid={`rma-restock-fee-${sku}`}
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  className="w-20"
+                  disabled={!canDisposition}
+                  defaultValue={line.restockingFeePct ?? 0}
+                  onBlur={(e) =>
+                    patchLine.mutate({
+                      line,
+                      restockingFeePct: Number(e.target.value || 0),
+                    })
+                  }
+                />
+              </TableCell>
+              <TableCell align="right">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid={`inspect-line-${line.id}`}
+                  onClick={() => onInspect(line)}
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  Inspect / QC Details
+                </Button>
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
+  );
+}
+
+function AccordionSkeleton() {
+  return (
+    <div className="space-y-3" aria-hidden>
+      {[0, 1].map((i) => (
+        <div
+          key={i}
+          className="h-20 animate-pulse rounded-lg border border-border bg-surface-overlay"
+        />
+      ))}
+    </div>
   );
 }
 
 export function ReturnsPage() {
   const navigate = useNavigate();
   const canManage = useSessionStore((s) => s.canManageInventory());
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectLine, setInspectLine] = useState<ReturnLine | null>(null);
   const [inspectReturnId, setInspectReturnId] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const url =
-    statusFilter === 'ALL'
-      ? '/api/v1/returns'
-      : `/api/v1/returns?status=${statusFilter}`;
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations'],
+    queryFn: async () => (await apiClient.get<TenantLocation[]>('/api/v1/locations')).data,
+  });
 
-  const { data, isLoading, isError, error, refetch } = useListQuery<Return>(
-    ['returns', statusFilter],
-    url
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['returns', 'infinite', statusFilter],
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams();
+      params.set('limit', '25');
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (pageParam) params.set('cursor', pageParam);
+      const res = await apiClient.get<PaginatedResponse<Return>>(`/api/v1/returns?${params}`);
+      return res.data;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+
+  const returns = useMemo(
+    () => data?.pages.flatMap((page) => page.items ?? []) ?? [],
+    [data],
   );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { rootMargin: '240px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, returns.length]);
+
+  const completeMutation = useMutation({
+    mutationFn: async (id: string) =>
+      (await apiClient.post<Return>(`/api/v1/returns/${id}/complete`)).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['returns'] });
+    },
+  });
+
+  const escalateMutation = useMutation({
+    mutationFn: async (id: string) =>
+      (await apiClient.post<{ rtvOrderId: string }>(`/api/v1/returns/${id}/escalate-rtv`)).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['returns'] });
+      navigate('/purchasing/rtv');
+    },
+  });
 
   return (
     <TableDensityScope gridId="returns">
@@ -416,7 +439,7 @@ export function ReturnsPage() {
             Receive terminal
           </Button>
           {canManage && (
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button data-testid="new-rma-button" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               New RMA
             </Button>
@@ -447,80 +470,145 @@ export function ReturnsPage() {
         <DensityToggle gridId="returns" />
       </div>
 
-      <ListPageState
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        data={data}
-        refetch={refetch}
-        emptyIcon={RotateCcw}
-        emptyTitle="No returns"
-        emptyDescription="Return requests will appear here for approval and processing."
-        emptyAction={
-          canManage ? (
+      {isLoading && <AccordionSkeleton />}
+      {isError && (
+        <Card className="p-6">
+          <p className="text-sm text-danger">
+            {(error as Error | undefined)?.message ?? 'Could not load returns.'}
+          </p>
+          <Button className="mt-3" variant="secondary" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        </Card>
+      )}
+      {!isLoading && !isError && returns.length === 0 && (
+        <Card className="flex flex-col items-center gap-3 p-10 text-center">
+          <RotateCcw className="h-8 w-8 text-text-muted" />
+          <h2 className="text-lg font-semibold text-text">No returns</h2>
+          <p className="text-sm text-text-muted">
+            Return requests will appear here for approval and processing.
+          </p>
+          {canManage && (
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               Create RMA
             </Button>
-          ) : undefined
-        }
-      >
-        {(returns) => (
-          <div className="space-y-4">
-            {returns.map((rma) => (
-              <Card key={rma.id} padding="none">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between p-4 text-left hover:bg-surface-overlay"
-                  onClick={() => setExpandedId(expandedId === rma.id ? null : rma.id)}
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="font-mono font-semibold text-text">{rma.number}</span>
-                    <span className="text-sm text-text-muted">
-                      {rma.customerName ?? rma.salesOrderNumber ?? rma.salesOrderId}
+          )}
+        </Card>
+      )}
+
+      <div className="space-y-4">
+        {returns.map((rma) => {
+          const itemCount = rma.itemCount ?? rma.lines?.length ?? 0;
+          const estimated = Number(rma.estimatedReturnValue ?? 0);
+          const canDisposition = canManage && DISPOSITION_STATUSES.has(rma.status);
+          return (
+            <Card key={rma.id} padding="none" data-testid={`rma-card-${rma.number}`}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-surface-overlay"
+                onClick={() => setExpandedId(expandedId === rma.id ? null : rma.id)}
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <span className="font-mono font-semibold text-text">{rma.number}</span>
+                  <span className="truncate text-sm text-text-muted">
+                    {rma.customerName ?? rma.salesOrderNumber ?? rma.salesOrderId}
+                  </span>
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-xs font-medium',
+                      STATUS_STYLES[rma.status] ?? 'bg-surface-overlay text-text-muted'
+                    )}
+                  >
+                    {rma.status}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-text-muted">
+                  <span>{formatMediumDate(rma.createdAt)}</span>
+                  <span>
+                    {itemCount} item{itemCount === 1 ? '' : 's'} · {formatCurrency(estimated)}{' '}
+                    estimated return value
+                  </span>
+                  {rma.trackingNumber && (
+                    <span className="rounded-full bg-accent-muted px-2 py-0.5 font-mono text-xs text-accent">
+                      {rma.trackingNumber}
                     </span>
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-xs font-medium',
-                        STATUS_STYLES[rma.status] ?? 'bg-surface-overlay text-text-muted'
-                      )}
-                    >
-                      {rma.status}
-                    </span>
-                  </div>
+                  )}
                   {rma.returnLabelUrl && (
                     <a
                       href={rma.returnLabelUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-1 text-sm text-accent hover:underline"
+                      className="flex items-center gap-1 text-accent hover:underline"
                     >
                       <Download className="h-4 w-4" />
-                      Label
+                      Download Inbound Label
                     </a>
                   )}
-                </button>
+                </div>
+              </button>
 
-                {expandedId === rma.id && (rma.lines?.length ?? 0) > 0 && (
-                  <div className="border-t border-border p-4">
-                    <CardHeader title="Line items" description="Set disposition per line" />
-                    <ReturnLinesTable
-                      lines={rma.lines ?? []}
-                      returnId={rma.id}
-                      onInspect={(line) => {
-                        setInspectReturnId(rma.id);
-                        setInspectLine(line);
-                      }}
-                    />
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
-      </ListPageState>
-      <ReturnsCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
+              {expandedId === rma.id && (rma.lines?.length ?? 0) > 0 && (
+                <div className="border-t border-border p-4">
+                  <CardHeader title="Line items" description="Set disposition per line" />
+                  <ReturnLinesTable
+                    lines={rma.lines ?? []}
+                    returnId={rma.id}
+                    locations={locations}
+                    canDisposition={canDisposition}
+                    onInspect={(line) => {
+                      setInspectReturnId(rma.id);
+                      setInspectLine(line);
+                    }}
+                  />
+                  {rma.creditMemoId && (
+                    <p className="mt-3 text-sm">
+                      Credit memo:{' '}
+                      <button
+                        type="button"
+                        data-testid="rma-credit-memo-link"
+                        className="font-mono text-accent hover:underline"
+                        onClick={() => navigate(`/invoices/${rma.creditMemoId}`)}
+                      >
+                        {rma.creditMemoNumber ?? rma.creditMemoId}
+                      </button>
+                    </p>
+                  )}
+                  {canDisposition && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        data-testid="rma-complete-disposition"
+                        loading={completeMutation.isPending}
+                        onClick={() => completeMutation.mutate(rma.id)}
+                      >
+                        Complete Disposition & Close RMA
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        data-testid="rma-escalate-rtv"
+                        loading={escalateMutation.isPending}
+                        onClick={() => escalateMutation.mutate(rma.id)}
+                      >
+                        Escalate to RTV
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      <div ref={sentinelRef} data-testid="rma-infinite-sentinel" className="h-8" />
+      {isFetchingNextPage && (
+        <div className="mt-3">
+          <AccordionSkeleton />
+        </div>
+      )}
+
+      <NewRmaWizard open={createOpen} onClose={() => setCreateOpen(false)} />
       <RmaInspectionDrawer
         open={inspectLine != null && inspectReturnId != null}
         onClose={() => {

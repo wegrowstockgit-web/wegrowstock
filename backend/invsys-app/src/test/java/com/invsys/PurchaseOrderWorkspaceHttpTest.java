@@ -18,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -126,6 +127,112 @@ class PurchaseOrderWorkspaceHttpTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void draftLineCanBeDeletedAndLocksAfterSubmit() throws Exception {
+        String slug = "podel-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "PO Delete Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+        TenantContext.setTenantId(owner.tenantId());
+
+        Product product = new Product();
+        product.setTenantId(owner.tenantId());
+        product.setSkuRoot("PODEL");
+        product.setName("Delete Widget");
+        product = productRepository.save(product);
+
+        String variantId = objectMapper.readTree(mockMvc.perform(post("/api/v1/variants")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "productId":"%s",
+                                  "sku":"PODEL-1",
+                                  "price":4.50,
+                                  "currency":"USD",
+                                  "weight":1,
+                                  "weightUnit":"lb",
+                                  "length":2,
+                                  "width":2,
+                                  "height":2,
+                                  "dimUnit":"in"
+                                }
+                                """.formatted(product.getId())))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String supplierId = objectMapper.readTree(mockMvc.perform(post("/api/v1/suppliers")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Delete Vendor\",\"contact\":{}}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        String poId = objectMapper.readTree(mockMvc.perform(post("/api/v1/purchase-orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"supplierId":"%s","number":"PO-DEL-1","lines":[{"variantId":"%s","qtyOrdered":3,"unitCost":2}]}
+                                """.formatted(supplierId, variantId)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asString();
+
+        mockMvc.perform(post("/api/v1/purchase-orders/" + poId + "/lines")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"variantId":"%s","qtyOrdered":1,"unitCost":9.00}
+                                """.formatted(variantId)))
+                .andExpect(status().isOk());
+
+        JsonNode detail = objectMapper.readTree(mockMvc.perform(get("/api/v1/purchase-orders/" + poId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines.length()").value(2))
+                .andExpect(jsonPath("$.lines[0].sku").value("PODEL-1"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        String extraLineId = detail.get("lines").get(1).get("id").asString();
+
+        mockMvc.perform(get("/api/v1/variants")
+                        .param("search", "PODEL")
+                        .param("limit", "20")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(org.hamcrest.Matchers.lessThanOrEqualTo(20)))
+                .andExpect(jsonPath("$.items[0].sku").value("PODEL-1"));
+
+        mockMvc.perform(delete("/api/v1/purchase-orders/" + poId + "/lines/" + extraLineId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/purchase-orders/" + poId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines.length()").value(1));
+
+        mockMvc.perform(post("/api/v1/purchase-orders/" + poId + "/submit")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        String remainingId = objectMapper.readTree(mockMvc.perform(get("/api/v1/purchase-orders/" + poId)
+                        .header("Authorization", "Bearer " + token))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("lines").get(0).get("id").asString();
+
+        mockMvc.perform(delete("/api/v1/purchase-orders/" + poId + "/lines/" + remainingId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict());
     }
 
     @Test

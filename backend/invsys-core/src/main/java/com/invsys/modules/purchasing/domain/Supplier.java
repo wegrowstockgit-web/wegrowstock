@@ -7,7 +7,10 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import jakarta.persistence.Transient;
+
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import com.invsys.core.common.TenantScopedEntity;
@@ -51,6 +54,25 @@ public class Supplier extends TenantScopedEntity {
 
     @Column(name = "supplier_rating", precision = 5, scale = 2)
     private BigDecimal supplierRating;
+
+    @Column(name = "supplier_class", length = 64)
+    private String supplierClass;
+
+    @Column(length = 16)
+    private String incoterms;
+
+    @Column(name = "portal_invited_at")
+    private Instant portalInvitedAt;
+
+    @Transient
+    @JsonProperty("isMeshPartner")
+    private boolean meshPartner;
+
+    @Transient
+    private boolean portalAccess;
+
+    @Transient
+    private long activePoCount;
 
     public String getName() {
         return name;
@@ -144,5 +166,53 @@ public class Supplier extends TenantScopedEntity {
 
     public void setSupplierRating(BigDecimal supplierRating) {
         this.supplierRating = supplierRating;
+    }
+
+    public String getSupplierClass() {
+        return supplierClass;
+    }
+
+    public void setSupplierClass(String supplierClass) {
+        this.supplierClass = supplierClass;
+    }
+
+    public String getIncoterms() {
+        return incoterms;
+    }
+
+    public void setIncoterms(String incoterms) {
+        this.incoterms = incoterms;
+    }
+
+    public Instant getPortalInvitedAt() {
+        return portalInvitedAt;
+    }
+
+    public void setPortalInvitedAt(Instant portalInvitedAt) {
+        this.portalInvitedAt = portalInvitedAt;
+    }
+
+    public boolean isMeshPartner() {
+        return meshPartner;
+    }
+
+    public void setMeshPartner(boolean meshPartner) {
+        this.meshPartner = meshPartner;
+    }
+
+    public boolean isPortalAccess() {
+        return portalAccess;
+    }
+
+    public void setPortalAccess(boolean portalAccess) {
+        this.portalAccess = portalAccess;
+    }
+
+    public long getActivePoCount() {
+        return activePoCount;
+    }
+
+    public void setActivePoCount(long activePoCount) {
+        this.activePoCount = activePoCount;
     }
 }

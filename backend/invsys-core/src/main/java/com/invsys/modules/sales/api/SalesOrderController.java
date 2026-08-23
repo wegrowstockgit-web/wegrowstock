@@ -11,8 +11,13 @@ import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.modules.sales.repository.SalesOrderLineRepository;
 import com.invsys.modules.sales.repository.SalesOrderRepository;
+import com.invsys.modules.sales.service.CustomerMasterService;
 import com.invsys.modules.sales.service.InvoicingService;
 import com.invsys.modules.sales.service.SalesOrderService;
+import com.invsys.domain.CustomerCreditLine;
+import com.invsys.domain.CustomerPriceTier;
+import com.invsys.modules.sales.repository.CustomerPriceTierRepository;
+import com.invsys.service.CreditService;
 import com.invsys.service.SoftKitExplosionService;
 import com.invsys.service.TaxService;
 import com.invsys.core.common.OffsetPaging;
@@ -53,6 +58,9 @@ public class SalesOrderController {
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
     private final SoftKitExplosionService softKitExplosionService;
+    private final CreditService creditService;
+    private final CustomerPriceTierRepository priceTierRepository;
+    private final CustomerMasterService customerMasterService;
 
     public SalesOrderController(CustomerRepository customerRepository,
                                 SalesOrderRepository salesOrderRepository,
@@ -62,7 +70,10 @@ public class SalesOrderController {
                                 TaxService taxService,
                                 ProductVariantRepository variantRepository,
                                 ProductRepository productRepository,
-                                SoftKitExplosionService softKitExplosionService) {
+                                SoftKitExplosionService softKitExplosionService,
+                                CreditService creditService,
+                                CustomerPriceTierRepository priceTierRepository,
+                                CustomerMasterService customerMasterService) {
         this.customerRepository = customerRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.lineRepository = lineRepository;
@@ -72,23 +83,21 @@ public class SalesOrderController {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.softKitExplosionService = softKitExplosionService;
+        this.creditService = creditService;
+        this.priceTierRepository = priceTierRepository;
+        this.customerMasterService = customerMasterService;
     }
 
-    private static final Set<String> CUSTOMER_SORT = Set.of("name", "createdAt", "email", "customerStatus");
     private static final Set<String> SALES_ORDER_SORT = Set.of("createdAt", "number", "status", "channel");
 
     @GetMapping("/customers")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
-    public PageResponse<Customer> customers(
+    public PageResponse<CustomerMasterService.CustomerListItem> customers(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "name,asc") String sort) {
-        Page<Customer> result = customerRepository.search(
-                TenantContext.requireTenantId(),
-                OffsetPaging.keyword(search),
-                OffsetPaging.of(page, size, sort, "name", Sort.Direction.ASC, CUSTOMER_SORT));
-        return PageResponse.of(result);
+        return customerMasterService.list(page, size, search, sort);
     }
 
     @PostMapping("/customers")
@@ -115,7 +124,49 @@ public class SalesOrderController {
         if (request.customerStatus() != null && !request.customerStatus().isBlank()) {
             customer.setCustomerStatus(normalizeCustomerStatus(request.customerStatus()));
         }
-        return customerRepository.save(customer);
+        customer = customerRepository.save(customer);
+        customerMasterService.applyCreateExtras(
+                customer,
+                request.priceTierId(),
+                request.phone(),
+                request.taxExempt(),
+                request.shippingAddresses(),
+                request.provisionShowroom());
+        return customerRepository.findById(customer.getId()).orElse(customer);
+    }
+
+    @GetMapping("/customers/{id}/sales-context")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
+    public CustomerSalesContext customerSalesContext(@PathVariable UUID id) {
+        Customer customer = customerRepository.findById(id)
+                .orElseThrow(() -> new com.invsys.core.common.ApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "NOT_FOUND", "Customer not found"));
+        CustomerCreditLine credit = creditService.getOrDefault(id);
+        BigDecimal creditLimit = credit.getCreditLimit() != null && credit.getCreditLimit().signum() > 0
+                ? credit.getCreditLimit()
+                : (customer.getCreditLimit() != null ? customer.getCreditLimit() : BigDecimal.ZERO);
+        BigDecimal available = credit.getAvailableCredit() != null ? credit.getAvailableCredit() : BigDecimal.ZERO;
+        if (available.signum() == 0 && credit.getCreditLimit() != null && credit.getCreditLimit().signum() == 0
+                && creditLimit.signum() > 0) {
+            available = creditLimit;
+        }
+        String tierName = "List";
+        BigDecimal discount = BigDecimal.ZERO;
+        if (customer.getPriceTierId() != null) {
+            CustomerPriceTier tier = priceTierRepository.findById(customer.getPriceTierId()).orElse(null);
+            if (tier != null) {
+                tierName = tier.getName();
+                discount = tier.getDiscountPercent() != null ? tier.getDiscountPercent() : BigDecimal.ZERO;
+            }
+        }
+        return new CustomerSalesContext(
+                customer.getId(),
+                customer.getName(),
+                creditLimit,
+                available,
+                tierName,
+                discount,
+                customer.getPaymentTerms());
     }
 
     private static String normalizeCustomerStatus(String raw) {
@@ -168,18 +219,37 @@ public class SalesOrderController {
                         .collect(Collectors.toMap(Customer::getId, Customer::getName, (a, b) -> a));
         Set<UUID> orderIds = result.getContent().stream().map(SalesOrder::getId).collect(Collectors.toSet());
         Map<UUID, String> billingByOrder = invoicingService.billingStatusForOrders(tenantId, orderIds);
+        Map<UUID, List<SalesOrderLine>> linesByOrder = orderIds.isEmpty()
+                ? Map.of()
+                : lineRepository.findBySalesOrderIdIn(orderIds).stream()
+                        .collect(Collectors.groupingBy(SalesOrderLine::getSalesOrderId));
         List<SalesOrderResponse> items = result.getContent().stream()
-                .map(order -> new SalesOrderResponse(
-                        order.getId(),
-                        order.getNumber(),
-                        customerNames.getOrDefault(order.getCustomerId(), "—"),
-                        order.getStatus(),
-                        order.getChannel(),
-                        order.getCreatedAt(),
-                        billingByOrder.getOrDefault(order.getId(), "NONE"),
-                        order.getAllocationPolicy() != null ? order.getAllocationPolicy().name() : AllocationPolicy.ALLOW_PARTIAL.name(),
-                        order.getQuoteExpiresAt(),
-                        order.getManualDiscountTotal()))
+                .map(order -> {
+                    List<SalesOrderLine> lines = linesByOrder.getOrDefault(order.getId(), List.of());
+                    BigDecimal total = lines.stream()
+                            .map(line -> safeMoney(line.getQtyOrdered()).multiply(safeMoney(line.getUnitPrice())))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    int linesTotal = lines.size();
+                    int linesShipped = (int) lines.stream()
+                            .filter(line -> safeMoney(line.getQtyShipped()).signum() > 0)
+                            .count();
+                    return new SalesOrderResponse(
+                            order.getId(),
+                            order.getNumber(),
+                            customerNames.getOrDefault(order.getCustomerId(), "—"),
+                            order.getStatus(),
+                            order.getChannel(),
+                            order.getCreatedAt(),
+                            billingByOrder.getOrDefault(order.getId(), "NONE"),
+                            order.getAllocationPolicy() != null ? order.getAllocationPolicy().name() : AllocationPolicy.ALLOW_PARTIAL.name(),
+                            order.getQuoteExpiresAt(),
+                            order.getManualDiscountTotal(),
+                            order.getCustomerPoNumber(),
+                            order.getRequestedShipDate(),
+                            total,
+                            linesTotal,
+                            linesShipped);
+                })
                 .toList();
         return PageResponse.of(result, items);
     }
@@ -261,6 +331,10 @@ public class SalesOrderController {
                 order.getQuoteNotes(),
                 salesOrderService.creditStatus(order),
                 lines);
+    }
+
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     private SalesOrderLineResponse toLineResponse(SalesOrderLine line) {
@@ -355,7 +429,12 @@ public class SalesOrderController {
             java.math.BigDecimal creditLimit,
             String currencyPreference,
             String defaultCurrency,
-            String customerStatus
+            String customerStatus,
+            String phone,
+            java.util.UUID priceTierId,
+            Boolean taxExempt,
+            List<Map<String, Object>> shippingAddresses,
+            Boolean provisionShowroom
     ) {
     }
 
@@ -391,6 +470,17 @@ public class SalesOrderController {
     public record SplitBackorderRequest(BigDecimal qtyToShipNow) {
     }
 
+    public record CustomerSalesContext(
+            UUID customerId,
+            String name,
+            BigDecimal creditLimit,
+            BigDecimal availableCredit,
+            String priceTierName,
+            BigDecimal priceTierDiscountPercent,
+            String paymentTerms
+    ) {
+    }
+
     public record SalesOrderResponse(
             UUID id,
             String number,
@@ -401,7 +491,12 @@ public class SalesOrderController {
             String billingStatus,
             String allocationPolicy,
             java.time.Instant quoteExpiresAt,
-            java.math.BigDecimal manualDiscountTotal
+            java.math.BigDecimal manualDiscountTotal,
+            String customerPoNumber,
+            java.time.Instant requestedShipDate,
+            BigDecimal totalAmount,
+            int linesTotal,
+            int linesShipped
     ) {
     }
 

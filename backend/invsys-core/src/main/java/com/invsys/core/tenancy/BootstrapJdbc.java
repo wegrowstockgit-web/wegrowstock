@@ -635,6 +635,75 @@ public class BootstrapJdbc {
     /**
      * Cross-tenant mesh lookup (bypasses RLS): buyer tenant + supplier → CONNECTED partner.
      */
+    public Optional<MeshPartnerRow> findMeshByBuyerSupplier(UUID buyerTenantId, UUID supplierId) {
+        return jdbc.query(
+                """
+                SELECT id, tenant_id, partner_tenant_id, supplier_id, customer_id, connection_status
+                FROM tenant_mesh_partners
+                WHERE tenant_id = ?
+                  AND supplier_id = ?
+                LIMIT 1
+                """,
+                rs -> rs.next() ? Optional.of(mapMeshPartner(rs)) : Optional.empty(),
+                buyerTenantId, supplierId);
+    }
+
+    public List<MeshDirectoryRow> searchMeshDirectory(UUID excludeTenantId, String query) {
+        String q = query == null ? "" : query.trim();
+        if (q.length() < 2) {
+            return List.of();
+        }
+        String like = "%" + q.toLowerCase() + "%";
+        return jdbc.query(
+                """
+                SELECT t.id, t.name, t.slug,
+                       EXISTS (
+                           SELECT 1 FROM tenant_domains td
+                           WHERE td.tenant_id = t.id
+                             AND (td.is_verified = TRUE OR td.verification_status IN ('ACTIVE', 'VERIFIED'))
+                       ) AS verified,
+                       EXISTS (
+                           SELECT 1 FROM mesh_catalog_listings mcl
+                           WHERE mcl.tenant_id = t.id AND mcl.published = TRUE
+                       ) AS catalog_published
+                FROM tenants t
+                WHERE t.id <> ?
+                  AND t.status = 'ACTIVE'
+                  AND (
+                        LOWER(t.slug) LIKE ?
+                        OR LOWER(t.name) LIKE ?
+                        OR LOWER(t.slug) = ?
+                        OR EXISTS (
+                            SELECT 1 FROM tenant_domains td
+                            WHERE td.tenant_id = t.id
+                              AND LOWER(td.domain_name) LIKE ?
+                        )
+                      )
+                ORDER BY t.name
+                LIMIT 20
+                """,
+                (rs, rowNum) -> new MeshDirectoryRow(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("name"),
+                        rs.getString("slug"),
+                        rs.getBoolean("verified"),
+                        rs.getBoolean("catalog_published")),
+                excludeTenantId, like, like, q.toLowerCase(), like);
+    }
+
+    public boolean hasPublishedMeshCatalog(UUID tenantId) {
+        Boolean found = jdbc.queryForObject(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM mesh_catalog_listings
+                    WHERE tenant_id = ? AND published = TRUE
+                )
+                """,
+                Boolean.class,
+                tenantId);
+        return Boolean.TRUE.equals(found);
+    }
+
     public Optional<MeshPartnerRow> findConnectedMeshByBuyerSupplier(UUID buyerTenantId, UUID supplierId) {
         return jdbc.query(
                 """
@@ -943,6 +1012,15 @@ public class BootstrapJdbc {
             String name,
             String slug,
             String status
+    ) {
+    }
+
+    public record MeshDirectoryRow(
+            UUID tenantId,
+            String name,
+            String slug,
+            boolean verified,
+            boolean catalogPublished
     ) {
     }
 

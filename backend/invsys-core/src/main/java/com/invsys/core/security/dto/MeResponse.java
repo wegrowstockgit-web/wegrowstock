@@ -40,6 +40,8 @@ public record MeResponse(
         /** Commercial subscription tier: BASIC, INTERMEDIATE, or ENTERPRISE. */
         String tier,
         /** Office idle soft-lock timeout in minutes (15, 30, 60, or 240). */
-        Integer desktopIdleTimeoutMinutes
+        Integer desktopIdleTimeoutMinutes,
+        /** True when this user's desktop session is idle-locked and must be unlocked. */
+        boolean sessionLocked
 ) {
 }

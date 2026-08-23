@@ -33,6 +33,18 @@ public class ReturnOrder extends TenantScopedEntity {
     @Column(name = "label_purchase_mode")
     private String labelPurchaseMode;
 
+    @Column(name = "resolution_type")
+    private String resolutionType;
+
+    @Column(name = "tracking_number")
+    private String trackingNumber;
+
+    @Column(name = "credit_memo_id")
+    private UUID creditMemoId;
+
+    @Column(name = "rtv_order_id")
+    private UUID rtvOrderId;
+
     public UUID getSalesOrderId() {
         return salesOrderId;
     }
@@ -87,5 +99,37 @@ public class ReturnOrder extends TenantScopedEntity {
 
     public void setLabelPurchaseMode(String labelPurchaseMode) {
         this.labelPurchaseMode = labelPurchaseMode;
+    }
+
+    public String getResolutionType() {
+        return resolutionType;
+    }
+
+    public void setResolutionType(String resolutionType) {
+        this.resolutionType = resolutionType;
+    }
+
+    public String getTrackingNumber() {
+        return trackingNumber;
+    }
+
+    public void setTrackingNumber(String trackingNumber) {
+        this.trackingNumber = trackingNumber;
+    }
+
+    public UUID getCreditMemoId() {
+        return creditMemoId;
+    }
+
+    public void setCreditMemoId(UUID creditMemoId) {
+        this.creditMemoId = creditMemoId;
+    }
+
+    public UUID getRtvOrderId() {
+        return rtvOrderId;
+    }
+
+    public void setRtvOrderId(UUID rtvOrderId) {
+        this.rtvOrderId = rtvOrderId;
     }
 }

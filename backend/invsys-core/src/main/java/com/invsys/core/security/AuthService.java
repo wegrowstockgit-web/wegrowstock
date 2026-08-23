@@ -73,6 +73,7 @@ public class AuthService {
     private final TerminalBiometricService terminalBiometricService;
     private final AuthService self;
     private final TenantSettingsRepository tenantSettingsRepository;
+    private final DesktopSessionLockStore desktopSessionLockStore;
 
     public AuthService(TenantOnboardingService onboardingService,
                        BootstrapJdbc bootstrapJdbc,
@@ -96,7 +97,8 @@ public class AuthService {
                        LoginSecurityService loginSecurityService,
                        @Lazy TerminalBiometricService terminalBiometricService,
                        @Lazy AuthService self,
-                       TenantSettingsRepository tenantSettingsRepository) {
+                       TenantSettingsRepository tenantSettingsRepository,
+                       DesktopSessionLockStore desktopSessionLockStore) {
         this.onboardingService = onboardingService;
         this.bootstrapJdbc = bootstrapJdbc;
         this.tenantRepository = tenantRepository;
@@ -120,6 +122,7 @@ public class AuthService {
         this.terminalBiometricService = terminalBiometricService;
         this.self = self;
         this.tenantSettingsRepository = tenantSettingsRepository;
+        this.desktopSessionLockStore = desktopSessionLockStore;
     }
 
     public TokenResponse signup(SignupRequest request) {
@@ -177,6 +180,7 @@ public class AuthService {
             TokenResponse tokens = self.completeLogin(authUser.id(), request.targetApp(), mfaVerified);
             AuthService.assertTargetAppAccess(request.targetApp(), tokens);
             loginSecurityService.afterSuccessfulLogin(authUser.id(), request.email(), ip, location);
+            desktopSessionLockStore.unlock(authUser.id());
             return tokens;
         } finally {
             TenantContext.clear();
@@ -628,7 +632,18 @@ public class AuthService {
                 false,
                 tenantSubscriptionService.getEnabledModules(user.getTenantId()),
                 tenantSubscriptionService.getCommercialTier(user.getTenantId()).name(),
-                desktopIdleTimeoutMinutes(user.getTenantId()));
+                desktopIdleTimeoutMinutes(user.getTenantId()),
+                desktopSessionLockStore.isLocked(user.getId()));
+    }
+
+    public void lockDesktopSession() {
+        UUID userId = TenantContext.getUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated"));
+        desktopSessionLockStore.lock(userId);
+    }
+
+    public void unlockDesktopSession(UUID userId) {
+        desktopSessionLockStore.unlock(userId);
     }
 
     private int desktopIdleTimeoutMinutes(UUID tenantId) {
@@ -651,12 +666,14 @@ public class AuthService {
                 && mfaSignature != null && !mfaSignature.isBlank();
         if (hasAssertion) {
             terminalBiometricService.verifyLoginMfa(userId, mfaCredentialId, mfaChallenge, mfaSignature);
+            desktopSessionLockStore.unlock(userId);
             return;
         }
         if (password == null || password.isBlank()
                 || !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_PASSWORD", "Password is incorrect");
         }
+        desktopSessionLockStore.unlock(userId);
     }
 
     /**

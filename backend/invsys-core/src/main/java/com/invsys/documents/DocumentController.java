@@ -12,9 +12,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -42,7 +44,7 @@ public class DocumentController {
         this.invoiceRepository = invoiceRepository;
     }
 
-    @GetMapping("/invoice/{id}/pdf")
+    @GetMapping({"/invoice/{id}/pdf", "/invoices/{id}/pdf"})
     @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     public ResponseEntity<byte[]> invoicePdf(@PathVariable("id") UUID id) {
         UUID tenantId = TenantContext.requireTenantId();
@@ -65,10 +67,20 @@ public class DocumentController {
                 .body(pdf);
     }
 
-    @PostMapping("/invoice/{id}/email")
+    @PostMapping({"/invoice/{id}/email", "/invoices/{id}/email"})
     @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     public Map<String, Object> emailInvoice(@PathVariable("id") UUID id) {
         return documentDispatchService.emailInvoice(id);
+    }
+
+    @PostMapping({"/invoices/email", "/invoice/email-batch"})
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+    public Map<String, Object> emailInvoices(@RequestBody EmailBatchRequest request) {
+        List<UUID> ids = request == null || request.invoiceIds() == null ? List.of() : request.invoiceIds();
+        return documentDispatchService.emailInvoices(ids);
+    }
+
+    public record EmailBatchRequest(List<UUID> invoiceIds) {
     }
 
     @GetMapping("/packing-slip/{shipmentId}/pdf")

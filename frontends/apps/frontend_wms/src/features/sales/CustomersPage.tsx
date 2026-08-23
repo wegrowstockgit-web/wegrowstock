@@ -1,14 +1,12 @@
-import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, type MouseEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Plus } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MoreHorizontal, Plus, Users } from 'lucide-react';
 import { apiClient } from '@/api/client';
-import type { Customer } from '@/api/types';
+import type { Customer, CustomerKpiSummary } from '@/api/types';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
-import { Modal } from '@/components/ui/Modal';
+import { Card } from '@/components/ui/Card';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import {
   Table,
@@ -18,6 +16,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
@@ -28,8 +32,15 @@ import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { listCustomers } from '@/api/operational';
 import { CustomerDetail } from '@/features/customers/CustomerDetail';
+import { NewCustomerDrawer } from '@/features/sales/NewCustomerDrawer';
 import { WholesaleApplicationsPanel } from '@/features/sales/WholesaleApplicationsPanel';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
+
+function portalLabel(status?: string) {
+  if (status === 'ACTIVE') return 'Active';
+  if (status === 'PENDING') return 'Pending';
+  return 'Not Invited';
+}
 
 function CustomersTable({
   items,
@@ -38,31 +49,56 @@ function CustomersTable({
   items: Customer[];
   onPeek: (customer: Customer) => void;
 }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const hasRole = useSessionStore((s) => s.hasRole);
+  const canInvite = hasRole('OWNER', 'ADMIN');
+  const canHold = hasRole('FINANCE_ADMIN', 'OWNER', 'ADMIN');
   const { sort, toggle, sorted } = useClientSort(
     items,
     {
       name: (c) => c.name,
-      email: (c) => c.email ?? '',
-      status: (c) => c.customerStatus ?? '',
+      tier: (c) => c.priceTierName ?? '',
+      credit: (c) => Number(c.availableCredit ?? c.creditLimit ?? 0),
+      terms: (c) => c.paymentTerms ?? '',
+      portal: (c) => c.portalStatus ?? '',
     },
     { key: 'name', dir: 'asc' },
   );
+
+  const invite = useMutation({
+    mutationFn: async (id: string) => apiClient.post(`/api/v1/customers/${id}/portal-invite`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['customers'] }),
+  });
+  const hold = useMutation({
+    mutationFn: async (id: string) => apiClient.post(`/api/v1/customers/${id}/credit-hold`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['customers'] });
+      void queryClient.invalidateQueries({ queryKey: ['customers-summary'] });
+    },
+  });
+
   return (
     <div className="min-w-0 w-full overflow-x-auto scrollbar-thin">
       <Table className="min-w-full table-auto">
         <TableHeader>
           <TableRow>
             <TableHead sortable sortKey="name" sort={sort} onSort={toggle}>
-              Name
+              Name & Email
             </TableHead>
-            <TableHead sortable sortKey="email" sort={sort} onSort={toggle}>
-              Email
+            <TableHead sortable sortKey="tier" sort={sort} onSort={toggle}>
+              Price Tier
             </TableHead>
-            <TableHead sortable sortKey="status" sort={sort} onSort={toggle}>
-              Status
+            <TableHead sortable sortKey="credit" sort={sort} onSort={toggle}>
+              Credit Available
             </TableHead>
-            <TableHead>Terms</TableHead>
-            <TableHead>Credit</TableHead>
+            <TableHead sortable sortKey="terms" sort={sort} onSort={toggle}>
+              Terms
+            </TableHead>
+            <TableHead sortable sortKey="portal" sort={sort} onSort={toggle}>
+              Portal Status
+            </TableHead>
+            <TableHead align="right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -73,11 +109,72 @@ function CustomersTable({
               onClick={() => onPeek(c)}
               data-testid={`customer-row-${c.id}`}
             >
-              <TableCell>{c.name}</TableCell>
-              <TableCell>{c.email ?? '—'}</TableCell>
-              <TableCell>{c.customerStatus ?? 'ACTIVE'}</TableCell>
+              <TableCell>
+                <div className="font-medium text-text">{c.name}</div>
+                <div className="text-xs text-text-muted">{c.email ?? '—'}</div>
+              </TableCell>
+              <TableCell data-testid={`customer-tier-${c.id}`}>{c.priceTierName || 'List'}</TableCell>
+              <TableCell className="font-mono text-sm" data-testid={`customer-credit-${c.id}`}>
+                {formatCurrency(Number(c.availableCredit ?? 0))} /{' '}
+                {formatCurrency(Number(c.creditLimit ?? 0))} Limit
+              </TableCell>
               <TableCell>{c.paymentTerms ?? '—'}</TableCell>
-              <TableCell>{c.creditLimit != null ? String(c.creditLimit) : '—'}</TableCell>
+              <TableCell>
+                <span
+                  className={cn(
+                    'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                    c.portalStatus === 'ACTIVE'
+                      ? 'bg-success/10 text-success'
+                      : c.portalStatus === 'PENDING'
+                        ? 'bg-warning/10 text-warning'
+                        : 'bg-surface-overlay text-text-muted',
+                  )}
+                  data-testid={`customer-portal-${c.id}`}
+                >
+                  {portalLabel(c.portalStatus)}
+                </span>
+              </TableCell>
+              <TableCell align="right">
+                <div onClick={(e: MouseEvent) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`customer-row-actions-${c.id}`}
+                        aria-label={`Actions for ${c.name}`}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        data-testid={`customer-open-workspace-${c.id}`}
+                        onClick={() => navigate(`/sales/customers/${c.id}`)}
+                      >
+                        View Details Workspace
+                      </DropdownMenuItem>
+                      {canInvite && (
+                        <DropdownMenuItem
+                          data-testid={`customer-portal-invite-${c.id}`}
+                          disabled={!c.email || c.portalStatus === 'ACTIVE'}
+                          onClick={() => invite.mutate(c.id)}
+                        >
+                          Send B2B Portal Invite
+                        </DropdownMenuItem>
+                      )}
+                      {canHold && c.customerStatus !== 'HOLD' && (
+                        <DropdownMenuItem
+                          data-testid={`customer-credit-hold-${c.id}`}
+                          onClick={() => hold.mutate(c.id)}
+                        >
+                          Place on Credit Hold
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -86,239 +183,17 @@ function CustomersTable({
   );
 }
 
-function AddCustomerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [taxId, setTaxId] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('NET30');
-  const [creditLimit, setCreditLimit] = useState('');
-  const [currency, setCurrency] = useState('USD');
-  const [status, setStatus] = useState('ACTIVE');
-  const [billStreet, setBillStreet] = useState('');
-  const [billCity, setBillCity] = useState('');
-  const [billState, setBillState] = useState('');
-  const [billPostal, setBillPostal] = useState('');
-  const [billCountry, setBillCountry] = useState('US');
-  const [shipSame, setShipSame] = useState(true);
-  const [shipStreet, setShipStreet] = useState('');
-  const [shipCity, setShipCity] = useState('');
-  const [shipState, setShipState] = useState('');
-  const [shipPostal, setShipPostal] = useState('');
-  const [shipCountry, setShipCountry] = useState('US');
-  const [error, setError] = useState('');
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const billingAddress = {
-        street: billStreet || undefined,
-        city: billCity || undefined,
-        state: billState || undefined,
-        postalCode: billPostal || undefined,
-        country: billCountry || undefined,
-      };
-      const shippingAddress = shipSame
-        ? billingAddress
-        : {
-            street: shipStreet || undefined,
-            city: shipCity || undefined,
-            state: shipState || undefined,
-            postalCode: shipPostal || undefined,
-            country: shipCountry || undefined,
-          };
-      await apiClient.post('/api/v1/customers', {
-        name,
-        email: email || undefined,
-        taxId: taxId || undefined,
-        ein: taxId || undefined,
-        paymentTerms,
-        creditLimit: creditLimit ? Number(creditLimit) : undefined,
-        currencyPreference: currency,
-        customerStatus: status,
-        billingAddress,
-        shippingAddress,
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['customers'] });
-      setName('');
-      setEmail('');
-      setTaxId('');
-      setPaymentTerms('NET30');
-      setCreditLimit('');
-      setCurrency('USD');
-      setStatus('ACTIVE');
-      setBillStreet('');
-      setBillCity('');
-      setBillState('');
-      setBillPostal('');
-      setBillCountry('US');
-      setShipSame(true);
-      onClose();
-    },
-    onError: () => setError('Could not create customer. Check the fields and try again.'),
-  });
-
-  return (
-    <Modal open={open} onClose={onClose} title="Add customer" description="ERP buyer master — tax, credit, and addresses">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          mutation.mutate();
-        }}
-        className="space-y-4"
-        data-testid="add-customer-form"
-      >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input
-            label="Tax ID / EIN"
-            value={taxId}
-            onChange={(e) => setTaxId(e.target.value)}
-            placeholder="XX-XXXXXXX"
-          />
-          <Select label="Payment terms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)}>
-            <option value="NET30">Net 30</option>
-            <option value="NET60">Net 60</option>
-            <option value="DUE_ON_RECEIPT">Due on receipt</option>
-          </Select>
-          <Input
-            label="Credit limit"
-            type="number"
-            min={0}
-            value={creditLimit}
-            onChange={(e) => setCreditLimit(e.target.value)}
-          />
-          <Select label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {['USD', 'EUR', 'GBP', 'CAD'].map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-          <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="ACTIVE">Active</option>
-            <option value="HOLD">Hold</option>
-            <option value="PROSPECT">Prospect</option>
-          </Select>
-        </div>
-        <fieldset className="space-y-3 rounded-md border border-border p-3">
-          <legend className="px-1 text-sm font-medium text-text">Billing address</legend>
-          <Input
-            id="customer-billing-street"
-            name="billingStreet"
-            label="Street"
-            value={billStreet}
-            onChange={(e) => setBillStreet(e.target.value)}
-          />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Input
-              id="customer-billing-city"
-              name="billingCity"
-              label="City"
-              value={billCity}
-              onChange={(e) => setBillCity(e.target.value)}
-            />
-            <Input
-              id="customer-billing-state"
-              name="billingState"
-              label="State"
-              value={billState}
-              onChange={(e) => setBillState(e.target.value)}
-            />
-            <Input
-              id="customer-billing-postal"
-              name="billingPostal"
-              label="Postal"
-              value={billPostal}
-              onChange={(e) => setBillPostal(e.target.value)}
-            />
-            <Input
-              id="customer-billing-country"
-              name="billingCountry"
-              label="Country"
-              value={billCountry}
-              onChange={(e) => setBillCountry(e.target.value)}
-            />
-          </div>
-        </fieldset>
-        <label className="flex items-center gap-2 text-sm text-text" htmlFor="customer-ship-same">
-          <input
-            id="customer-ship-same"
-            name="shipSameAsBilling"
-            type="checkbox"
-            checked={shipSame}
-            onChange={(e) => setShipSame(e.target.checked)}
-          />
-          Shipping same as billing
-        </label>
-        {!shipSame && (
-          <fieldset className="space-y-3 rounded-md border border-border p-3">
-            <legend className="px-1 text-sm font-medium text-text">Shipping address</legend>
-            <Input
-              id="customer-shipping-street"
-              name="shippingStreet"
-              label="Street"
-              value={shipStreet}
-              onChange={(e) => setShipStreet(e.target.value)}
-            />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input
-                id="customer-shipping-city"
-                name="shippingCity"
-                label="City"
-                value={shipCity}
-                onChange={(e) => setShipCity(e.target.value)}
-              />
-              <Input
-                id="customer-shipping-state"
-                name="shippingState"
-                label="State"
-                value={shipState}
-                onChange={(e) => setShipState(e.target.value)}
-              />
-              <Input
-                id="customer-shipping-postal"
-                name="shippingPostal"
-                label="Postal"
-                value={shipPostal}
-                onChange={(e) => setShipPostal(e.target.value)}
-              />
-              <Input
-                id="customer-shipping-country"
-                name="shippingCountry"
-                label="Country"
-                value={shipCountry}
-                onChange={(e) => setShipCountry(e.target.value)}
-              />
-            </div>
-          </fieldset>
-        )}
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={mutation.isPending} data-testid="add-customer-submit">
-            Add customer
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 export function CustomersPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN');
-  const [modalOpen, setModalOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [peekCustomer, setPeekCustomer] = useState<Customer | null>(null);
   const [tab, setTab] = useState<'customers' | 'applications'>(() =>
-    location.pathname.startsWith('/sales/customers') ? 'applications' : 'customers',
+    location.pathname.startsWith('/sales/customers') && !location.pathname.includes('/sales/customers/')
+      ? 'applications'
+      : 'customers',
   );
 
   const table = useServerTableQuery<Customer>({
@@ -329,6 +204,11 @@ export function CustomersPage() {
   });
   const { items, isLoading, isError, error, refetch, search } = table;
 
+  const { data: kpis } = useQuery({
+    queryKey: ['customers-summary'],
+    queryFn: async () => (await apiClient.get<CustomerKpiSummary>('/api/v1/customers/summary')).data,
+  });
+
   return (
     <TableDensityScope gridId="customers">
     <div
@@ -336,12 +216,9 @@ export function CustomersPage() {
       data-testid="customers-page"
     >
       <div className="mb-6 flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-text">{t('sales.customersTitle')}</h1>
-          <p className="mt-1 text-sm text-text-muted">{t('sales.customersSubtitle')}</p>
-        </div>
+        <h1 className="text-2xl font-bold text-text">{t('sales.customersTitle')}</h1>
         {canCreate && (
-          <Button onClick={() => setModalOpen(true)}>
+          <Button onClick={() => setDrawerOpen(true)}>
             <Plus className="h-4 w-4" />
             {t('sales.addCustomer')}
           </Button>
@@ -378,6 +255,33 @@ export function CustomersPage() {
 
       {tab === 'customers' && (
         <>
+          <div className="mb-4 grid shrink-0 gap-3 sm:grid-cols-3" data-testid="customer-kpi-row">
+            <Card padding="sm" data-testid="kpi-active-b2b">
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Active B2B Accounts
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-text">
+                {kpis?.activeB2bAccounts ?? '—'}
+              </p>
+            </Card>
+            <Card padding="sm" data-testid="kpi-credit-hold">
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Accounts on Credit Hold
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-text">
+                {kpis?.accountsOnCreditHold ?? '—'}
+              </p>
+            </Card>
+            <Card padding="sm" data-testid="kpi-credit-extended">
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Total Credit Extended
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-text">
+                {formatCurrency(Number(kpis?.totalCreditExtended ?? 0))}
+              </p>
+            </Card>
+          </div>
+
           <div className="shrink-0">
             <DataListToolbar gridId="customers">
               <DebouncedSearchInput
@@ -397,16 +301,10 @@ export function CustomersPage() {
               refetch={refetch}
               emptyIcon={Users}
               emptyTitle={search ? 'No matching customers' : 'No customers yet'}
-              emptyDescription={
-                search
-                  ? 'Try a different name, email, or status.'
-                  : canCreate
-                  ? 'Add customers to create sales orders and invoices.'
-                  : 'Customers will appear here once added by an admin.'
-              }
+              emptyDescription={search ? ' ' : ' '}
               emptyAction={
                 canCreate ? (
-                  <Button onClick={() => setModalOpen(true)}>
+                  <Button onClick={() => setDrawerOpen(true)}>
                     <Plus className="h-4 w-4" />
                     Add customer
                   </Button>
@@ -437,13 +335,12 @@ export function CustomersPage() {
         </div>
       )}
 
-      <AddCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <NewCustomerDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <RightPeekDrawer
         open={!!peekCustomer}
         onClose={() => setPeekCustomer(null)}
         title={peekCustomer?.name ?? 'Customer'}
-        description={peekCustomer?.email ?? 'Customer detail'}
         width="lg"
       >
         {peekCustomer ? <CustomerDetail customer={peekCustomer} /> : null}

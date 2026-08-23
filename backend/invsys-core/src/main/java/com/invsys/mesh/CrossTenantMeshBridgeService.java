@@ -128,6 +128,39 @@ public class CrossTenantMeshBridgeService {
                         "Mesh connection request could not be stored"));
     }
 
+    /**
+     * Buyer-initiated handshake: request the mesh link and create the local supplier immediately.
+     */
+    public HandshakeResult initiateHandshake(UUID partnerTenantId) {
+        BootstrapJdbc.MeshPartnerRow row = requestConnection(partnerTenantId, null);
+        String sellerName = bootstrapJdbc.findTenantNameSlugStatus(row.partnerTenantId())
+                .map(BootstrapJdbc.TenantNameSlugStatusRow::name)
+                .orElse("Mesh partner");
+        UUID supplierId = row.supplierId() != null
+                ? row.supplierId()
+                : createSupplierInBuyer(row.tenantId(), sellerName);
+        UUID id = bootstrapJdbc.upsertMeshPartner(
+                row.tenantId(), row.partnerTenantId(), supplierId, row.customerId(), row.connectionStatus());
+        BootstrapJdbc.MeshPartnerRow saved = bootstrapJdbc.findMeshPartnerById(id).orElse(row);
+        return new HandshakeResult(
+                saved.id(),
+                saved.supplierId(),
+                saved.partnerTenantId(),
+                sellerName,
+                saved.connectionStatus(),
+                bootstrapJdbc.hasPublishedMeshCatalog(saved.partnerTenantId()));
+    }
+
+    public record HandshakeResult(
+            UUID meshPartnerId,
+            UUID supplierId,
+            UUID partnerTenantId,
+            String partnerName,
+            String connectionStatus,
+            boolean catalogPublished
+    ) {
+    }
+
     public BootstrapJdbc.MeshPartnerRow approveConnection(UUID meshPartnerId) {
         UUID seller = TenantContext.requireTenantId();
         BootstrapJdbc.MeshPartnerRow row = bootstrapJdbc.findMeshPartnerById(meshPartnerId)

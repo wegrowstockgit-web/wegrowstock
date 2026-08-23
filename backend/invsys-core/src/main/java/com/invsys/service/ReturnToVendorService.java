@@ -14,6 +14,16 @@ import com.invsys.modules.purchasing.repository.ApInvoiceIngestionRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
 import com.invsys.modules.purchasing.repository.PurchaseOrderRepository;
 import com.invsys.modules.inventory.service.InventoryService;
+import com.invsys.domain.ReturnLine;
+import com.invsys.domain.ReturnOrder;
+import com.invsys.modules.catalog.domain.ProductVariant;
+import com.invsys.modules.catalog.repository.ProductVariantRepository;
+import com.invsys.modules.purchasing.domain.Supplier;
+import com.invsys.modules.purchasing.repository.SupplierRepository;
+import com.invsys.modules.sales.domain.SalesOrderLine;
+import com.invsys.modules.sales.repository.SalesOrderLineRepository;
+import com.invsys.repository.ReturnLineRepository;
+import com.invsys.repository.ReturnOrderRepository;
 import com.invsys.repository.RtvOrderLineRepository;
 import com.invsys.repository.RtvOrderRepository;
 import com.invsys.core.tenancy.TenantContext;
@@ -44,6 +54,11 @@ public class ReturnToVendorService {
     private final ApInvoiceIngestionRepository apInvoiceIngestionRepository;
     private final InventoryService inventoryService;
     private final CostingService costingService;
+    private final ReturnOrderRepository returnOrderRepository;
+    private final ReturnLineRepository returnLineRepository;
+    private final SalesOrderLineRepository salesOrderLineRepository;
+    private final ProductVariantRepository productVariantRepository;
+    private final SupplierRepository supplierRepository;
 
     public ReturnToVendorService(RtvOrderRepository rtvOrderRepository,
                                  RtvOrderLineRepository rtvOrderLineRepository,
@@ -53,7 +68,12 @@ public class ReturnToVendorService {
                                  PurchaseOrderLineRepository purchaseOrderLineRepository,
                                  ApInvoiceIngestionRepository apInvoiceIngestionRepository,
                                  InventoryService inventoryService,
-                                 CostingService costingService) {
+                                 CostingService costingService,
+                                 ReturnOrderRepository returnOrderRepository,
+                                 ReturnLineRepository returnLineRepository,
+                                 SalesOrderLineRepository salesOrderLineRepository,
+                                 ProductVariantRepository productVariantRepository,
+                                 SupplierRepository supplierRepository) {
         this.rtvOrderRepository = rtvOrderRepository;
         this.rtvOrderLineRepository = rtvOrderLineRepository;
         this.exceptionRepository = exceptionRepository;
@@ -63,6 +83,11 @@ public class ReturnToVendorService {
         this.apInvoiceIngestionRepository = apInvoiceIngestionRepository;
         this.inventoryService = inventoryService;
         this.costingService = costingService;
+        this.returnOrderRepository = returnOrderRepository;
+        this.returnLineRepository = returnLineRepository;
+        this.salesOrderLineRepository = salesOrderLineRepository;
+        this.productVariantRepository = productVariantRepository;
+        this.supplierRepository = supplierRepository;
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +148,75 @@ public class ReturnToVendorService {
         order = rtvOrderRepository.save(order);
 
         return new RtvDetail(order, List.of(line));
+    }
+
+    @Transactional
+    public RtvDetail createDraftFromCustomerReturn(UUID returnId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        ReturnOrder rma = returnOrderRepository.findById(returnId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Return not found"));
+        List<ReturnLine> candidates = returnLineRepository.findByReturnId(rma.getId()).stream()
+                .filter(line -> isManufacturerDefect(line))
+                .toList();
+        if (candidates.isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_DEFECT_LINES",
+                    "Escalate to RTV requires a DEFECTIVE_PRODUCT reason or SCRAP disposition");
+        }
+
+        UUID supplierId = null;
+        List<RtvOrderLine> created = new java.util.ArrayList<>();
+        for (ReturnLine line : candidates) {
+            SalesOrderLine sol = salesOrderLineRepository.findById(line.getSalesOrderLineId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Sales order line not found"));
+            ProductVariant variant = productVariantRepository.findById(sol.getVariantId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Variant not found"));
+            if (supplierId == null && variant.getDefaultSupplierId() != null) {
+                supplierId = variant.getDefaultSupplierId();
+            }
+        }
+        if (supplierId == null) {
+            supplierId = supplierRepository.findByTenantIdOrderByNameAsc(tenantId).stream()
+                    .findFirst()
+                    .map(Supplier::getId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "SUPPLIER_REQUIRED",
+                            "Assign a default supplier on the SKU before escalating to RTV"));
+        }
+
+        RtvOrder order = new RtvOrder();
+        order.setTenantId(tenantId);
+        order.setSupplierId(supplierId);
+        order.setNumber("RTV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        order.setStatus("DRAFT");
+        order = rtvOrderRepository.save(order);
+
+        BigDecimal total = BigDecimal.ZERO;
+        for (ReturnLine line : candidates) {
+            SalesOrderLine sol = salesOrderLineRepository.findById(line.getSalesOrderLineId()).orElseThrow();
+            BigDecimal qty = line.getQuantityExpected() != null ? line.getQuantityExpected() : BigDecimal.ZERO;
+            if (qty.signum() <= 0) {
+                continue;
+            }
+            BigDecimal unitCost = costingService.snapshotShipCost(sol.getVariantId());
+            RtvOrderLine rtvLine = new RtvOrderLine();
+            rtvLine.setTenantId(tenantId);
+            rtvLine.setRtvOrderId(order.getId());
+            rtvLine.setVariantId(sol.getVariantId());
+            rtvLine.setLocationId(line.getRestockLocationId());
+            rtvLine.setQtyReturned(qty);
+            rtvLine.setUnitCost(unitCost);
+            rtvLine.setReasonCode("DEFECTIVE");
+            created.add(rtvOrderLineRepository.save(rtvLine));
+            total = total.add(qty.multiply(unitCost));
+        }
+        order.setTotalChargebackAmount(total.setScale(4, RoundingMode.HALF_UP));
+        order = rtvOrderRepository.save(order);
+        return new RtvDetail(order, created);
+    }
+
+    private static boolean isManufacturerDefect(ReturnLine line) {
+        String reason = line.getReasonCode() != null ? line.getReasonCode().trim().toUpperCase() : "";
+        String disposition = line.getDisposition() != null ? line.getDisposition().trim().toUpperCase() : "";
+        return "DEFECTIVE_PRODUCT".equals(reason) || "SCRAP".equals(disposition);
     }
 
     @Transactional

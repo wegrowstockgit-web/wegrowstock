@@ -54,4 +54,20 @@ class CreditServiceTest extends AbstractIntegrationTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
+
+    @Test
+    void placeOnHoldUsesSuspendedCreditLineStatus() {
+        UUID tenantId = testDataHelper.createTenant("Hold Tenant", "hold-" + UUID.randomUUID().toString().substring(0, 8));
+        TenantContext.setTenantId(tenantId);
+
+        Customer customer = new Customer();
+        customer.setTenantId(tenantId);
+        customer.setName("Hold Customer");
+        customer.setCreditLimit(BigDecimal.valueOf(25000));
+        customer = customerRepository.save(customer);
+
+        CustomerCreditLine line = creditService.placeOnHold(customer.getId(), customer.getCreditLimit());
+        assertThat(line.getStatus()).isEqualTo("SUSPENDED");
+        assertThat(creditService.isOnHold(customer.getId())).isTrue();
+    }
 }

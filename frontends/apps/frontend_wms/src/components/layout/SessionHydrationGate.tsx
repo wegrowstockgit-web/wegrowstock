@@ -19,6 +19,7 @@ type MeEntitlements = {
   enabledModules?: string[];
   localeLanguage?: string | null;
   tier?: string | null;
+  sessionLocked?: boolean;
 };
 
 /**
@@ -69,6 +70,7 @@ export function SessionHydrationGate({ children }: { children: ReactNode }) {
           enabledModules: data.enabledModules?.map(String),
           localeLanguage: data.localeLanguage,
           tier: data.tier,
+          sessionLocked: data.sessionLocked,
         });
         void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
         void queryClient.prefetchQuery(pageKnowledgeQueryOptions());

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,4 +27,9 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
             @Param("tenantId") UUID tenantId,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    long countByTenantIdAndCustomerStatus(UUID tenantId, String customerStatus);
+
+    @Query("SELECT COALESCE(SUM(c.creditLimit), 0) FROM Customer c WHERE c.tenantId = :tenantId")
+    BigDecimal sumCreditLimitByTenantId(@Param("tenantId") UUID tenantId);
 }

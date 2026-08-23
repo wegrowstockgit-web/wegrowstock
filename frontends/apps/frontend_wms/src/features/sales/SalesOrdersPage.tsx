@@ -1,16 +1,14 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
+﻿import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2 } from 'lucide-react';
+import { ShoppingCart, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
-import type { Customer, ProductVariant, SalesOrder, SalesOrderDetail, PaginatedResponse, TenantLocation } from '@/api/types';
-import { cn, formatCurrency } from '@/lib/utils';
+import type { SalesOrder, SalesOrderDetail } from '@/api/types';
+import { cn, formatCurrency, formatMediumDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
-import { Modal } from '@/components/ui/Modal';
 import { SavedFilterViews } from '@/components/ui/SavedFilterViews';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { TableDensityScope } from '@/hooks/useDensity';
@@ -26,7 +24,6 @@ import {
 import { ListPageState } from '@/components/layout/ListPageState';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
-import { unwrapPageItems } from '@/api/page';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
 import { Pagination } from '@/components/ui/Pagination';
 import { useServerTableQuery } from '@/hooks/useServerTable';
@@ -107,6 +104,9 @@ function SalesOrdersTable({
       customer: (o) => o.customerName,
       status: (o) => o.status,
       created: (o) => o.createdAt,
+      po: (o) => o.customerPoNumber ?? '',
+      total: (o) => o.totalAmount ?? 0,
+      ship: (o) => o.requestedShipDate ?? '',
     },
     { key: 'created', dir: 'desc' },
   );
@@ -125,6 +125,16 @@ function SalesOrdersTable({
           </TableHead>
           <TableHead sortable sortKey="created" sort={sort} onSort={toggle}>
             Created
+          </TableHead>
+          <TableHead sortable sortKey="po" sort={sort} onSort={toggle}>
+            Customer PO
+          </TableHead>
+          <TableHead sortable sortKey="total" sort={sort} onSort={toggle}>
+            Total Amount
+          </TableHead>
+          <TableHead>Progress</TableHead>
+          <TableHead sortable sortKey="ship" sort={sort} onSort={toggle}>
+            Requested Ship Date
           </TableHead>
           <TableHead align="right">Actions</TableHead>
         </TableRow>
@@ -148,6 +158,20 @@ function SalesOrdersTable({
             <TableCell className="text-text-muted">
               {new Date(so.createdAt).toLocaleDateString()}
             </TableCell>
+            <TableCell className="font-mono text-sm" data-testid={`so-po-${so.number}`}>
+              {so.customerPoNumber || '—'}
+            </TableCell>
+            <TableCell className="font-mono" data-testid={`so-total-${so.number}`}>
+              {formatCurrency(Number(so.totalAmount ?? 0))}
+            </TableCell>
+            <TableCell className="text-sm text-text-muted" data-testid={`so-progress-${so.number}`}>
+              {so.linesTotal != null
+                ? `${so.linesShipped ?? 0}/${so.linesTotal} lines shipped`
+                : '—'}
+            </TableCell>
+            <TableCell className="text-text-muted">
+              {formatMediumDate(so.requestedShipDate)}
+            </TableCell>
             <TableCell align="right">
               <div onClick={(e: MouseEvent) => e.stopPropagation()}>{renderActions(so)}</div>
             </TableCell>
@@ -155,216 +179,6 @@ function SalesOrdersTable({
         ))}
       </TableBody>
     </Table>
-  );
-}
-
-interface DraftLine {
-  variantId: string;
-  qtyOrdered: string;
-  unitPrice: string;
-}
-
-function CreateOrderModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [customerId, setCustomerId] = useState('');
-  const [sourceLocationId, setSourceLocationId] = useState('');
-  const [customerPoNumber, setCustomerPoNumber] = useState('');
-  const [requestedShipDate, setRequestedShipDate] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([{ variantId: '', qtyOrdered: '1', unitPrice: '' }]);
-  const [error, setError] = useState('');
-
-  const { data: customers = [] } = useQuery({
-    queryKey: ['customers', 'lookup'],
-    queryFn: async () =>
-      unwrapPageItems<Customer>(
-        (await apiClient.get('/api/v1/customers', { params: { page: 1, size: 100 } })).data,
-      ),
-    enabled: open,
-  });
-
-  const { data: warehouses = [] } = useQuery({
-    queryKey: ['locations', 'warehouse'],
-    queryFn: async () =>
-      (await apiClient.get<TenantLocation[]>('/api/v1/locations', { params: { type: 'WAREHOUSE' } })).data,
-    enabled: open,
-  });
-
-  const { data: variantsPage } = useQuery({
-    queryKey: ['variants', 'all'],
-    queryFn: async () =>
-      (await apiClient.get<PaginatedResponse<ProductVariant>>('/api/v1/variants?limit=200')).data,
-    enabled: open,
-  });
-  const variants = variantsPage?.items ?? [];
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/api/v1/sales-orders', {
-        customerId,
-        number: `SO-${Date.now()}`,
-        channel: 'DIRECT',
-        sourceLocationId: sourceLocationId || undefined,
-        customerPoNumber: customerPoNumber || undefined,
-        requestedShipDate: requestedShipDate ? new Date(requestedShipDate).toISOString() : undefined,
-        lines: lines
-          .filter((l) => l.variantId && Number(l.qtyOrdered) > 0)
-          .map((l) => ({
-            variantId: l.variantId,
-            qtyOrdered: Number(l.qtyOrdered),
-            unitPrice: l.unitPrice ? Number(l.unitPrice) : undefined,
-          })),
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setCustomerId('');
-      setSourceLocationId('');
-      setCustomerPoNumber('');
-      setRequestedShipDate('');
-      setLines([{ variantId: '', qtyOrdered: '1', unitPrice: '' }]);
-      onClose();
-    },
-    onError: () => setError('Could not create the order. Check the fields and try again.'),
-  });
-
-  const updateLine = (index: number, patch: Partial<DraftLine>) => {
-    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
-  };
-
-  const validLines = lines.filter((l) => l.variantId && Number(l.qtyOrdered) > 0);
-
-  return (
-    <Modal open={open} onClose={onClose} title="New sales order" description="Order number is assigned automatically">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          mutation.mutate();
-        }}
-        className="space-y-4"
-      >
-        <Select
-          label="Customer"
-          value={customerId}
-          onChange={(e) => setCustomerId(e.target.value)}
-          required
-        >
-          <option value="" disabled>
-            Select a customer…
-          </option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-
-        <Select
-          label="Ship-from warehouse"
-          value={sourceLocationId}
-          onChange={(e) => setSourceLocationId(e.target.value)}
-        >
-          <option value="">Default warehouse</option>
-          {warehouses.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </Select>
-
-        <Input
-          label="Customer PO number"
-          value={customerPoNumber}
-          onChange={(e) => setCustomerPoNumber(e.target.value)}
-          placeholder="Customer reference"
-        />
-
-        <Input
-          label="Requested ship date"
-          type="date"
-          value={requestedShipDate}
-          onChange={(e) => setRequestedShipDate(e.target.value)}
-        />
-
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-text">Lines</p>
-          {lines.map((line, index) => (
-            <div key={index} className="flex items-end gap-2">
-              <div className="flex-1">
-                <Select
-                  aria-label="Product variant"
-                  value={line.variantId}
-                  onChange={(e) => updateLine(index, { variantId: e.target.value })}
-                  required
-                >
-                  <option value="" disabled>
-                    Select item…
-                  </option>
-                  {variants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.sku} — {v.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="w-20">
-                <Input
-                  aria-label="Quantity"
-                  type="number"
-                  min="1"
-                  value={line.qtyOrdered}
-                  onChange={(e) => updateLine(index, { qtyOrdered: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="w-24">
-                <Input
-                  aria-label="Unit price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Price"
-                  value={line.unitPrice}
-                  onChange={(e) => updateLine(index, { unitPrice: e.target.value })}
-                />
-              </div>
-              {lines.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Remove line"
-                  onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          ))}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setLines((prev) => [...prev, { variantId: '', qtyOrdered: '1', unitPrice: '' }])}
-          >
-            <Plus className="h-4 w-4" />
-            Add line
-          </Button>
-        </div>
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={mutation.isPending} disabled={!customerId || validLines.length === 0}>
-            Create order
-          </Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 
@@ -453,7 +267,6 @@ export function SalesOrdersPage() {
   const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
-  const [modalOpen, setModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState(() =>
     location.pathname.startsWith('/sales/orders') ? 'PENDING_REP_APPROVAL' : '',
   );
@@ -499,7 +312,7 @@ export function SalesOrdersPage() {
           <p className="mt-1 text-sm text-text-muted">{t('sales.subtitle')}</p>
         </div>
         {canCreate && (
-          <Button onClick={() => setModalOpen(true)}>
+          <Button data-testid="new-sales-order-button" onClick={() => navigate('/sales/orders/new')}>
             <Plus className="h-4 w-4" />
             {t('sales.newOrder')}
           </Button>
@@ -542,7 +355,7 @@ export function SalesOrdersPage() {
         }
         emptyAction={
           canCreate ? (
-            <Button onClick={() => setModalOpen(true)}>
+            <Button data-testid="new-sales-order-empty" onClick={() => navigate('/sales/orders/new')}>
               <Plus className="h-4 w-4" />
               {t('sales.createOrder')}
             </Button>
@@ -568,8 +381,6 @@ export function SalesOrdersPage() {
         )}
       </ListPageState>
       </div>
-
-      <CreateOrderModal open={modalOpen} onClose={() => setModalOpen(false)} />
 
       <RightPeekDrawer
         open={!!peekOrderId}

@@ -27,6 +27,8 @@ interface SessionState {
   authenticated: boolean;
   /** True when this session completed WebAuthn for off-network MFA. */
   mfaVerified: boolean;
+  /** Server-enforced desktop idle lock. Survives refresh via /auth/me. */
+  isLocked: boolean;
   user: Readonly<User> | null;
   lastRequestId: string | null;
   /** Profile snapshot while a short-lived terminal PIN cookie is active. */
@@ -47,7 +49,9 @@ interface SessionState {
     localeLanguage?: string | null;
     preferredLanguage?: string | null;
     tier?: string | null;
+    sessionLocked?: boolean;
   }) => void;
+  setLocked: (locked: boolean) => void;
   applyTerminalSwitch: (token: TerminalSwitchPayload, emailHint?: string) => void;
   restorePrimarySession: () => void;
   isTerminalSwitchActive: () => boolean;
@@ -115,6 +119,7 @@ export const useSessionStore = create<SessionState>()(
     (set, get) => ({
       authenticated: false,
       mfaVerified: false,
+      isLocked: false,
       user: null,
       lastRequestId: null,
       primarySession: null,
@@ -123,6 +128,7 @@ export const useSessionStore = create<SessionState>()(
         set({
           authenticated: true,
           mfaVerified: mfaVerified === true,
+          isLocked: false,
           primarySession: null,
           user: freezeUser({
             id: session.userId,
@@ -178,11 +184,18 @@ export const useSessionStore = create<SessionState>()(
           return {
             authenticated: true,
             user: nextUser,
+            isLocked: profile.sessionLocked === true
+              ? true
+              : profile.sessionLocked === false
+                ? false
+                : state.isLocked,
             primarySession: state.primarySession
               ? freezePrimary({ user: nextUser })
               : state.primarySession,
           };
         }),
+
+      setLocked: (locked) => set({ isLocked: locked === true }),
 
       applyTerminalSwitch: (token, emailHint) => {
         const state = get();
@@ -226,6 +239,7 @@ export const useSessionStore = create<SessionState>()(
         set({
           authenticated: false,
           mfaVerified: false,
+          isLocked: false,
           user: null,
           primarySession: null,
         }),
@@ -260,6 +274,7 @@ export const useSessionStore = create<SessionState>()(
       partialize: (state) => ({
         authenticated: state.authenticated,
         mfaVerified: state.mfaVerified,
+        isLocked: state.isLocked,
         user: state.user,
         primarySession: state.primarySession,
       }),
@@ -268,6 +283,7 @@ export const useSessionStore = create<SessionState>()(
         return {
           ...current,
           ...p,
+          isLocked: p.isLocked === true,
           user: p.user ? freezeUser(p.user as User) : null,
           primarySession: p.primarySession
             ? freezePrimary(p.primarySession as PrimarySessionSnapshot)
