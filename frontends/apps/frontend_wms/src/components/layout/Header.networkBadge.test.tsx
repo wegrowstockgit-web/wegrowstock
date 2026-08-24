@@ -14,8 +14,8 @@ vi.mock('@/stores/offlineStore', () => ({
 }));
 
 vi.mock('@/stores/rail', () => ({
-  useRailStore: (sel: (s: { toggleMobileOpen: () => void }) => unknown) =>
-    sel({ toggleMobileOpen: () => undefined }),
+  useRailStore: (sel: (s: { toggleMobileOpen: () => void; mobileOpen: boolean }) => unknown) =>
+    sel({ toggleMobileOpen: () => undefined, mobileOpen: false }),
 }));
 
 vi.mock('@/components/layout/NetworkStatusBadge', () => ({
@@ -32,6 +32,10 @@ vi.mock('@/components/layout/TerminalPinPad', () => ({
 
 vi.mock('@/components/layout/FloorPunchClock', () => ({
   FloorPunchClock: () => null,
+}));
+
+vi.mock('@/components/ui/PageHelpOverlay', () => ({
+  PageHelpOverlay: () => null,
 }));
 
 const baseProps = {

@@ -84,6 +84,7 @@ function SoloLink({
   showOverlay,
   linkClass,
   testId,
+  onNavigate,
 }: {
   to: string;
   label: string;
@@ -93,6 +94,7 @@ function SoloLink({
   showOverlay: boolean;
   linkClass: (args: { isActive: boolean }) => string;
   testId?: string;
+  onNavigate?: () => void;
 }) {
   return (
     <NavLink
@@ -101,6 +103,7 @@ function SoloLink({
       aria-label={label}
       className={linkClass}
       data-testid={testId}
+      onClick={onNavigate}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <LabelSpan visible={labelsVisible}>{label}</LabelSpan>
@@ -283,6 +286,9 @@ export function Sidebar() {
 
   const showOverlay = isTabletOrBelow;
   const railVisible = !showOverlay || mobileOpen;
+  const closeMobileNav = () => {
+    if (showOverlay) setMobileOpen(false);
+  };
   const hasOverflowMask = canScrollUp || canScrollDown;
   const labelsVisible = expanded || showOverlay;
 
@@ -292,7 +298,8 @@ export function Sidebar() {
         <button
           type="button"
           aria-label={t('nav.closeNavigation')}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
+          data-testid="mobile-nav-backdrop"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -300,9 +307,11 @@ export function Sidebar() {
       <aside
         data-print-hide
         data-testid="icon-rail"
+        id="app-mobile-nav"
         data-expanded={expanded ? 'true' : 'false'}
         data-pinned={pinned ? 'true' : 'false'}
         data-mobile-open={mobileOpen ? 'true' : 'false'}
+        aria-hidden={showOverlay && !railVisible ? true : undefined}
         onMouseEnter={() => {
           if (!peekLocked && !coarsePointer && !isTabletOrBelow) setHovered(true);
         }}
@@ -319,25 +328,25 @@ export function Sidebar() {
           }
         }}
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col items-stretch py-3 pl-3',
+          'fixed inset-y-0 left-0 z-50 flex-col items-stretch py-3 pl-3',
           railTransition,
           showOverlay
             ? cn(
-                'w-[min(18rem,calc(100vw-2rem))] pointer-events-auto',
-                railVisible ? 'translate-x-0' : '-translate-x-full pointer-events-none',
+                'flex w-[min(18rem,calc(100vw-2rem))] lg:hidden',
+                railVisible ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none',
               )
             : cn(
-                'pointer-events-none',
+                'hidden pointer-events-none lg:flex',
                 expanded ? 'w-[var(--rail-width-expanded)]' : 'w-[var(--rail-width-collapsed)]',
                 !pinned && expanded && 'z-50',
               ),
         )}
       >
         <div
+          data-testid="icon-rail-panel"
           className={cn(
             'pointer-events-auto flex h-full flex-col gap-1 rounded-2xl',
-            'border border-border/80 bg-surface-raised/95 py-3 shadow-elevated backdrop-blur-md',
-            'supports-[backdrop-filter]:bg-surface-raised/80',
+            'border border-border bg-surface-raised py-3 shadow-elevated',
             railTransition,
             showOverlay || expanded ? 'w-full px-2' : 'w-14 items-center px-0',
             !showOverlay && expanded && 'w-[calc(var(--rail-width-expanded)-0.75rem)]',
@@ -438,6 +447,7 @@ export function Sidebar() {
                   showOverlay={showOverlay}
                   linkClass={linkClass}
                   testId={solo.testId}
+                  onNavigate={closeMobileNav}
                 />
               ))}
 
@@ -524,9 +534,7 @@ export function Sidebar() {
                             className={childLinkClass}
                             data-tour={tourAnchor}
                             data-testid={testId}
-                            onClick={() => {
-                              if (showOverlay) setMobileOpen(false);
-                            }}
+                            onClick={closeMobileNav}
                           >
                             <Icon className="h-3.5 w-3.5 shrink-0" />
                             <LabelSpan visible={labelsVisible} className="max-w-[9.5rem]">
@@ -553,6 +561,7 @@ export function Sidebar() {
             showOverlay={showOverlay}
             linkClass={linkClass}
             testId="nav-personal-profile"
+            onNavigate={closeMobileNav}
           />
         </div>
       </aside>

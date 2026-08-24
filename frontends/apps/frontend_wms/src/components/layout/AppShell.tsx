@@ -174,7 +174,7 @@ export function AppShell() {
     >
       <Sidebar />
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]">
+      <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden lg:pl-[var(--rail-width)] transition-[padding] duration-[var(--rail-duration)] ease-[var(--rail-ease)]">
         <Header
           title=""
           isWarehouseView={false}
@@ -197,7 +197,7 @@ export function AppShell() {
         <main
           data-testid="app-shell-main"
           className={cn(
-            'flex min-h-0 min-w-0 flex-1 flex-col overscroll-contain',
+            'flex min-h-0 min-w-0 w-full flex-1 flex-col overscroll-contain',
             isSettingsOwnedScrollRoute(location.pathname) ||
               isMainFadeScrollRoute(location.pathname) ||
               isViewportLockedRoute(location.pathname)

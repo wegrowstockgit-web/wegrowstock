@@ -61,6 +61,7 @@ export default defineConfig({
         'src/hooks/useReverseTransactionMutation.ts',
         'src/features/inventory/LedgerHistoryTable.tsx',
         'src/components/ui/AlertDialog.tsx',
+        'src/components/ui/Toast.tsx',
         'src/features/offline/SyncConflictsPanel.tsx',
         'src/features/offline/conflictSummary.ts',
         'src/features/offline/SyncConflictAlertBanner.tsx',

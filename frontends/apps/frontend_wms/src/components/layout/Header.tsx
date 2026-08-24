@@ -51,6 +51,7 @@ export function Header({
   const user = useSessionStore((s) => s.user);
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
   const toggleMobileOpen = useRailStore((s) => s.toggleMobileOpen);
+  const mobileOpen = useRailStore((s) => s.mobileOpen);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -79,11 +80,15 @@ export function Header({
         <div className="flex items-center gap-3">
           {!isWarehouseView && (
             <Button
+              type="button"
               variant="secondary"
               size="sm"
               onClick={toggleMobileOpen}
-              className="min-h-11 min-w-11 touch-target lg:hidden"
+              className="inline-flex min-h-11 min-w-11 touch-target lg:hidden"
               aria-label={t('common.openNavigation')}
+              aria-expanded={mobileOpen}
+              aria-controls="app-mobile-nav"
+              data-testid="mobile-nav-toggle"
             >
               <Menu className="h-5 w-5" />
             </Button>

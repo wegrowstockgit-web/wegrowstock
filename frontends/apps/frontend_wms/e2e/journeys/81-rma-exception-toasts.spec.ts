@@ -70,7 +70,28 @@ test.describe('Journey 81: RMA exception toasts and restock bin cues', () => {
       expect(escalateRes.status()).toBe(422);
       const body = (await escalateRes.json()) as { detail?: string };
       expect(body.detail).toBeTruthy();
-      await expect(admin.page.getByTestId('app-toast')).toContainText(body.detail!);
+      const toast = admin.page.getByTestId('app-toast');
+      await expect(toast).toContainText(body.detail!);
+      await expect(admin.page.getByTestId('toast-region')).toBeVisible();
+
+      const viewport = admin.page.viewportSize();
+      expect(viewport).toBeTruthy();
+      const toastBox = await toast.boundingBox();
+      expect(toastBox).toBeTruthy();
+      expect(toastBox!.y).toBeLessThan(viewport!.height * 0.35);
+      expect(toastBox!.x).toBeGreaterThan(viewport!.width * 0.45);
+
+      const search = admin.page.getByRole('button', { name: /search/i });
+      if (await search.isVisible().catch(() => false)) {
+        const searchBox = await search.boundingBox();
+        if (searchBox && toastBox) {
+          const overlapX =
+            toastBox.x < searchBox.x + searchBox.width && searchBox.x < toastBox.x + toastBox.width;
+          const overlapY =
+            toastBox.y < searchBox.y + searchBox.height && searchBox.y < toastBox.y + toastBox.height;
+          expect(overlapX && overlapY).toBeFalsy();
+        }
+      }
 
       const binWait = admin.page.waitForResponse(
         (res) => res.url().includes(`/api/v1/returns/${rma.id}/lines/`) && res.request().method() === 'PUT',
