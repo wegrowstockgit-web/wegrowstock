@@ -19,6 +19,30 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Firefox & modern spec — stay in @layer base so .scrollbar-none / .scrollbar-thin win. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  /* Chrome, Edge, Safari */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-muted);
   }
 
   body {
@@ -352,5 +376,27 @@
   .page-help-fade {
     opacity: 1;
     transform: none;
+  }
+}
+
+@media print {
+  [data-print-hide],
+  [data-testid='icon-rail'] {
+    display: none !important;
+  }
+
+  [data-testid='app-shell'] {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  [data-testid='app-shell'] > div {
+    padding-left: 0 !important;
+  }
+
+  [data-testid='app-shell-main'] {
+    overflow: visible !important;
+    height: auto !important;
   }
 }

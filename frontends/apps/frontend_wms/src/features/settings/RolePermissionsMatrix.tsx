@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import { useEntitlement } from '@/hooks/useEntitlement';
 import { useCurrentNetwork } from '@/hooks/useCurrentNetwork';
@@ -158,6 +159,9 @@ export function RolePermissionsMatrix() {
       await roleApi.updatePermissions(roleId, grants);
     },
     onSuccess: invalidateRoles,
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not update role permission.'), { tone: 'danger' });
+    },
   });
 
   const networkMutation = useMutation({
@@ -174,6 +178,9 @@ export function RolePermissionsMatrix() {
       });
     },
     onSuccess: invalidateRoles,
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not update network access.'), { tone: 'danger' });
+    },
   });
 
   const cidrMutation = useMutation({
@@ -184,6 +191,9 @@ export function RolePermissionsMatrix() {
       setCidrDraft('');
       setCidrLabelDraft('');
       invalidateRoles();
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not update allowed networks.'), { tone: 'danger' });
     },
   });
 
@@ -201,11 +211,17 @@ export function RolePermissionsMatrix() {
       setCloneFromRoleId('');
       invalidateRoles();
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not create role.'), { tone: 'danger' });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (roleId: string) => roleApi.delete(roleId),
     onSuccess: invalidateRoles,
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not delete role.'), { tone: 'danger' });
+    },
   });
 
   if (matrixQuery.isLoading || rolesQuery.isLoading) {

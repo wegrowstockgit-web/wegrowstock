@@ -111,6 +111,10 @@ export interface TenantLocation {
   weightCapacityLimit?: number | null;
   /** Industry-standard alias for structural floor load (synced with weightCapacityLimit). */
   floorLoadCapacityLbs?: number | null;
+  sequenceIndex?: number;
+  maxWeightKg?: number | null;
+  maxCubicCm?: number | null;
+  maxPalletPositions?: number | null;
 }
 
 export interface TenantUser {

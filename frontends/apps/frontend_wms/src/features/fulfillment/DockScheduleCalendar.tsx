@@ -7,6 +7,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { cn } from '@/lib/utils';
 
@@ -98,7 +99,10 @@ export function DockScheduleCalendar() {
       setModalOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['dock-appointments'] });
     },
-    onError: () => toast('Could not schedule — check for door conflicts', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Could not schedule — check for door conflicts'), {
+        tone: 'danger',
+      }),
   });
 
   const checkInMutation = useMutation({
@@ -106,6 +110,9 @@ export function DockScheduleCalendar() {
     onSuccess: () => {
       toast('Driver checked in', { tone: 'success' });
       void queryClient.invalidateQueries({ queryKey: ['dock-appointments'] });
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not check in the driver.'), { tone: 'danger' });
     },
   });
 

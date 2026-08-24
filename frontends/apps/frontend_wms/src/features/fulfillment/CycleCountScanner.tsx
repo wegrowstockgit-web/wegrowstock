@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
 import { enqueueScanMutation } from '@/offline/mutationQueue';
 import { createScanEventPayload } from '@/offline/scanEvent';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 interface CycleCountScannerProps {
@@ -38,6 +40,7 @@ function formatQty(value: number | string | null | undefined): string {
  */
 export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCountScannerProps) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [digits, setDigits] = useState('');
   const [flash, setFlash] = useState<'ok' | 'err' | 'pending' | null>(null);
   const [lastStatus, setLastStatus] = useState<string | null>(null);
@@ -124,12 +127,13 @@ export function CycleCountScanner({ cycleCountId, onBack, onComplete }: CycleCou
         onComplete?.();
       }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       setFlash('err');
       setScannedCount((c) => Math.max(0, c - 1));
       if (ctx?.previous) {
         queryClient.setQueryData(['cycle-counts', cycleCountId], ctx.previous);
       }
+      toast(extractApiError(err, 'Could not submit the count.'), { tone: 'danger' });
       window.setTimeout(() => setFlash(null), 700);
     },
   });

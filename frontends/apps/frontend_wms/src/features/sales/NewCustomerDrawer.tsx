@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { PriceTierCombobox } from '@/features/sales/PriceTierCombobox';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 type Tab = 'company' | 'financials' | 'addresses' | 'portal';
@@ -122,7 +123,7 @@ export function NewCustomerDrawer({ open, onClose }: { open: boolean; onClose: (
       reset();
       onClose();
     },
-    onError: () => setError('Could not create customer. Check the fields and try again.'),
+    onError: (err) => setError(extractApiError(err, 'Could not create customer.')),
   });
 
   const tabs: Array<{ id: Tab; label: string }> = [

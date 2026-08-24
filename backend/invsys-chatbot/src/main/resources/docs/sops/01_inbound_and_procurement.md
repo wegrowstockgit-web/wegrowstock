@@ -332,6 +332,16 @@ OWNER, ADMIN, or WAREHOUSE_MANAGER, with the **Run MRP Reorder** permission and 
 
 ---
 
+### Troubleshooting MRP Reorder Suggestions
+If a buyer complains that a specific item is missing from the MRP Reorder workspace, explain that the system operates strictly on exception-based management. An item will only appear if it meets two conditions:
+1. **It has a Replenishment Rule:** The SKU must have a Minimum Safety Stock and a Maximum Stock Level configured in the database. If these limits are not set, the MRP engine ignores the item.
+2. **It has crossed the threshold:** The calculation of `(On-Hand + Inbound) - Allocated` must mathematically drop below the Minimum Safety Stock. If the available stock is healthy, the system intentionally hides it to save the buyer time.
+
+The "Urgency" dropdown filters the current suggestions:
+- **Stockouts:** Items where Available inventory is 0 or negative.
+- **Below Min:** Items where Available inventory is greater than 0, but below the safety threshold.
+- **All Suggestions:** Every item that has triggered a reorder rule.
+
 ### Understanding MRP Reorder Math
 
 **What is this?**

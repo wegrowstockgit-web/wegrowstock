@@ -4,6 +4,7 @@ import com.invsys.core.security.AuthService;
 import com.invsys.core.security.dto.SignupRequest;
 import com.invsys.core.security.dto.TokenResponse;
 import com.invsys.core.tenancy.TenantContext;
+import com.invsys.mail.NoOpJavaMailSenderConfig;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.sales.domain.Invoice;
 import com.invsys.modules.sales.domain.InvoiceLine;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -33,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
+@Import(NoOpJavaMailSenderConfig.class)
 class DocumentInvoicePdfHttpTest extends AbstractIntegrationTest {
 
     @Autowired MockMvc mockMvc;

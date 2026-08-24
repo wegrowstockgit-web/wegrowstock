@@ -20,6 +20,7 @@ class AuthTargetAppGateTest {
         assertThat(AuthService.hasPosOperate(List.of("OWNER"), List.of())).isTrue();
         assertThat(AuthService.hasWmsAccess(List.of("RETAIL_CASHIER"), List.of(PermissionKeys.POS_OPERATE))).isFalse();
         assertThat(AuthService.hasWmsAccess(List.of("PICKER"), List.of())).isTrue();
+        assertThat(AuthService.hasWmsAccess(List.of("FINANCE_ADMIN"), List.of())).isTrue();
         assertThat(AuthService.isWmsPermission(PermissionKeys.INVENTORY_ADJUST)).isTrue();
         assertThat(AuthService.isWmsPermission(PermissionKeys.POS_SUPERVISE)).isFalse();
     }

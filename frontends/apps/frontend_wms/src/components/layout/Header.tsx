@@ -68,6 +68,7 @@ export function Header({
   return (
     <>
       <header
+        data-print-hide
         className={cn(
           // relative z-50: backdrop-blur creates a stacking context; without an
           // explicit z-index, later main content (e.g. dashboard CTAs) paints over

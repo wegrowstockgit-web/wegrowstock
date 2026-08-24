@@ -16,6 +16,8 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import { LiveConnectionBadge } from '@/features/settings/LiveConnectionBadge';
 
@@ -66,7 +68,8 @@ function ConnectChannelModal({
       setShopIdentifier('');
       onClose();
     },
-    onError: () => setError('Could not connect. That shop may already be connected.'),
+    onError: (err) =>
+      setError(extractApiError(err, 'Could not connect. That shop may already be connected.')),
   });
 
   return (
@@ -111,6 +114,7 @@ function ConnectChannelModal({
 
 export function ShopifyIntegration() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [connectPlatform, setConnectPlatform] = useState<string | null>(null);
   const [shopifyKey, setShopifyKey] = useState('');
 
@@ -143,6 +147,9 @@ export function ShopifyIntegration() {
       setShopifyKey('');
       void queryClient.invalidateQueries({ queryKey: ['settings', 'integration-credentials'] });
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not save the Shopify API key.'), { tone: 'danger' });
+    },
   });
 
   const disconnectVaultMutation = useMutation({
@@ -151,6 +158,9 @@ export function ShopifyIntegration() {
     },
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: ['settings', 'integration-credentials'] }),
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not disconnect the Shopify vault key.'), { tone: 'danger' });
+    },
   });
 
   const disconnectMutation = useMutation({
@@ -158,6 +168,9 @@ export function ShopifyIntegration() {
       await apiClient.delete(`/api/v1/integrations/channels/${id}`);
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['integrations', 'channels'] }),
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not disconnect the channel.'), { tone: 'danger' });
+    },
   });
 
   const vaultLive = vaultStatus?.connected === true;

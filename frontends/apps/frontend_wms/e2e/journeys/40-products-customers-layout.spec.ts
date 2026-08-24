@@ -78,8 +78,8 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
       });
       expect(aligned).toBeTruthy();
 
-      // Customers: viewport-locked shell (overflow-hidden on <main>) — page must not
-      // trap a nested vertical scrollport; horizontal table scroll stays local.
+      // Customers: AppShell <main> owns the vertical scrollbar (flush right).
+      // The page must not trap a nested vertical scrollport.
       await owner.page.goto('/customers');
       await expect(owner.page.getByTestId('customers-page')).toBeVisible({ timeout: 30_000 });
       const pageOverflowY = await owner.page
@@ -87,11 +87,14 @@ test.describe('Journey 40: Products auto-layout & customers scrollport', () => {
         .evaluate((el) => getComputedStyle(el).overflowY);
       expect(pageOverflowY).toBe('visible');
 
-      const main = owner.page.locator('main').first();
+      const main = owner.page.getByTestId('app-shell-main');
       await expect(main).toBeVisible();
       await expect
         .poll(async () =>
-          main.evaluate((el) => getComputedStyle(el).overflowY === 'hidden'),
+          main.evaluate((el) => {
+            const overflow = getComputedStyle(el).overflowY;
+            return overflow === 'auto' || overflow === 'scroll';
+          }),
         )
         .toBeTruthy();
     } finally {

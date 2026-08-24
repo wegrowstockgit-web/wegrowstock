@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 
 interface MeshPartner {
   meshPartnerId: string;
@@ -82,7 +83,8 @@ export function PartnerCatalogMappingPanel() {
       await queryClient.invalidateQueries({ queryKey: ['mesh-partner-mappings', selectedPartner] });
       toast('Catalog mappings saved', { tone: 'success' });
     },
-    onError: () => toast('Could not save catalog mappings', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Could not save catalog mappings'), { tone: 'danger' }),
   });
 
   const rows = useMemo(() => mappingsQuery.data ?? [], [mappingsQuery.data]);

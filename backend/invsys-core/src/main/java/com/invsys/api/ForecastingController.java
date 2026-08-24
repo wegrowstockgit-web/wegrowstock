@@ -1,6 +1,8 @@
 package com.invsys.api;
 
+import com.invsys.core.security.RequireModule;
 import com.invsys.domain.DemandForecast;
+import com.invsys.domain.subscription.AppModule;
 import com.invsys.repository.DemandForecastRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
 import com.invsys.service.ForecastingInferenceService;
@@ -53,6 +55,7 @@ public class ForecastingController {
 
     @GetMapping("/chart-data")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER','VIEWER')")
+    @RequireModule(AppModule.MRP)
     public List<DemandChartPointResponse> chartData() {
         UUID tenantId = TenantContext.requireTenantId();
         var skuByVariant = variantRepository.findAll().stream()

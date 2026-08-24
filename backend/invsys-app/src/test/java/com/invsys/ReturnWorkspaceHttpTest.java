@@ -167,4 +167,88 @@ class ReturnWorkspaceHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DRAFT"));
     }
+
+    @Test
+    void completeWithoutRestockBinAndEscalateWithoutDefectReturnProblemDetails() throws Exception {
+        String slug = "rmaerr-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "RMA Error Co", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        String token = owner.accessToken();
+        TenantContext.setTenantId(owner.tenantId());
+
+        Product product = new Product();
+        product.setTenantId(owner.tenantId());
+        product.setSkuRoot("RMAERR");
+        product.setName("Return Error Widget");
+        product = productRepository.save(product);
+
+        ProductVariant variant = new ProductVariant();
+        variant.setTenantId(owner.tenantId());
+        variant.setProductId(product.getId());
+        variant.setSku("RMAERR-1");
+        variant = variantRepository.save(variant);
+
+        Customer customer = new Customer();
+        customer.setTenantId(owner.tenantId());
+        customer.setName("Return Error Buyer");
+        customer = customerRepository.save(customer);
+
+        SalesOrder so = new SalesOrder();
+        so.setTenantId(owner.tenantId());
+        so.setCustomerId(customer.getId());
+        so.setNumber("SO-RMAERR-1");
+        so.setStatus("SHIPPED");
+        so = salesOrderRepository.save(so);
+
+        SalesOrderLine sol = new SalesOrderLine();
+        sol.setTenantId(owner.tenantId());
+        sol.setSalesOrderId(so.getId());
+        sol.setVariantId(variant.getId());
+        sol.setQtyOrdered(new BigDecimal("1"));
+        sol.setQtyShipped(new BigDecimal("1"));
+        sol.setUnitPrice(new BigDecimal("25.00"));
+        sol = salesOrderLineRepository.save(sol);
+
+        JsonNode created = objectMapper.readTree(mockMvc.perform(post("/api/v1/returns")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "salesOrderId":"%s",
+                                  "resolutionType":"REFUND_CREDIT_MEMO",
+                                  "generateLabel":false,
+                                  "lines":[{
+                                    "salesOrderLineId":"%s",
+                                    "quantityExpected":1,
+                                    "reasonCode":"DAMAGED_IN_TRANSIT"
+                                  }]
+                                }
+                                """.formatted(so.getId(), sol.getId())))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+
+        String returnId = created.get("id").asString();
+        String lineId = created.get("lines").get(0).get("id").asString();
+
+        mockMvc.perform(put("/api/v1/returns/" + returnId + "/lines/" + lineId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"disposition\":\"RESTOCK\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/returns/" + returnId + "/complete")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.title").value("RESTOCK_BIN_REQUIRED"))
+                .andExpect(jsonPath("$.detail").value("Choose a restock target bin for every RESTOCK line"));
+
+        mockMvc.perform(post("/api/v1/returns/" + returnId + "/escalate-rtv")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.title").value("NO_DEFECT_LINES"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Escalate to RTV requires a DEFECTIVE_PRODUCT reason or SCRAP disposition"));
+    }
 }

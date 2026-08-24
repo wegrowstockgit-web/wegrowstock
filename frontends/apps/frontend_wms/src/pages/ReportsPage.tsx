@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Download, FileBarChart, RefreshCw } from 'lucide-react';
+import { AlertCircle, ChevronDown, Download, FileBarChart, Printer, RefreshCw } from 'lucide-react';
 import { LaborVelocityLeaderboard } from '@/features/dashboard/LaborVelocityLeaderboard';
 import { LedgerHistoryTable } from '@/features/inventory/LedgerHistoryTable';
+import { RequireModule } from '@/components/auth/RequireModule';
+import { UpgradePage } from '@/pages/UpgradePage';
+import { useEntitlement } from '@/hooks/useEntitlement';
+import { useSessionStore } from '@/stores/session';
 import { apiClient } from '@/api/client';
 import type {
   CogsLedgerReport,
@@ -29,44 +33,34 @@ import {
 } from '@/components/reports/ReportCharts';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import {
+  parseAllowedReportTab,
+  visibleReportTabs,
+  type ReportTab,
+} from '@/pages/reportAccess';
+import {
+  applyDatePreset,
+  clampStartToMax,
+  defaultReportRange,
+  reportMaxDays,
+  reportRangeError,
+  type ReportDatePreset,
+} from '@/pages/reportDateRange';
 
-type ReportTab =
-  | 'valuation'
-  | 'timeTravel'
-  | 'turnover'
-  | 'cogs'
-  | 'profit'
-  | 'sales'
-  | 'fulfillment'
-  | 'purchases'
-  | 'returns'
-  | 'demand'
-  | 'labor'
-  | 'audit';
-
-const TABS: { id: ReportTab; label: string }[] = [
-  { id: 'valuation', label: 'Inventory valuation' },
-  { id: 'timeTravel', label: 'Time-travel valuation' },
-  { id: 'turnover', label: 'Stock turnover' },
-  { id: 'cogs', label: 'COGS ledger' },
-  { id: 'profit', label: 'Profit & margin' },
-  { id: 'sales', label: 'Sales performance' },
-  { id: 'fulfillment', label: 'Fulfillment' },
-  { id: 'purchases', label: 'Purchase spend' },
-  { id: 'returns', label: 'Returns' },
-  { id: 'demand', label: 'Demand sensing' },
-  { id: 'labor', label: 'Labor & Velocity' },
-  { id: 'audit', label: 'Inventory Audit' },
+const DATE_PRESETS: { id: ReportDatePreset; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: '7d', label: 'Last 7 Days' },
+  { id: '30d', label: 'Last 30 Days' },
+  { id: 'ytd', label: 'Year-to-Date' },
 ];
-
-const REPORT_TAB_IDS = new Set<string>(TABS.map((t) => t.id));
-
-function parseReportTab(raw: string | null): ReportTab {
-  if (raw && REPORT_TAB_IDS.has(raw)) return raw as ReportTab;
-  return 'profit';
-}
 
 type AsOfValuationResponse = {
   asOfDate: string;
@@ -105,18 +99,40 @@ function groupByWarehouse(rows: InventoryValuationReport['rows']): ReportChartPo
 }
 
 export function ReportsPage() {
+  const hasRole = useSessionStore((s) => s.hasRole);
+  const { hasModule } = useEntitlement();
+  const allowedTabs = useMemo(() => visibleReportTabs(hasRole), [hasRole]);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState<ReportTab>(() => parseReportTab(searchParams.get('tab')));
+  const [tab, setTab] = useState<ReportTab>(() =>
+    parseAllowedReportTab(searchParams.get('tab'), allowedTabs),
+  );
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const initialRange = defaultReportRange(90);
+  const [startDate, setStartDate] = useState(initialRange.startDate);
+  const [endDate, setEndDate] = useState(initialRange.endDate);
 
   useEffect(() => {
-    setTab(parseReportTab(searchParams.get('tab')));
-  }, [searchParams]);
+    const next = parseAllowedReportTab(searchParams.get('tab'), allowedTabs);
+    setTab(next);
+  }, [searchParams, allowedTabs]);
 
   const selectTab = (next: ReportTab) => {
+    const max = reportMaxDays(next);
+    if (max != null) {
+      const err = reportRangeError(startDate, endDate, max);
+      if (err) {
+        setStartDate(clampStartToMax(endDate, max));
+      }
+    }
     setTab(next);
-    setSearchParams(next === 'profit' ? {} : { tab: next }, { replace: true });
+    const fallback = parseAllowedReportTab(null, allowedTabs);
+    setSearchParams(next === fallback ? {} : { tab: next }, { replace: true });
   };
+
+  const rangeMaxDays = reportMaxDays(tab);
+  const rangeError = rangeMaxDays != null ? reportRangeError(startDate, endDate, rangeMaxDays) : null;
+  const rangeReady = !rangeError;
+  const dateParams = { startDate, endDate };
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -168,62 +184,83 @@ export function ReportsPage() {
   });
 
   const turnover = useQuery({
-    queryKey: ['reports', 'turnover'],
+    queryKey: ['reports', 'turnover', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<StockTurnoverReport>('/api/v1/reports/stock-turnover?periodDays=90'))
-        .data,
-    enabled: tab === 'turnover',
+      (
+        await apiClient.get<StockTurnoverReport>('/api/v1/reports/stock-turnover', {
+          params: dateParams,
+        })
+      ).data,
+    enabled: tab === 'turnover' && rangeReady,
     retry: false,
   });
 
   const cogs = useQuery({
-    queryKey: ['reports', 'cogs'],
+    queryKey: ['reports', 'cogs', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<CogsLedgerReport>('/api/v1/reports/cogs-ledger')).data,
-    enabled: tab === 'cogs',
+      (await apiClient.get<CogsLedgerReport>('/api/v1/reports/cogs-ledger', { params: dateParams }))
+        .data,
+    enabled: tab === 'cogs' && rangeReady,
     retry: false,
   });
 
   const profit = useQuery({
-    queryKey: ['reports', 'profit'],
+    queryKey: ['reports', 'profit', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<ProfitMarginReport>('/api/v1/reports/profit-margin?periodDays=90')).data,
-    enabled: tab === 'profit',
+      (
+        await apiClient.get<ProfitMarginReport>('/api/v1/reports/profit-margin', {
+          params: dateParams,
+        })
+      ).data,
+    enabled: tab === 'profit' && rangeReady,
     retry: false,
   });
 
   const sales = useQuery({
-    queryKey: ['reports', 'sales'],
+    queryKey: ['reports', 'sales', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<SalesPerformanceReport>('/api/v1/reports/sales-performance?periodDays=90'))
-        .data,
-    enabled: tab === 'sales',
+      (
+        await apiClient.get<SalesPerformanceReport>('/api/v1/reports/sales-performance', {
+          params: dateParams,
+        })
+      ).data,
+    enabled: tab === 'sales' && rangeReady,
     retry: false,
   });
 
   const fulfillment = useQuery({
-    queryKey: ['reports', 'fulfillment'],
+    queryKey: ['reports', 'fulfillment', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<FulfillmentSummaryReport>('/api/v1/reports/fulfillment-summary?periodDays=30'))
-        .data,
-    enabled: tab === 'fulfillment',
+      (
+        await apiClient.get<FulfillmentSummaryReport>('/api/v1/reports/fulfillment-summary', {
+          params: dateParams,
+        })
+      ).data,
+    enabled: tab === 'fulfillment' && rangeReady,
     retry: false,
   });
 
   const purchases = useQuery({
-    queryKey: ['reports', 'purchases'],
+    queryKey: ['reports', 'purchases', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<PurchaseSpendReport>('/api/v1/reports/purchase-spend?periodDays=90')).data,
-    enabled: tab === 'purchases',
+      (
+        await apiClient.get<PurchaseSpendReport>('/api/v1/reports/purchase-spend', {
+          params: dateParams,
+        })
+      ).data,
+    enabled: tab === 'purchases' && rangeReady,
     retry: false,
   });
 
   const returns = useQuery({
-    queryKey: ['reports', 'returns'],
+    queryKey: ['reports', 'returns', startDate, endDate],
     queryFn: async () =>
-      (await apiClient.get<ReturnsAnalysisReport>('/api/v1/reports/returns-analysis?periodDays=90'))
-        .data,
-    enabled: tab === 'returns',
+      (
+        await apiClient.get<ReturnsAnalysisReport>('/api/v1/reports/returns-analysis', {
+          params: dateParams,
+        })
+      ).data,
+    enabled: tab === 'returns' && rangeReady,
     retry: false,
   });
 
@@ -231,7 +268,7 @@ export function ReportsPage() {
     queryKey: ['forecasting', 'chart-data'],
     queryFn: async () =>
       (await apiClient.get<DemandChartPoint[]>('/api/v1/forecasting/chart-data')).data,
-    enabled: tab === 'demand',
+    enabled: tab === 'demand' && hasModule('MRP'),
     retry: false,
   });
 
@@ -325,7 +362,67 @@ export function ReportsPage() {
           String(r.marginPercent),
         ])
       );
+    } else if (tab === 'timeTravel' && timeTravel.data) {
+      downloadCsv(
+        `valuation-asof-${stamp}.csv`,
+        ['Variant', 'Location', 'Qty', 'Value'],
+        timeTravel.data.lines.map((r) => [
+          r.variantId,
+          r.locationId,
+          String(r.quantityOnHand),
+          String(r.totalValue),
+        ]),
+      );
+    } else if (tab === 'sales' && sales.data) {
+      downloadCsv(
+        `sales-performance-${stamp}.csv`,
+        ['Customer', 'Revenue'],
+        sales.data.revenueByCustomer.map((r) => [r.label, String(r.value)]),
+      );
+    } else if (tab === 'fulfillment' && fulfillment.data) {
+      downloadCsv(
+        `fulfillment-${stamp}.csv`,
+        ['Status', 'Orders'],
+        fulfillment.data.ordersByStatus.map((r) => [r.label, String(r.value)]),
+      );
+    } else if (tab === 'purchases' && purchases.data) {
+      downloadCsv(
+        `purchase-spend-${stamp}.csv`,
+        ['PO number', 'Supplier', 'Status', 'Total spend'],
+        purchases.data.rows.map((r) => [r.number, r.supplierName, r.status, String(r.totalSpend)]),
+      );
+    } else if (tab === 'returns' && returns.data) {
+      downloadCsv(
+        `returns-analysis-${stamp}.csv`,
+        ['RMA', 'Customer', 'Sales order', 'Status', 'Lines'],
+        returns.data.rows.map((r) => [
+          r.number,
+          r.customerName,
+          r.salesOrderNumber,
+          r.status,
+          String(r.lineCount),
+        ]),
+      );
+    } else if (tab === 'demand' && demandChart.data) {
+      downloadCsv(
+        `demand-sensing-${stamp}.csv`,
+        ['SKU', 'Velocity', 'Forecast qty', 'Seasonality', 'Confidence'],
+        demandChart.data.map((p) => [
+          p.sku,
+          String(p.historicalVelocity),
+          String(p.forecastQty),
+          String(p.seasonalityIndex),
+          String(p.confidenceScore),
+        ]),
+      );
     }
+  };
+
+  const applyPreset = (preset: ReportDatePreset) => {
+    const max = rangeMaxDays ?? 90;
+    const next = applyDatePreset(preset, max);
+    setStartDate(next.startDate);
+    setEndDate(next.endDate);
   };
 
   return (
@@ -336,22 +433,37 @@ export function ReportsPage() {
           <div>
             <h1 className="text-2xl font-bold text-text">Reports</h1>
             <p className="text-sm text-text-muted">
-              WMS analytics and financial insights · {timezone}
+              weGrowStock analytics and financial insights · {timezone}
             </p>
           </div>
         </div>
-        <Button
-          variant="secondary"
-          onClick={exportCsv}
-          disabled={!active.data || tab === 'labor' || tab === 'audit'}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" data-testid="report-export-menu">
+              <Download className="mr-2 h-4 w-4" />
+              Export
+              <ChevronDown className="ml-2 h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={exportCsv}
+              disabled={!active.data || tab === 'labor' || tab === 'audit'}
+              data-testid="report-export-csv"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download CSV
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.print()} data-testid="report-export-print">
+              <Printer className="mr-2 h-4 w-4" />
+              Print Report
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
-        {TABS.map(({ id, label }) => (
+        {allowedTabs.map(({ id, label }) => (
           <Button
             key={id}
             variant={tab === id ? 'primary' : 'secondary'}
@@ -362,6 +474,51 @@ export function ReportsPage() {
           </Button>
         ))}
       </div>
+
+      {rangeMaxDays != null && (
+        <div className="mb-6 flex flex-wrap items-end gap-3" data-testid="report-date-range">
+          <div className="flex flex-wrap gap-2 pb-2" data-testid="report-date-presets">
+            {DATE_PRESETS.map(({ id, label }) => (
+              <Button
+                key={id}
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => applyPreset(id)}
+                data-testid={`report-preset-${id}`}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block text-text-muted">Start date</span>
+            <input
+              type="date"
+              className="h-10 rounded-md border border-border bg-surface-raised px-3 text-sm"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              data-testid="report-start-date"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-text-muted">End date</span>
+            <input
+              type="date"
+              className="h-10 rounded-md border border-border bg-surface-raised px-3 text-sm"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              data-testid="report-end-date"
+            />
+          </label>
+          <p className="pb-2 text-xs text-text-muted">Max {rangeMaxDays} days</p>
+          {rangeError && (
+            <p className="w-full text-sm text-danger" data-testid="report-range-error" role="alert">
+              {rangeError}
+            </p>
+          )}
+        </div>
+      )}
 
       {active.isLoading && (
         <div data-testid="list-page-loading">
@@ -425,7 +582,7 @@ export function ReportsPage() {
               headers={['Warehouse', 'SKU', 'Product', 'On hand', 'Avg cost', 'Value']}
               rows={valuation.data.rows.map((r) => [
                 r.warehouseName,
-                r.sku,
+                { text: r.sku, to: `/products?q=${encodeURIComponent(r.sku)}`, testId: 'report-sku-link' },
                 r.productName,
                 formatNumber(r.onHand),
                 formatCurrency(r.avgCost, valuation.data!.currency),
@@ -533,7 +690,7 @@ export function ReportsPage() {
           <ReportDataTable
             headers={['SKU', 'Product', 'Shipped', 'Avg on hand', 'Turnover']}
             rows={turnover.data.rows.map((r) => [
-              r.sku,
+              { text: r.sku, to: `/products?q=${encodeURIComponent(r.sku)}`, testId: 'report-sku-link' },
               r.productName,
               formatNumber(r.unitsShipped),
               formatNumber(r.averageOnHand),
@@ -577,7 +734,13 @@ export function ReportsPage() {
             headers={['Channel', 'Customer', 'Movement', 'Qty', 'Unit cost', 'COGS']}
             rows={cogs.data.rows.map((r) => [
               r.channel,
-              r.customerName ?? '—',
+              r.customerId
+                ? {
+                    text: r.customerName ?? 'Customer',
+                    to: `/sales/customers/${r.customerId}`,
+                    testId: 'report-customer-link',
+                  }
+                : (r.customerName ?? '—'),
               r.movementType,
               formatNumber(r.quantity),
               formatCurrency(r.unitCost, cogs.data!.currency),
@@ -642,7 +805,7 @@ export function ReportsPage() {
           <ReportDataTable
             headers={['SKU', 'Product', 'Revenue', 'COGS', 'Gross profit', 'Margin %']}
             rows={profit.data.byProduct.map((r) => [
-              r.sku,
+              { text: r.sku, to: `/products?q=${encodeURIComponent(r.sku)}`, testId: 'report-sku-link' },
               r.productName,
               formatCurrency(r.revenue, profit.data!.currency),
               formatCurrency(r.cogs, profit.data!.currency),
@@ -731,7 +894,11 @@ export function ReportsPage() {
           <ReportDataTable
             headers={['PO number', 'Supplier', 'Status', 'Total spend']}
             rows={purchases.data.rows.map((r) => [
-              r.number,
+              {
+                text: r.number,
+                to: `/purchase-orders/${r.purchaseOrderId}`,
+                testId: 'report-po-link',
+              },
               r.supplierName,
               r.status,
               formatCurrency(r.totalSpend, purchases.data!.currency),
@@ -757,9 +924,17 @@ export function ReportsPage() {
           <ReportDataTable
             headers={['RMA', 'Customer', 'Sales order', 'Status', 'Lines']}
             rows={returns.data.rows.map((r) => [
-              r.number,
+              {
+                text: r.number,
+                to: `/returns?rma=${encodeURIComponent(r.returnId)}`,
+                testId: 'report-rma-link',
+              },
               r.customerName,
-              r.salesOrderNumber,
+              {
+                text: r.salesOrderNumber,
+                to: `/sales-orders?q=${encodeURIComponent(r.salesOrderNumber)}`,
+                testId: 'report-so-link',
+              },
               r.status,
               String(r.lineCount),
             ])}
@@ -767,7 +942,9 @@ export function ReportsPage() {
         </div>
       )}
 
-      {tab === 'demand' && demandChart.data && (
+      {tab === 'demand' && (
+        <RequireModule required="MRP" fallback={<UpgradePage />}>
+      {demandChart.data && (
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard
@@ -807,7 +984,7 @@ export function ReportsPage() {
           <ReportDataTable
             headers={['SKU', 'Velocity', 'Forecast qty', 'Seasonality', 'Confidence']}
             rows={demandChart.data.map((p) => [
-              p.sku,
+              { text: p.sku, to: `/products?q=${encodeURIComponent(p.sku)}`, testId: 'report-sku-link' },
               formatNumber(p.historicalVelocity),
               formatNumber(p.forecastQty),
               formatNumber(p.seasonalityIndex),
@@ -815,6 +992,8 @@ export function ReportsPage() {
             ])}
           />
         </div>
+      )}
+        </RequireModule>
       )}
 
       {tab === 'labor' && (

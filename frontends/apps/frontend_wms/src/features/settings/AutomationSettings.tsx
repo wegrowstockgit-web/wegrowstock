@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 function ToggleRow({
@@ -84,7 +85,8 @@ export function AutomationSettings() {
       toast('Automation settings saved', { tone: 'success' });
       void queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
-    onError: () => toast('Could not save automation settings', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Could not save automation settings'), { tone: 'danger' }),
   });
 
   return (

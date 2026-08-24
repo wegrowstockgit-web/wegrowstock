@@ -147,7 +147,7 @@ public class ReportingAnalyticsService {
         return new StockTurnoverReport(String.valueOf(periodDays), items);
     }
 
-    public CogsLedgerReport cogsLedger() {
+    public CogsLedgerReport cogsLedger(int periodDays) {
         UUID tenantId = TenantContext.requireTenantId();
         String currency = resolveCurrency(tenantId);
 
@@ -166,8 +166,9 @@ public class ReportingAnalyticsService {
                 LEFT JOIN customers c ON c.id = so.customer_id
                 WHERE il.tenant_id = ?
                   AND il.movement_type IN ('SHIP', 'ASSEMBLY_OUT')
+                  AND il.created_at >= NOW() - (? || ' days')::interval
                 ORDER BY il.created_at DESC
-                """, tenantId);
+                """, tenantId, periodDays);
 
         List<CogsLedgerRow> items = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO;

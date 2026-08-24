@@ -12,4 +12,5 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
     Optional<Location> findByTenantIdAndCode(UUID tenantId, String code);
     Optional<Location> findByTenantIdAndPath(UUID tenantId, String path);
     List<Location> findByTenantIdAndType(UUID tenantId, String type);
+    Optional<Location> findByTenantIdAndId(UUID tenantId, UUID id);
 }

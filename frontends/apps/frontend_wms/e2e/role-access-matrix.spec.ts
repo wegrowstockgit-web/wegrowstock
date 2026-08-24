@@ -153,8 +153,10 @@ test.describe('Role access matrix', () => {
       await expectRedirectAway(managerPage, /\/settings\/fintech/, /\/dashboard/);
 
       await gotoAndSettle(managerPage, '/reports?tab=labor');
-      await expectRedirectAway(managerPage, /\/reports/, /\/dashboard/);
-      await expect(managerPage.getByTestId('reports-labor-panel')).toHaveCount(0);
+      await expect(managerPage).toHaveURL(/\/reports/);
+      await expect(managerPage.getByTestId('reports-labor-panel')).toBeVisible({ timeout: 20_000 });
+      await expect(managerPage.getByTestId('reports-tab-profit')).toHaveCount(0);
+      await expect(managerPage.getByTestId('reports-tab-fulfillment')).toBeVisible();
 
       await gotoAndSettle(managerPage, '/exceptions');
       await expect(managerPage).toHaveURL(/\/exceptions/);

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { providerMeta } from '@/features/settings/integrationProviders';
+import { extractApiError } from '@/lib/apiClient';
 import { REQUIRED_ACCOUNT_TYPES, suggestAccountMappings } from '@/utils/accountAutoMatcher';
 
 const MAPPING_LABELS: Record<string, string> = {
@@ -121,7 +122,7 @@ export function IntegrationWizardModal({
     onSuccess: (data) => {
       window.location.assign(data.authorizationUrl);
     },
-    onError: () => setMessage('Could not start OAuth. Try the manual API key option.'),
+    onError: (err) => setMessage(extractApiError(err, 'Could not start OAuth. Try the manual API key option.')),
   });
 
   const vaultMutation = useMutation({
@@ -131,7 +132,7 @@ export function IntegrationWizardModal({
       setApiKey('');
       void queryClient.invalidateQueries({ queryKey: ['integrations'] });
     },
-    onError: () => setMessage('Could not save the API key.'),
+    onError: (err) => setMessage(extractApiError(err, 'Could not save the API key.')),
   });
 
   const provisionMutation = useMutation({
@@ -141,7 +142,7 @@ export function IntegrationWizardModal({
       setMappings(suggestAccountMappings(accounts));
       setMessage('Standard accounts created in ' + (meta?.label ?? provider));
     },
-    onError: () => setMessage('Could not create standard accounts.'),
+    onError: (err) => setMessage(extractApiError(err, 'Could not create standard accounts.')),
   });
 
   const saveMappingsMutation = useMutation({
@@ -156,6 +157,7 @@ export function IntegrationWizardModal({
       }
     },
     onSuccess: () => setStep(3),
+    onError: (err) => setMessage(extractApiError(err, 'Could not save account mappings.')),
   });
 
   const testMutation = useMutation({
@@ -163,7 +165,7 @@ export function IntegrationWizardModal({
     onSuccess: (result) => {
       setMessage(result.message || (result.ok ? 'Sync permissions look healthy.' : 'Sync test failed.'));
     },
-    onError: () => setMessage('Test sync failed.'),
+    onError: (err) => setMessage(extractApiError(err, 'Test sync failed.')),
   });
 
   const alertsMutation = useMutation({
@@ -173,7 +175,7 @@ export function IntegrationWizardModal({
       await apiClient.put('/api/v1/settings/alert-preferences', body);
     },
     onSuccess: () => setMessage('Failure alerts saved.'),
-    onError: () => setMessage('Could not save alert preferences.'),
+    onError: (err) => setMessage(extractApiError(err, 'Could not save alert preferences.')),
   });
 
   const accounts = accountsQuery.data ?? [];

@@ -212,7 +212,7 @@ export function CustomersPage() {
   return (
     <TableDensityScope gridId="customers">
     <div
-      className="mx-auto flex h-full min-h-[calc(100dvh-var(--header-height))] w-full max-w-7xl flex-col p-4 sm:p-6"
+      className="mx-auto flex w-full max-w-7xl flex-col p-4 sm:p-6"
       data-testid="customers-page"
     >
       <div className="mb-6 flex shrink-0 flex-wrap items-center justify-between gap-3">

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -13,18 +14,13 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useMemo } from 'react';
 import type { ReportChartPoint } from '@/api/types';
 import { Card } from '@/components/ui/Card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/Table';
-import { useClientSort } from '@/hooks/useClientSort';
+  VirtualizedTable,
+  type VirtualizedColumnDef,
+} from '@/components/ui/primitives/VirtualizedTable';
+import { TableDensityScope } from '@/hooks/useDensity';
 
 const CHART_COLORS = ['#55ACEE', '#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#34d399', '#fb7185'];
 
@@ -191,62 +187,69 @@ export function ReportPieChart({
   );
 }
 
+export type ReportTableCell =
+  | string
+  | number
+  | { text: string; to?: string; testId?: string };
+
+type ReportTableRow = { id: string; cells: ReportTableCell[] };
+
+function cellText(cell: ReportTableCell | undefined): string {
+  if (cell == null) return '';
+  return typeof cell === 'object' ? cell.text : String(cell);
+}
+
+function renderReportCell(cell: ReportTableCell | undefined) {
+  if (cell == null) return '';
+  if (typeof cell === 'object' && cell.to) {
+    return (
+      <Link
+        to={cell.to}
+        className="text-accent hover:underline"
+        data-testid={cell.testId ?? 'report-entity-link'}
+      >
+        {cell.text}
+      </Link>
+    );
+  }
+  return cellText(cell);
+}
+
 export function ReportDataTable({
   headers,
   rows,
+  gridId = 'reports',
 }: {
   headers: string[];
-  rows: (string | number)[][];
+  rows: ReportTableCell[][];
+  gridId?: string;
 }) {
-  const accessors = useMemo(() => {
-    const map: Record<string, (row: (string | number)[]) => string | number> = {};
-    headers.forEach((_, index) => {
-      map[`c${index}`] = (row) => row[index] ?? '';
-    });
-    return map;
-  }, [headers]);
-
-  const { sort, toggle, sorted } = useClientSort(rows, accessors, {
-    key: 'c0',
-    dir: 'asc',
-  });
+  const columns: VirtualizedColumnDef<ReportTableRow>[] = headers.map((header, index) => ({
+    id: `c${index}`,
+    header,
+    width: index === 0 ? 168 : 140,
+    flexGrow: index === headers.length - 1,
+    sortable: true,
+    sortValue: (row) => cellText(row.cells[index]),
+    cell: (row) => renderReportCell(row.cells[index]),
+  }));
+  const data: ReportTableRow[] = rows.map((cells, index) => ({
+    id: `report-row-${index}`,
+    cells,
+  }));
 
   return (
     <Card padding="none" className="overflow-hidden">
-      <Table className="min-w-[720px]">
-        <TableHeader>
-          <TableRow>
-            {headers.map((header, index) => (
-              <TableHead
-                key={header}
-                sortable
-                sortKey={`c${index}`}
-                sort={sort}
-                onSort={toggle}
-              >
-                {header}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sorted.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={headers.length} className="py-8 text-center text-text-muted" align="center">
-                No rows to display
-              </TableCell>
-            </TableRow>
-          ) : (
-            sorted.map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                {row.map((cell, cellIndex) => (
-                  <TableCell key={cellIndex}>{cell}</TableCell>
-                ))}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+      <TableDensityScope gridId={gridId}>
+        <div className="h-[600px] min-h-[500px] flex-1" data-testid="report-virtualized-table">
+          <VirtualizedTable
+            gridId={gridId}
+            columns={columns}
+            rows={data}
+            getRowId={(row) => row.id}
+          />
+        </div>
+      </TableDensityScope>
     </Card>
   );
 }

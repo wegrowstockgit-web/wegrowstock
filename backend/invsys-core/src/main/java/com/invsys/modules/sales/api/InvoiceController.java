@@ -1,8 +1,5 @@
 package com.invsys.modules.sales.api;
 
-import com.invsys.modules.fintech.domain.FactoredInvoice;
-import com.invsys.modules.fintech.repository.FactoredInvoiceRepository;
-import com.invsys.modules.fintech.service.FintechUnderwritingService;
 import com.invsys.modules.sales.domain.Customer;
 import com.invsys.modules.sales.domain.Invoice;
 import com.invsys.domain.PaymentIntent;
@@ -41,19 +38,16 @@ public class InvoiceController {
     private final InvoiceRepository invoiceRepository;
     private final InvoicingService invoicingService;
     private final CustomerRepository customerRepository;
-    private final FactoredInvoiceRepository factoredInvoiceRepository;
-    private final FintechUnderwritingService fintechUnderwritingService;
+    private final InvoiceFactoringPort invoiceFactoringPort;
 
     public InvoiceController(InvoiceRepository invoiceRepository,
                              InvoicingService invoicingService,
                              CustomerRepository customerRepository,
-                             FactoredInvoiceRepository factoredInvoiceRepository,
-                             FintechUnderwritingService fintechUnderwritingService) {
+                             InvoiceFactoringPort invoiceFactoringPort) {
         this.invoiceRepository = invoiceRepository;
         this.invoicingService = invoicingService;
         this.customerRepository = customerRepository;
-        this.factoredInvoiceRepository = factoredInvoiceRepository;
-        this.fintechUnderwritingService = fintechUnderwritingService;
+        this.invoiceFactoringPort = invoiceFactoringPort;
     }
 
     private static final Set<String> INVOICE_SORT = Set.of("createdAt", "number", "status", "total", "dueAt");
@@ -108,9 +102,8 @@ public class InvoiceController {
                         line.getAmount(),
                         lineKind(line.getDescription())))
                 .toList();
-        String factoringStatus = factoredInvoiceRepository
-                .findByTenantIdAndInvoiceId(invoice.getTenantId(), invoice.getId())
-                .map(FactoredInvoice::getFundingStatus)
+        String factoringStatus = invoiceFactoringPort
+                .fundingStatus(invoice.getTenantId(), invoice.getId())
                 .orElse(null);
         BigDecimal amountPaid = invoicingService.succeededPaymentTotals(List.of(invoice.getId()))
                 .getOrDefault(invoice.getId(), BigDecimal.ZERO);
@@ -189,8 +182,8 @@ public class InvoiceController {
 
     @PostMapping("/{invoiceId}/factor")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
-    public FactoredInvoice markFactored(@PathVariable UUID invoiceId) {
-        return fintechUnderwritingService.requestFactoring(invoiceId);
+    public InvoiceFactoringPort.FactoringResult markFactored(@PathVariable UUID invoiceId) {
+        return invoiceFactoringPort.requestFactoring(invoiceId);
     }
 
     public record InvoiceDetailResponse(

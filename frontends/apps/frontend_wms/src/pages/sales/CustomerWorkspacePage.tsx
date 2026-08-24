@@ -5,7 +5,9 @@ import { apiClient } from '@/api/client';
 import type { Customer } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { useToast } from '@/components/ui/Toast';
 import { CustomerDetail } from '@/features/customers/CustomerDetail';
+import { extractApiError } from '@/lib/apiClient';
 import { useSessionStore } from '@/stores/session';
 import { formatCurrency } from '@/lib/utils';
 
@@ -13,6 +15,7 @@ export function CustomerWorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canInvite = hasRole('OWNER', 'ADMIN');
   const canHold = hasRole('FINANCE_ADMIN', 'OWNER', 'ADMIN');
@@ -28,11 +31,17 @@ export function CustomerWorkspacePage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Failed to send invitation'), { tone: 'danger' });
+    },
   });
   const hold = useMutation({
     mutationFn: async () => apiClient.post(`/api/v1/customers/${id}/credit-hold`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Failed to place customer on hold'), { tone: 'danger' });
     },
   });
 
@@ -52,15 +61,21 @@ export function CustomerWorkspacePage() {
           {canInvite && (
             <Button
               variant="secondary"
-              disabled={!customer?.email || customer.portalStatus === 'ACTIVE'}
+              data-testid="customer-portal-invite"
+              disabled={!customer?.email || customer.portalStatus === 'ACTIVE' || customer.portalStatus === 'PENDING'}
               loading={invite.isPending}
               onClick={() => invite.mutate()}
             >
-              Send B2B Portal Invite
+              {customer?.portalStatus === 'PENDING' ? 'Invite Pending' : 'Send B2B Portal Invite'}
             </Button>
           )}
           {canHold && customer?.customerStatus !== 'HOLD' && (
-            <Button variant="secondary" loading={hold.isPending} onClick={() => hold.mutate()}>
+            <Button
+              variant="secondary"
+              data-testid="customer-credit-hold"
+              loading={hold.isPending}
+              onClick={() => hold.mutate()}
+            >
               Place on Credit Hold
             </Button>
           )}

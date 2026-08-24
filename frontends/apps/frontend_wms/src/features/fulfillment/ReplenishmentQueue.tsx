@@ -5,6 +5,8 @@ import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type { ReplenishmentTask } from '@/api/types';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 export function ReplenishmentBadge({ onOpen }: { onOpen: () => void }) {
@@ -44,6 +46,7 @@ export function ReplenishmentBadge({ onOpen }: { onOpen: () => void }) {
 
 export function ReplenishmentQueue({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['warehouse', 'replenishments'],
     queryFn: async () =>
@@ -62,6 +65,9 @@ export function ReplenishmentQueue({ onClose }: { onClose: () => void }) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['warehouse', 'replenishments'] });
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not confirm replenishment.'), { tone: 'danger' });
     },
   });
 

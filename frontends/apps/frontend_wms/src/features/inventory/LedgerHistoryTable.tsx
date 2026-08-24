@@ -8,13 +8,10 @@ import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/Table';
+  VirtualizedTable,
+  type VirtualizedColumnDef,
+} from '@/components/ui/primitives/VirtualizedTable';
+import { TableDensityScope } from '@/hooks/useDensity';
 import { useSessionStore } from '@/stores/session';
 import { formatNumber } from '@/lib/utils';
 
@@ -50,6 +47,7 @@ export function LedgerHistoryTable({
 
   const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['inventory_ledger', variantId ?? 'all', limit],
+    // Backend listRecentLedger caps at 100 — never fetch the full ledger into the browser.
     queryFn: () => listLedgerTransactions(limit, variantId),
     staleTime: 0,
     retry: false,
@@ -66,6 +64,81 @@ export function LedgerHistoryTable({
   }, [data]);
 
   const pendingEntry = pendingId ? data.find((r) => r.id === pendingId) : undefined;
+
+  const columns: VirtualizedColumnDef<InventoryLedgerEntry>[] = useMemo(
+    () => [
+      {
+        id: 'when',
+        header: 'When',
+        width: 160,
+        sortable: true,
+        sortValue: (row) => row.createdAt,
+        cell: (row) =>
+          row.createdAt
+            ? new Date(row.createdAt).toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : '—',
+      },
+      {
+        id: 'type',
+        header: 'Type',
+        width: 120,
+        sortable: true,
+        sortValue: (row) => row.movementType,
+        cell: (row) => row.movementType,
+      },
+      {
+        id: 'qty',
+        header: 'Qty',
+        width: 88,
+        align: 'right',
+        sortable: true,
+        sortValue: (row) => Number(row.quantityDelta),
+        cell: (row) => formatDelta(row.quantityDelta),
+      },
+      {
+        id: 'reason',
+        header: 'Reason',
+        width: 160,
+        flexGrow: true,
+        sortable: true,
+        sortValue: (row) => row.reasonCode ?? '',
+        cell: (row) => row.reasonCode ?? '—',
+      },
+      ...(canUndo
+        ? [
+            {
+              id: 'action',
+              header: 'Action',
+              width: 72,
+              align: 'right' as const,
+              hideable: false,
+              sortable: false,
+              cell: (row: InventoryLedgerEntry) =>
+                canReverse(row, reversedIds) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Reverse transaction"
+                    data-testid={`reverse-ledger-${row.id}`}
+                    onClick={() => setPendingId(row.id)}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <span className="inline-block w-8" aria-hidden />
+                ),
+            } satisfies VirtualizedColumnDef<InventoryLedgerEntry>,
+          ]
+        : []),
+    ],
+    [canUndo, reversedIds],
+  );
 
   return (
     <section
@@ -103,59 +176,16 @@ export function LedgerHistoryTable({
           {variantId ? 'No ledger movements for this item yet.' : 'No ledger movements yet.'}
         </p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>When</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Qty</TableHead>
-              <TableHead>Reason</TableHead>
-              {canUndo && <TableHead className="w-14 text-right">Action</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((row) => {
-              const undoable = canUndo && canReverse(row, reversedIds);
-              return (
-                <TableRow key={row.id} data-testid={`ledger-row-${row.id}`}>
-                  <TableCell className="whitespace-nowrap text-xs text-text-muted">
-                    {row.createdAt
-                      ? new Date(row.createdAt).toLocaleString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : '—'}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{row.movementType}</TableCell>
-                  <TableCell className="tabular-nums text-sm">{formatDelta(row.quantityDelta)}</TableCell>
-                  <TableCell className="text-xs text-text-muted">
-                    {row.reasonCode ?? '—'}
-                  </TableCell>
-                  {canUndo && (
-                    <TableCell className="text-right">
-                      {undoable ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label="Reverse transaction"
-                          data-testid={`reverse-ledger-${row.id}`}
-                          onClick={() => setPendingId(row.id)}
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <span className="inline-block w-8" aria-hidden />
-                      )}
-                    </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <TableDensityScope gridId="ledger-history">
+          <div className="h-[600px] min-h-0" data-testid="ledger-virtualized-table">
+            <VirtualizedTable
+              gridId="ledger-history"
+              columns={columns}
+              rows={data}
+              getRowId={(row) => row.id}
+            />
+          </div>
+        </TableDensityScope>
       )}
 
       <AlertDialog

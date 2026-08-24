@@ -8,6 +8,8 @@ import { BigButton } from '@/components/ui/BigButton';
 import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
 import { PageHelpOverlay } from '@/components/ui/PageHelpOverlay';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { useScanFeedback } from '@/hooks/useScanFeedback';
 import { enqueueScanMutation } from '@/offline/mutationQueue';
 import { createScanEventPayload } from '@/offline/scanEvent';
@@ -60,6 +62,7 @@ function num(v: number | string | undefined): number {
  * Full-screen mobile inbound receiving + directed putaway (Zebra / Honeywell).
  */
 export function InboundReceivePage() {
+  const { toast } = useToast();
   const { flash, triggerSuccess, triggerError, triggerPendingSync } = useScanFeedback();
   const [step, setStep] = useState<Step>('po');
   const [lastScan, setLastScan] = useState<string | null>(null);
@@ -88,9 +91,11 @@ export function InboundReceivePage() {
       setStep('item');
       setError(null);
     },
-    onError: () => {
+    onError: (err) => {
       triggerError();
-      setError('PO / ASN not found or not receivable.');
+      const message = extractApiError(err, 'PO / ASN not found or not receivable.');
+      setError(message);
+      toast(message, { tone: 'danger' });
     },
   });
 
@@ -120,9 +125,11 @@ export function InboundReceivePage() {
       }
       setStep('qty');
     },
-    onError: () => {
+    onError: (err) => {
       triggerError();
-      setError('Item not on this PO or already fully received.');
+      const message = extractApiError(err, 'Item not on this PO or already fully received.');
+      setError(message);
+      toast(message, { tone: 'danger' });
     },
   });
 
@@ -205,11 +212,13 @@ export function InboundReceivePage() {
       setStep('done');
       setError(null);
     },
-    onError: () => {
+    onError: (err) => {
       triggerError();
       setPendingSyncLabel(false);
       setScannedCount((c) => Math.max(0, c - 1));
-      setError('Putaway confirm failed. Scan the directed bin.');
+      const message = extractApiError(err, 'Putaway confirm failed. Scan the directed bin.');
+      setError(message);
+      toast(message, { tone: 'danger' });
     },
   });
 

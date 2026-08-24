@@ -130,6 +130,40 @@ public class LocationController {
         return locationRepository.save(location);
     }
 
+    @PatchMapping("/{locationId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
+    public Location updateSettings(@PathVariable UUID locationId,
+                                   @Valid @RequestBody UpdateLocationRequest request) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Location location = locationRepository.findByTenantIdAndId(tenantId, locationId)
+                .orElseThrow(() -> new com.invsys.core.common.ApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND,
+                        "LOCATION_NOT_FOUND",
+                        "Location not found"));
+        if (request.name() != null && !request.name().isBlank()) {
+            location.setName(request.name().trim());
+        }
+        if (request.code() != null && !request.code().isBlank()) {
+            location.setCode(request.code().trim().toUpperCase());
+        }
+        if (request.sequenceIndex() != null) {
+            location.setSequenceIndex(request.sequenceIndex());
+        }
+        if (request.maxWeightKg() != null) {
+            location.setMaxWeightKg(request.maxWeightKg());
+        }
+        if (request.zoneBehavior() != null && !request.zoneBehavior().isBlank()) {
+            location.setZoneBehavior(request.zoneBehavior().trim().toUpperCase());
+        }
+        if (request.lengthCm() != null && request.widthCm() != null && request.heightCm() != null) {
+            location.setMaxCubicCm(
+                    request.lengthCm().multiply(request.widthCm()).multiply(request.heightCm()));
+        } else if (request.maxCubicCm() != null) {
+            location.setMaxCubicCm(request.maxCubicCm());
+        }
+        return locationRepository.save(location);
+    }
+
     @PatchMapping("/{locationId}/coordinates")
     @PreAuthorize("hasAnyRole('OWNER','ADMIN','WAREHOUSE_MANAGER')")
     public Location updateCoordinates(@PathVariable UUID locationId,
@@ -185,6 +219,19 @@ public class LocationController {
             Integer totalDockDoors,
             BigDecimal weightCapacityLimit,
             BigDecimal floorLoadCapacityLbs
+    ) {
+    }
+
+    public record UpdateLocationRequest(
+            String name,
+            String code,
+            Integer sequenceIndex,
+            BigDecimal maxWeightKg,
+            BigDecimal maxCubicCm,
+            BigDecimal lengthCm,
+            BigDecimal widthCm,
+            BigDecimal heightCm,
+            String zoneBehavior
     ) {
     }
 

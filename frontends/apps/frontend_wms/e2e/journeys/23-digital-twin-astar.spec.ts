@@ -67,6 +67,7 @@ test.describe('Journey 23: Digital Twin & A* Wayfinding', () => {
       await expect(owner.page.getByTestId('warehouse-visualizer')).toBeVisible({
         timeout: 30_000,
       });
+      await owner.page.getByTestId('warehouse-view-map').click();
       await expect(owner.page.getByTestId('digital-twin-map')).toBeVisible();
       await owner.page.getByTestId('heatmap-toggle').click();
       await expect(owner.page.getByTestId('heatmap-toggle')).toContainText(/Heatmap on/i);

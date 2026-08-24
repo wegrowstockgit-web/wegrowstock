@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { SlideOutDrawer } from '@/components/ui/SlideOutDrawer';
 import { usePrintStore } from '@/stores/usePrintStore';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 interface ScannerSettingsProps {
@@ -67,7 +68,8 @@ export function ScannerSettings({ open, onClose }: ScannerSettingsProps) {
       void queryClient.invalidateQueries({ queryKey: ['users', 'me', 'workstation'] });
       setSaveMessage('Workstation print settings saved.');
     },
-    onError: () => setSaveMessage('Could not save workstation settings.'),
+    onError: (err) =>
+      setSaveMessage(extractApiError(err, 'Could not save workstation settings.')),
   });
 
   const agentConnected = agentStatus === 'connected';

@@ -277,7 +277,8 @@ public class AuthService {
     }
 
     private static final Set<String> WMS_LOGIN_ROLES = Set.of(
-            "OWNER", "ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER", "B2B_CUSTOMER", "SUPPLIER");
+            "OWNER", "ADMIN", "FINANCE_ADMIN", "WAREHOUSE_MANAGER", "PICKER", "VIEWER",
+            "B2B_CUSTOMER", "SUPPLIER");
 
     @Transactional
     public TokenResponse completeLogin(UUID userId) {

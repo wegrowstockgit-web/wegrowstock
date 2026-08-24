@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import type { TenantLocation } from '@/api/types';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 interface HeatmapCell {
@@ -17,6 +19,7 @@ interface HeatmapCell {
 
 interface DigitalTwinMapProps {
   locations: TenantLocation[];
+  onSelectLocation?: (locationId: string) => void;
 }
 
 const CELL = 28;
@@ -35,8 +38,9 @@ function intensityColor(intensity: number, heatmap: boolean): string {
 /**
  * Interactive Digital Twin floor plan — drag bins to update coord_x / coord_y.
  */
-export function DigitalTwinMap({ locations }: DigitalTwinMapProps) {
+export function DigitalTwinMap({ locations, onSelectLocation }: DigitalTwinMapProps) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const svgRef = useRef<SVGSVGElement>(null);
   const [heatmapOn, setHeatmapOn] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -102,6 +106,9 @@ export function DigitalTwinMap({ locations }: DigitalTwinMapProps) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
       void queryClient.invalidateQueries({ queryKey: ['locations', 'heatmap'] });
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not save bin coordinates.'), { tone: 'danger' });
     },
   });
 
@@ -192,11 +199,19 @@ export function DigitalTwinMap({ locations }: DigitalTwinMapProps) {
                 key={loc.id}
                 transform={`translate(${PAD + x * CELL}, ${PAD + y * CELL})`}
                 data-testid={`twin-node-${loc.code}`}
-                className={cn(loc.type === 'BIN' && 'cursor-grab', draggingId === loc.id && 'cursor-grabbing')}
+                className={cn(
+                  onSelectLocation && 'cursor-pointer',
+                  loc.type === 'BIN' && 'cursor-grab',
+                  draggingId === loc.id && 'cursor-grabbing',
+                )}
                 onPointerDown={(e) => {
                   if (loc.type !== 'BIN') return;
                   e.currentTarget.setPointerCapture(e.pointerId);
                   setDraggingId(loc.id);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectLocation?.(loc.id);
                 }}
               >
                 <rect

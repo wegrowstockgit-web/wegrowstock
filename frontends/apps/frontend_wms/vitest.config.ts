@@ -48,6 +48,9 @@ export default defineConfig({
         'src/features/fulfillment/QuarantineReview.tsx',
         'src/features/fulfillment/ScannerView.tsx',
         'src/features/settings/WarehouseVisualizer.tsx',
+        'src/features/settings/warehouseTree.ts',
+        'src/features/settings/WarehouseLocationDrawer.tsx',
+        'src/features/settings/WarehouseAddChild.tsx',
         'src/features/ingestion/ImportWizard.tsx',
         'src/components/ui/primitives/VirtualizedTable.tsx',
         'src/components/ui/DensityToggle.tsx',
@@ -98,8 +101,12 @@ export default defineConfig({
         'src/api/page.ts',
         'src/api/operational.ts',
         'src/hooks/useServerTable.ts',
+        'src/components/layout/appShellScroll.ts',
+        'src/features/returns/rmaActionError.ts',
         'src/components/ui/Pagination.tsx',
         'src/components/ui/DebouncedSearchInput.tsx',
+        'src/pages/reportDateRange.ts',
+        'src/pages/reportAccess.ts',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       // Scanner PIN overlays: covered by Mobile-Scanner Playwright + store/hook unit tests.

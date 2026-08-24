@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReplenishmentBadge, ReplenishmentQueue } from './ReplenishmentQueue';
 import { apiClient } from '@/api/client';
 import type { ReplenishmentTask } from '@/api/types';
+import { ToastProvider } from '@/components/ui/Toast';
 
 vi.mock('@/api/client', () => ({
   apiClient: {
@@ -35,7 +36,11 @@ function wrap(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>{ui}</ToastProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe('ReplenishmentQueue', () => {

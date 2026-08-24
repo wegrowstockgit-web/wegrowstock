@@ -4,6 +4,7 @@ import { Truck } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 export interface RankedRate {
@@ -50,7 +51,10 @@ export function RateShoppingWidget({ salesOrderId, cartonId, onLabelPurchased }:
       setQuotes(data);
       setOpen(true);
     },
-    onError: () => toast('Rate shop failed — check address and carton dims', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Rate shop failed — check address and carton dims'), {
+        tone: 'danger',
+      }),
   });
 
   const buyMutation = useMutation({
@@ -68,7 +72,8 @@ export function RateShoppingWidget({ salesOrderId, cartonId, onLabelPurchased }:
       setOpen(false);
       onLabelPurchased?.(data.trackingNumber);
     },
-    onError: () => toast('Could not purchase label', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Could not purchase label'), { tone: 'danger' }),
   });
 
   return (

@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 export function PalletManifestWorkspace() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [lpnScan, setLpnScan] = useState('');
   const [carrierName, setCarrierName] = useState('');
   const [scanError, setScanError] = useState<string | null>(null);
@@ -37,6 +40,9 @@ export function PalletManifestWorkspace() {
       void queryClient.invalidateQueries({ queryKey: ['pallet-manifests'] });
       setScanError(null);
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not create the pallet manifest.'), { tone: 'danger' });
+    },
   });
 
   const scanMutation = useMutation({
@@ -53,8 +59,10 @@ export function PalletManifestWorkspace() {
       setScanError(null);
       void queryClient.invalidateQueries({ queryKey: ['pallet-manifests'] });
     },
-    onError: () => {
-      setScanError('LPN not found or already on another pallet.');
+    onError: (error) => {
+      const message = extractApiError(error, 'LPN not found or already on another pallet.');
+      setScanError(message);
+      toast(message, { tone: 'danger' });
     },
   });
 
@@ -69,6 +77,9 @@ export function PalletManifestWorkspace() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['pallet-manifests'] });
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not seal the pallet.'), { tone: 'danger' });
     },
   });
 

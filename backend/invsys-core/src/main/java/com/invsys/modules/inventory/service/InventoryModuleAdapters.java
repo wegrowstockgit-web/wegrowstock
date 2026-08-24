@@ -1,6 +1,7 @@
 package com.invsys.modules.inventory.service;
 
 import com.invsys.modules.inventory.api.AllocationLookup;
+import com.invsys.modules.inventory.api.CycleCountPort;
 import com.invsys.modules.inventory.api.InventoryLedgerLookup;
 import com.invsys.modules.inventory.api.InventoryLevelLookup;
 import com.invsys.modules.inventory.domain.Allocation;
@@ -94,5 +95,20 @@ class InventoryLedgerLookupAdapter implements InventoryLedgerLookup {
     public List<InventoryLedger> findByTenantIdAndReferenceTypeAndReferenceId(
             UUID tenantId, String referenceType, UUID referenceId) {
         return repository.findByTenantIdAndReferenceTypeAndReferenceId(tenantId, referenceType, referenceId);
+    }
+}
+
+@Component
+class CycleCountPortAdapter implements CycleCountPort {
+
+    private final CycleCountService cycleCountService;
+
+    CycleCountPortAdapter(CycleCountService cycleCountService) {
+        this.cycleCountService = cycleCountService;
+    }
+
+    @Override
+    public UUID startCount(UUID locationId) {
+        return cycleCountService.startCount(locationId).id();
     }
 }

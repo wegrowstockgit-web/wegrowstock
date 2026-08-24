@@ -16,6 +16,8 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import { LiveConnectionBadge } from '@/features/settings/LiveConnectionBadge';
 import { useEffect } from 'react';
@@ -46,6 +48,7 @@ interface VaultStatus {
 
 export function AccountingSync() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [draftMappings, setDraftMappings] = useState<UpdateAccountMapping[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({ QUICKBOOKS: '', XERO: '' });
   const [wizardProvider, setWizardProvider] = useState<string | null>(null);
@@ -94,6 +97,9 @@ export function AccountingSync() {
       setApiKeys((prev) => ({ ...prev, [vars.system]: '' }));
       void queryClient.invalidateQueries({ queryKey: ['settings', 'integration-credentials'] });
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not save the API key.'), { tone: 'danger' });
+    },
   });
 
   const disconnectMutation = useMutation({
@@ -102,6 +108,9 @@ export function AccountingSync() {
     },
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: ['settings', 'integration-credentials'] }),
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not disconnect the integration.'), { tone: 'danger' });
+    },
   });
 
   const saveMutation = useMutation({
@@ -111,6 +120,9 @@ export function AccountingSync() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['integrations', 'accounting', 'mappings'] });
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not save account mappings.'), { tone: 'danger' });
+    },
   });
 
   const retryMutation = useMutation({
@@ -118,6 +130,9 @@ export function AccountingSync() {
       await apiClient.post(`/api/v1/integrations/sync-logs/${logId}/retry`);
     },
     onSuccess: () => void refetchLogs(),
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not retry the sync.'), { tone: 'danger' });
+    },
   });
 
   const updateMapping = (system: string, accountType: string, externalAccountId: string) => {

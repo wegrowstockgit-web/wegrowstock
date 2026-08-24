@@ -243,7 +243,7 @@ export function App() {
             <Route
               path="reports"
               element={
-                <EnterpriseRouteGate roles={['OWNER', 'ADMIN']} officeOnly>
+                <EnterpriseRouteGate roles={['OWNER', 'ADMIN', 'FINANCE_ADMIN', 'WAREHOUSE_MANAGER']} officeOnly>
                   <ReportsPage />
                 </EnterpriseRouteGate>
               }

@@ -16,36 +16,11 @@ import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 import { cn } from '@/lib/utils';
 import { ScrollFadePort } from '@/components/ui/ScrollFadePort';
-
-/** Settings shells that own ScrollFadePort(s) — clip main so no outer scrollbar. */
-function isSettingsOwnedScrollRoute(pathname: string): boolean {
-  if (pathname === '/settings') return true;
-  return (
-    pathname.startsWith('/settings/profile') ||
-    pathname.startsWith('/settings/billing') ||
-    pathname.startsWith('/settings/integrations') ||
-    pathname.startsWith('/settings/fintech') ||
-    pathname.startsWith('/settings/users')
-  );
-}
-
-/** Document pages that scroll in main with hidden bars + fold cues. */
-function isMainFadeScrollRoute(pathname: string): boolean {
-  return pathname === '/' || pathname === '/dashboard';
-}
-
-/** Virtualized grids own their scrollport — clip main so the page never pushes sideways. */
-function isViewportLockedRoute(pathname: string): boolean {
-  return (
-    pathname === '/products' ||
-    pathname.startsWith('/products/') ||
-    pathname === '/purchase-orders' ||
-    pathname === '/sales-orders' ||
-    pathname === '/invoices' ||
-    pathname === '/customers' ||
-    pathname === '/suppliers'
-  );
-}
+import {
+  isMainFadeScrollRoute,
+  isSettingsOwnedScrollRoute,
+  isViewportLockedRoute,
+} from './appShellScroll';
 
 interface MeResponse {
   userId: string;
@@ -215,12 +190,12 @@ export function AppShell() {
         />
 
         {/*
-          Document pages scroll here. Virtualized grid pages set a viewport-locked
-          root (calc 100dvh − header) with overflow-hidden so only the table
-          scrollport moves — the outer window never gains a second scrollbar.
+          Document lists scroll here (flush-right viewport scrollbar).
+          Virtualized grids clip main so only the table scrollport moves.
           Settings / dashboard use ScrollFadePort (hidden bar + fold cues).
         */}
         <main
+          data-testid="app-shell-main"
           className={cn(
             'flex min-h-0 min-w-0 flex-1 flex-col overscroll-contain',
             isSettingsOwnedScrollRoute(location.pathname) ||

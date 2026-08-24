@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import {
   POS_CURRENCIES,
@@ -98,7 +99,8 @@ export function PosSettingsPanel() {
       toast(t('settings.retailPos.saved'), { tone: 'success' });
       void queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
-    onError: () => toast(t('settings.retailPos.saveFailed'), { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, t('settings.retailPos.saveFailed')), { tone: 'danger' }),
   });
 
   return (

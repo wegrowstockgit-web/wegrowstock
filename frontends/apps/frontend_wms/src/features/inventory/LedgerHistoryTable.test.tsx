@@ -11,6 +11,24 @@ vi.mock('@/api/inventory', () => ({
   reverseLedgerTransaction: vi.fn(),
 }));
 
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count, estimateSize }: { count: number; estimateSize?: () => number }) => {
+    const size = estimateSize?.() ?? 40;
+    const items = Array.from({ length: count }, (_, index) => ({
+      index,
+      start: index * size,
+      end: (index + 1) * size,
+      size,
+      key: index,
+    }));
+    return {
+      getVirtualItems: () => items,
+      getTotalSize: () => count * size,
+      measure: vi.fn(),
+    };
+  },
+}));
+
 function renderTable() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

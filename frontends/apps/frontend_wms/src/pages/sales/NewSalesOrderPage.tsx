@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Table';
 import { CustomerSearchCombobox } from '@/features/sales/CustomerSearchCombobox';
 import { SkuSearchCombobox } from '@/features/purchasing/SkuSearchCombobox';
+import { extractApiError } from '@/lib/apiClient';
 import { formatCurrency } from '@/lib/utils';
 
 interface DraftLine {
@@ -189,7 +190,7 @@ export function NewSalesOrderPage() {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       navigate('/sales-orders');
     },
-    onError: () => setError('Could not create the order. Check the fields and try again.'),
+    onError: (err) => setError(extractApiError(err, 'Could not create the order.')),
   });
 
   const selectedWarehouse = useMemo(

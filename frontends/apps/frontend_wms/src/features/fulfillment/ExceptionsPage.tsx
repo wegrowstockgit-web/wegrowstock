@@ -19,6 +19,7 @@ import {
 import { SyncConflictsPanel } from '@/features/offline/SyncConflictsPanel';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 
@@ -189,6 +190,9 @@ export function ExceptionsPage() {
       });
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['office', 'exceptions'] }),
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not resolve the exception.'), { tone: 'danger' });
+    },
   });
 
   const initiateRtv = useMutation({
@@ -211,7 +215,10 @@ export function ExceptionsPage() {
       toast('RTV draft created', { tone: 'success' });
       void queryClient.invalidateQueries({ queryKey: ['rtv-orders'] });
     },
-    onError: () => toast('Could not initiate RTV — ensure a supplier exists', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Could not initiate RTV — ensure a supplier exists'), {
+        tone: 'danger',
+      }),
   });
 
   return (

@@ -111,6 +111,42 @@ class SpatialMapHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].nodeAId").exists());
     }
 
+    @Test
+    void patchLocationSettingsUpdatesPickSequenceWeightAndCubic() throws Exception {
+        String slug = "locset-" + UUID.randomUUID().toString().substring(0, 8);
+        TokenResponse owner = authService.signup(new SignupRequest(
+                "Loc Settings", slug, "owner@" + slug + ".test", "password123", "Owner"));
+        UUID tenantId = owner.tenantId();
+        TenantContext.setTenantId(tenantId);
+        Location wh = loc(tenantId, null, "WAREHOUSE", "WH-S", "/WH-S");
+        Location bin = loc(tenantId, wh.getId(), "BIN", "B-01", "/WH-S/B-01");
+        TenantContext.clear();
+
+        mockMvc.perform(patch("/api/v1/locations/" + bin.getId())
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .header("X-Warehouse-Id", wh.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Pick bin","code":"B-01","sequenceIndex":7,
+                                 "maxWeightKg":45.5,"lengthCm":10,"widthCm":20,"heightCm":30,
+                                 "zoneBehavior":"PICK_FACE"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Pick bin"))
+                .andExpect(jsonPath("$.sequenceIndex").value(7))
+                .andExpect(jsonPath("$.maxWeightKg").value(45.5))
+                .andExpect(jsonPath("$.maxCubicCm").value(6000))
+                .andExpect(jsonPath("$.zoneBehavior").value("PICK_FACE"));
+
+        TenantContext.setTenantId(tenantId);
+        Location updated = locationRepository.findById(bin.getId()).orElseThrow();
+        assertThat(updated.getSequenceIndex()).isEqualTo(7);
+        assertThat(updated.getMaxWeightKg()).isEqualByComparingTo("45.5");
+        assertThat(updated.getMaxCubicCm()).isEqualByComparingTo("6000");
+        assertThat(updated.getZoneBehavior()).isEqualTo("PICK_FACE");
+        TenantContext.clear();
+    }
+
     private Location loc(UUID tenantId, UUID parentId, String type, String code, String path) {
         Location location = new Location();
         location.setTenantId(tenantId);

@@ -896,7 +896,7 @@ function WarehousesTab() {
       <Card>
         <CardHeader
           title="Warehouse layout"
-          description="Spatial hierarchy — warehouses, zones, aisles, and bins"
+          description="Spatial hierarchy — list for data entry, map for layout of warehouses, zones, aisles, and bins"
         />
         {isLoading ? (
           <TableSkeleton rows={6} cols={3} />

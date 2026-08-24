@@ -166,7 +166,7 @@ const commands: CommandItem[] = [
     icon: FileBarChart,
     path: '/reports',
     keywords: ['analytics', 'valuation', 'cogs'],
-    roles: ['OWNER', 'ADMIN'],
+    roles: ['OWNER', 'ADMIN', 'FINANCE_ADMIN', 'WAREHOUSE_MANAGER'],
     hideForPicker: true,
     hideForViewer: true,
   },

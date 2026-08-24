@@ -12,12 +12,15 @@ import { BigButton } from '@/components/ui/BigButton';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 
 const ACTIVE_STATUSES = ['COMPONENTS_ALLOCATED', 'WIP'];
 
 export function ProductionTerminalPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const lastScan = useScanBufferStore((s) => s.lastScan);
   const { flash, triggerSuccess, triggerError } = useScanFeedback();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -83,7 +86,10 @@ export function ProductionTerminalPage() {
       setActiveTimesheetId(sheet.id);
       void queryClient.invalidateQueries({ queryKey: ['manufacturing', 'timesheets'] });
     },
-    onError: () => triggerError(),
+    onError: (error) => {
+      triggerError();
+      toast(extractApiError(error, 'Could not start the timesheet.'), { tone: 'danger' });
+    },
   });
 
   const stopTimesheetMutation = useMutation({
@@ -98,7 +104,10 @@ export function ProductionTerminalPage() {
       setActiveTimesheetId(null);
       void queryClient.invalidateQueries({ queryKey: ['manufacturing', 'timesheets'] });
     },
-    onError: () => triggerError(),
+    onError: (error) => {
+      triggerError();
+      toast(extractApiError(error, 'Could not stop the timesheet.'), { tone: 'danger' });
+    },
   });
 
   const completeMutation = useMutation({
@@ -112,7 +121,10 @@ export function ProductionTerminalPage() {
       setVerifiedScans([]);
       void queryClient.invalidateQueries({ queryKey: ['manufacturing'] });
     },
-    onError: () => triggerError(),
+    onError: (error) => {
+      triggerError();
+      toast(extractApiError(error, 'Could not complete the production order.'), { tone: 'danger' });
+    },
   });
 
   useBarcodeScanner({

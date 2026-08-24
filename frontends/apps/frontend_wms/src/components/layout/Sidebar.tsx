@@ -298,6 +298,7 @@ export function Sidebar() {
       )}
 
       <aside
+        data-print-hide
         data-testid="icon-rail"
         data-expanded={expanded ? 'true' : 'false'}
         data-pinned={pinned ? 'true' : 'false'}

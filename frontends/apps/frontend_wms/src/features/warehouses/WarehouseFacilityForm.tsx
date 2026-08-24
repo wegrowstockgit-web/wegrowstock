@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { extractApiError } from '@/lib/apiClient';
 import { PlacesAddressInput, type GeocodedAddress } from './PlacesAddressInput';
 
 export interface WarehouseFacilityFormProps {
@@ -98,7 +99,7 @@ export function WarehouseFacilityForm({
       setError(
         err.message === 'GEO_REQUIRED'
           ? 'Geocode the address to capture latitude and longitude before saving.'
-          : 'Could not create the warehouse. Check the fields and try again.',
+          : extractApiError(err, 'Could not create the warehouse. Check the fields and try again.'),
       );
     },
   });

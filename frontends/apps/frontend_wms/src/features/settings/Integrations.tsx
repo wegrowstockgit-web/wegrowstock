@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { ShopifyIntegration } from '@/features/settings/ShopifyIntegration';
 import { IntegrationWizardModal } from '@/features/settings/IntegrationWizardModal';
 import {
@@ -73,7 +74,8 @@ function SystemAlertsCard() {
       setSlackWebhookUrl('');
       void queryClient.invalidateQueries({ queryKey: ['settings', 'alert-preferences'] });
     },
-    onError: () => toast('Could not save alert preferences', { tone: 'danger' }),
+    onError: (error) =>
+      toast(extractApiError(error, 'Could not save alert preferences'), { tone: 'danger' }),
   });
 
   const testMutation = useMutation({
@@ -81,7 +83,7 @@ function SystemAlertsCard() {
       await apiClient.post('/api/v1/settings/alert-preferences/test');
     },
     onSuccess: () => toast('Test alert dispatched', { tone: 'success' }),
-    onError: () => toast('Test alert failed', { tone: 'danger' }),
+    onError: (error) => toast(extractApiError(error, 'Test alert failed'), { tone: 'danger' }),
   });
 
   const validateAndSave = () => {

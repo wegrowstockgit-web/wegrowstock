@@ -20,9 +20,11 @@ import { DensityToggle } from '@/components/ui/DensityToggle';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useSessionStore } from '@/stores/session';
+import { useToast } from '@/components/ui/Toast';
 import { cn, formatCurrency, formatMediumDate } from '@/lib/utils';
 import { RmaInspectionDrawer } from '@/features/returns/RmaInspectionDrawer';
 import { NewRmaWizard } from '@/features/returns/NewRmaWizard';
+import { restockLinesMissingBin, rmaActionErrorMessage } from '@/features/returns/rmaActionError';
 
 const STATUSES = [
   'ALL',
@@ -287,7 +289,11 @@ function ReturnLinesTable({
                   onChange={(e) =>
                     patchLine.mutate({ line, restockLocationId: e.target.value })
                   }
-                  className="h-8 max-w-[12rem] rounded-md border border-border bg-surface-raised px-2 text-sm text-text disabled:opacity-50"
+                  aria-invalid={restock && !line.restockLocationId}
+                  className={cn(
+                    'h-8 max-w-[12rem] rounded-md border bg-surface-raised px-2 text-sm text-text disabled:opacity-50',
+                    restock && !line.restockLocationId ? 'border-danger' : 'border-border',
+                  )}
                 >
                   <option value="">Target bin…</option>
                   {locations.map((loc) => (
@@ -350,6 +356,7 @@ function AccordionSkeleton() {
 
 export function ReturnsPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const canManage = useSessionStore((s) => s.canManageInventory());
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -415,6 +422,9 @@ export function ReturnsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['returns'] });
     },
+    onError: (error) => {
+      toast(rmaActionErrorMessage(error), { tone: 'danger' });
+    },
   });
 
   const escalateMutation = useMutation({
@@ -424,11 +434,14 @@ export function ReturnsPage() {
       void queryClient.invalidateQueries({ queryKey: ['returns'] });
       navigate('/purchasing/rtv');
     },
+    onError: (error) => {
+      toast(rmaActionErrorMessage(error), { tone: 'danger' });
+    },
   });
 
   return (
     <TableDensityScope gridId="returns">
-    <div className="p-6">
+    <div className="p-6" data-testid="returns-page">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Returns (RMA)</h1>
@@ -502,6 +515,7 @@ export function ReturnsPage() {
           const itemCount = rma.itemCount ?? rma.lines?.length ?? 0;
           const estimated = Number(rma.estimatedReturnValue ?? 0);
           const canDisposition = canManage && DISPOSITION_STATUSES.has(rma.status);
+          const completeBlocked = restockLinesMissingBin(rma.lines ?? []);
           return (
             <Card key={rma.id} padding="none" data-testid={`rma-card-${rma.number}`}>
               <button
@@ -580,6 +594,7 @@ export function ReturnsPage() {
                       <Button
                         data-testid="rma-complete-disposition"
                         loading={completeMutation.isPending}
+                        disabled={completeBlocked}
                         onClick={() => completeMutation.mutate(rma.id)}
                       >
                         Complete Disposition & Close RMA

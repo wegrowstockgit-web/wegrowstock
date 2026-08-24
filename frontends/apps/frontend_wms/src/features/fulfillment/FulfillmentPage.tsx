@@ -30,6 +30,8 @@ import { enqueueMutation } from '@/offline/mutationQueue';
 import { createScanEventPayload } from '@/offline/scanEvent';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { ScanFlashOverlay } from '@/components/ui/ScanFlashOverlay';
 import {
   CrossDockOverlay,
@@ -77,6 +79,7 @@ function isStagingLocationBarcode(code: string, prompt: CrossDockPrompt): boolea
 }
 
 function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
+  const { toast } = useToast();
   const canManage = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'));
   const canClaim = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER'));
   const [draftWaveId, setDraftWaveId] = useState<string | null>(null);
@@ -93,6 +96,9 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
       return res.data;
     },
     onSuccess: (data) => setDraftWaveId(data.waveId),
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not generate a pick wave.'), { tone: 'danger' });
+    },
   });
 
   const optimizeMutation = useMutation({
@@ -108,6 +114,9 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
       setDraftWaveId(data.waveId);
       setManifestPreview(data.manifest.map((m) => `${m.sequenceOrder}. ${m.locationPath}`));
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not optimize the pick wave.'), { tone: 'danger' });
+    },
   });
 
   const releaseMutation = useMutation({
@@ -120,6 +129,9 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
       setReleasedWaveId(waveId);
       onReleased();
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not release the pick wave.'), { tone: 'danger' });
+    },
   });
 
   const claimMutation = useMutation({
@@ -128,6 +140,9 @@ function WaveReleaseControls({ onReleased }: { onReleased: () => void }) {
         `/api/v1/picking/waves/${waveId}/claim`,
       );
       return res.data;
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not claim the pick wave.'), { tone: 'danger' });
     },
   });
 
@@ -228,6 +243,7 @@ export interface FulfillmentScanPayload {
 
 export function FulfillmentPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const warehouse = useActiveWarehouseStore((s) => s.warehouse);
   const lastScan = useScanBufferStore((s) => s.lastScan);
@@ -370,10 +386,15 @@ export function FulfillmentPage() {
           .catch(() => undefined);
       }
     },
-    onError: () => {
+    onError: (error) => {
       triggerError();
       setLastPackLabel(null);
-      setLabelMessage('Could not cartonize / purchase label. Check order lines and carton masters.');
+      const message = extractApiError(
+        error,
+        'Could not cartonize / purchase label. Check order lines and carton masters.',
+      );
+      setLabelMessage(message);
+      toast(message, { tone: 'danger' });
     },
   });
 
@@ -481,6 +502,9 @@ export function FulfillmentPage() {
         void fetchNextBestAction(result.locationId);
       }
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not pick the task.'), { tone: 'danger' });
+    },
   });
 
   const moveLpnMutation = useMutation({
@@ -507,13 +531,15 @@ export function FulfillmentPage() {
         void fetchNextBestAction(result.destinationLocationId);
       }
     },
-    onError: (_err, vars) => {
+    onError: (err, vars) => {
       triggerError();
+      const message = extractApiError(err, 'LPN move failed — check LPN and destination bin');
+      toast(message, { tone: 'danger' });
       setHistory((h) => [
         {
           barcode: vars.destinationBarcode,
           success: false,
-          message: 'LPN move failed — check LPN and destination bin',
+          message,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -545,8 +571,9 @@ export function FulfillmentPage() {
       if (minted.zpl) {
         void executePrint(minted.zpl, 'ZPL');
       }
-    } catch {
+    } catch (error) {
       triggerError();
+      toast(extractApiError(error, 'Could not mint a pallet LPN.'), { tone: 'danger' });
     } finally {
       setPalletMinting(false);
     }
@@ -773,15 +800,17 @@ export function FulfillmentPage() {
       ]);
       setSerialCapture(null);
     },
-    onError: (_err, barcode) => {
+    onError: (err, barcode) => {
       gs1FeedbackPendingRef.current = false;
       triggerError();
       setLastThumbUrl(null);
+      const message = extractApiError(err, 'Item not found or scan failed');
+      toast(message, { tone: 'danger' });
       setHistory((h) => [
         {
           barcode,
           success: false,
-          message: 'Item not found or scan failed',
+          message,
           timestamp: Date.now(),
         },
         ...h.slice(0, 19),
@@ -815,7 +844,10 @@ export function FulfillmentPage() {
       ]);
       setSerialCapture(null);
     },
-    onError: () => triggerError(),
+    onError: (error) => {
+      triggerError();
+      toast(extractApiError(error, 'Serial scan failed.'), { tone: 'danger' });
+    },
   });
 
   const handleSkipFlag = async () => {

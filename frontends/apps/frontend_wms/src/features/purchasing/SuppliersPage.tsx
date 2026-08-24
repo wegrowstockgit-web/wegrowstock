@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Globe, MoreHorizontal, Network, Plus, Star, Truck } from 'lucide-react';
 import { apiClient } from '@/api/client';
@@ -31,7 +31,6 @@ import { useClientSort } from '@/hooks/useClientSort';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { listSuppliers } from '@/api/operational';
-import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { FEATURE_MODULE_FLAGS } from '@/lib/featureFlags';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
@@ -66,13 +65,7 @@ function StarRating({ value }: { value?: number | null }) {
   );
 }
 
-function SuppliersTable({
-  items,
-  onPeek,
-}: {
-  items: Supplier[];
-  onPeek: (id: string) => void;
-}) {
+function SuppliersTable({ items }: { items: Supplier[] }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -126,15 +119,16 @@ function SuppliersTable({
         </TableHeader>
         <TableBody>
           {sorted.map((s) => (
-            <TableRow
-              key={s.id}
-              className="cursor-pointer"
-              data-testid={`supplier-row-${s.id}`}
-              onClick={() => onPeek(s.id)}
-            >
+            <TableRow key={s.id} data-testid={`supplier-row-${s.id}`}>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{s.name}</span>
+                  <Link
+                    to={`/purchasing/suppliers/${s.id}`}
+                    className="font-medium text-accent hover:underline"
+                    data-testid={`supplier-name-link-${s.id}`}
+                  >
+                    {s.name}
+                  </Link>
                   {s.isMeshPartner ? (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success"
@@ -185,7 +179,7 @@ function SuppliersTable({
                       data-testid="supplier-open-workspace"
                       onClick={() => navigate(`/purchasing/suppliers/${s.id}`)}
                     >
-                      Open Details Workspace
+                      Open Workspace
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       data-testid="supplier-browse-mesh"
@@ -502,11 +496,9 @@ function AddSupplierModal({ open, onClose }: { open: boolean; onClose: () => voi
 }
 
 export function SuppliersPage() {
-  const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [modalOpen, setModalOpen] = useState(false);
-  const [peekId, setPeekId] = useState<string | null>(null);
 
   const table = useServerTableQuery<Supplier>({
     queryKey: 'suppliers',
@@ -515,11 +507,13 @@ export function SuppliersPage() {
     fetcher: listSuppliers,
   });
   const { items, isLoading, isError, error, refetch, search } = table;
-  const peek = useMemo(() => items.find((s) => s.id === peekId), [items, peekId]);
 
   return (
     <TableDensityScope gridId="suppliers">
-    <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
+    <div
+      className="mx-auto min-h-0 w-full max-w-7xl p-4 sm:p-6"
+      data-testid="suppliers-page"
+    >
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-text">Suppliers</h1>
@@ -567,7 +561,7 @@ export function SuppliersPage() {
       >
         {(rows) => (
           <>
-            <SuppliersTable items={rows} onPeek={setPeekId} />
+            <SuppliersTable items={rows} />
             <Pagination
               page={table.page}
               totalPages={table.totalPages}
@@ -581,27 +575,6 @@ export function SuppliersPage() {
       </ListPageState>
 
       <AddSupplierModal open={modalOpen} onClose={() => setModalOpen(false)} />
-      <RightPeekDrawer
-        open={!!peekId}
-        onClose={() => setPeekId(null)}
-        title={peek?.name ?? 'Supplier'}
-      >
-        {peekId ? (
-          <Button
-            className="w-full"
-            data-testid="open-supplier-workspace"
-            onClick={() => {
-              const id = peekId;
-              setPeekId(null);
-              navigate(`/purchasing/suppliers/${id}`);
-            }}
-          >
-            Open Workspace
-          </Button>
-        ) : (
-          <p className="text-sm text-text-muted">Loading…</p>
-        )}
-      </RightPeekDrawer>
     </div>
     </TableDensityScope>
   );

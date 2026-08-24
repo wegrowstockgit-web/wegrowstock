@@ -6,14 +6,18 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { LiveConnectionBadge } from '@/features/settings/LiveConnectionBadge';
 
 const CARRIERS = ['EASYPOST', 'UPS', 'FEDEX'] as const;
 
 export function CarrierCredentials() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [shippingSystem, setShippingSystem] = useState<string>('EASYPOST');
   const [shippingKey, setShippingKey] = useState('');
+  const [error, setError] = useState('');
 
   const { data: shippingAccounts = [] } = useQuery({
     queryKey: ['shipping-accounts'],
@@ -31,7 +35,11 @@ export function CarrierCredentials() {
     },
     onSuccess: () => {
       setShippingKey('');
+      setError('');
       void queryClient.invalidateQueries({ queryKey: ['shipping-accounts'] });
+    },
+    onError: (err) => {
+      setError(extractApiError(err, 'Could not save the shipping credential.'));
     },
   });
 
@@ -40,6 +48,9 @@ export function CarrierCredentials() {
       await apiClient.delete(`/api/v1/settings/shipping-accounts/${system}`);
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['shipping-accounts'] }),
+    onError: (err) => {
+      toast(extractApiError(err, 'Could not disconnect the shipping account.'), { tone: 'danger' });
+    },
   });
 
   return (
@@ -49,6 +60,7 @@ export function CarrierCredentials() {
         className="mb-4 grid gap-4 sm:grid-cols-3"
         onSubmit={(e) => {
           e.preventDefault();
+          setError('');
           saveShippingMutation.mutate();
         }}
       >
@@ -76,6 +88,7 @@ export function CarrierCredentials() {
             Save credential
           </Button>
         </div>
+        {error && <p className="sm:col-span-3 text-sm text-danger">{error}</p>}
       </form>
       <div className="flex flex-col gap-2">
         {shippingAccounts.map((account) => {

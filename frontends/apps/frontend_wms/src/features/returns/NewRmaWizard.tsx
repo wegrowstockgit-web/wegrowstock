@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { unwrapPageItems } from '@/api/page';
+import { extractApiError } from '@/lib/apiClient';
 import type { SalesOrder, SalesOrderDetail } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -103,7 +104,7 @@ export function NewRmaWizard({ open, onClose }: { open: boolean; onClose: () => 
       reset();
       onClose();
     },
-    onError: () => setError('Could not create the RMA. Check quantities vs shipped amounts.'),
+    onError: (err) => setError(extractApiError(err, 'Could not create the RMA.')),
   });
 
   const shippedLines = (orderDetail?.lines ?? []).filter((line) => Number(line.qtyShipped) > 0);

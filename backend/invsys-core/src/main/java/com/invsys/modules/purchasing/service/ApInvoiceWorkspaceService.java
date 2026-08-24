@@ -9,7 +9,7 @@ import com.invsys.modules.catalog.domain.ProductVariant;
 import com.invsys.modules.catalog.repository.LocationRepository;
 import com.invsys.modules.catalog.repository.ProductRepository;
 import com.invsys.modules.catalog.repository.ProductVariantRepository;
-import com.invsys.modules.inventory.service.CycleCountService;
+import com.invsys.modules.inventory.api.CycleCountPort;
 import com.invsys.modules.purchasing.domain.PurchaseOrder;
 import com.invsys.modules.purchasing.domain.PurchaseOrderLine;
 import com.invsys.modules.purchasing.repository.PurchaseOrderLineRepository;
@@ -47,7 +47,7 @@ public class ApInvoiceWorkspaceService {
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
     private final LocationRepository locationRepository;
-    private final CycleCountService cycleCountService;
+    private final CycleCountPort cycleCountPort;
 
     public ApInvoiceWorkspaceService(ApDocumentParseService parseService,
                                      ApOcrIngestionService ocrIngestionService,
@@ -57,7 +57,7 @@ public class ApInvoiceWorkspaceService {
                                      ProductVariantRepository variantRepository,
                                      ProductRepository productRepository,
                                      LocationRepository locationRepository,
-                                     CycleCountService cycleCountService) {
+                                     CycleCountPort cycleCountPort) {
         this.parseService = parseService;
         this.ocrIngestionService = ocrIngestionService;
         this.ingestionRepository = ingestionRepository;
@@ -66,7 +66,7 @@ public class ApInvoiceWorkspaceService {
         this.variantRepository = variantRepository;
         this.productRepository = productRepository;
         this.locationRepository = locationRepository;
-        this.cycleCountService = cycleCountService;
+        this.cycleCountPort = cycleCountPort;
     }
 
     @Transactional
@@ -156,12 +156,12 @@ public class ApInvoiceWorkspaceService {
                     .orElseThrow(() -> new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_LOCATION",
                             "No warehouse location to count"));
         }
-        CycleCountService.CycleCountDetail count = cycleCountService.startCount(locationId);
+        UUID countId = cycleCountPort.startCount(locationId);
         Map<String, Object> data = new LinkedHashMap<>(ingestion.getExtractedData());
-        data.put("recountCycleCountId", count.id().toString());
+        data.put("recountCycleCountId", countId.toString());
         ingestion.setExtractedData(data);
         ingestionRepository.save(ingestion);
-        return new RecountResponse(count.id(), "/inventory/variances");
+        return new RecountResponse(countId, "/inventory/variances");
     }
 
     public ApWorkspaceResponse preview(UUID purchaseOrderId, Map<String, Object> extractedData) {

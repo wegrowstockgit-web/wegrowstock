@@ -99,6 +99,12 @@ class CustomerMasterHttpTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.portalStatus").value("PENDING"));
 
+        mockMvc.perform(post("/api/v1/customers/" + customerId + "/portal-invite")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("INVITE_PENDING"))
+                .andExpect(jsonPath("$.detail").value("An open invitation already exists for this email"));
+
         mockMvc.perform(post("/api/v1/customers/" + customerId + "/credit-hold")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())

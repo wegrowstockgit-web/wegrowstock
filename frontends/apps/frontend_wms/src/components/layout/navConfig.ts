@@ -299,7 +299,7 @@ export const NAV_MATRIX: {
           label: 'Reports',
           labelKey: 'nav.reports',
           icon: BarChart3,
-          roles: ['OWNER', 'ADMIN'],
+          roles: ['OWNER', 'ADMIN', 'FINANCE_ADMIN', 'WAREHOUSE_MANAGER'],
           hideForPicker: true,
           hideForViewer: true,
         },

@@ -1,5 +1,6 @@
 package com.invsys.api;
 
+import com.invsys.core.common.exception.ReportDateRangeException;
 import com.invsys.core.security.PermissionKeys;
 import com.invsys.core.security.RequirePermission;
 import com.invsys.repository.AnalyticsRepository;
@@ -21,7 +22,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/reports")
-@PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+@PreAuthorize("hasAnyRole('OWNER','ADMIN','FINANCE_ADMIN')")
 public class AnalyticsController {
 
     private final AnalyticsRepository analyticsRepository;
@@ -46,6 +47,12 @@ public class AnalyticsController {
     public ValuationHistoryResponse valuationHistory(
             @RequestParam(defaultValue = "90") int days,
             @RequestParam(defaultValue = "30") int points) {
+        if (days > ReportDateRange.STANDARD_MAX_DAYS) {
+            throw new ReportDateRangeException(
+                    "Report date range cannot exceed "
+                            + ReportDateRange.STANDARD_MAX_DAYS
+                            + " days. Narrow the search.");
+        }
         Instant to = Instant.now();
         Instant from = to.minus(Math.max(1, days), ChronoUnit.DAYS);
         List<AnalyticsRepository.ValuationSnapshot> snaps =

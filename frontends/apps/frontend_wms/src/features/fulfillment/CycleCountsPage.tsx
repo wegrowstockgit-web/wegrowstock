@@ -18,6 +18,8 @@ import { ListPageState } from '@/components/layout/ListPageState';
 import { CycleCountScanner } from '@/features/fulfillment/CycleCountScanner';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
+import { useToast } from '@/components/ui/Toast';
+import { extractApiError } from '@/lib/apiClient';
 import { useSessionStore } from '@/stores/session';
 
 function money(value: number | string): string {
@@ -181,6 +183,7 @@ function PendingVariancesTable({
 export function CycleCountsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canReview = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const [activeCountId, setActiveCountId] = useState<string | null>(null);
@@ -229,6 +232,9 @@ export function CycleCountsPage() {
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', 'pending-variances'] });
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', 'priority-audits'] });
     },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not approve the cycle-count adjustment.'), { tone: 'danger' });
+    },
   });
 
   const recount = useMutation({
@@ -240,6 +246,9 @@ export function CycleCountsPage() {
       setBusyId(null);
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', 'pending-variances'] });
       await queryClient.invalidateQueries({ queryKey: ['cycle-counts', 'priority-audits'] });
+    },
+    onError: (error) => {
+      toast(extractApiError(error, 'Could not request a recount.'), { tone: 'danger' });
     },
   });
 
