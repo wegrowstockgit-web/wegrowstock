@@ -9,8 +9,9 @@ test.describe('AP ingest + pick path + tablet shell', () => {
     await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole('button', { name: /Upload invoice document/i })).toBeVisible();
-    await expect(page.getByText(/Document AI upload/i)).toBeVisible();
+    await expect(page.getByTestId('document-ai-dropzone')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Drop invoice document or browse/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open AP workspace' })).toBeVisible();
   });
 
   test('fulfillment exposes optimize pick path action', async ({ page }) => {

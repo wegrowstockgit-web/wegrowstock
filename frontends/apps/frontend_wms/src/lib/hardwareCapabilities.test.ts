@@ -3,6 +3,9 @@ import {
   getHardwareCapabilities,
   hasNativeScanBridge,
   resolveHardwareStatus,
+  supportsWebBluetooth,
+  supportsWebSerial,
+  UNSUPPORTED_BROWSER_HARDWARE_MESSAGE,
 } from './hardwareCapabilities';
 
 describe('getHardwareCapabilities', () => {
@@ -31,6 +34,20 @@ describe('getHardwareCapabilities', () => {
 
   it('is safe when navigator is undefined', () => {
     expect(getHardwareCapabilities(undefined).isSupported).toBe(false);
+  });
+});
+
+describe('supportsWebSerial / supportsWebBluetooth', () => {
+  it('mirrors getHardwareCapabilities probes', () => {
+    expect(supportsWebSerial({} as Navigator)).toBe(false);
+    expect(supportsWebBluetooth({} as Navigator)).toBe(false);
+    expect(supportsWebSerial({ serial: {} } as unknown as Navigator)).toBe(true);
+    expect(supportsWebBluetooth({ bluetooth: {} } as unknown as Navigator)).toBe(true);
+  });
+
+  it('documents the Safari / iPad recovery copy', () => {
+    expect(UNSUPPORTED_BROWSER_HARDWARE_MESSAGE).toContain('Google Chrome or Microsoft Edge');
+    expect(UNSUPPORTED_BROWSER_HARDWARE_MESSAGE).toContain('USB or Bluetooth scales');
   });
 });
 

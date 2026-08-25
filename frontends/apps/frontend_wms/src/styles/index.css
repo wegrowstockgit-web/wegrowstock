@@ -374,6 +374,43 @@
   animation: page-help-fade 180ms ease-out both;
 }
 
+@keyframes overlay-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/**
+ * Press feedback (Emil): buttons and clickable cards scale on :active.
+ * Specify transform only — never transition: all.
+ */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+.pressable {
+  transition: transform var(--press-duration, 160ms) var(--ease-out, ease-out);
+}
+
+button:not(:disabled):active,
+[role='button']:not([aria-disabled='true']):active,
+.pressable:active {
+  transform: scale(0.97);
+}
+
+dialog[open] {
+  animation: overlay-enter var(--overlay-duration, 200ms) var(--ease-out, ease-out);
+}
+
+[data-radix-menu-content][data-state='open'],
+[data-radix-dropdown-menu-content][data-state='open'] {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  animation: overlay-enter 180ms var(--ease-out, ease-out);
+}
+
 @keyframes support-spotlight-pulse {
   0%,
   100% {
@@ -399,7 +436,10 @@
   .page-help-fade,
   .support-spotlight-ring,
   .toast-slide-in,
-  .toast-slide-out {
+  .toast-slide-out,
+  dialog[open],
+  [data-radix-menu-content][data-state='open'],
+  [data-radix-dropdown-menu-content][data-state='open'] {
     animation: none;
   }
 
@@ -414,6 +454,16 @@
 
   .page-help-fade {
     opacity: 1;
+    transform: none;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  .pressable,
+  button:not(:disabled):active,
+  [role='button']:not([aria-disabled='true']):active,
+  .pressable:active {
+    transition: none;
     transform: none;
   }
 }

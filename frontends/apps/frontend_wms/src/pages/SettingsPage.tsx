@@ -29,10 +29,12 @@ import { cn } from '@/lib/utils';
 import { TenantSecuritySettings } from '@/pages/TenantSecuritySettings';
 import { useSessionStore } from '@/stores/session';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { ScrollFadePort } from '@/components/ui/ScrollFadePort';
 import {
@@ -58,6 +60,8 @@ import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { MOBILE_PAGE_SIZE } from '@/hooks/useCapMobilePageSize';
 import { normalizeLanguage } from '@/lib/i18n';
 
 const TABS = [
@@ -600,8 +604,10 @@ function UsersTab() {
   const queryClient = useQueryClient();
   const currentUser = useSessionStore((s) => s.user);
   const canManageOrg = useSessionStore((s) => s.hasRole('OWNER', 'ADMIN'));
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editUser, setEditUser] = useState<TenantUser | null>(null);
+  const [userPage, setUserPage] = useState(1);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -633,6 +639,18 @@ function UsersTab() {
     department: (u) => u.corporateDepartment ?? u.department ?? '',
     status: (u) => u.status,
   });
+
+  const userTotal = sortedUsers.length;
+  const userTotalPages = Math.max(userTotal === 0 ? 0 : 1, Math.ceil(userTotal / MOBILE_PAGE_SIZE));
+  const safeUserPage = Math.min(Math.max(userPage, 1), Math.max(userTotalPages, 1));
+  const pagedUsers = sortedUsers.slice(
+    (safeUserPage - 1) * MOBILE_PAGE_SIZE,
+    safeUserPage * MOBILE_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    if (userPage !== safeUserPage) setUserPage(safeUserPage);
+  }, [safeUserPage, userPage]);
 
   const { toast } = useToast();
 
@@ -739,6 +757,42 @@ function UsersTab() {
             </div>
           )}
 
+          {isMobile ? (
+            <div className="space-y-2 md:hidden" data-testid="users-mobile-list">
+              {pagedUsers.map((u) => (
+                <EntityMobileCard
+                  key={u.id}
+                  testId={`user-mobile-card-${u.id}`}
+                  identity={u.displayName || u.email}
+                  title={u.email}
+                  status={statusChip(u.status)}
+                  footer={
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap gap-1" data-testid={`user-roles-${u.id}`}>
+                        {u.roles.length > 0 ? (
+                          u.roles.map((code) => <StatusBadge key={code} status={code} />)
+                        ) : (
+                          <span className="text-sm text-text-muted">—</span>
+                        )}
+                      </div>
+                      {canManageOrg ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 shrink-0"
+                          data-testid={`edit-access-${u.id}`}
+                          onClick={() => setEditUser(u)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                          Edit
+                        </Button>
+                      ) : null}
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -758,7 +812,7 @@ function UsersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedUsers.map((u) => {
+              {pagedUsers.map((u) => {
                 const isSelf = u.id === currentUser?.id;
                 const isOwner = u.roles.includes('OWNER');
                 return (
@@ -812,6 +866,16 @@ function UsersTab() {
               })}
             </TableBody>
           </Table>
+          )}
+
+          <Pagination
+            page={safeUserPage}
+            totalPages={userTotalPages}
+            totalElements={userTotal}
+            size={MOBILE_PAGE_SIZE}
+            onPageChange={setUserPage}
+            onSizeChange={() => undefined}
+          />
 
           {canManageOrg && (
             <div className="min-w-0 max-w-full pt-2">
@@ -2156,14 +2220,49 @@ export function SettingsPage() {
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-12 lg:gap-6">
+          <div className="md:hidden shrink-0 space-y-2" data-testid="settings-nav-mobile">
+            <Select
+              label={t('settings.sections')}
+              data-testid="settings-nav-select"
+              value={activeTab}
+              onChange={(e) => selectTab(e.target.value as TabId)}
+            >
+              {visibleTabs.map((tab) => (
+                <option key={tab.id} value={tab.id}>
+                  {t(tab.labelKey)}
+                </option>
+              ))}
+            </Select>
+            {visibleSubroutes.length > 0 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {visibleSubroutes.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    data-testid={
+                      link.to === '/settings/integrations' ? 'settings-nav-integrations-hub' : undefined
+                    }
+                    className={cn(
+                      'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium',
+                      link.to === '/settings/integrations'
+                        ? 'bg-accent-muted/60 font-semibold text-accent'
+                        : 'text-text-muted',
+                    )}
+                  >
+                    {t(link.labelKey)}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {/* Left nav: rail-style — scrollbar hidden; fade/chevrons when more items exist. */}
           <ScrollFadePort
             as="nav"
             aria-label={t('settings.sections')}
             data-testid="settings-nav"
             measureKey={activeTab}
-            shellClassName="settings-shell__nav shrink-0 lg:col-span-3 lg:h-full xl:col-span-2"
-            className="flex h-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:pb-6"
+            shellClassName="settings-shell__nav hidden min-h-0 shrink-0 md:block lg:col-span-3 lg:h-full xl:col-span-2"
+            className="flex h-auto max-h-11 gap-2 overflow-x-auto pb-1 lg:h-full lg:max-h-none lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:pb-6"
           >
             {visibleTabs.map((tab) => (
               <button

@@ -58,12 +58,12 @@ test.describe('Journey 04: Ownership audit trail', () => {
           rows.some((r) => /sales|order|confirm/i.test(`${r.action} ${r.entityType}`)),
       ).toBeTruthy();
 
-      const auditGrid = owner.page.getByTestId('virtualized-table-grid');
-      await expect(auditGrid.getByRole('columnheader', { name: 'Timestamp' })).toBeVisible();
-      await expect(auditGrid.getByRole('columnheader', { name: 'Action', exact: true })).toBeVisible();
-      await expect(auditGrid.getByRole('columnheader', { name: 'Entity Type' })).toBeVisible();
-      await expect(auditGrid.getByRole('columnheader', { name: 'Actor' })).toBeVisible();
-      await expect(auditGrid.getByRole('columnheader', { name: 'Changes (Diff)' })).toBeVisible();
+      const auditTable = owner.page.getByTestId('audit-log-grid');
+      await expect(auditTable.getByRole('columnheader', { name: 'Timestamp' })).toBeVisible();
+      await expect(auditTable.getByRole('columnheader', { name: 'Action', exact: true })).toBeVisible();
+      await expect(auditTable.getByRole('columnheader', { name: 'Entity Type' })).toBeVisible();
+      await expect(auditTable.getByRole('columnheader', { name: 'Actor' })).toBeVisible();
+      await expect(auditTable.getByRole('columnheader', { name: 'Changes (Diff)' })).toBeVisible();
     } finally {
       await owner.close();
     }

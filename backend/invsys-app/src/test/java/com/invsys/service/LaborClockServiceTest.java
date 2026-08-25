@@ -64,6 +64,10 @@ class LaborClockServiceTest extends AbstractIntegrationTest {
         laborClockService.switchActivity("PICKING");
         laborClockService.recordActivityUnit(user.getId(), 2);
 
+        laborClockService.switchActivity("RECEIVING");
+        LaborClockService.LaborStatus receiving = laborClockService.currentStatus();
+        assertThat(receiving.currentActivity()).isEqualTo("RECEIVING");
+
         LaborClockService.AnalyticsSummary analytics = laborClockService.analyticsSummary();
         assertThat(analytics.directHours()).isGreaterThan(BigDecimal.ZERO);
         assertThat(analytics.indirectHours()).isGreaterThan(BigDecimal.ZERO);

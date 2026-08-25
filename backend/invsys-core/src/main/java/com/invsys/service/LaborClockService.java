@@ -21,7 +21,7 @@ import java.util.UUID;
 @Service
 public class LaborClockService {
 
-    public static final Set<String> DIRECT_ACTIVITIES = Set.of("PICKING", "PUTAWAY", "CYCLE_COUNT");
+    public static final Set<String> DIRECT_ACTIVITIES = Set.of("PICKING", "RECEIVING", "PUTAWAY", "CYCLE_COUNT");
     private static final String DEFAULT_START_ACTIVITY = "PICKING";
 
     private final LaborShiftRepository shiftRepository;

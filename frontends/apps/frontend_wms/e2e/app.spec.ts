@@ -195,7 +195,7 @@ test.describe('Navigation', () => {
 
   test('purchase orders AP ingestion panel loads', async ({ page }) => {
     await clickNavLink(page, 'Purchase Orders');
-    await expect(page.getByText('AP invoice ingestion')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Upload & reconcile' })).toBeVisible();
+    await expect(page.getByText('AP invoice reconciliation')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open AP workspace' })).toBeVisible();
   });
 });

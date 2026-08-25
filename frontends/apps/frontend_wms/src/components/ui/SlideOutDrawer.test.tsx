@@ -35,5 +35,19 @@ describe('SlideOutDrawer', () => {
     expect(screen.queryByTestId('slide-out-drawer-root')).not.toBeInTheDocument();
     expect(screen.queryByText('Hidden content')).not.toBeInTheDocument();
   });
+
+  it('uses a bottom-sheet layout class on the peek panel', () => {
+    render(
+      <SlideOutDrawer open title="Order SO-100" onClose={() => {}}>
+        <p>Line items</p>
+      </SlideOutDrawer>,
+    );
+    const drawer = screen.getByTestId('right-peek-drawer');
+    expect(drawer.className).toContain('bottom-0');
+    expect(drawer.className).toContain('h-[90vh]');
+    expect(drawer.className).toContain('md:right-0');
+    expect(drawer.className).toContain('md:h-full');
+    expect(drawer.className).toContain('rounded-t-2xl');
+  });
 });
 

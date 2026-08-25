@@ -57,17 +57,25 @@ export function ShowroomCatalogPage() {
   }, [items, search, category]);
 
   if (isLoading) {
-    return <TableSkeleton rows={6} cols={3} />;
+    return (
+      <div>
+        <h1 className="mb-4 text-2xl font-bold text-text">Catalog</h1>
+        <TableSkeleton rows={6} cols={3} />
+      </div>
+    );
   }
 
   if (isError) {
     return (
-      <EmptyState
-        icon={Package}
-        title="Unable to load catalog"
-        description="Check your connection and try again."
-        action={<Button onClick={() => refetch()}>Retry</Button>}
-      />
+      <div>
+        <h1 className="mb-4 text-2xl font-bold text-text">Catalog</h1>
+        <EmptyState
+          icon={Package}
+          title="Unable to load catalog"
+          description="Check your connection and try again."
+          action={<Button onClick={() => refetch()}>Retry</Button>}
+        />
+      </div>
     );
   }
 

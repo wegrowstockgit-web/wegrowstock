@@ -35,4 +35,21 @@ describe('FloorPunchClock', () => {
     expect(screen.getByTestId('hardware-manual-fallback')).toBeTruthy();
     expect(screen.getByLabelText('Manual weight')).toBeTruthy();
   });
+
+  it('collapses to a clock icon menu on scanner-width screens', () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('max-width: 767px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    wrap(<FloorPunchClock warehouseSized />);
+    expect(screen.getByTestId('labor-clock-menu-toggle')).toBeTruthy();
+    expect(screen.queryByTestId('labor-clock-in')).toBeNull();
+    expect(screen.queryByTestId('hardware-manual-fallback')).toBeNull();
+  });
 });

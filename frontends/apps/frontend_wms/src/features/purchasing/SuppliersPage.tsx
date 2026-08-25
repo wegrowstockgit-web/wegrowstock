@@ -22,12 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
 import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { listSuppliers } from '@/api/operational';
@@ -202,6 +205,40 @@ function SuppliersTable({ items }: { items: Supplier[] }) {
           ))}
         </TableBody>
       </Table>
+    </div>
+  );
+}
+
+function SuppliersMobileCards({ items }: { items: Supplier[] }) {
+  const navigate = useNavigate();
+  return (
+    <div className="space-y-2 pb-2 md:hidden" data-testid="suppliers-mobile-list">
+      {items.map((s) => (
+        <EntityMobileCard
+          key={s.id}
+          testId={`supplier-mobile-card-${s.id}`}
+          identity={s.name}
+          title={s.contactEmail || CLASS_LABEL[s.supplierClass ?? ''] || s.supplierClass || 'Supplier'}
+          status={
+            s.isMeshPartner ? (
+              <span className="inline-flex rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                Mesh
+              </span>
+            ) : s.portalAccess ? (
+              <span className="inline-flex rounded-full bg-accent-muted px-2 py-0.5 text-[11px] font-medium text-accent">
+                Portal
+              </span>
+            ) : (
+              <span className="inline-flex rounded-full bg-surface-overlay px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                Direct
+              </span>
+            )
+          }
+          amount={s.paymentTerms ?? '—'}
+          date={s.defaultLeadTimeDays != null ? `${s.defaultLeadTimeDays}d lead` : undefined}
+          onClick={() => navigate(`/purchasing/suppliers/${s.id}`)}
+        />
+      ))}
     </div>
   );
 }
@@ -498,6 +535,7 @@ function AddSupplierModal({ open, onClose }: { open: boolean; onClose: () => voi
 export function SuppliersPage() {
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [modalOpen, setModalOpen] = useState(false);
 
   const table = useServerTableQuery<Supplier>({
@@ -507,6 +545,7 @@ export function SuppliersPage() {
     fetcher: listSuppliers,
   });
   const { items, isLoading, isError, error, refetch, search } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   return (
     <TableDensityScope gridId="suppliers">
@@ -561,7 +600,13 @@ export function SuppliersPage() {
       >
         {(rows) => (
           <>
-            <SuppliersTable items={rows} />
+            {isMobile ? (
+              <SuppliersMobileCards items={rows} />
+            ) : (
+              <div className="hidden md:block" data-testid="suppliers-table-view">
+                <SuppliersTable items={rows} />
+              </div>
+            )}
             <Pagination
               page={table.page}
               totalPages={table.totalPages}

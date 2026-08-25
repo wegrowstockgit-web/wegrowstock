@@ -21,8 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { ListPageState } from '@/components/layout/ListPageState';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSessionStore } from '@/stores/session';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
 import { Pagination } from '@/components/ui/Pagination';
@@ -182,6 +185,31 @@ function SalesOrdersTable({
   );
 }
 
+function SalesOrdersMobileCards({
+  items,
+  onPeek,
+}: {
+  items: SalesOrder[];
+  onPeek: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2 px-3 pb-2 md:hidden" data-testid="sales-orders-mobile-list">
+      {items.map((so) => (
+        <EntityMobileCard
+          key={so.id}
+          testId={`sales-order-mobile-card-${so.id}`}
+          identity={so.number}
+          title={so.customerName}
+          status={<StatusBadge status={so.status} />}
+          amount={formatCurrency(Number(so.totalAmount ?? 0))}
+          date={formatMediumDate(so.createdAt)}
+          onClick={() => onPeek(so.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
 function RowActions({ order }: { order: SalesOrder }) {
   const queryClient = useQueryClient();
   const hasRole = useSessionStore((s) => s.hasRole);
@@ -267,6 +295,7 @@ export function SalesOrdersPage() {
   const navigate = useNavigate();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [statusFilter, setStatusFilter] = useState(() =>
     location.pathname.startsWith('/sales/orders') ? 'PENDING_REP_APPROVAL' : '',
   );
@@ -281,6 +310,7 @@ export function SalesOrdersPage() {
     refetchInterval: refetchIntervalWhileAuthenticated(3_000),
   });
   const { items, isLoading, isError, error, refetch, search } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   const { data: peekOrder } = useQuery({
     queryKey: ['sales-orders', peekOrderId],
@@ -364,11 +394,17 @@ export function SalesOrdersPage() {
       >
         {(rows) => (
           <>
-            <SalesOrdersTable
-              items={rows}
-              onPeek={setPeekOrderId}
-              renderActions={(so) => <RowActions order={so} />}
-            />
+            {isMobile ? (
+              <SalesOrdersMobileCards items={rows} onPeek={setPeekOrderId} />
+            ) : (
+              <div className="hidden md:block" data-testid="sales-orders-table-view">
+                <SalesOrdersTable
+                  items={rows}
+                  onPeek={setPeekOrderId}
+                  renderActions={(so) => <RowActions order={so} />}
+                />
+              </div>
+            )}
             <Pagination
               page={table.page}
               totalPages={table.totalPages}

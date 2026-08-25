@@ -51,16 +51,23 @@ export function NetworkStatusBadge({ className }: { className?: string }) {
         data-testid="network-status-badge"
         data-phase="offline"
         className={cn(
-          'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-warning/50',
-          'bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning',
+          'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-warning/50',
+          'bg-warning/15 px-1.5 py-1 text-xs font-semibold text-warning md:px-2.5',
           className,
         )}
         role="status"
         aria-live="polite"
+        aria-label={
+          pendingCount > 0
+            ? `Offline - Caching Scans (${pendingCount})`
+            : 'Offline - Caching Scans'
+        }
       >
         <CloudOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        Offline - Caching Scans
-        {pendingCount > 0 ? ` (${pendingCount})` : ''}
+        <span className="hidden md:inline">
+          Offline - Caching Scans
+          {pendingCount > 0 ? ` (${pendingCount})` : ''}
+        </span>
       </span>
     );
   }
@@ -71,16 +78,19 @@ export function NetworkStatusBadge({ className }: { className?: string }) {
         data-testid="network-status-badge"
         data-phase="syncing"
         className={cn(
-          'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-accent/40',
-          'bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent',
+          'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-accent/40',
+          'bg-accent/10 px-1.5 py-1 text-xs font-semibold text-accent md:px-2.5',
           className,
         )}
         role="status"
         aria-live="polite"
+        aria-label={pendingCount > 0 ? `Syncing (${pendingCount})` : 'Syncing'}
       >
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-        Syncing…
-        {pendingCount > 0 ? ` (${pendingCount})` : ''}
+        <span className="hidden md:inline">
+          Syncing…
+          {pendingCount > 0 ? ` (${pendingCount})` : ''}
+        </span>
       </span>
     );
   }
@@ -90,15 +100,16 @@ export function NetworkStatusBadge({ className }: { className?: string }) {
       data-testid="network-status-badge"
       data-phase="online"
       className={cn(
-        'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-success/40',
-        'bg-success/10 px-2.5 py-1 text-xs font-semibold text-success',
+        'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-success/40',
+        'bg-success/10 px-1.5 py-1 text-xs font-semibold text-success md:px-2.5',
         className,
       )}
       role="status"
       aria-live="polite"
+      aria-label="Connected"
     >
       <Wifi className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      Connected
+      <span className="hidden md:inline">Connected</span>
     </span>
   );
 }

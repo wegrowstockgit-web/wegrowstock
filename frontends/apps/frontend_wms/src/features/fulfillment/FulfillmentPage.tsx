@@ -56,12 +56,14 @@ import {
 import { WayfindingMiniMap } from '@/features/fulfillment/WayfindingMiniMap';
 import { QuarantineReview } from '@/features/fulfillment/QuarantineReview';
 import { RateShoppingWidget } from '@/features/fulfillment/RateShoppingWidget';
+import { PackWeightCapture } from '@/features/fulfillment/PackWeightCapture';
 import {
   ReplenishmentBadge,
   ReplenishmentQueue,
 } from '@/features/fulfillment/ReplenishmentQueue';
 import { useWarehouseUXStore } from '@/stores/warehouseUX';
 import { usePrintStore } from '@/stores/usePrintStore';
+import { isAnyScaleConnected, useHardwareStore } from '@/stores/hardwareStore';
 import { ScannerSettings } from '@/features/settings/ScannerSettings';
 
 function isStagingLocationBarcode(code: string, prompt: CrossDockPrompt): boolean {
@@ -288,6 +290,13 @@ export function FulfillmentPage() {
   const gs1FeedbackPendingRef = useRef(false);
   const scale = useDigitalScale();
   const packingScale = usePackingScale();
+  const hardwareReading = useHardwareStore((s) => s.scaleReading);
+  const bluetoothScale = useHardwareStore((s) => s.bluetoothScale);
+  const serialScale = useHardwareStore((s) => s.serialScale);
+  const openManager = useHardwareStore((s) => s.openManager);
+  const requestScaleDisconnect = useHardwareStore((s) => s.requestScaleDisconnect);
+  const hardwareScaleConnected = isAnyScaleConnected({ bluetoothScale, serialScale });
+  const scaleConnected = packingScale.connected || scale.connected || hardwareScaleConnected;
   const pendingMisScan = useWarehouseUXStore((s) => s.pendingMisScan);
   const bufferMisScan = useWarehouseUXStore((s) => s.bufferMisScan);
   const undoMisScan = useWarehouseUXStore((s) => s.undoMisScan);
@@ -402,8 +411,8 @@ export function FulfillmentPage() {
     if (packingScale.stableWeightLb != null && packingScale.stableWeightLb > 0) {
       return packingScale.stableWeightLb;
     }
-    const scaleLb = scale.reading?.weightLb ?? 0;
-    if (scaleLb > 0) return scaleLb;
+    const linkedLb = hardwareReading?.weightLb ?? scale.reading?.weightLb ?? 0;
+    if (linkedLb > 0) return linkedLb;
     const manual = Number(manualWeightLb);
     if (Number.isFinite(manual) && manual > 0) return manual;
     if (cartonPreview?.billableWeightLb && cartonPreview.billableWeightLb > 0) {
@@ -421,6 +430,7 @@ export function FulfillmentPage() {
     }
     const weightLb =
       packingScale.stableWeightLb ??
+      (hardwareReading?.stable ? hardwareReading.weightLb : null) ??
       (scale.connected && scale.reading?.stable ? scale.reading.weightLb : null);
     if (weightLb == null || !(weightLb > 0)) {
       return;
@@ -436,6 +446,8 @@ export function FulfillmentPage() {
     packSalesOrderId,
     cartonPreview,
     packingScale.stableWeightLb,
+    hardwareReading?.stable,
+    hardwareReading?.weightLb,
     scale.connected,
     scale.reading?.stable,
     scale.reading?.weightLb,
@@ -1251,59 +1263,51 @@ export function FulfillmentPage() {
                         ? `Packing scale (Serial)${
                             packingScale.reading?.stable ? ' · stable' : ''
                           } · ${packingScale.reading?.rawValue ?? 'Awaiting reading...'}`
-                        : scale.connected
-                          ? `Scale connected (${scale.transport ?? 'edge'})${
-                              scale.reading?.stable ? ' · stable' : ''
-                            } · ${scale.reading?.rawValue ?? 'Awaiting reading...'}`
+                        : hardwareScaleConnected || scale.connected
+                          ? `Scale connected (${hardwareReading?.transport ?? scale.transport ?? 'edge'})${
+                              hardwareReading?.stable || scale.reading?.stable ? ' · stable' : ''
+                            } · ${hardwareReading?.rawValue ?? scale.reading?.rawValue ?? 'Awaiting reading...'}`
                           : 'Connect packing scale (Serial 9600). Stable weight auto-buys the label.'}
                     </p>
                     {(packingScale.error || scale.error) && (
                       <p className="text-sm text-danger">{packingScale.error ?? scale.error}</p>
                     )}
-                    <div className="flex flex-wrap gap-2">
-                      {!packingScale.connected && !scale.connected ? (
-                        <>
-                          {packingScale.serialSupported && (
-                            <Button
-                              loading={packingScale.connecting}
-                              onClick={() => void packingScale.connect()}
-                              data-testid="packing-scale-connect"
-                            >
-                              Connect packing scale
-                            </Button>
-                          )}
-                          {scale.bluetoothSupported && (
-                            <Button
-                              variant="secondary"
-                              loading={scale.connecting}
-                              onClick={() => void scale.connectBluetooth()}
-                            >
-                              Connect Bluetooth scale
-                            </Button>
-                          )}
-                        </>
-                      ) : (
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            packingScale.disconnect();
-                            scale.disconnect();
-                          }}
-                        >
-                          Disconnect
-                        </Button>
-                      )}
-                    </div>
                   </>
                 )}
+                <div className="flex flex-wrap gap-2">
+                  {!scaleConnected ? (
+                    <Button onClick={openManager} data-testid="packing-scale-connect">
+                      Open Device Manager
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        packingScale.disconnect();
+                        scale.disconnect();
+                        requestScaleDisconnect();
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                </div>
 
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  label="Weight override (lb)"
+                <PackWeightCapture
+                  scaleConnected={scaleConnected}
+                  stableWeightLb={
+                    packingScale.stableWeightLb ??
+                    (hardwareReading?.stable ? hardwareReading.weightLb : null) ??
+                    (scale.connected && scale.reading?.stable ? scale.reading.weightLb : null)
+                  }
+                  liveWeightLb={
+                    packingScale.reading?.weightLb ??
+                    hardwareReading?.weightLb ??
+                    scale.reading?.weightLb ??
+                    null
+                  }
                   value={manualWeightLb}
-                  onChange={(e) => setManualWeightLb(e.target.value)}
+                  onChange={setManualWeightLb}
                   placeholder={
                     cartonPreview
                       ? String(Number(cartonPreview.billableWeightLb).toFixed(2))

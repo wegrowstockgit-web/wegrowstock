@@ -7,6 +7,25 @@ export interface HardwareCapabilities {
   isSupported: boolean;
 }
 
+export const UNSUPPORTED_BROWSER_HARDWARE_MESSAGE =
+  'Your current browser does not support direct hardware connections. To connect USB or Bluetooth scales, please use Google Chrome or Microsoft Edge on a Windows, Mac, or Android device.';
+
+/**
+ * Live probe — read at call time so tests can stub navigator after import.
+ * HID keyboard-wedge barcode scanners do not depend on these APIs.
+ */
+export function supportsWebSerial(
+  nav: Navigator | undefined = typeof navigator === 'undefined' ? undefined : navigator,
+): boolean {
+  return Boolean(nav && 'serial' in nav);
+}
+
+export function supportsWebBluetooth(
+  nav: Navigator | undefined = typeof navigator === 'undefined' ? undefined : navigator,
+): boolean {
+  return Boolean(nav && 'bluetooth' in nav);
+}
+
 /**
  * Capability probe for Web Hardware APIs. Never throws — Safari and Firefox
  * omit `navigator.bluetooth` / `navigator.serial` entirely.
@@ -14,8 +33,8 @@ export interface HardwareCapabilities {
 export function getHardwareCapabilities(
   nav: Navigator | undefined = typeof navigator === 'undefined' ? undefined : navigator,
 ): HardwareCapabilities {
-  const isBluetoothSupported = Boolean(nav && 'bluetooth' in nav);
-  const isSerialSupported = Boolean(nav && 'serial' in nav);
+  const isBluetoothSupported = supportsWebBluetooth(nav);
+  const isSerialSupported = supportsWebSerial(nav);
   return {
     isBluetoothSupported,
     isSerialSupported,

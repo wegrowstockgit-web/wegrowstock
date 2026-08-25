@@ -146,15 +146,34 @@ public class ReturnController {
     @GetMapping
     public Object list(@RequestParam(required = false) String status,
                        @RequestParam(required = false) String cursor,
-                       @RequestParam(required = false) Integer limit) {
+                       @RequestParam(required = false) Integer limit,
+                       @RequestParam(required = false) Integer page,
+                       @RequestParam(required = false) Integer size) {
         UUID tenantId = TenantContext.requireTenantId();
         List<ReturnOrder> orders = status != null && !status.isBlank()
                 ? returnOrderRepository.findByTenantIdAndStatusOrderByCreatedAtDesc(tenantId, status)
                 : returnOrderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
+        if (page != null || size != null) {
+            int pageNumber = page == null || page < 1 ? 1 : page;
+            int pageSize = size == null ? 25 : Math.min(Math.max(size, 1), 100);
+            int start = (pageNumber - 1) * pageSize;
+            int end = Math.min(start + pageSize, orders.size());
+            List<ReturnOrder> slice = start >= orders.size() ? List.of() : orders.subList(start, end);
+            int totalPages = orders.isEmpty() ? 0 : (int) Math.ceil(orders.size() / (double) pageSize);
+            return new PageResponse<>(
+                    slice.stream().map(this::toResponse).toList(),
+                    null,
+                    end < orders.size(),
+                    (long) orders.size(),
+                    totalPages,
+                    pageNumber,
+                    pageSize
+            );
+        }
         if (limit == null) {
             return orders.stream().map(this::toResponse).toList();
         }
-        int size = Math.min(Math.max(limit, 1), 100);
+        int cursorSize = Math.min(Math.max(limit, 1), 100);
         int start = 0;
         if (cursor != null && !cursor.isBlank()) {
             for (int i = 0; i < orders.size(); i++) {
@@ -164,11 +183,11 @@ public class ReturnController {
                 }
             }
         }
-        int end = Math.min(start + size, orders.size());
-        List<ReturnOrder> page = start >= orders.size() ? List.of() : orders.subList(start, end);
+        int end = Math.min(start + cursorSize, orders.size());
+        List<ReturnOrder> cursorPage = start >= orders.size() ? List.of() : orders.subList(start, end);
         boolean hasMore = end < orders.size();
-        String nextCursor = hasMore && !page.isEmpty() ? page.getLast().getId().toString() : null;
-        return new PageResponse<>(page.stream().map(this::toResponse).toList(), nextCursor, hasMore);
+        String nextCursor = hasMore && !cursorPage.isEmpty() ? cursorPage.getLast().getId().toString() : null;
+        return new PageResponse<>(cursorPage.stream().map(this::toResponse).toList(), nextCursor, hasMore);
     }
 
     @GetMapping("/by-barcode/{barcode}")

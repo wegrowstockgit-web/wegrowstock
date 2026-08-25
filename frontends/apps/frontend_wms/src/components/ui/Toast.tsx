@@ -23,9 +23,33 @@ export interface ToastItem {
   leaving?: boolean;
 }
 
+type ToastShow = (message: string, opts?: { tone?: ToastTone; durationMs?: number }) => void;
+
 interface ToastContextValue {
-  toast: (message: string, opts?: { tone?: ToastTone; durationMs?: number }) => void;
+  toast: ToastShow;
 }
+
+interface GlobalToast extends ToastShow {
+  error: (message: string) => void;
+}
+
+let boundToast: ToastShow | null = null;
+
+export function bindToastImpl(impl: ToastShow | null): void {
+  boundToast = impl;
+}
+
+/** Imperative toast for Axios interceptors and non-React callers. */
+export const toast: GlobalToast = Object.assign(
+  ((message: string, opts?: { tone?: ToastTone; durationMs?: number }) => {
+    boundToast?.(message, opts);
+  }) as ToastShow,
+  {
+    error: (message: string) => {
+      boundToast?.(message, { tone: 'danger' });
+    },
+  },
+);
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
@@ -87,6 +111,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const durationMs = opts?.durationMs ?? 3500;
       const tone = opts?.tone ?? 'default';
+      let added = false;
+      setItems((prev) => {
+        // Interceptor + local onError can fire the same RFC 7807 detail together.
+        if (prev.some((t) => t.message === message && !t.leaving)) return prev;
+        added = true;
+        return [...prev, { id, message, tone, durationMs }];
+      });
+      if (!added) return;
       if (tone === 'danger') {
         useUiActionTrackerStore.getState().trackAction({
           actionType: 'TOAST_ERROR',
@@ -94,7 +126,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           errorMessage: message,
         });
       }
-      setItems((prev) => [...prev, { id, message, tone, durationMs }]);
       timers.current.set(id, window.setTimeout(() => dismiss(id), durationMs));
     },
     [dismiss],
@@ -109,6 +140,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({ toast }), [toast]);
+
+  useEffect(() => {
+    bindToastImpl(toast);
+    return () => bindToastImpl(null);
+  }, [toast]);
 
   return (
     <ToastContext.Provider value={value}>

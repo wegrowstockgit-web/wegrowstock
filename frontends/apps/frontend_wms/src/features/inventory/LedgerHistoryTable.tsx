@@ -12,6 +12,7 @@ import {
   type VirtualizedColumnDef,
 } from '@/components/ui/primitives/VirtualizedTable';
 import { TableDensityScope } from '@/hooks/useDensity';
+import { DataListWorkspace } from '@/components/layout/DataListWorkspace';
 import { useSessionStore } from '@/stores/session';
 import { formatNumber } from '@/lib/utils';
 
@@ -177,14 +178,14 @@ export function LedgerHistoryTable({
         </p>
       ) : (
         <TableDensityScope gridId="ledger-history">
-          <div className="h-[600px] min-h-0" data-testid="ledger-virtualized-table">
+          <DataListWorkspace className="h-[600px]" testId="ledger-virtualized-table">
             <VirtualizedTable
               gridId="ledger-history"
               columns={columns}
               rows={data}
               getRowId={(row) => row.id}
             />
-          </div>
+          </DataListWorkspace>
         </TableDensityScope>
       )}
 

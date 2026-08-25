@@ -25,6 +25,7 @@ import {
   matchingExpandedIds,
 } from '@/features/settings/warehouseTree';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface WarehouseVisualizerProps {
   locations: TenantLocation[];
@@ -35,6 +36,7 @@ interface WarehouseVisualizerProps {
  * Warehouse layout workspace — list-first hierarchy for data entry, map for spatial layout.
  */
 export function WarehouseVisualizer({ locations, onAddWarehouse }: WarehouseVisualizerProps) {
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -56,6 +58,10 @@ export function WarehouseVisualizer({ locations, onAddWarehouse }: WarehouseVisu
     }
     setExpanded(new Set(defaultExpandedIds(tree)));
   }, [query, tree, filtered]);
+
+  useEffect(() => {
+    if (isMobile) setViewMode('list');
+  }, [isMobile]);
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
@@ -96,7 +102,7 @@ export function WarehouseVisualizer({ locations, onAddWarehouse }: WarehouseVisu
             role="group"
             aria-label="Warehouse view"
             data-testid="warehouse-view-toggle"
-            className="inline-flex rounded-md border border-border bg-surface p-0.5"
+            className="hidden md:inline-flex rounded-md border border-border bg-surface p-0.5"
           >
             <Button
               type="button"
@@ -136,8 +142,10 @@ export function WarehouseVisualizer({ locations, onAddWarehouse }: WarehouseVisu
           <Warehouse className="h-8 w-8 text-text-muted" aria-hidden />
           <span className="text-sm font-medium">Place your first warehouse</span>
         </button>
-      ) : viewMode === 'map' ? (
-        <DigitalTwinMap locations={locations} onSelectLocation={setSelectedId} />
+      ) : !isMobile && viewMode === 'map' ? (
+        <div className="hidden md:block" data-testid="warehouse-map-shell">
+          <DigitalTwinMap locations={locations} onSelectLocation={setSelectedId} />
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="max-w-md">

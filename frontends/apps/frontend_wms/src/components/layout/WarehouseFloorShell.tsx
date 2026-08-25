@@ -4,11 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Header } from './Header';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { SyncConflictToast } from '@/components/ui/SyncConflictToast';
+import { DeviceManagerModal } from '@/components/hardware/DeviceManagerModal';
 import { useSessionStore, useIsAuthenticated, useSessionWarehouseIds } from '@/stores/session';
 import { useActiveWarehouseStore } from '@/stores/activeWarehouse';
 import { useWarehouseStore } from '@/stores/warehouseStore';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useWarehouseContextGate } from '@/hooks/useWarehouseContextGate';
+import { useLaborScanAutomation } from '@/hooks/useLaborScanAutomation';
 import { apiClient } from '@/api/client';
 import { signOut } from '@/lib/signOut';
 
@@ -49,6 +51,8 @@ export function WarehouseFloorShell() {
 
   const jwtTerminalLocked = sessionWarehouseIds.length === 1;
   const hideSwitcher = jwtTerminalLocked || contextLocked || switcherDisabled;
+
+  useLaborScanAutomation({ listenHardware: true });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'warehouse');
@@ -187,6 +191,7 @@ export function WarehouseFloorShell() {
       </div>
 
       <SyncConflictToast />
+      <DeviceManagerModal />
     </div>
   );
 }

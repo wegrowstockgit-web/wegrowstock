@@ -5,6 +5,7 @@ import { usePreferencesStore } from '@/stores/preferencesStore';
 import { clearQueryCache, queryClient } from '@/offline/queryPersistence';
 import { getTrainingGuard } from '@/lib/training/active';
 import { recordSupportNetworkError } from '@/lib/chatbot/active';
+import { notifyApiProblem } from '@/lib/apiClient';
 
 // Empty base URL: requests use /api/v1/... and are proxied by Vite (dev) or nginx (Docker).
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
@@ -239,6 +240,7 @@ apiClient.interceptors.response.use(
       await handleAuthFailure();
     }
 
+    notifyApiProblem(error);
     return Promise.reject(error);
   },
 );

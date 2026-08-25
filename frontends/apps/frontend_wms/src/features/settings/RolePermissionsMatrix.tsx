@@ -13,6 +13,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import { useEntitlement } from '@/hooks/useEntitlement';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useCurrentNetwork } from '@/hooks/useCurrentNetwork';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -70,6 +71,24 @@ function formatPermissionLabel(key: string): string {
   );
 }
 
+function permissionCategory(key: string): string {
+  if (key.startsWith('inventory:')) return 'Inventory Permissions';
+  if (key.startsWith('purchasing:') || key.startsWith('mrp:')) return 'Purchasing Permissions';
+  if (key.startsWith('sales:') || key.startsWith('so:') || key.startsWith('customers:')) {
+    return 'Sales Permissions';
+  }
+  if (
+    key.startsWith('fulfillment:') ||
+    key.startsWith('returns:') ||
+    key.startsWith('printing:') ||
+    key.startsWith('pos.')
+  ) {
+    return 'Fulfillment Permissions';
+  }
+  if (key.startsWith('settings:') || key.startsWith('edi:')) return 'Settings Permissions';
+  return 'Other Permissions';
+}
+
 function formatRoleColumnName(name: string): string {
   if (name === 'WAREHOUSE_MANAGER') return 'Manager';
   return name
@@ -97,6 +116,7 @@ export function RolePermissionsMatrix() {
   const [roleDescription, setRoleDescription] = useState('');
   const [cloneFromRoleId, setCloneFromRoleId] = useState('');
   const { hasModule } = useEntitlement();
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const matrixQuery = useQuery({
     queryKey: ['role-permissions'],
@@ -370,7 +390,44 @@ export function RolePermissionsMatrix() {
           </Button>
         </div>
       </div>
-      <div className="min-w-0 max-w-full overflow-x-auto">
+      <div className="min-w-0 max-w-full">
+        {isMobile ? (
+          <div className="space-y-3" data-testid="role-matrix-mobile">
+            <p
+              className="rounded-md border border-border bg-surface-overlay/50 px-3 py-2 text-sm text-text-muted"
+              data-testid="role-matrix-desktop-banner"
+              role="status"
+            >
+              Role matrix editing is optimized for desktop viewports.
+            </p>
+            {[...permissionKeys.reduce((map, key) => {
+              const category = permissionCategory(key);
+              const list = map.get(category) ?? [];
+              list.push(key);
+              map.set(category, list);
+              return map;
+            }, new Map<string, string[]>())].map(([category, keys]) => (
+              <details
+                key={category}
+                className="rounded-lg border border-border bg-surface-raised"
+                data-testid={`perm-accordion-${category}`}
+              >
+                <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-text">
+                  {category}
+                </summary>
+                <ul className="space-y-1 border-t border-border px-3 py-2">
+                  {keys.map((key) => (
+                    <li key={key} className="text-sm text-text">
+                      {formatPermissionLabel(key)}
+                      <span className="mt-0.5 block font-mono text-xs text-text-muted">{key}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+        ) : (
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[32rem] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -480,6 +537,8 @@ export function RolePermissionsMatrix() {
             ))}
           </tbody>
         </table>
+        </div>
+        )}
       </div>
 
       <Modal

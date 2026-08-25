@@ -24,6 +24,7 @@ describe('NetworkStatusBadge', () => {
     });
     expect(screen.getByTestId('network-status-badge')).toHaveAttribute('data-phase', 'online');
     expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Connected').className).toContain('md:inline');
   });
 
   it('shows Offline caching badge when offline', async () => {

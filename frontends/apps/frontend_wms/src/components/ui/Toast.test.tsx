@@ -28,6 +28,18 @@ describe('ToastProvider', () => {
     expect(region.style.top).toContain('--header-height');
   });
 
+  it('does not stack the same message from interceptor and local onError', () => {
+    render(
+      <ToastProvider>
+        <Trigger />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fail' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fail' }));
+    expect(screen.getAllByTestId('app-toast')).toHaveLength(1);
+  });
+
   it('slides the toast in from the top', () => {
     render(
       <ToastProvider>

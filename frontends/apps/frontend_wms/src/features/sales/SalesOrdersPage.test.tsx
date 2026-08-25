@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -29,7 +29,19 @@ function renderPage() {
 }
 
 describe('SalesOrdersPage RFQ inbox', () => {
+  const originalMatchMedia = window.matchMedia;
+
   beforeEach(() => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
     useSessionStore.setState({
       authenticated: true,
       user: {
@@ -118,6 +130,10 @@ describe('SalesOrdersPage RFQ inbox', () => {
     vi.mocked(apiClient.post).mockResolvedValue({ data: {} });
   });
 
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+  });
+
   it('highlights RFQ rows and sends a customer quote from the drawer', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -140,5 +156,23 @@ describe('SalesOrdersPage RFQ inbox', () => {
     renderPage();
     await user.click(await screen.findByText('SO-BO-1'));
     expect(await screen.findByTestId('allocation-hold-badge')).toHaveTextContent(/Ship Complete/i);
+  });
+
+  it('renders paginated mobile cards below 768px', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('max-width: 767px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
+    renderPage();
+    expect(await screen.findByTestId('sales-orders-mobile-list')).toBeInTheDocument();
+    expect(screen.getByTestId('sales-order-mobile-card-rfq-1')).toHaveTextContent('SO-RFQ-1');
+    expect(screen.queryByTestId('sales-orders-table-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pagination')).toBeInTheDocument();
   });
 });

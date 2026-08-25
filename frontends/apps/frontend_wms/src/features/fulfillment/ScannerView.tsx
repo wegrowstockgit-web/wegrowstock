@@ -10,6 +10,7 @@ import { VariantThumb } from '@/components/ui/VariantThumb';
 import { uploadViaPresign } from '@/lib/mediaPresign';
 import { compressImageForUpload } from '@/utils/imageCompression';
 import { useScanFeedback, type ScanFeedbackType } from '@/hooks/useScanFeedback';
+import { useLaborScanAutomation } from '@/hooks/useLaborScanAutomation';
 import { cn } from '@/lib/utils';
 
 export interface ScannerHistoryItem {
@@ -109,6 +110,8 @@ export function ScannerView({
     !!latest?.success &&
     !!latest.variantId &&
     !(lastThumbUrl ?? latest.primaryMediaUrl);
+
+  useLaborScanAutomation({ barcode: lastScan, mode, enabled: Boolean(lastScan) });
 
   useEffect(() => {
     if (!feedbackFlash) return;

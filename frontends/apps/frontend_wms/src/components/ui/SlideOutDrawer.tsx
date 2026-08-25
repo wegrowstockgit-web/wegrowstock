@@ -15,7 +15,7 @@ export interface SlideOutDrawerProps {
 
 /**
  * Right-peek drawer with token-based motion. Respects prefers-reduced-motion.
- * Portaled to document.body so header backdrop-filter / overflow cannot trap `fixed`.
+ * Portaled to document.body so header overflow cannot trap `fixed`.
  */
 export function SlideOutDrawer({
   open,
@@ -57,11 +57,13 @@ export function SlideOutDrawer({
         aria-labelledby="slide-out-title"
         data-testid="right-peek-drawer"
         className={cn(
-          'absolute right-0 top-0 flex h-full max-h-[100dvh] w-full flex-col border-l border-border bg-surface-raised shadow-elevated',
-          'translate-x-0 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          'motion-reduce:transition-none',
-          width === 'lg' ? 'max-w-xl' : 'max-w-md',
-          'max-md:max-w-none',
+          'absolute flex w-full flex-col border-border bg-surface-raised shadow-elevated',
+          'transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+          'inset-x-0 bottom-0 top-auto h-[90vh] max-h-[90vh] max-w-none rounded-t-2xl border-t',
+          'translate-y-0',
+          'md:inset-y-0 md:right-0 md:left-auto md:top-0 md:h-full md:max-h-[100dvh] md:rounded-none md:border-l md:border-t-0',
+          'md:translate-x-0 md:translate-y-0',
+          width === 'lg' ? 'md:max-w-xl' : 'md:max-w-md',
         )}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">

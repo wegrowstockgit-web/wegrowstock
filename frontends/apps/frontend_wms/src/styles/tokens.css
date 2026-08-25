@@ -38,6 +38,9 @@
   --rail-width: var(--rail-width-collapsed);
   --rail-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --rail-duration: 220ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --overlay-duration: 200ms;
+  --press-duration: 160ms;
   --header-height: 3.5rem;
 }
 

@@ -17,12 +17,13 @@ export interface UseDigitalScaleResult {
   bluetoothSupported: boolean;
   serialSupported: boolean;
   connected: boolean;
+  bluetoothDeviceName: string | null;
   transport: ScaleTransport;
   reading: DigitalScaleReading | null;
   error: string | null;
   connecting: boolean;
-  connectBluetooth: () => Promise<void>;
-  connectSerial: () => Promise<void>;
+  connectBluetooth: () => Promise<boolean>;
+  connectSerial: () => Promise<boolean>;
   disconnect: () => void;
 }
 
@@ -92,10 +93,10 @@ export function useDigitalScale(): UseDigitalScaleResult {
     bluetooth.disconnect();
   }, [bluetooth, disconnectSerial]);
 
-  const connectSerial = useCallback(async () => {
+  const connectSerial = useCallback(async (): Promise<boolean> => {
     if (!serialSupported) {
       setSerialError('Web Serial is not available in this browser.');
-      return;
+      return false;
     }
     setSerialConnecting(true);
     setSerialError(null);
@@ -131,9 +132,16 @@ export function useDigitalScale(): UseDigitalScaleResult {
           setSerialConnected(false);
         }
       })();
+      return true;
     } catch (err) {
-      setSerialError(err instanceof Error ? err.message : 'Serial scale connection failed');
+      const cancelled =
+        (err instanceof DOMException && err.name === 'NotFoundError') ||
+        (err instanceof Error && /cancel/i.test(err.message));
+      if (!cancelled) {
+        setSerialError(err instanceof Error ? err.message : 'Serial scale connection failed');
+      }
       disconnectSerial();
+      return false;
     } finally {
       setSerialConnecting(false);
     }
@@ -172,6 +180,7 @@ export function useDigitalScale(): UseDigitalScaleResult {
     bluetoothSupported: bluetooth.supported,
     serialSupported,
     connected: serialConnected || bluetooth.connected,
+    bluetoothDeviceName: bluetooth.deviceName,
     transport,
     reading: activeReading
       ? {

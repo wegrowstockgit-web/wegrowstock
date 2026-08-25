@@ -74,7 +74,7 @@ test.describe('Home Realm Discovery (identifier-first login)', () => {
     await page.getByTestId('hrd-domain-add').click();
     expect((await registerWait).ok()).toBeTruthy();
     await expect(page.getByTestId(`hrd-domain-${domain}`)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/growstock-verification=/)).toBeVisible();
+    await expect(page.getByText(/growstock-verification=/).first()).toBeVisible();
 
     await page.getByTestId('hrd-cidr-input').fill('203.0.113.0/24');
     await page.getByTestId('hrd-cidr-add').click();

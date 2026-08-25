@@ -45,7 +45,13 @@ vi.mock('@/lib/training/active', () => ({
   TrainingHost: () => null,
 }));
 
+const toastError = vi.fn();
+vi.mock('@/components/ui/Toast', () => ({
+  toast: { error: (...args: unknown[]) => toastError(...args) },
+}));
+
 import { apiClient } from '@/api/client';
+import { resetApiProblemToastForTests } from '@/lib/apiClient';
 
 describe('apiClient warehouse header', () => {
   beforeEach(() => {
@@ -157,6 +163,8 @@ describe('apiClient 401 session teardown', () => {
   beforeEach(() => {
     sessionState.clearSession.mockReset();
     sessionState.setLocked.mockReset();
+    toastError.mockReset();
+    resetApiProblemToastForTests();
   });
 
   it('clears the local session when a retried request is still 401', async () => {
@@ -197,5 +205,17 @@ describe('apiClient 401 session teardown', () => {
       }),
     ).rejects.toBeTruthy();
     expect(sessionState.clearSession).not.toHaveBeenCalled();
+  });
+
+  it('toasts RFC 7807 detail on 409 and still rejects for local handlers', async () => {
+    const rejected = rejectedHandler();
+    const error = {
+      message: 'Conflict',
+      isAxiosError: true,
+      response: { status: 409, data: { detail: 'Bin capacity exceeded' }, headers: {} },
+      config: { url: '/api/v1/inventory/move' },
+    };
+    await expect(rejected?.(error)).rejects.toBeTruthy();
+    expect(toastError).toHaveBeenCalledWith('Bin capacity exceeded');
   });
 });

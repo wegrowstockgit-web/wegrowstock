@@ -14,6 +14,7 @@ import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { DataListWorkspace } from '@/components/layout/DataListWorkspace';
 import {
   VirtualizedTable,
   type VirtualizedColumnDef,
@@ -342,7 +343,7 @@ export function MrpReorderWorkspace() {
           </DataListToolbar>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-6 pb-4 pt-2">
+        <DataListWorkspace className="px-6 pb-4 pt-2" testId="mrp-grid-shell">
           {table.isLoading && rows.length === 0 ? (
             <div className="p-6" data-testid="list-page-loading">
               <TableSkeleton rows={8} cols={8} />
@@ -370,7 +371,7 @@ export function MrpReorderWorkspace() {
               getRowId={(row) => row.variantId}
             />
           )}
-        </div>
+        </DataListWorkspace>
 
         <div className="shrink-0 px-6 pb-6">
           <Pagination

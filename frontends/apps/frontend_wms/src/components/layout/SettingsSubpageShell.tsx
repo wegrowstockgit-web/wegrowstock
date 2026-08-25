@@ -13,7 +13,7 @@ export function SettingsSubpageShell({
   testId: string;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid={testId}>
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-testid={testId}>
       <ScrollFadePort
         data-testid={`${testId}-scroll`}
         shellClassName="min-h-0 flex-1"

@@ -5,7 +5,8 @@ export type UiActionType =
   | 'FORM_SUBMIT'
   | 'TOAST_ERROR'
   | 'TAB_CHANGE'
-  | 'SCAN_REJECTED';
+  | 'SCAN_REJECTED'
+  | 'LABOR_AUTO_SWITCH';
 
 export type UiActionBreadcrumb = {
   timestamp: number;

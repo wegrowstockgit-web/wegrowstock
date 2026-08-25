@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
+export { DataListWorkspace } from '@/components/layout/DataListWorkspace';
+
 interface ListPageStateProps<T> {
   isLoading: boolean;
   isError: boolean;

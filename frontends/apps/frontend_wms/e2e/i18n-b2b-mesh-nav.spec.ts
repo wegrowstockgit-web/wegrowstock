@@ -18,8 +18,11 @@ test.describe('i18n persistence and B2B/Mesh office navigation', () => {
     await expect(ownerPage).toHaveURL(/\/mesh-network/, { timeout: 15_000 });
     await expect(ownerPage.getByTestId('mesh-network-page')).toBeVisible();
 
-    await ownerPage.getByTestId('nav-category-outbound').click();
-    await ownerPage.getByRole('link', { name: 'Customers', exact: true }).click();
+    const customers = ownerPage.getByRole('link', { name: 'Customers', exact: true });
+    if (!(await customers.isVisible().catch(() => false))) {
+      await ownerPage.getByTestId('nav-category-outbound').click();
+    }
+    await customers.click();
     await expect(ownerPage).toHaveURL(/\/customers/, { timeout: 15_000 });
     await expect(ownerPage.getByTestId('pending-applications-tab')).toBeVisible();
   });

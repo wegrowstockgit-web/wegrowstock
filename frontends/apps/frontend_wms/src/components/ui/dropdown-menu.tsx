@@ -58,7 +58,7 @@ const DropdownMenuContent = React.forwardRef<
       className={cn(
         'z-50 min-w-[12rem] rounded-md border border-border-strong bg-surface-raised p-1 text-text shadow-elevated',
         // Default clips; callers may override with overflow-y-auto for long menus.
-        'overflow-hidden',
+        'overflow-hidden duration-[180ms] ease-out',
         className,
       )}
       {...props}

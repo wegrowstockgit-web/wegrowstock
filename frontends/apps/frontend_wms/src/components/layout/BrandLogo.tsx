@@ -27,6 +27,14 @@ export function BrandLogo({
       data-testid="brand-logo"
     >
       <BrandMark inverted={inverted} size={size} />
+      {compact && tier ? (
+        <span
+          className="sr-only"
+          data-testid="tier-badge"
+        >
+          {tier}
+        </span>
+      ) : null}
       {!compact && (
         <div className="shrink-0 leading-tight">
           <p

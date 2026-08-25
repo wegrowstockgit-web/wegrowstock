@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
@@ -35,6 +36,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { RightPeekDrawer } from '@/components/ui/RightPeekDrawer';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { unwrapPageItems } from '@/api/page';
@@ -197,6 +200,40 @@ const STATUS_STYLES: Record<string, string> = {
   CLOSED: 'bg-success/10 text-success',
   CANCELLED: 'bg-danger/10 text-danger',
 };
+
+function PurchaseOrdersMobileCards({
+  items,
+  onPeek,
+}: {
+  items: PurchaseOrder[];
+  onPeek: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2 pb-2 md:hidden" data-testid="purchase-orders-mobile-list">
+      {items.map((po) => (
+        <EntityMobileCard
+          key={po.id}
+          testId={`purchase-order-mobile-card-${po.id}`}
+          identity={po.number}
+          title={po.supplierName}
+          status={
+            <span
+              className={cn(
+                'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                STATUS_STYLES[po.status] ?? 'bg-surface-overlay text-text-muted',
+              )}
+            >
+              {po.status.replaceAll('_', ' ')}
+            </span>
+          }
+          amount={po.totalAmount != null ? formatCurrency(Number(po.totalAmount)) : '—'}
+          date={formatMediumDate(po.createdAt)}
+          onClick={() => onPeek(po.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
 interface DraftLine {
   variantId: string;
@@ -685,6 +722,7 @@ export function PurchaseOrdersPage() {
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
   const canReceive = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'PICKER');
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [modalOpen, setModalOpen] = useState(Boolean(meshPartnerSku || meshSupplierId));
   const [peekPoId, setPeekPoId] = useState<string | null>(null);
   const [receivePoId, setReceivePoId] = useState<string | null>(null);
@@ -696,6 +734,7 @@ export function PurchaseOrdersPage() {
     fetcher: listPurchaseOrders,
   });
   const { items, isLoading, isError, error, refetch, search } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
   const peekPo = items.find((po) => po.id === peekPoId) ?? null;
   const ensureColumns = useGridColumnStore((s) => s.ensureColumns);
 
@@ -780,9 +819,15 @@ export function PurchaseOrdersPage() {
             ) : undefined
           }
         >
-          {(items) => (
+          {(rows) => (
             <div className="w-full px-6 pb-6">
-              <PurchaseOrdersTable items={items} onPeek={setPeekPoId} />
+              {isMobile ? (
+                <PurchaseOrdersMobileCards items={rows} onPeek={setPeekPoId} />
+              ) : (
+                <div className="hidden md:block" data-testid="purchase-orders-table-view">
+                  <PurchaseOrdersTable items={rows} onPeek={setPeekPoId} />
+                </div>
+              )}
               <Pagination
                 page={table.page}
                 totalPages={table.totalPages}

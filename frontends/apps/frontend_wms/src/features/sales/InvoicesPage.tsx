@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, Mail, MoreVertical, Plus } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { Invoice, SalesOrder } from '@/api/types';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, formatMediumDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -26,10 +26,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { listInvoices } from '@/api/operational';
@@ -233,6 +236,43 @@ function InvoicesTable({
   );
 }
 
+function InvoicesMobileCards({
+  items,
+  onOpen,
+}: {
+  items: Invoice[];
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2 pb-2 md:hidden" data-testid="invoices-mobile-list">
+      {items.map((inv) => {
+        const status = displayStatus(inv);
+        return (
+          <EntityMobileCard
+            key={inv.id}
+            testId={`invoice-mobile-card-${inv.id}`}
+            identity={inv.number}
+            title={inv.customerName}
+            status={
+              <span
+                className={cn(
+                  'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  STATUS_STYLES[status] ?? 'bg-surface-overlay text-text-muted',
+                )}
+              >
+                {status.replaceAll('_', ' ')}
+              </span>
+            }
+            amount={formatCurrency(inv.total, inv.currency)}
+            date={formatMediumDate(inv.dueAt)}
+            onClick={() => onOpen(inv.id)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function CreateInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [salesOrderId, setSalesOrderId] = useState('');
@@ -305,6 +345,7 @@ export function InvoicesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState('');
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const table = useServerTableQuery<Invoice>({
     queryKey: 'invoices',
@@ -314,6 +355,7 @@ export function InvoicesPage() {
     fetcher: listInvoices,
   });
   const { items, isLoading, isError, error, refetch, search } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   const selectedCount = selected.size;
   const selectedOnPage = useMemo(
@@ -471,35 +513,41 @@ export function InvoicesPage() {
       >
         {(rows) => (
           <>
-            <InvoicesTable
-              items={rows}
-              selected={selected}
-              onToggle={(id) => {
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                });
-              }}
-              onToggleAll={(ids, checked) => {
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  for (const id of ids) {
-                    if (checked) next.add(id);
-                    else next.delete(id);
-                  }
-                  return next;
-                });
-              }}
-              onOpen={(id) => navigate(`/invoices/${id}`)}
-              onLogPayment={(invoice) => {
-                setPayInvoice(invoice);
-                setPayAmount(String(invoiceBalanceDue(invoice)));
-              }}
-              onDownloadPdf={(invoice) => void downloadPdf(invoice.id, invoice.number)}
-              onEmail={(invoice) => emailMutation.mutate(invoice.id)}
-            />
+            {isMobile ? (
+              <InvoicesMobileCards items={rows} onOpen={(id) => navigate(`/invoices/${id}`)} />
+            ) : (
+              <div className="hidden md:block" data-testid="invoices-table-view">
+                <InvoicesTable
+                  items={rows}
+                  selected={selected}
+                  onToggle={(id) => {
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    });
+                  }}
+                  onToggleAll={(ids, checked) => {
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const id of ids) {
+                        if (checked) next.add(id);
+                        else next.delete(id);
+                      }
+                      return next;
+                    });
+                  }}
+                  onOpen={(id) => navigate(`/invoices/${id}`)}
+                  onLogPayment={(invoice) => {
+                    setPayInvoice(invoice);
+                    setPayAmount(String(invoiceBalanceDue(invoice)));
+                  }}
+                  onDownloadPdf={(invoice) => void downloadPdf(invoice.id, invoice.number)}
+                  onEmail={(invoice) => emailMutation.mutate(invoice.id)}
+                />
+              </div>
+            )}
             <Pagination
               page={table.page}
               totalPages={table.totalPages}

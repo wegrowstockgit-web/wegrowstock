@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listCustomers, listInvoices, listManufacturingOrders, listProducts, listPurchaseOrders, listSalesOrders, listSuppliers } from './operational';
+import { listCustomers, listInvoices, listManufacturingOrders, listProducts, listPurchaseOrders, listReturns, listSalesOrders, listSuppliers } from './operational';
 import { apiClient } from '@/api/client';
 
 vi.mock('@/api/client', () => ({
@@ -37,11 +37,15 @@ describe('operational list clients', () => {
     await listInvoices({ page: 1, status: 'OPEN' });
     await listProducts({});
     await listManufacturingOrders({ search: 'MO-1' });
+    await listReturns({ page: 1, size: 25, status: 'APPROVED' });
     expect(apiClient.get).toHaveBeenCalledWith('/api/v1/sales-orders', {
       params: { page: 1, size: 50, status: 'DRAFT' },
     });
     expect(apiClient.get).toHaveBeenCalledWith('/api/v1/manufacturing/orders', {
       params: { page: 1, size: 50, search: 'MO-1' },
+    });
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/returns', {
+      params: { page: 1, size: 25, status: 'APPROVED' },
     });
   });
 });

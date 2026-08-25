@@ -108,6 +108,17 @@ export default defineConfig({
         'src/components/ui/DebouncedSearchInput.tsx',
         'src/pages/reportDateRange.ts',
         'src/pages/reportAccess.ts',
+        'src/lib/laborScanAutomation.ts',
+        'src/features/fulfillment/PackWeightCapture.tsx',
+        'src/stores/hardwareStore.ts',
+        'src/components/hardware/DeviceManagerModal.tsx',
+        'src/lib/apiClient.ts',
+        'src/components/layout/DataListWorkspace.tsx',
+        'src/components/layout/EntityMobileCard.tsx',
+        'src/hooks/useCapMobilePageSize.ts',
+        'src/hooks/useMediaQuery.ts',
+        'src/components/ui/SlideOutDrawer.tsx',
+        'src/pages/RtlsWorkspacePage.tsx',
       ],
       // CameraCapture / MediaPicker / TerminalPinPad: unit + Playwright e2e (not in threshold set).
       // Scanner PIN overlays: covered by Mobile-Scanner Playwright + store/hook unit tests.

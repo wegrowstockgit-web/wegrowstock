@@ -7,6 +7,7 @@ import type {
   Product,
   ProductionOrder,
   PurchaseOrder,
+  Return,
   SalesOrder,
   Supplier,
 } from '@/api/types';
@@ -52,4 +53,8 @@ export function listProducts(query: OffsetQuery) {
 
 export function listManufacturingOrders(query: OffsetQuery) {
   return getPage<ProductionOrder>('/api/v1/manufacturing/orders', query);
+}
+
+export function listReturns(query: OffsetQuery) {
+  return getPage<Return>('/api/v1/returns', query);
 }

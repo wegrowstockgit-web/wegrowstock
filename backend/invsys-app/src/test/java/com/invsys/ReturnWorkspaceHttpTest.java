@@ -141,6 +141,17 @@ class ReturnWorkspaceHttpTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.items[0].id").value(returnId))
                 .andExpect(jsonPath("$.hasMore").value(false));
 
+        mockMvc.perform(get("/api/v1/returns")
+                        .param("page", "1")
+                        .param("size", "25")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items[0].id").value(returnId))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(25))
+                .andExpect(jsonPath("$.totalElements").value(1));
+
         mockMvc.perform(put("/api/v1/returns/" + returnId + "/lines/" + lineId)
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)

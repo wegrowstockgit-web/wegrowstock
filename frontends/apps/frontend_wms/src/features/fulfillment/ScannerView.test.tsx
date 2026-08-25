@@ -39,6 +39,10 @@ vi.mock('@/components/ui/MediaPicker', () => ({
   ),
 }));
 
+vi.mock('@/hooks/useLaborScanAutomation', () => ({
+  useLaborScanAutomation: () => undefined,
+}));
+
 vi.mock('@/components/ui/CameraCapture', () => ({
   CameraCapture: ({
     label,

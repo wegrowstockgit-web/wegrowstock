@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WarehouseVisualizer } from './WarehouseVisualizer';
@@ -48,9 +48,15 @@ function renderViz(locs: TenantLocation[] = locations) {
 }
 
 describe('WarehouseVisualizer', () => {
+  const originalMatchMedia = window.matchMedia;
+
   beforeEach(() => {
     vi.mocked(apiClient.post).mockReset();
     vi.mocked(apiClient.patch).mockReset();
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   it('renders nested warehouse hierarchy in list view by default', () => {
@@ -71,6 +77,25 @@ describe('WarehouseVisualizer', () => {
     fireEvent.click(screen.getByTestId('twin-node-Z1'));
     expect(screen.getByTestId('right-peek-drawer')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('warehouse-view-list'));
+    expect(screen.queryByTestId('digital-twin-map')).not.toBeInTheDocument();
+    expect(screen.getByTestId('warehouse-location-search')).toBeInTheDocument();
+  });
+
+  it('keeps the tree-grid list on phone viewports and hides the digital twin', () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('max-width: 767px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
+    renderViz();
+    expect(screen.getByTestId('warehouse-location-search')).toBeInTheDocument();
+    expect(screen.queryByTestId('digital-twin-map')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('warehouse-view-map'));
     expect(screen.queryByTestId('digital-twin-map')).not.toBeInTheDocument();
     expect(screen.getByTestId('warehouse-location-search')).toBeInTheDocument();
   });

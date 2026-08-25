@@ -58,6 +58,10 @@ describe('Header network badge gating', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('network-status-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('hardware-device-manager-open')).toBeInTheDocument();
+    expect(screen.getByTestId('app-header').className).toContain('bg-surface-raised');
+    expect(screen.getByTestId('app-header').className).not.toContain('backdrop-blur');
+    expect(screen.getByTestId('app-header').className).not.toMatch(/bg-surface-raised\//);
   });
 
   it('hides Connected badge on office header', () => {
@@ -67,6 +71,7 @@ describe('Header network badge gating', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByTestId('network-status-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hardware-device-manager-open')).not.toBeInTheDocument();
     expect(screen.queryByTestId('brand-logo')).not.toBeInTheDocument();
   });
 });

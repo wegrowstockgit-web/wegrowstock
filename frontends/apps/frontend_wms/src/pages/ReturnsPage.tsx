@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Download, Plus, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/api/client';
+import { unwrapPageItems } from '@/api/page';
 import type { PaginatedResponse, Return, ReturnLine, TenantLocation } from '@/api/types';
+import { listReturns } from '@/api/operational';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -17,8 +19,12 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { DensityToggle } from '@/components/ui/DensityToggle';
+import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatCurrency, formatMediumDate } from '@/lib/utils';
@@ -52,7 +58,10 @@ function RmaReviewQueue({ canManage }: { canManage: boolean }) {
   const { data: pending = [], isLoading } = useQuery({
     queryKey: ['returns', 'review-queue'],
     queryFn: async () =>
-      (await apiClient.get<Return[]>('/api/v1/returns?status=PENDING_REVIEW')).data,
+      unwrapPageItems(
+        (await apiClient.get<PaginatedResponse<Return> | Return[]>('/api/v1/returns?status=PENDING_REVIEW'))
+          .data,
+      ),
     retry: false,
   });
 
@@ -364,57 +373,29 @@ export function ReturnsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectLine, setInspectLine] = useState<ReturnLine | null>(null);
   const [inspectReturnId, setInspectReturnId] = useState<string | null>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations'],
     queryFn: async () => (await apiClient.get<TenantLocation[]>('/api/v1/locations')).data,
-  });
-
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    refetch,
-  } = useInfiniteQuery({
-    queryKey: ['returns', 'infinite', statusFilter],
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams();
-      params.set('limit', '25');
-      if (statusFilter !== 'ALL') params.set('status', statusFilter);
-      if (pageParam) params.set('cursor', pageParam);
-      const res = await apiClient.get<PaginatedResponse<Return>>(`/api/v1/returns?${params}`);
-      return res.data;
-    },
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    placeholderData: keepPreviousData,
     retry: false,
   });
 
-  const returns = useMemo(
-    () => data?.pages.flatMap((page) => page.items ?? []) ?? [],
-    [data],
-  );
-
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
-          void fetchNextPage();
-        }
-      },
-      { rootMargin: '240px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, returns.length]);
+  const table = useServerTableQuery<Return>({
+    queryKey: ['returns', 'page'],
+    path: '/api/v1/returns',
+    defaultSort: 'createdAt,desc',
+    extraParams: { status: statusFilter !== 'ALL' ? statusFilter : undefined },
+    fetcher: listReturns,
+  });
+  const {
+    items: returns,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   const completeMutation = useMutation({
     mutationFn: async (id: string) =>
@@ -468,7 +449,10 @@ export function ReturnsPage() {
           <button
             key={status}
             type="button"
-            onClick={() => setStatusFilter(status)}
+            onClick={() => {
+              setStatusFilter(status);
+              table.setPage(1);
+            }}
             className={cn(
               'rounded-full px-3 py-1 text-sm font-medium transition-colors',
               statusFilter === status
@@ -510,7 +494,10 @@ export function ReturnsPage() {
         </Card>
       )}
 
-      <div className="space-y-4">
+      <div
+        className="space-y-4"
+        data-testid={isMobile ? 'returns-mobile-list' : 'returns-desktop-list'}
+      >
         {returns.map((rma) => {
           const itemCount = rma.itemCount ?? rma.lines?.length ?? 0;
           const estimated = Number(rma.estimatedReturnValue ?? 0);
@@ -520,7 +507,7 @@ export function ReturnsPage() {
             <Card key={rma.id} padding="none" data-testid={`rma-card-${rma.number}`}>
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-surface-overlay"
+                className="flex w-full flex-col items-start gap-3 p-4 text-left hover:bg-surface-overlay sm:flex-row sm:items-center sm:justify-between"
                 onClick={() => setExpandedId(expandedId === rma.id ? null : rma.id)}
               >
                 <div className="flex min-w-0 items-center gap-4">
@@ -616,11 +603,15 @@ export function ReturnsPage() {
         })}
       </div>
 
-      <div ref={sentinelRef} data-testid="rma-infinite-sentinel" className="h-8" />
-      {isFetchingNextPage && (
-        <div className="mt-3">
-          <AccordionSkeleton />
-        </div>
+      {!isLoading && !isError && (
+        <Pagination
+          page={table.page}
+          totalPages={table.totalPages}
+          totalElements={table.totalElements}
+          size={table.size}
+          onPageChange={table.setPage}
+          onSizeChange={table.setSize}
+        />
       )}
 
       <NewRmaWizard open={createOpen} onClose={() => setCreateOpen(false)} />

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronDown, LogOut, Menu, Search, Settings2, User, Warehouse } from 'lucide-react';
+import { AlertTriangle, Cable, ChevronDown, LogOut, Menu, Search, Settings2, User, Warehouse } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Avatar, initialsFromName } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +12,7 @@ import { useSessionStore } from '@/stores/session';
 import { NetworkStatusBadge } from '@/components/layout/NetworkStatusBadge';
 import { useOfflineStore } from '@/stores/offlineStore';
 import { useRailStore } from '@/stores/rail';
+import { isAnyScaleConnected, useHardwareStore } from '@/stores/hardwareStore';
 import { cn } from '@/lib/utils';
 import type { Warehouse as WarehouseType } from '@/api/types';
 
@@ -52,6 +53,12 @@ export function Header({
   const quarantineCount = useOfflineStore((s) => s.quarantinedMutations.length);
   const toggleMobileOpen = useRailStore((s) => s.toggleMobileOpen);
   const mobileOpen = useRailStore((s) => s.mobileOpen);
+  const bluetoothScale = useHardwareStore((s) => s.bluetoothScale);
+  const serialScale = useHardwareStore((s) => s.serialScale);
+  const qzTray = useHardwareStore((s) => s.qzTray);
+  const openManager = useHardwareStore((s) => s.openManager);
+  const hardwareLinked =
+    isAnyScaleConnected({ bluetoothScale, serialScale }) || qzTray.connected;
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,14 +77,17 @@ export function Header({
     <>
       <header
         data-print-hide
+        data-testid="app-header"
         className={cn(
-          // relative z-50: backdrop-blur creates a stacking context; without an
-          // explicit z-index, later main content (e.g. dashboard CTAs) paints over
-          // the account menu and blocks Sign out / Profile Settings.
-          'relative z-50 flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-border/60 bg-surface-raised/80 px-4 backdrop-blur-md',
+          // Opaque chrome — glass/blur on the header traps stacking and reads as a
+          // wash over the floor. z-50 keeps the account menu above main CTAs.
+          'relative z-50 flex shrink-0 items-center justify-between border-b border-border bg-surface-raised',
+          isWarehouseView
+            ? 'min-h-[var(--header-height)] h-auto flex-wrap gap-y-1 px-2 py-1.5 md:h-[var(--header-height)] md:flex-nowrap md:px-4 md:py-0'
+            : 'h-[var(--header-height)] px-4',
         )}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
           {!isWarehouseView && (
             <Button
               type="button"
@@ -121,7 +131,9 @@ export function Header({
                 data-lock-reason={lockReason ?? 'JWT_SINGLE'}
               >
                 <Warehouse className="h-4 w-4 shrink-0 text-text-muted" />
-                <span className="font-medium">{warehouse?.name ?? 'Warehouse'}</span>
+                <span className="max-w-[7rem] truncate font-medium md:max-w-none">
+                  {warehouse?.name ?? 'Warehouse'}
+                </span>
               </div>
             ) : (
               <div className="relative" title="Active warehouse for fulfillment and scanning">
@@ -131,7 +143,7 @@ export function Header({
                   aria-label="Active warehouse"
                   className={cn(
                     'h-9 appearance-none rounded-md border border-border bg-surface-raised pl-9 pr-8 text-sm text-text',
-                    isWarehouseView && 'h-11 min-w-[10rem] text-base',
+                    isWarehouseView && 'h-11 min-w-0 max-w-[9rem] text-base md:max-w-none md:min-w-[10rem]',
                   )}
                 >
                   {warehouses.map((item) => (
@@ -154,11 +166,34 @@ export function Header({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2 md:gap-3">
           {/* Page Info — shared by AppShell (office) and WarehouseFloorShell (floor). */}
           <PageHelpOverlay />
           {/* Connectivity is for handheld / floor devices — not the office shell. */}
           {isWarehouseView && <NetworkStatusBadge className="text-sm" />}
+          {isWarehouseView && (
+            <button
+              type="button"
+              data-testid="hardware-device-manager-open"
+              aria-label="Hardware devices"
+              onClick={openManager}
+              className={cn(
+                'relative inline-flex min-h-9 min-w-9 items-center justify-center gap-1 rounded-md border px-1.5 py-1',
+                hardwareLinked
+                  ? 'border-success/40 bg-success/10 text-success'
+                  : 'border-border bg-surface-raised text-text-muted hover:text-text',
+              )}
+            >
+              <Cable className="h-4 w-4 shrink-0" aria-hidden />
+              <span
+                className={cn(
+                  'absolute right-1 top-1 h-1.5 w-1.5 rounded-full',
+                  hardwareLinked ? 'bg-success' : 'bg-text-muted/50',
+                )}
+                aria-hidden
+              />
+            </button>
+          )}
           {isWarehouseView && quarantineCount > 0 && (
             <button
               type="button"
@@ -174,7 +209,8 @@ export function Header({
               aria-label={`${quarantineCount} quarantined offline scans`}
             >
               <AlertTriangle className="h-4 w-4" aria-hidden />
-              {quarantineCount} quarantine
+              <span className="hidden sm:inline">{quarantineCount} quarantine</span>
+              <span className="sm:hidden">{quarantineCount}</span>
             </button>
           )}
           {isWarehouseView && <FloorPunchClock warehouseSized />}

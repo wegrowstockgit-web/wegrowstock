@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -77,6 +77,8 @@ const MATRIX = {
 };
 
 describe('RolePermissionsMatrix', () => {
+  const originalMatchMedia = window.matchMedia;
+
   beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
       this.setAttribute('open', '');
@@ -113,6 +115,10 @@ describe('RolePermissionsMatrix', () => {
       isSystemRole: false,
     });
     vi.mocked(roleApi.delete).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   it('renders dynamic role columns, locks system roles, and PUTs custom grants', async () => {
@@ -254,5 +260,24 @@ describe('RolePermissionsMatrix', () => {
     await waitFor(() => {
       expect(roleApi.delete).toHaveBeenCalledWith('r-custom');
     });
+  });
+
+  it('collapses the matrix into category accordions on phone viewports', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('max-width: 767px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
+    wrap(<RolePermissionsMatrix />);
+    expect(await screen.findByTestId('role-matrix-desktop-banner')).toHaveTextContent(
+      /optimized for desktop viewports/i,
+    );
+    expect(screen.getByTestId('perm-accordion-Inventory Permissions')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });

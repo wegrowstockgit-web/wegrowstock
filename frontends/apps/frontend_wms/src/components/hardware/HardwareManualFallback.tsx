@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { isAnyScaleConnected, useHardwareStore } from '@/stores/hardwareStore';
 
 export interface HardwareManualFallbackProps {
   isSupported: boolean;
@@ -34,8 +35,19 @@ export function HardwareManualFallback({
   const [value, setValue] = useState('');
   const [manualOpen, setManualOpen] = useState(mode === 'weight');
   const inputRef = useRef<HTMLInputElement>(null);
+  const bluetoothScale = useHardwareStore((s) => s.bluetoothScale);
+  const serialScale = useHardwareStore((s) => s.serialScale);
+  const scaleLinked = isAnyScaleConnected({ bluetoothScale, serialScale });
+  const prevLinked = useRef(scaleLinked);
   const showBluetooth = isSupported && bluetoothSupported && Boolean(onConnectBluetooth);
   const showSerial = isSupported && serialSupported && Boolean(onConnectSerial);
+
+  useEffect(() => {
+    if (mode === 'weight' && prevLinked.current && !scaleLinked) {
+      setManualOpen(true);
+    }
+    prevLinked.current = scaleLinked;
+  }, [mode, scaleLinked]);
 
   useEffect(() => {
     if (manualOpen) {
@@ -81,7 +93,7 @@ export function HardwareManualFallback({
           Keyboard Entry
         </Button>
       ) : (
-        <form onSubmit={submit} data-testid="hardware-manual-fallback" data-mode={mode}>
+        <form onSubmit={submit} data-testid="hardware-manual-fallback" data-mode={mode} data-scale-linked={scaleLinked ? 'true' : 'false'}>
           <Input
             ref={inputRef}
             label={mode === 'weight' ? 'Manual weight' : 'Manual scan'}

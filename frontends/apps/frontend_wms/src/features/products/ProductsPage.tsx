@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/primitives/VirtualizedTable';
 import { VariantThumb } from '@/components/ui/VariantThumb';
 import { ProductMobileCards } from '@/features/products/ui/ProductMobileCards';
+import { DataListWorkspace } from '@/components/layout/DataListWorkspace';
 import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSessionStore } from '@/stores/session';
@@ -927,11 +928,7 @@ export function ProductsPage() {
         </DataListToolbar>
       </div>
 
-      <div
-        className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden"
-        data-testid="products-grid-shell"
-        data-layout={layoutMode}
-      >
+      <DataListWorkspace testId="products-grid-shell" data-layout={layoutMode}>
         {isMobile ? (
           <ProductMobileCards
             rows={displayed}
@@ -974,7 +971,7 @@ export function ProductsPage() {
             }
           />
         )}
-      </div>
+      </DataListWorkspace>
 
       {isFetchingNextPage && (
         <div className="border-t border-border p-3 text-center text-sm text-text-muted">
@@ -991,7 +988,7 @@ export function ProductsPage() {
         onClick={(e) => {
           if (e.target === importDialogRef.current) setImportOpen(false);
         }}
-        className="m-auto w-[min(100vw-1rem,56rem)] max-h-[min(92dvh,900px)] overflow-hidden rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50 backdrop:backdrop-blur-[2px]"
+        className="m-auto w-[min(100vw-1rem,56rem)] max-h-[min(92dvh,900px)] overflow-hidden rounded-xl border border-border bg-surface-raised p-0 text-text shadow-elevated backdrop:bg-black/50"
         data-testid="products-import-dialog"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 sm:px-6 sm:py-4">

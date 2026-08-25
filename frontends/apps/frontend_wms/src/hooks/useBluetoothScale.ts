@@ -11,10 +11,11 @@ export interface UseBluetoothScaleResult {
   isSupported: boolean;
   isBluetoothSupported: boolean;
   connected: boolean;
+  deviceName: string | null;
   reading: BluetoothScaleReading | null;
   error: string | null;
   connecting: boolean;
-  connect: () => Promise<void>;
+  connect: () => Promise<boolean>;
   disconnect: () => void;
 }
 
@@ -45,6 +46,7 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
   const [reading, setReading] = useState<BluetoothScaleReading | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [device, setDevice] = useState<BluetoothDevice | null>(null);
+  const [deviceName, setDeviceName] = useState<string | null>(null);
 
   const disconnect = useCallback(() => {
     if (device?.gatt?.connected) {
@@ -52,13 +54,14 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
     }
     setConnected(false);
     setDevice(null);
+    setDeviceName(null);
     setReading(null);
   }, [device]);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (): Promise<boolean> => {
     if (!isBluetoothSupported || !supported) {
       setError('Web Bluetooth is not available in this browser.');
-      return;
+      return false;
     }
     setConnecting(true);
     setError(null);
@@ -66,7 +69,7 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
       const bluetooth = navigator.bluetooth;
       if (!bluetooth) {
         setError('Web Bluetooth is not available in this browser.');
-        return;
+        return false;
       }
       const selected = await bluetooth.requestDevice({
         filters: [{ services: [WEIGHT_SCALE_SERVICE] }],
@@ -87,16 +90,22 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
         if (parsed) setReading(parsed);
       });
       setDevice(selected);
+      setDeviceName(selected.name?.trim() || 'Bluetooth scale');
       setConnected(true);
       selected.addEventListener('gattserverdisconnected', () => {
         setConnected(false);
+        setDeviceName(null);
         setReading(null);
       });
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to connect to scale';
-      if (!message.includes('cancelled')) {
+      const cancelled =
+        message.includes('cancelled') || (err instanceof DOMException && err.name === 'NotFoundError');
+      if (!cancelled) {
         setError(message);
       }
+      return false;
     } finally {
       setConnecting(false);
     }
@@ -109,6 +118,7 @@ export function useBluetoothScale(): UseBluetoothScaleResult {
     isSupported,
     isBluetoothSupported,
     connected,
+    deviceName,
     reading,
     error,
     connecting,

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MapPinned } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface PositionFrame {
   id: string;
@@ -17,27 +19,38 @@ interface PositionFrame {
   observedAt: string;
 }
 
+const EMPTY_FRAMES: PositionFrame[] = [];
+
 /**
  * React 19 vector workspace for live RTLS tag positions (BLE AoA / UWB).
  */
 export function RtlsWorkspacePage() {
   const queryClient = useQueryClient();
+  const isPhone = useMediaQuery('(max-width: 767px)');
   const [tagId, setTagId] = useState('TAG-DEMO-1');
   const [live, setLive] = useState<PositionFrame[]>([]);
 
-  const { data: recent = [] } = useQuery({
+  const { data } = useQuery({
     queryKey: ['rtls', 'recent'],
     queryFn: async () =>
       (await apiClient.get<PositionFrame[]>('/api/v1/rtls/positions/recent')).data,
+    enabled: !isPhone,
   });
+  const recent = data ?? EMPTY_FRAMES;
 
   useEffect(() => {
     setLive(recent);
   }, [recent]);
 
   useEffect(() => {
+    if (isPhone || typeof EventSource === 'undefined' || import.meta.env.MODE === 'test') return;
     const base = import.meta.env.VITE_API_URL ?? '';
-    const es = new EventSource(`${base}/api/v1/rtls/stream`, { withCredentials: true });
+    let es: EventSource;
+    try {
+      es = new EventSource(`${base}/api/v1/rtls/stream`, { withCredentials: true });
+    } catch {
+      return;
+    }
     es.addEventListener('rtls.position', (evt) => {
       try {
         const frame = JSON.parse((evt as MessageEvent).data) as PositionFrame;
@@ -50,7 +63,7 @@ export function RtlsWorkspacePage() {
       }
     });
     return () => es.close();
-  }, []);
+  }, [isPhone]);
 
   const ingestMutation = useMutation({
     mutationFn: async () => {
@@ -73,6 +86,20 @@ export function RtlsWorkspacePage() {
   });
 
   const points = useMemo(() => live.slice(0, 20), [live]);
+
+  if (isPhone) {
+    return (
+      <div className="space-y-6 p-6" data-testid="rtls-workspace-page">
+        <Card className="flex flex-col items-center gap-3 p-10 text-center" data-testid="rtls-mobile-empty">
+          <MapPinned className="h-10 w-10 text-text-muted" aria-hidden />
+          <CardHeader
+            title="Live spatial map"
+            description="Open the live spatial map on a tablet or desktop workstation. Smartphone screens cannot present the RTLS vector overlay accurately."
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6" data-testid="rtls-workspace-page">
