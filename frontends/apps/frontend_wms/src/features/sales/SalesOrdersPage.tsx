@@ -193,7 +193,10 @@ function SalesOrdersMobileCards({
   onPeek: (id: string) => void;
 }) {
   return (
-    <div className="space-y-2 px-3 pb-2 md:hidden" data-testid="sales-orders-mobile-list">
+    <div
+      className="flex flex-col gap-3 overflow-y-auto md:hidden"
+      data-testid="sales-orders-mobile-list"
+    >
       {items.map((so) => (
         <EntityMobileCard
           key={so.id}
@@ -397,7 +400,10 @@ export function SalesOrdersPage() {
             {isMobile ? (
               <SalesOrdersMobileCards items={rows} onPeek={setPeekOrderId} />
             ) : (
-              <div className="hidden md:block" data-testid="sales-orders-table-view">
+              <div
+                className="hidden min-h-0 flex-1 md:flex md:flex-col"
+                data-testid="sales-orders-table-view"
+              >
                 <SalesOrdersTable
                   items={rows}
                   onPeek={setPeekOrderId}

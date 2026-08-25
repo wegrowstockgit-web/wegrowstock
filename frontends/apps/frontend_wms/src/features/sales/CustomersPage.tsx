@@ -22,12 +22,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { ListPageState } from '@/components/layout/ListPageState';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
 import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { listCustomers } from '@/api/operational';
@@ -183,11 +186,53 @@ function CustomersTable({
   );
 }
 
+function CustomersMobileCards({
+  items,
+  onPeek,
+}: {
+  items: Customer[];
+  onPeek: (customer: Customer) => void;
+}) {
+  return (
+    <div
+      className="flex flex-col gap-3 overflow-y-auto md:hidden"
+      data-testid="customers-mobile-list"
+    >
+      {items.map((c) => (
+        <EntityMobileCard
+          key={c.id}
+          testId={`customer-mobile-card-${c.id}`}
+          identity={c.name}
+          title={c.email ?? '—'}
+          status={
+            <span
+              className={cn(
+                'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                c.portalStatus === 'ACTIVE'
+                  ? 'bg-success/10 text-success'
+                  : c.portalStatus === 'PENDING'
+                    ? 'bg-warning/10 text-warning'
+                    : 'bg-surface-overlay text-text-muted',
+              )}
+            >
+              {portalLabel(c.portalStatus)}
+            </span>
+          }
+          amount={formatCurrency(Number(c.availableCredit ?? 0))}
+          date={c.paymentTerms ?? undefined}
+          onClick={() => onPeek(c)}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function CustomersPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canCreate = hasRole('OWNER', 'ADMIN');
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [peekCustomer, setPeekCustomer] = useState<Customer | null>(null);
   const [tab, setTab] = useState<'customers' | 'applications'>(() =>
@@ -203,6 +248,7 @@ export function CustomersPage() {
     fetcher: listCustomers,
   });
   const { items, isLoading, isError, error, refetch, search } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   const { data: kpis } = useQuery({
     queryKey: ['customers-summary'],
@@ -215,17 +261,17 @@ export function CustomersPage() {
       className="mx-auto flex w-full max-w-7xl flex-col p-4 sm:p-6"
       data-testid="customers-page"
     >
-      <div className="mb-6 flex shrink-0 flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-text">{t('sales.customersTitle')}</h1>
         {canCreate && (
-          <Button onClick={() => setDrawerOpen(true)}>
+          <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setDrawerOpen(true)}>
             <Plus className="h-4 w-4" />
             {t('sales.addCustomer')}
           </Button>
         )}
       </div>
 
-      <div className="mb-4 flex shrink-0 gap-2" role="tablist" aria-label={t('sales.customerViews')}>
+      <div className="mb-4 flex shrink-0 flex-wrap gap-2" role="tablist" aria-label={t('sales.customerViews')}>
         <button
           type="button"
           role="tab"
@@ -313,7 +359,16 @@ export function CustomersPage() {
             >
               {(rows) => (
                 <>
-                  <CustomersTable items={rows} onPeek={setPeekCustomer} />
+                  {isMobile ? (
+                    <CustomersMobileCards items={rows} onPeek={setPeekCustomer} />
+                  ) : (
+                    <div
+                      className="hidden min-h-0 flex-1 md:flex md:flex-col"
+                      data-testid="customers-table-view"
+                    >
+                      <CustomersTable items={rows} onPeek={setPeekCustomer} />
+                    </div>
+                  )}
                   <Pagination
                     page={table.page}
                     totalPages={table.totalPages}

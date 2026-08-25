@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -73,9 +73,25 @@ function renderPage(roles = ['ADMIN']) {
 }
 
 describe('CustomersPage B2B grid', () => {
+  const originalMatchMedia = window.matchMedia;
+
   beforeEach(() => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
     vi.mocked(apiClient.get).mockReset();
     vi.mocked(listCustomers).mockReset();
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   it('renders KPI cards, enriched columns, and formatted credit', async () => {
@@ -91,5 +107,23 @@ describe('CustomersPage B2B grid', () => {
     expect(screen.getByTestId('customer-credit-cust-1')).toHaveTextContent(/Limit/);
     expect(screen.getByTestId('customer-portal-cust-1')).toHaveTextContent('Pending');
     expect(screen.getByRole('button', { name: 'Add customer' })).toBeInTheDocument();
+  });
+
+  it('renders paginated mobile cards below 768px', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('max-width: 767px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
+    renderPage();
+    expect(await screen.findByTestId('customers-mobile-list')).toBeInTheDocument();
+    expect(screen.getByTestId('customer-mobile-card-cust-1')).toHaveTextContent('Northwind Farms');
+    expect(screen.queryByTestId('customers-table-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pagination')).toBeInTheDocument();
   });
 });

@@ -15,9 +15,12 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState } from '@/components/layout/ListPageState';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { CycleCountScanner } from '@/features/fulfillment/CycleCountScanner';
+import { useCapMobilePageSize, MOBILE_PAGE_SIZE } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useToast } from '@/components/ui/Toast';
 import { extractApiError } from '@/lib/apiClient';
 import { useSessionStore } from '@/stores/session';
@@ -88,6 +91,37 @@ function PriorityAuditsTable({
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+function PriorityAuditsMobileCards({
+  audits,
+  onOpen,
+}: {
+  audits: PriorityAudit[];
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div
+      className="flex flex-col gap-3 overflow-y-auto md:hidden"
+      data-testid="cycle-counts-mobile-list"
+    >
+      {audits.map((audit) => (
+        <EntityMobileCard
+          key={audit.id}
+          testId={`priority-audit-${audit.id}`}
+          identity={audit.locationPath}
+          title={audit.notes ?? 'Priority audit'}
+          status={
+            <span className="inline-flex rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning">
+              Audit
+            </span>
+          }
+          date={new Date(audit.createdAt).toLocaleString()}
+          onClick={() => onOpen(audit.id)}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -180,12 +214,78 @@ function PendingVariancesTable({
   );
 }
 
+function PendingVariancesMobileCards({
+  rows,
+  onApprove,
+  onRecount,
+  onOpenWorkspace,
+  busyId,
+}: {
+  rows: PendingVariance[];
+  onApprove: (lineId: string) => void;
+  onRecount: (lineId: string) => void;
+  onOpenWorkspace: (lineId: string) => void;
+  busyId: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-3 overflow-y-auto md:hidden" data-testid="pending-variances-mobile-list">
+      {rows.map((row) => (
+        <EntityMobileCard
+          key={row.lineId}
+          testId={`pending-variance-${row.lineId}`}
+          identity={row.locationPath}
+          title={row.sku}
+          status={
+            <span className="inline-flex rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning">
+              {row.varianceStatus.replaceAll('_', ' ')}
+            </span>
+          }
+          amount={money(row.financialDelta)}
+          date={`${qty(row.countedQty)} / ${qty(row.expectedQty)}`}
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button
+                className="h-12 w-full"
+                loading={busyId === row.lineId}
+                onClick={() => onApprove(row.lineId)}
+                data-testid={`approve-variance-${row.lineId}`}
+              >
+                Approve Ledger Adjustment
+              </Button>
+              <Button
+                className="h-12 w-full"
+                variant="secondary"
+                loading={busyId === row.lineId}
+                onClick={() => onRecount(row.lineId)}
+                data-testid={`request-recount-${row.lineId}`}
+              >
+                Request Recount
+              </Button>
+              <Button
+                className="h-12 w-full"
+                variant="ghost"
+                data-testid={`open-variance-workspace-${row.lineId}`}
+                onClick={() => onOpenWorkspace(row.lineId)}
+              >
+                Open Workspace
+              </Button>
+            </div>
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 export function CycleCountsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const hasRole = useSessionStore((s) => s.hasRole);
   const canReview = hasRole('OWNER', 'ADMIN', 'WAREHOUSE_MANAGER');
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [pageSize, setPageSize] = useState(50);
+  useCapMobilePageSize(isMobile, pageSize, setPageSize);
   const [activeCountId, setActiveCountId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -292,15 +392,28 @@ export function CycleCountsPage() {
             emptyDescription="Financial variances above the auto-adjust threshold will show here."
             emptyTestId="pending-variances-empty"
           >
-            {(rows) => (
-              <PendingVariancesTable
-                rows={rows}
-                busyId={busyId}
-                onApprove={(id) => approve.mutate(id)}
-                onRecount={(id) => recount.mutate(id)}
-                onOpenWorkspace={(id) => navigate(`/inventory/variances/${id}`)}
-              />
-            )}
+            {(rows) => {
+              const visible = isMobile ? rows.slice(0, Math.min(pageSize, MOBILE_PAGE_SIZE)) : rows;
+              return isMobile ? (
+                <PendingVariancesMobileCards
+                  rows={visible}
+                  busyId={busyId}
+                  onApprove={(id) => approve.mutate(id)}
+                  onRecount={(id) => recount.mutate(id)}
+                  onOpenWorkspace={(id) => navigate(`/inventory/variances/${id}`)}
+                />
+              ) : (
+                <div className="hidden min-h-0 md:flex md:flex-col" data-testid="pending-variances-table-view">
+                  <PendingVariancesTable
+                    rows={visible}
+                    busyId={busyId}
+                    onApprove={(id) => approve.mutate(id)}
+                    onRecount={(id) => recount.mutate(id)}
+                    onOpenWorkspace={(id) => navigate(`/inventory/variances/${id}`)}
+                  />
+                </div>
+              );
+            }}
           </ListPageState>
         </Card>
       )}
@@ -320,7 +433,16 @@ export function CycleCountsPage() {
           emptyTitle="No priority audits right now"
           emptyDescription="Bins flagged by velocity or adjustment patterns will appear here."
         >
-          {(rows) => <PriorityAuditsTable audits={rows} onOpen={setActiveCountId} />}
+          {(rows) => {
+            const visible = isMobile ? rows.slice(0, Math.min(pageSize, MOBILE_PAGE_SIZE)) : rows;
+            return isMobile ? (
+              <PriorityAuditsMobileCards audits={visible} onOpen={setActiveCountId} />
+            ) : (
+              <div className="hidden min-h-0 md:flex md:flex-col" data-testid="cycle-counts-table-view">
+                <PriorityAuditsTable audits={visible} onOpen={setActiveCountId} />
+              </div>
+            );
+          }}
         </ListPageState>
       </Card>
     </div>

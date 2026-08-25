@@ -4,6 +4,7 @@ import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import {
   Table,
   TableBody,
@@ -14,6 +15,8 @@ import {
 } from '@/components/ui/Table';
 import { useToast } from '@/components/ui/Toast';
 import { useState } from 'react';
+import { useCapMobilePageSize, MOBILE_PAGE_SIZE } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 
 interface RtvOrder {
@@ -37,9 +40,76 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-danger/15 text-danger',
 };
 
+function RtvOrderActions({
+  order,
+  shipCarrier,
+  shipTracking,
+  setShipCarrier,
+  setShipTracking,
+  approvePending,
+  shipPending,
+  onApprove,
+  onShip,
+}: {
+  order: RtvOrder;
+  shipCarrier: Record<string, string>;
+  shipTracking: Record<string, string>;
+  setShipCarrier: (updater: (m: Record<string, string>) => Record<string, string>) => void;
+  setShipTracking: (updater: (m: Record<string, string>) => Record<string, string>) => void;
+  approvePending: boolean;
+  shipPending: boolean;
+  onApprove: (id: string) => void;
+  onShip: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {order.status === 'DRAFT' && (
+        <Button
+          size="sm"
+          className="h-12 w-full md:h-8 md:w-auto"
+          data-testid={`rtv-approve-${order.id}`}
+          loading={approvePending}
+          onClick={() => onApprove(order.id)}
+        >
+          Approve
+        </Button>
+      )}
+      {(order.status === 'APPROVED' || order.status === 'DRAFT') && (
+        <>
+          <Input
+            className="h-12 w-full md:h-9 md:w-24"
+            placeholder="Carrier"
+            value={shipCarrier[order.id] ?? ''}
+            onChange={(e) => setShipCarrier((m) => ({ ...m, [order.id]: e.target.value }))}
+          />
+          <Input
+            className="h-12 w-full md:h-9 md:w-32"
+            placeholder="Tracking"
+            value={shipTracking[order.id] ?? ''}
+            onChange={(e) => setShipTracking((m) => ({ ...m, [order.id]: e.target.value }))}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-12 w-full md:h-8 md:w-auto"
+            data-testid={`rtv-ship-${order.id}`}
+            loading={shipPending}
+            onClick={() => onShip(order.id)}
+          >
+            Ship
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function RtvWorkspace() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [pageSize, setPageSize] = useState(50);
+  useCapMobilePageSize(isMobile, pageSize, setPageSize);
   const [shipCarrier, setShipCarrier] = useState<Record<string, string>>({});
   const [shipTracking, setShipTracking] = useState<Record<string, string>>({});
 
@@ -47,6 +117,8 @@ export function RtvWorkspace() {
     queryKey: ['rtv-orders'],
     queryFn: async () => (await apiClient.get<RtvOrder[]>('/api/v1/rtv')).data,
   });
+
+  const visibleOrders = isMobile ? orders.slice(0, Math.min(pageSize, MOBILE_PAGE_SIZE)) : orders;
 
   const approveMutation = useMutation({
     mutationFn: async (id: string) => apiClient.post(`/api/v1/rtv/${id}/approve`),
@@ -93,6 +165,48 @@ export function RtvWorkspace() {
             No RTV orders yet. Initiate from an open exception.
           </p>
         ) : (
+          <>
+            {isMobile ? (
+              <div
+                className="flex flex-col gap-3 overflow-y-auto px-4 pb-4 md:hidden"
+                data-testid="rtv-mobile-list"
+              >
+                {visibleOrders.map((o) => (
+                  <EntityMobileCard
+                    key={o.id}
+                    testId={`rtv-row-${o.number}`}
+                    identity={o.number}
+                    title={o.debitMemoNumber ?? o.trackingNumber ?? 'No debit memo'}
+                    status={
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                          STATUS_STYLES[o.status] ?? 'bg-surface-overlay text-text-muted',
+                        )}
+                      >
+                        {o.status}
+                      </span>
+                    }
+                    amount={`$${Number(o.totalChargebackAmount ?? 0).toFixed(2)}`}
+                    date={o.trackingNumber ? `${o.carrier ?? ''} ${o.trackingNumber}` : undefined}
+                    footer={
+                      <RtvOrderActions
+                        order={o}
+                        shipCarrier={shipCarrier}
+                        shipTracking={shipTracking}
+                        setShipCarrier={setShipCarrier}
+                        setShipTracking={setShipTracking}
+                        approvePending={approveMutation.isPending}
+                        shipPending={shipMutation.isPending}
+                        onApprove={(id) => approveMutation.mutate(id)}
+                        onShip={(id) => shipMutation.mutate(id)}
+                      />
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="hidden min-h-0 md:flex md:flex-col" data-testid="rtv-table-view">
           <Table>
             <TableHeader>
               <TableRow>
@@ -105,7 +219,7 @@ export function RtvWorkspace() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orders.map((o) => (
+              {visibleOrders.map((o) => (
                 <TableRow key={o.id} data-testid={`rtv-row-${o.number}`}>
                   <TableCell className="font-medium">{o.number}</TableCell>
                   <TableCell>
@@ -128,52 +242,25 @@ export function RtvWorkspace() {
                     {o.trackingNumber ? `${o.carrier ?? ''} ${o.trackingNumber}` : '—'}
                   </TableCell>
                   <TableCell align="right">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      {o.status === 'DRAFT' && (
-                        <Button
-                          size="sm"
-                          data-testid={`rtv-approve-${o.id}`}
-                          loading={approveMutation.isPending}
-                          onClick={() => approveMutation.mutate(o.id)}
-                        >
-                          Approve
-                        </Button>
-                      )}
-                      {(o.status === 'APPROVED' || o.status === 'DRAFT') && (
-                        <>
-                          <Input
-                            className="h-9 w-24"
-                            placeholder="Carrier"
-                            value={shipCarrier[o.id] ?? ''}
-                            onChange={(e) =>
-                              setShipCarrier((m) => ({ ...m, [o.id]: e.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9 w-32"
-                            placeholder="Tracking"
-                            value={shipTracking[o.id] ?? ''}
-                            onChange={(e) =>
-                              setShipTracking((m) => ({ ...m, [o.id]: e.target.value }))
-                            }
-                          />
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            data-testid={`rtv-ship-${o.id}`}
-                            loading={shipMutation.isPending}
-                            onClick={() => shipMutation.mutate(o.id)}
-                          >
-                            Ship
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    <RtvOrderActions
+                      order={o}
+                      shipCarrier={shipCarrier}
+                      shipTracking={shipTracking}
+                      setShipCarrier={setShipCarrier}
+                      setShipTracking={setShipTracking}
+                      approvePending={approveMutation.isPending}
+                      shipPending={shipMutation.isPending}
+                      onApprove={(id) => approveMutation.mutate(id)}
+                      onShip={(id) => shipMutation.mutate(id)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+              </div>
+            )}
+          </>
         )}
       </Card>
     </div>

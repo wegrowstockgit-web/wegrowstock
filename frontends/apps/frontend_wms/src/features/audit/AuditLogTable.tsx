@@ -18,7 +18,10 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { useConcurrentSearch } from '@/hooks/useConcurrentSearch';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 import {
   actorLabel,
@@ -84,6 +87,9 @@ export function AuditLogTable() {
   const [entityType, setEntityType] = useState('');
   const [action, setAction] = useState('');
   const [selected, setSelected] = useState<AuditLogItem | null>(null);
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [pageSize, setPageSize] = useState(40);
+  useCapMobilePageSize(isMobile, pageSize, setPageSize);
   const {
     inputValue: actorInput,
     deferredValue: actorFilter,
@@ -93,13 +99,13 @@ export function AuditLogTable() {
   } = useConcurrentSearch('');
 
   const query = useInfiniteQuery({
-    queryKey: ['audit', 'tenant', entityType, action],
+    queryKey: ['audit', 'tenant', entityType, action, pageSize],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }) =>
       (
         await apiClient.get<AuditTenantPage>('/api/v1/audit/tenant', {
           params: {
-            limit: 40,
+            limit: pageSize,
             cursor: pageParam,
             entityType: entityType || undefined,
             action: action || undefined,
@@ -187,8 +193,22 @@ export function AuditLogTable() {
             description="Try clearing the person, record, or action filters."
           />
         </div>
+      ) : isMobile ? (
+        <div className="flex flex-col gap-3 overflow-y-auto px-4 pb-4 md:hidden" data-testid="audit-mobile-list">
+          {rows.map((row) => (
+            <EntityMobileCard
+              key={row.id}
+              testId={`audit-row-${row.id}`}
+              identity={actorLabel(row)}
+              title={formatActionLabel(row.action)}
+              status={<ActionBadge action={row.action} />}
+              date={formatWhen(row.createdAt)}
+              onClick={() => setSelected(row)}
+            />
+          ))}
+        </div>
       ) : (
-        <div className="min-w-0 overflow-x-auto" data-testid="audit-log-grid">
+        <div className="hidden min-w-0 overflow-x-auto md:block" data-testid="audit-log-grid">
           <Table className="min-w-[52rem]">
             <TableHeader>
               <TableRow>

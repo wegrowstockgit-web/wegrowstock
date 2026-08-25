@@ -33,6 +33,61 @@ test.describe('Journey 90: Mobile responsiveness, settings, and pagination', () 
       await expect(owner.page.getByTestId('suppliers-page')).toBeVisible({ timeout: 20_000 });
       await expect(owner.page.getByTestId('suppliers-mobile-list')).toBeVisible();
       await expect(owner.page.getByTestId('pagination')).toBeVisible();
+
+      await owner.page.goto('/purchase-orders');
+      await expect(owner.page.getByTestId('purchase-orders-page')).toBeVisible({ timeout: 20_000 });
+      await expect(owner.page.getByRole('heading', { name: 'Purchase Orders' })).toBeVisible();
+      await expect(owner.page.getByTestId('purchase-orders-header-actions')).toBeVisible();
+      await expect(owner.page.getByRole('button', { name: 'Floor receive' })).toBeVisible();
+      await expect(owner.page.getByRole('button', { name: 'New PO' })).toBeVisible();
+      await expect(owner.page.getByTestId('purchase-orders-mobile-list')).toBeVisible();
+      await expect(owner.page.getByTestId('purchase-orders-table-view')).toHaveCount(0);
+      await expect(owner.page.getByTestId('pagination')).toBeVisible();
+      const poCards = owner.page.locator('[data-testid^="purchase-order-mobile-card-"]');
+      await expect.poll(async () => poCards.count()).toBeLessThanOrEqual(25);
+      if ((await poCards.count()) > 0) {
+        await poCards.first().click();
+        await expect(owner.page.getByTestId('right-peek-drawer')).toBeVisible();
+        await expect(owner.page.getByTestId('open-po-workspace')).toBeVisible();
+      }
+    } finally {
+      await owner.close();
+    }
+  });
+
+  test('customers, returns, exceptions, and manufacturing use mobile cards', async ({
+    browser,
+  }) => {
+    const owner = await contextForRole(browser, 'owner');
+    try {
+      await owner.page.setViewportSize({ width: 390, height: 844 });
+      await owner.page.goto('/customers');
+      await dismissOnboardingTourIfPresent(owner.page);
+      await expect(owner.page.getByTestId('customers-page')).toBeVisible({ timeout: 20_000 });
+      await expect(owner.page.getByTestId('customers-mobile-list')).toBeVisible();
+      await expect(owner.page.getByTestId('customers-table-view')).toHaveCount(0);
+      await expect(owner.page.getByTestId('pagination')).toBeVisible();
+
+      await owner.page.goto('/returns');
+      await expect(owner.page.getByTestId('returns-page')).toBeVisible({ timeout: 20_000 });
+      await expect(owner.page.getByTestId('returns-desktop-list')).toHaveCount(0);
+      const returnsMobile = owner.page.getByTestId('returns-mobile-list');
+      const returnsEmpty = owner.page.getByText(/No returns/i);
+      await expect(returnsMobile.or(returnsEmpty).first()).toBeAttached();
+
+      await owner.page.goto('/exceptions');
+      await expect(owner.page.getByTestId('action-required-hub')).toBeVisible({ timeout: 20_000 });
+      await expect(owner.page.getByTestId('exceptions-tab-holds')).toBeVisible();
+      await expect(owner.page.getByTestId('exceptions-tab-sync')).toBeVisible();
+
+      await owner.page.goto('/manufacturing/orders');
+      await expect(owner.page.getByRole('heading', { name: /production orders/i })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(owner.page.getByTestId('manufacturing-orders-table-view')).toHaveCount(0);
+      const moList = owner.page.getByTestId('manufacturing-orders-mobile-list');
+      const moEmpty = owner.page.getByText(/No production orders/i);
+      await expect(moList.or(moEmpty).first()).toBeVisible();
     } finally {
       await owner.close();
     }

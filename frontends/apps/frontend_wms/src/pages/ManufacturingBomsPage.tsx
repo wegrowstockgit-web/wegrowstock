@@ -20,7 +20,10 @@ import {
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { ListPageState } from '@/components/layout/ListPageState';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
+import { useCapMobilePageSize, MOBILE_PAGE_SIZE } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 
 interface DraftLine {
@@ -87,6 +90,42 @@ function ActiveBomsTable({
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+function ActiveBomsMobileCards({
+  boms,
+  selectedBomId,
+  onSelect,
+}: {
+  boms: Bom[];
+  selectedBomId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 overflow-y-auto p-3 md:hidden" data-testid="boms-mobile-list">
+      {boms.map((bom) => (
+        <EntityMobileCard
+          key={bom.id}
+          testId={`bom-mobile-card-${bom.id}`}
+          identity={bom.parentSku ?? bom.parentVariantId}
+          title={bom.name}
+          status={
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-xs font-medium',
+                bom.isActive ? 'bg-accent-muted text-accent' : 'bg-surface-overlay text-text-muted',
+              )}
+            >
+              {bom.isActive ? 'Active' : 'Inactive'}
+            </span>
+          }
+          amount={`${bom.lines?.length ?? 0} components`}
+          className={selectedBomId === bom.id ? 'ring-2 ring-accent/50' : undefined}
+          onClick={() => onSelect(bom.id)}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -163,6 +202,21 @@ function BomTreeRow({ line, depth = 0 }: { line: BomLine; depth?: number }) {
           <BomTreeRow key={child.id} line={child} depth={depth + 1} />
         ))}
     </>
+  );
+}
+
+function BomLinesMobileCards({ lines }: { lines: BomLine[] }) {
+  return (
+    <div className="flex flex-col gap-3 overflow-y-auto md:hidden" data-testid="bom-lines-mobile-list">
+      {lines.map((line) => (
+        <EntityMobileCard
+          key={line.id}
+          identity={line.componentSku ?? line.componentVariantId}
+          title={line.componentName ?? 'Component'}
+          amount={`Qty ${line.quantityRequired}`}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -317,6 +371,9 @@ function CreateBomModal({ open, onClose }: { open: boolean; onClose: () => void 
 export function ManufacturingBomsPage() {
   const [selectedBomId, setSelectedBomId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [pageSize, setPageSize] = useState(50);
+  useCapMobilePageSize(isMobile, pageSize, setPageSize);
 
   const { data: boms = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['manufacturing', 'boms'],
@@ -340,14 +397,14 @@ export function ManufacturingBomsPage() {
   return (
     <TableDensityScope gridId="manufacturing-boms">
     <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Bill of Materials</h1>
           <p className="mt-1 text-sm text-text-muted">
             Multi-level BOMs for assembly and kitting
           </p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
+        <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setModalOpen(true)}>
           <Plus className="h-4 w-4" />
           New BOM
         </Button>
@@ -375,13 +432,24 @@ export function ManufacturingBomsPage() {
               </Button>
             }
           >
-            {(items) => (
-              <ActiveBomsTable
-                boms={items}
-                selectedBomId={selectedBomId}
-                onSelect={setSelectedBomId}
-              />
-            )}
+            {(items) => {
+              const visible = isMobile ? items.slice(0, Math.min(pageSize, MOBILE_PAGE_SIZE)) : items;
+              return isMobile ? (
+                <ActiveBomsMobileCards
+                  boms={visible}
+                  selectedBomId={selectedBomId}
+                  onSelect={setSelectedBomId}
+                />
+              ) : (
+                <div className="hidden min-h-0 md:flex md:flex-col" data-testid="boms-table-view">
+                  <ActiveBomsTable
+                    boms={visible}
+                    selectedBomId={selectedBomId}
+                    onSelect={setSelectedBomId}
+                  />
+                </div>
+              );
+            }}
           </ListPageState>
         </Card>
 
@@ -401,7 +469,13 @@ export function ManufacturingBomsPage() {
           ) : (bomDetail?.lines?.length ?? 0) === 0 ? (
             <p className="text-sm text-text-muted">No components defined for this BOM.</p>
           ) : (
-            <BomLinesTable lines={bomDetail?.lines ?? []} />
+            isMobile ? (
+              <BomLinesMobileCards lines={bomDetail?.lines ?? []} />
+            ) : (
+              <div className="hidden md:block">
+                <BomLinesTable lines={bomDetail?.lines ?? []} />
+              </div>
+            )
           )}
         </Card>
       </div>

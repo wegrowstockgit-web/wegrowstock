@@ -5,9 +5,13 @@ import { refetchIntervalWhileAuthenticated } from '@/lib/queryClient';
 import type { ReplenishmentTask } from '@/api/types';
 import { BigButton } from '@/components/ui/BigButton';
 import { Button } from '@/components/ui/Button';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { useToast } from '@/components/ui/Toast';
 import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
+import { useCapMobilePageSize, MOBILE_PAGE_SIZE } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useState } from 'react';
 
 export function ReplenishmentBadge({ onOpen }: { onOpen: () => void }) {
   const { data: tasks = [] } = useQuery({
@@ -47,6 +51,9 @@ export function ReplenishmentBadge({ onOpen }: { onOpen: () => void }) {
 export function ReplenishmentQueue({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [pageSize, setPageSize] = useState(50);
+  useCapMobilePageSize(isMobile, pageSize, setPageSize);
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['warehouse', 'replenishments'],
     queryFn: async () =>
@@ -92,13 +99,37 @@ export function ReplenishmentQueue({ onClose }: { onClose: () => void }) {
           Pick faces are stocked — no replenishments needed.
         </p>
       ) : (
-        <ul className="space-y-3">
-          {tasks.map((task) => (
-            <li
-              key={`${task.ruleId}-${task.fromLocationId}`}
-              className="rounded-lg border-2 border-border bg-surface-raised p-4"
-              data-testid="replenishment-task"
-            >
+        <ul className="flex flex-col gap-3 overflow-y-auto" data-testid={isMobile ? 'replenishments-mobile-list' : 'replenishments-desktop-list'}>
+          {(isMobile ? tasks.slice(0, Math.min(pageSize, MOBILE_PAGE_SIZE)) : tasks).map((task) => (
+            <li key={`${task.ruleId}-${task.fromLocationId}`}>
+              {isMobile ? (
+                <EntityMobileCard
+                  testId="replenishment-task"
+                  identity={task.sku}
+                  title={task.variantName}
+                  status={
+                    <span className="inline-flex rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning">
+                      {task.suggestedQuantity}
+                    </span>
+                  }
+                  amount={task.instruction}
+                  date={`${task.fromLocationPath} → ${task.toLocationPath}`}
+                  footer={
+                    <BigButton
+                      className="mt-1 w-full"
+                      disabled={confirmMutation.isPending}
+                      onClick={() => confirmMutation.mutate(task)}
+                      data-testid="confirm-replenishment"
+                    >
+                      Confirm transfer
+                    </BigButton>
+                  }
+                />
+              ) : (
+              <div
+                className="rounded-lg border-2 border-border bg-surface-raised p-4"
+                data-testid="replenishment-task"
+              >
               <p className="font-mono text-lg font-bold text-text">{task.sku}</p>
               <p className="mt-0.5 text-sm text-text-muted">{task.variantName}</p>
               <p className="mt-3 text-base font-semibold text-text">{task.instruction}</p>
@@ -118,6 +149,8 @@ export function ReplenishmentQueue({ onClose }: { onClose: () => void }) {
               >
                 Confirm transfer
               </BigButton>
+              </div>
+              )}
             </li>
           ))}
         </ul>

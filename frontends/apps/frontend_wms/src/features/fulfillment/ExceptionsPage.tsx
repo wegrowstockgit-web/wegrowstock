@@ -6,6 +6,7 @@ import type { FulfillmentException } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ListPageState } from '@/components/layout/ListPageState';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { DataListToolbar } from '@/components/ui/DensityToggle';
 import { TableDensityScope } from '@/hooks/useDensity';
 import {
@@ -22,6 +23,8 @@ import { useToast } from '@/components/ui/Toast';
 import { extractApiError } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
 import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useCapMobilePageSize, MOBILE_PAGE_SIZE } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 const STATUS_STYLES: Record<string, string> = {
   OPEN: 'bg-warning/15 text-warning',
@@ -163,6 +166,101 @@ function ExceptionsTable({
   );
 }
 
+function ExceptionsMobileCards({
+  items,
+  lotById,
+  setLotById,
+  resolveMutation,
+  initiateRtv,
+}: {
+  items: FulfillmentException[];
+  lotById: Record<string, string>;
+  setLotById: Dispatch<SetStateAction<Record<string, string>>>;
+  resolveMutation: {
+    isPending: boolean;
+    mutate: (vars: { id: string; action: string; lotNumber?: string }) => void;
+  };
+  initiateRtv: {
+    isPending: boolean;
+    mutate: (id: string) => void;
+  };
+}) {
+  return (
+    <div className="flex flex-col gap-3 overflow-y-auto md:hidden" data-testid="exceptions-mobile-list">
+      {items.map((ex) => (
+        <EntityMobileCard
+          key={ex.id}
+          testId={`exception-mobile-card-${ex.id}`}
+          identity={ex.allocationId.slice(0, 8)}
+          title={String(ex.metadata?.reason ?? 'Fulfillment hold')}
+          status={
+            <span
+              className={cn(
+                'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                STATUS_STYLES[ex.resolutionStatus] ?? 'bg-surface-overlay text-text-muted',
+              )}
+            >
+              {ex.resolutionStatus}
+            </span>
+          }
+          date={new Date(ex.createdAt).toLocaleString()}
+          footer={
+            ex.resolutionStatus === 'OPEN' ? (
+              <div className="flex flex-col gap-2">
+                <Input
+                  className="h-12 w-full"
+                  placeholder="Lot #"
+                  value={lotById[ex.id] ?? ''}
+                  onChange={(e) => setLotById((prev) => ({ ...prev, [ex.id]: e.target.value }))}
+                />
+                <Button
+                  className="h-12 w-full"
+                  variant="secondary"
+                  loading={resolveMutation.isPending}
+                  onClick={() =>
+                    resolveMutation.mutate({
+                      id: ex.id,
+                      action: 'LOT_OVERRIDE',
+                      lotNumber: lotById[ex.id],
+                    })
+                  }
+                  disabled={!lotById[ex.id]?.trim()}
+                >
+                  Lot override
+                </Button>
+                <Button
+                  className="h-12 w-full"
+                  loading={resolveMutation.isPending}
+                  onClick={() => resolveMutation.mutate({ id: ex.id, action: 'CLEAR' })}
+                >
+                  Clear
+                </Button>
+                <Button
+                  className="h-12 w-full"
+                  variant="secondary"
+                  loading={resolveMutation.isPending}
+                  onClick={() => resolveMutation.mutate({ id: ex.id, action: 'DISCARD' })}
+                >
+                  Discard
+                </Button>
+                <Button
+                  className="h-12 w-full"
+                  variant="secondary"
+                  data-testid={`initiate-rtv-${ex.id}`}
+                  loading={initiateRtv.isPending}
+                  onClick={() => initiateRtv.mutate(ex.id)}
+                >
+                  Initiate RTV
+                </Button>
+              </div>
+            ) : undefined
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 export function ExceptionsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -170,6 +268,9 @@ export function ExceptionsPage() {
   const tabParam = searchParams.get('tab');
   const activeTab: ActionTab = tabParam === 'sync' ? 'sync' : 'holds';
   const [lotById, setLotById] = useState<Record<string, string>>({});
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [pageSize, setPageSize] = useState(50);
+  useCapMobilePageSize(isMobile, pageSize, setPageSize);
 
   const setTab = (next: ActionTab) => {
     setSearchParams(next === 'holds' ? {} : { tab: next }, { replace: true });
@@ -242,13 +343,14 @@ export function ExceptionsPage() {
             </Link>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Action required tabs">
+        <div className="flex w-full flex-wrap gap-2" role="tablist" aria-label="Action required tabs">
           <Button
             type="button"
             role="tab"
             aria-selected={activeTab === 'holds'}
             variant={activeTab === 'holds' ? 'primary' : 'secondary'}
             size="sm"
+            className="h-12 w-full sm:h-8 sm:w-auto"
             data-testid="exceptions-tab-holds"
             onClick={() => setTab('holds')}
           >
@@ -261,6 +363,7 @@ export function ExceptionsPage() {
             aria-selected={activeTab === 'sync'}
             variant={activeTab === 'sync' ? 'primary' : 'secondary'}
             size="sm"
+            className="h-12 w-full sm:h-8 sm:w-auto"
             data-testid="exceptions-tab-sync"
             onClick={() => setTab('sync')}
           >
@@ -286,15 +389,28 @@ export function ExceptionsPage() {
               emptyTitle="No exceptions"
               emptyDescription="Floor Skip & Flag reports will appear here for manager resolution."
             >
-              {(items) => (
-                <ExceptionsTable
-                  items={items}
-                  lotById={lotById}
-                  setLotById={setLotById}
-                  resolveMutation={resolveMutation}
-                  initiateRtv={initiateRtv}
-                />
-              )}
+              {(items) => {
+                const visible = isMobile ? items.slice(0, Math.min(pageSize, MOBILE_PAGE_SIZE)) : items;
+                return isMobile ? (
+                  <ExceptionsMobileCards
+                    items={visible}
+                    lotById={lotById}
+                    setLotById={setLotById}
+                    resolveMutation={resolveMutation}
+                    initiateRtv={initiateRtv}
+                  />
+                ) : (
+                  <div className="hidden min-h-0 flex-1 md:flex md:flex-col" data-testid="exceptions-table-view">
+                    <ExceptionsTable
+                      items={visible}
+                      lotById={lotById}
+                      setLotById={setLotById}
+                      resolveMutation={resolveMutation}
+                      initiateRtv={initiateRtv}
+                    />
+                  </div>
+                );
+              }}
             </ListPageState>
           </div>
         </>

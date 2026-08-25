@@ -244,7 +244,10 @@ function InvoicesMobileCards({
   onOpen: (id: string) => void;
 }) {
   return (
-    <div className="space-y-2 pb-2 md:hidden" data-testid="invoices-mobile-list">
+    <div
+      className="flex flex-col gap-3 overflow-y-auto md:hidden"
+      data-testid="invoices-mobile-list"
+    >
       {items.map((inv) => {
         const status = displayStatus(inv);
         return (
@@ -516,7 +519,10 @@ export function InvoicesPage() {
             {isMobile ? (
               <InvoicesMobileCards items={rows} onOpen={(id) => navigate(`/invoices/${id}`)} />
             ) : (
-              <div className="hidden md:block" data-testid="invoices-table-view">
+              <div
+                className="hidden min-h-0 flex-1 md:flex md:flex-col"
+                data-testid="invoices-table-view"
+              >
                 <InvoicesTable
                   items={rows}
                   selected={selected}

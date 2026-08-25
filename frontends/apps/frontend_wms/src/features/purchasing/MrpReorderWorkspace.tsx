@@ -15,11 +15,14 @@ import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { DataListWorkspace } from '@/components/layout/DataListWorkspace';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import {
   VirtualizedTable,
   type VirtualizedColumnDef,
 } from '@/components/ui/primitives/VirtualizedTable';
 import { TableDensityScope } from '@/hooks/useDensity';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
@@ -50,6 +53,7 @@ export function MrpReorderWorkspace() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [supplierId, setSupplierId] = useState('');
   const [urgency, setUrgency] = useState<UrgencyFilter>('');
   const [overrides, setOverrides] = useState<Record<string, number>>({});
@@ -63,6 +67,7 @@ export function MrpReorderWorkspace() {
       urgency: urgency || undefined,
     },
   });
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   const summary = useQuery({
     queryKey: ['purchasing', 'mrp', 'summary', table.search, supplierId, urgency],
@@ -364,12 +369,42 @@ export function MrpReorderWorkspace() {
               description="Variants at or below safety stock with open demand will appear here."
             />
           ) : (
-            <VirtualizedTable
-              gridId="mrp-suggestions"
-              columns={columns}
-              rows={rows}
-              getRowId={(row) => row.variantId}
-            />
+            <>
+              {isMobile ? (
+                <div
+                  className="flex flex-col gap-3 overflow-y-auto md:hidden"
+                  data-testid="mrp-mobile-list"
+                >
+                  {rows.map((line) => (
+                    <EntityMobileCard
+                      key={line.variantId}
+                      testId={`mrp-line-${line.sku}`}
+                      identity={line.sku}
+                      title={line.defaultSupplierName ?? 'No default supplier'}
+                      status={
+                        <span className="inline-flex rounded-full bg-accent-muted px-2.5 py-0.5 text-xs font-medium text-accent">
+                          Qty {asNumber(line.suggestedOrderQty)}
+                        </span>
+                      }
+                      amount={formatCurrency(asNumber(line.capitalEstimate))}
+                      date={`On hand ${asNumber(line.onHand)}`}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className="hidden min-h-0 flex-1 md:flex md:flex-col"
+                  data-testid="mrp-table-view"
+                >
+                  <VirtualizedTable
+                    gridId="mrp-suggestions"
+                    columns={columns}
+                    rows={rows}
+                    getRowId={(row) => row.variantId}
+                  />
+                </div>
+              )}
+            </>
           )}
         </DataListWorkspace>
 

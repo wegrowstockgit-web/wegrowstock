@@ -17,12 +17,15 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ListPageState } from '@/components/layout/ListPageState';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { DensityToggle } from '@/components/ui/DensityToggle';
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput';
 import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
 import { VariantThumb } from '@/components/ui/VariantThumb';
+import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useServerTableQuery } from '@/hooks/useServerTable';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -289,9 +292,44 @@ function ProductionOrdersTable({
   );
 }
 
+function ProductionOrdersMobileCards({
+  orders,
+  onPeek,
+}: {
+  orders: ProductionOrder[];
+  onPeek: (orderId: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 overflow-y-auto md:hidden" data-testid="manufacturing-orders-mobile-list">
+      {orders.map((order) => (
+        <EntityMobileCard
+          key={order.id}
+          testId={`mo-row-${order.id}`}
+          identity={order.number}
+          title={order.parentSku ?? order.parentName ?? order.parentVariantId}
+          status={
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-xs font-medium',
+                STATUS_STYLES[order.status] ?? 'bg-surface-overlay text-text-muted',
+              )}
+            >
+              {order.status.replace(/_/g, ' ')}
+            </span>
+          }
+          amount={`Target ${order.qtyTarget}`}
+          date={`Produced ${order.qtyProduced}`}
+          onClick={() => onPeek(order.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function ManufacturingOrdersPage() {
   const navigate = useNavigate();
   const canManage = useSessionStore((s) => s.canManageInventory());
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [modalOpen, setModalOpen] = useState(false);
   const [disassembleOpen, setDisassembleOpen] = useState(false);
   const [peekId, setPeekId] = useState<string | null>(null);
@@ -303,6 +341,7 @@ export function ManufacturingOrdersPage() {
     fetcher: listManufacturingOrders,
   });
   const { items, isLoading, isError, error, refetch, search } = table;
+  useCapMobilePageSize(isMobile, table.size, table.setSize);
 
   const queryClient = useQueryClient();
   const allocateMutation = useMutation({
@@ -317,22 +356,22 @@ export function ManufacturingOrdersPage() {
   return (
     <TableDensityScope gridId="manufacturing-orders">
     <div className="mx-auto min-h-0 w-full max-w-7xl overflow-y-auto overscroll-contain p-4 sm:p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text">Production Orders</h1>
           <p className="mt-1 text-sm text-text-muted">Assembly and kitting workflows</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
           <DensityToggle gridId="manufacturing-orders" />
-          <Button variant="secondary" onClick={() => navigate('/manufacturing/terminal')}>
+          <Button className="h-12 w-full sm:h-10 sm:w-auto" variant="secondary" onClick={() => navigate('/manufacturing/terminal')}>
             Production terminal
           </Button>
           {canManage && (
             <>
-              <Button variant="secondary" onClick={() => setDisassembleOpen(true)}>
+              <Button className="h-12 w-full sm:h-10 sm:w-auto" variant="secondary" onClick={() => setDisassembleOpen(true)}>
                 Disassemble
               </Button>
-              <Button onClick={() => setModalOpen(true)}>
+              <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setModalOpen(true)}>
                 <Plus className="h-4 w-4" />
                 New order
               </Button>
@@ -369,14 +408,20 @@ export function ManufacturingOrdersPage() {
       >
         {(orders) => (
           <>
-            <ProductionOrdersTable
-              orders={orders}
-              canManage={canManage}
-              allocatePending={allocateMutation.isPending}
-              onAllocate={(id) => allocateMutation.mutate(id)}
-              onOpenTerminal={() => navigate('/manufacturing/terminal')}
-              onPeek={setPeekId}
-            />
+            {isMobile ? (
+              <ProductionOrdersMobileCards orders={orders} onPeek={setPeekId} />
+            ) : (
+              <div className="hidden min-h-0 flex-1 md:flex md:flex-col" data-testid="manufacturing-orders-table-view">
+                <ProductionOrdersTable
+                  orders={orders}
+                  canManage={canManage}
+                  allocatePending={allocateMutation.isPending}
+                  onAllocate={(id) => allocateMutation.mutate(id)}
+                  onOpenTerminal={() => navigate('/manufacturing/terminal')}
+                  onPeek={setPeekId}
+                />
+              </div>
+            )}
             <Pagination
               page={table.page}
               totalPages={table.totalPages}

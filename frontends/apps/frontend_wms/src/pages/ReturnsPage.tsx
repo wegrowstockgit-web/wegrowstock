@@ -21,6 +21,7 @@ import {
 import { DensityToggle } from '@/components/ui/DensityToggle';
 import { Pagination } from '@/components/ui/Pagination';
 import { TableDensityScope } from '@/hooks/useDensity';
+import { EntityMobileCard } from '@/components/layout/EntityMobileCard';
 import { useCapMobilePageSize } from '@/hooks/useCapMobilePageSize';
 import { useClientSort } from '@/hooks/useClientSort';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -495,7 +496,7 @@ export function ReturnsPage() {
       )}
 
       <div
-        className="space-y-4"
+        className={isMobile ? 'flex flex-col gap-3 overflow-y-auto' : 'space-y-4'}
         data-testid={isMobile ? 'returns-mobile-list' : 'returns-desktop-list'}
       >
         {returns.map((rma) => {
@@ -503,54 +504,8 @@ export function ReturnsPage() {
           const estimated = Number(rma.estimatedReturnValue ?? 0);
           const canDisposition = canManage && DISPOSITION_STATUSES.has(rma.status);
           const completeBlocked = restockLinesMissingBin(rma.lines ?? []);
-          return (
-            <Card key={rma.id} padding="none" data-testid={`rma-card-${rma.number}`}>
-              <button
-                type="button"
-                className="flex w-full flex-col items-start gap-3 p-4 text-left hover:bg-surface-overlay sm:flex-row sm:items-center sm:justify-between"
-                onClick={() => setExpandedId(expandedId === rma.id ? null : rma.id)}
-              >
-                <div className="flex min-w-0 items-center gap-4">
-                  <span className="font-mono font-semibold text-text">{rma.number}</span>
-                  <span className="truncate text-sm text-text-muted">
-                    {rma.customerName ?? rma.salesOrderNumber ?? rma.salesOrderId}
-                  </span>
-                  <span
-                    className={cn(
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      STATUS_STYLES[rma.status] ?? 'bg-surface-overlay text-text-muted'
-                    )}
-                  >
-                    {rma.status}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-text-muted">
-                  <span>{formatMediumDate(rma.createdAt)}</span>
-                  <span>
-                    {itemCount} item{itemCount === 1 ? '' : 's'} · {formatCurrency(estimated)}{' '}
-                    estimated return value
-                  </span>
-                  {rma.trackingNumber && (
-                    <span className="rounded-full bg-accent-muted px-2 py-0.5 font-mono text-xs text-accent">
-                      {rma.trackingNumber}
-                    </span>
-                  )}
-                  {rma.returnLabelUrl && (
-                    <a
-                      href={rma.returnLabelUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-1 text-accent hover:underline"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download Inbound Label
-                    </a>
-                  )}
-                </div>
-              </button>
-
-              {expandedId === rma.id && (rma.lines?.length ?? 0) > 0 && (
+          const expanded = expandedId === rma.id;
+          const details = expanded && (rma.lines?.length ?? 0) > 0 && (
                 <div className="border-t border-border p-4">
                   <CardHeader title="Line items" description="Set disposition per line" />
                   <ReturnLinesTable
@@ -597,7 +552,81 @@ export function ReturnsPage() {
                     </div>
                   )}
                 </div>
-              )}
+          );
+
+          if (isMobile) {
+            return (
+              <div key={rma.id} data-testid={`rma-card-${rma.number}`}>
+                <EntityMobileCard
+                  testId={`return-mobile-card-${rma.id}`}
+                  identity={rma.number}
+                  title={rma.customerName ?? rma.salesOrderNumber ?? rma.salesOrderId ?? 'Return'}
+                  status={
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                        STATUS_STYLES[rma.status] ?? 'bg-surface-overlay text-text-muted',
+                      )}
+                    >
+                      {rma.status}
+                    </span>
+                  }
+                  amount={formatCurrency(estimated)}
+                  date={formatMediumDate(rma.createdAt)}
+                  onClick={() => setExpandedId(expanded ? null : rma.id)}
+                />
+                {details}
+              </div>
+            );
+          }
+
+          return (
+            <Card key={rma.id} padding="none" data-testid={`rma-card-${rma.number}`}>
+              <button
+                type="button"
+                className="flex w-full flex-col items-start gap-3 p-4 text-left hover:bg-surface-overlay sm:flex-row sm:items-center sm:justify-between"
+                onClick={() => setExpandedId(expanded ? null : rma.id)}
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <span className="font-mono font-semibold text-text">{rma.number}</span>
+                  <span className="truncate text-sm text-text-muted">
+                    {rma.customerName ?? rma.salesOrderNumber ?? rma.salesOrderId}
+                  </span>
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-xs font-medium',
+                      STATUS_STYLES[rma.status] ?? 'bg-surface-overlay text-text-muted'
+                    )}
+                  >
+                    {rma.status}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-text-muted">
+                  <span>{formatMediumDate(rma.createdAt)}</span>
+                  <span>
+                    {itemCount} item{itemCount === 1 ? '' : 's'} · {formatCurrency(estimated)}{' '}
+                    estimated return value
+                  </span>
+                  {rma.trackingNumber && (
+                    <span className="rounded-full bg-accent-muted px-2 py-0.5 font-mono text-xs text-accent">
+                      {rma.trackingNumber}
+                    </span>
+                  )}
+                  {rma.returnLabelUrl && (
+                    <a
+                      href={rma.returnLabelUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-accent hover:underline"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download Inbound Label
+                    </a>
+                  )}
+                </div>
+              </button>
+              {details}
             </Card>
           );
         })}

@@ -209,7 +209,10 @@ function PurchaseOrdersMobileCards({
   onPeek: (id: string) => void;
 }) {
   return (
-    <div className="space-y-2 pb-2 md:hidden" data-testid="purchase-orders-mobile-list">
+    <div
+      className="flex flex-col gap-3 overflow-y-auto md:hidden"
+      data-testid="purchase-orders-mobile-list"
+    >
       {items.map((po) => (
         <EntityMobileCard
           key={po.id}
@@ -751,16 +754,21 @@ export function PurchaseOrdersPage() {
 
   return (
     <TableDensityScope gridId="purchase-orders">
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
-        <div>
+    <div className="flex h-full min-h-0 min-w-0 flex-col" data-testid="purchase-orders-page">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border/60 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-text">Purchase Orders</h1>
           <p className="mt-1 text-sm text-text-muted">Inbound supply chain</p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2" data-tour="tour-po-receive-cta">
+        <div
+          className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap md:w-auto md:shrink-0"
+          data-tour="tour-po-receive-cta"
+          data-testid="purchase-orders-header-actions"
+        >
           {canReceive && (
             <Button
               variant="secondary"
+              className="h-12 w-full md:h-10 md:w-auto"
               onClick={() => navigate('/inbound/receive?po=PO-2026-00001')}
               data-testid="tour-po-floor-receive"
             >
@@ -768,7 +776,7 @@ export function PurchaseOrdersPage() {
             </Button>
           )}
           {canCreate && (
-            <Button onClick={() => setModalOpen(true)}>
+            <Button className="h-12 w-full md:h-10 md:w-auto" onClick={() => setModalOpen(true)}>
               <Plus className="h-4 w-4" />
               New PO
             </Button>
@@ -820,11 +828,14 @@ export function PurchaseOrdersPage() {
           }
         >
           {(rows) => (
-            <div className="w-full px-6 pb-6">
+            <div className="flex min-h-0 w-full flex-1 flex-col px-4 pb-6 sm:px-6">
               {isMobile ? (
                 <PurchaseOrdersMobileCards items={rows} onPeek={setPeekPoId} />
               ) : (
-                <div className="hidden md:block" data-testid="purchase-orders-table-view">
+                <div
+                  className="hidden min-h-0 flex-1 md:flex md:flex-col"
+                  data-testid="purchase-orders-table-view"
+                >
                   <PurchaseOrdersTable items={rows} onPeek={setPeekPoId} />
                 </div>
               )}

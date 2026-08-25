@@ -212,7 +212,10 @@ function SuppliersTable({ items }: { items: Supplier[] }) {
 function SuppliersMobileCards({ items }: { items: Supplier[] }) {
   const navigate = useNavigate();
   return (
-    <div className="space-y-2 pb-2 md:hidden" data-testid="suppliers-mobile-list">
+    <div
+      className="flex flex-col gap-3 overflow-y-auto md:hidden"
+      data-testid="suppliers-mobile-list"
+    >
       {items.map((s) => (
         <EntityMobileCard
           key={s.id}
@@ -603,7 +606,10 @@ export function SuppliersPage() {
             {isMobile ? (
               <SuppliersMobileCards items={rows} />
             ) : (
-              <div className="hidden md:block" data-testid="suppliers-table-view">
+              <div
+                className="hidden min-h-0 flex-1 md:flex md:flex-col"
+                data-testid="suppliers-table-view"
+              >
                 <SuppliersTable items={rows} />
               </div>
             )}
