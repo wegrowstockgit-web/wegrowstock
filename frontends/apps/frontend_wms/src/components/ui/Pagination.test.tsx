@@ -17,6 +17,9 @@ describe('Pagination', () => {
       />,
     );
     expect(screen.getByTestId('pagination-summary')).toHaveTextContent('Showing 51–100 of 120');
+    expect(screen.getByTestId('pagination-status')).toHaveTextContent('Page 2 of 5');
+    expect(screen.getByTestId('pagination-page-5').className).toMatch(/hidden/);
+    expect(screen.getByTestId('pagination-page-5').className).toMatch(/sm:inline-flex/);
     fireEvent.click(screen.getByTestId('pagination-prev'));
     expect(onPage).toHaveBeenCalledWith(1);
     fireEvent.click(screen.getByTestId('pagination-next'));

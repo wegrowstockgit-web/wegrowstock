@@ -33,7 +33,7 @@ export function DebouncedSearchInput({
   }, [local, delay, value]);
 
   return (
-    <div className={cn('relative max-w-md min-w-[12rem] flex-1', className)}>
+    <div className={cn('relative min-w-0 w-full flex-1 md:min-w-[12rem] md:max-w-md', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
       <Input
         value={local}

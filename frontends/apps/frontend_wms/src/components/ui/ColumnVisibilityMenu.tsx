@@ -123,7 +123,7 @@ export function ColumnVisibilityMenu({
           type="button"
           data-testid="column-visibility-toggle"
           className={cn(
-            'inline-flex h-9 items-center gap-2 rounded-md border border-border bg-surface-raised px-3 text-sm font-medium text-text',
+            'hidden h-9 items-center gap-2 rounded-md border border-border bg-surface-raised px-3 text-sm font-medium text-text md:inline-flex',
             'hover:bg-surface-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
             'active:scale-[0.98] transition-transform duration-150 ease-out',
             className,

@@ -70,7 +70,7 @@ export function Pagination({
             ))}
           </select>
         </label>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <Button
             type="button"
             variant="secondary"
@@ -83,9 +83,15 @@ export function Pagination({
             <ChevronLeft className="h-4 w-4" />
             Previous
           </Button>
+          <span
+            className="px-1 text-sm text-text-muted sm:hidden"
+            data-testid="pagination-status"
+          >
+            Page {current} of {last}
+          </span>
           {pageItems(current, last).map((item, index) =>
             item === 'ellipsis' ? (
-              <span key={`e-${index}`} className="px-1 text-text-muted">
+              <span key={`e-${index}`} className="hidden px-1 text-text-muted sm:inline">
                 …
               </span>
             ) : (
@@ -94,6 +100,7 @@ export function Pagination({
                 type="button"
                 variant={item === current ? 'primary' : 'secondary'}
                 size="sm"
+                className="hidden sm:inline-flex"
                 data-testid={`pagination-page-${item}`}
                 aria-current={item === current ? 'page' : undefined}
                 onClick={() => onPageChange(item)}

@@ -72,6 +72,10 @@ describe('DensityToggle', () => {
       />,
     );
     expect(screen.getByTestId('column-visibility-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('column-visibility-toggle').className).toMatch(/hidden/);
+    expect(screen.getByTestId('column-visibility-toggle').className).toMatch(/md:inline-flex/);
+    expect(screen.getByTestId('density-toggle').parentElement?.className).toMatch(/hidden/);
+    expect(screen.getByTestId('density-toggle').parentElement?.className).toMatch(/md:inline-flex/);
 
     await user.click(screen.getByTestId('column-visibility-toggle'));
     await waitFor(() => {

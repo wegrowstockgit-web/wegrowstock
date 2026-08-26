@@ -7,6 +7,8 @@ describe('DebouncedSearchInput', () => {
     vi.useFakeTimers();
     const onDebounced = vi.fn();
     render(<DebouncedSearchInput value="" onDebouncedChange={onDebounced} />);
+    expect(screen.getByTestId('table-search').parentElement?.parentElement?.className).toMatch(/w-full/);
+    expect(screen.getByTestId('table-search').parentElement?.parentElement?.className).toMatch(/flex-1/);
     fireEvent.change(screen.getByTestId('table-search'), { target: { value: 'Acme' } });
     expect(onDebounced).not.toHaveBeenCalled();
     vi.advanceTimersByTime(299);

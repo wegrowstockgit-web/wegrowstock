@@ -38,7 +38,7 @@ export function DensityToggle({
   };
 
   return (
-    <div ref={rootRef} className={cn('relative inline-flex', className)}>
+    <div ref={rootRef} className={cn('relative hidden md:inline-flex', className)}>
       <button
         type="button"
         data-testid="density-toggle"
@@ -117,7 +117,7 @@ export function DataListToolbar({
       )}
       data-testid="data-list-toolbar"
     >
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 w-full flex-1">{children}</div>
       <div className="flex shrink-0 items-center gap-2">
         {trailing}
         {columnItems && columnItems.length > 0 && (

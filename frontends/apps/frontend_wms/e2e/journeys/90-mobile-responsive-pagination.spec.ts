@@ -21,6 +21,11 @@ test.describe('Journey 90: Mobile responsiveness, settings, and pagination', () 
       });
       await expect(owner.page.getByTestId('sales-orders-table-view')).toHaveCount(0);
       await expect(owner.page.getByTestId('pagination')).toBeVisible();
+      await expect(owner.page.getByTestId('pagination-status')).toBeVisible();
+      await expect(owner.page.getByTestId('pagination-status')).toContainText(/Page \d+ of \d+/);
+      await expect(owner.page.getByTestId('pagination-page-1')).toBeHidden();
+      await expect(owner.page.getByTestId('density-toggle')).toBeHidden();
+      await expect(owner.page.getByTestId('table-search')).toBeVisible();
       const cards = owner.page.locator('[data-testid^="sales-order-mobile-card-"]');
       await expect.poll(async () => cards.count()).toBeLessThanOrEqual(25);
 
@@ -43,6 +48,8 @@ test.describe('Journey 90: Mobile responsiveness, settings, and pagination', () 
       await expect(owner.page.getByTestId('purchase-orders-mobile-list')).toBeVisible();
       await expect(owner.page.getByTestId('purchase-orders-table-view')).toHaveCount(0);
       await expect(owner.page.getByTestId('pagination')).toBeVisible();
+      await expect(owner.page.getByTestId('column-visibility-toggle')).toBeHidden();
+      await expect(owner.page.getByTestId('density-toggle')).toBeHidden();
       const poCards = owner.page.locator('[data-testid^="purchase-order-mobile-card-"]');
       await expect.poll(async () => poCards.count()).toBeLessThanOrEqual(25);
       if ((await poCards.count()) > 0) {
