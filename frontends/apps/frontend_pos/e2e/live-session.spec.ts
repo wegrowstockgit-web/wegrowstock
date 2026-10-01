@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { revealTenderIfMobile } from './helpers';
 
 const apiBase = process.env.E2E_API_URL ?? 'http://localhost:8080';
 
@@ -47,6 +48,7 @@ test('signed-in register reads POS entitlement, language, and currency from WMS'
     }
     if (body.posEnabled) {
       await expect(search).toBeVisible();
+      await revealTenderIfMobile(page);
       await expect(page.getByTestId('pos-grand-total')).toBeVisible();
 
       const pin = await request.post(`${apiBase}/api/v1/auth/terminal-pin`, {

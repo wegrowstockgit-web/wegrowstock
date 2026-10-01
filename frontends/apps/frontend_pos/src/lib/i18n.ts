@@ -71,6 +71,9 @@ const DICTIONARY = {
     'register.changeDue': 'Change due',
     'register.qtyEach': '{qty} × {price}',
     'register.lane': 'Lane',
+    'register.ticket': 'Ticket',
+    'register.pay': 'Pay',
+    'register.charge': 'Charge {amount}',
     'locked.title': 'Retail POS is not enabled',
     'locked.body':
       'This workspace or subscription tier does not include Retail POS. Ask an owner to enable the module in WMS before taking sales.',
@@ -146,6 +149,9 @@ const DICTIONARY = {
     'register.changeDue': 'Cambio',
     'register.qtyEach': '{qty} × {price}',
     'register.lane': 'Caja',
+    'register.ticket': 'Ticket',
+    'register.pay': 'Cobrar',
+    'register.charge': 'Cobrar {amount}',
     'locked.title': 'El POS no está activado',
     'locked.body':
       'Este espacio o plan no incluye Retail POS. Pide a un propietario que active el módulo en el WMS antes de cobrar.',
@@ -221,6 +227,9 @@ const DICTIONARY = {
     'register.changeDue': 'Monnaie',
     'register.qtyEach': '{qty} × {price}',
     'register.lane': 'Caisse',
+    'register.ticket': 'Ticket',
+    'register.pay': 'Encaisser',
+    'register.charge': 'Encaisser {amount}',
     'locked.title': 'Le POS n’est pas activé',
     'locked.body':
       'Cet espace ou cet abonnement n’inclut pas le POS. Demandez à un propriétaire d’activer le module dans le WMS avant d’encaisser.',

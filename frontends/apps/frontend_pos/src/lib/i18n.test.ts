@@ -20,5 +20,7 @@ describe('pos i18n', () => {
     expect(translate('en', 'register.itemsCount', { n: '3' })).toBe('3 items');
     expect(translate('es', 'register.changeDue')).toBe('Cambio');
     expect(translate('en', 'register.empty')).toContain('Scan a barcode');
+    expect(translate('en', 'register.charge', { amount: '$12.00' })).toBe('Charge $12.00');
+    expect(translate('es', 'register.pay')).toBe('Cobrar');
   });
 });

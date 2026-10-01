@@ -54,6 +54,7 @@ export function RegisterPage() {
   const [facturaRfc, setFacturaRfc] = useState('');
   const [facturaUso, setFacturaUso] = useState<(typeof CFDI_USOS)[number]['code']>('G03');
   const [facturaSaved, setFacturaSaved] = useState(false);
+  const [mobilePane, setMobilePane] = useState<'cart' | 'pay'>('cart');
 
   const taxRegion = session.taxRegion;
 
@@ -205,6 +206,7 @@ export function RegisterPage() {
     setFacturaUso('G03');
     setFacturaSaved(false);
     setLastTouchedUpc('');
+    setMobilePane('cart');
     void clearCartDraft();
   };
 
@@ -303,7 +305,10 @@ export function RegisterPage() {
   const photoFor = (line: CartLine) => line.imageUrl || '';
 
   return (
-    <div className="pos-shell" data-testid="register-page">
+    <div
+      className={`pos-shell${mobilePane === 'pay' ? ' is-mobile-pay' : ' is-mobile-cart'}`}
+      data-testid="register-page"
+    >
       {locked ? (
         <div className="pos-locked" data-testid="pos-locked">
           <div className="pos-locked-card">
@@ -597,6 +602,43 @@ export function RegisterPage() {
           </div>
         </aside>
       </div>
+
+      <div className="pos-charge-bar" data-testid="pos-charge-bar">
+        <div className="pos-charge-copy">
+          <span>{t('register.itemsCount', { n: String(itemCount) })}</span>
+          <strong data-testid="pos-charge-total">{money(totals.grandTotal)}</strong>
+        </div>
+        <button
+          type="button"
+          className="pos-charge-btn"
+          data-testid="pos-open-pay"
+          disabled={lines.length === 0}
+          onClick={() => setMobilePane('pay')}
+        >
+          {t('register.charge', { amount: money(totals.grandTotal) })}
+        </button>
+      </div>
+
+      <nav className="pos-mobile-nav" data-testid="pos-mobile-nav" aria-label={t('register.checkout')}>
+        <button
+          type="button"
+          className={mobilePane === 'cart' ? 'is-active' : undefined}
+          data-testid="pos-mobile-ticket"
+          aria-pressed={mobilePane === 'cart'}
+          onClick={() => setMobilePane('cart')}
+        >
+          {t('register.ticket')}
+        </button>
+        <button
+          type="button"
+          className={mobilePane === 'pay' ? 'is-active' : undefined}
+          data-testid="pos-mobile-pay"
+          aria-pressed={mobilePane === 'pay'}
+          onClick={() => setMobilePane('pay')}
+        >
+          {t('register.pay')}
+        </button>
+      </nav>
 
       {customerOpen ? (
         <div className="pos-void-overlay" data-testid="pos-customer-modal" role="dialog" aria-modal="true">

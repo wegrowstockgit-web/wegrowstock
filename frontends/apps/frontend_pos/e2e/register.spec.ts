@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mockPosAuthApis, signInAndUnlockRegister } from './helpers';
+import { mockPosAuthApis, revealTenderIfMobile, signInAndUnlockRegister } from './helpers';
 
 test('POS login posts targetApp POS for the cross-app gate', async ({ page }) => {
   const loginPosted = page.waitForRequest(
@@ -28,6 +28,7 @@ test('tender writes a local outbox receipt and flashes next-customer', async ({ 
   await search.fill('7501234567890');
   await page.getByTestId('pos-upc-add').click();
   await expect(page.getByTestId('cart-row-7501234567890')).toBeVisible();
+  await revealTenderIfMobile(page);
   await page.getByTestId('tender-exact').click();
   await expect(page.getByTestId('pos-success-overlay')).toBeVisible();
 
@@ -61,6 +62,7 @@ test('line void and manager-PIN transaction void write the local audit trail', a
   await search.fill('049000042566');
   await page.getByTestId('pos-upc-add').click();
   await expect(page.getByTestId('cart-row-049000042566')).toBeVisible();
+  await revealTenderIfMobile(page);
   await page.getByTestId('void-transaction').click();
   await expect(page.getByTestId('void-confirm-modal')).toBeVisible();
   await expect(page.getByTestId('void-confirm-yes')).toBeDisabled();
@@ -95,7 +97,17 @@ test('login and register stay usable on a phone viewport', async ({ page }) => {
   await mockPosAuthApis(page);
   await signInAndUnlockRegister(page);
   await expect(page.getByTestId('pos-upc-search')).toBeVisible();
-  await expect(page.getByTestId('tender-exact')).toBeVisible();
-  await expect(page.getByTestId('pos-quick-tenders')).toBeVisible();
+  await expect(page.getByTestId('pos-mobile-nav')).toBeVisible();
   await expect(page.getByTestId('pos-add-customer')).toBeVisible();
+  await expect(page.getByTestId('pos-charge-bar')).toBeVisible();
+  await expect(page.getByTestId('tender-exact')).toBeHidden();
+
+  const search = page.getByTestId('pos-upc-search');
+  await search.fill('7501234567890');
+  await page.getByTestId('pos-upc-add').click();
+  await expect(page.getByTestId('cart-row-7501234567890')).toBeVisible();
+  await page.getByTestId('pos-open-pay').click();
+  await expect(page.getByTestId('tender-exact')).toBeVisible();
+  await page.getByTestId('tender-exact').click();
+  await expect(page.getByTestId('pos-success-overlay')).toBeVisible();
 });

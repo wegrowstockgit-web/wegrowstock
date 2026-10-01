@@ -211,6 +211,23 @@ describe('RegisterPage', () => {
     expect(screen.getByTestId('tender-exact')).toHaveTextContent(/Efectivo/i);
   });
 
+  it('exposes mobile ticket and pay panes without changing register actions', async () => {
+    const user = userEvent.setup();
+    renderRegister();
+    await screen.findByTestId('pos-upc-search');
+    expect(screen.getByTestId('pos-mobile-nav')).toBeInTheDocument();
+    expect(screen.getByTestId('register-page').className).toMatch(/is-mobile-cart/);
+    await user.click(screen.getByTestId('pos-mobile-pay'));
+    expect(screen.getByTestId('register-page').className).toMatch(/is-mobile-pay/);
+    await user.click(screen.getByTestId('pos-mobile-ticket'));
+    expect(screen.getByTestId('register-page').className).toMatch(/is-mobile-cart/);
+    await user.type(screen.getByTestId('pos-upc-search'), '7501234567890{Enter}');
+    await screen.findByTestId('cart-row-7501234567890');
+    expect(screen.getByTestId('pos-open-pay')).toBeEnabled();
+    await user.click(screen.getByTestId('pos-open-pay'));
+    expect(screen.getByTestId('register-page').className).toMatch(/is-mobile-pay/);
+  });
+
   it('attaches a CRM customer to the ticket', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

@@ -117,6 +117,13 @@ async function enterShiftPin(page: Page): Promise<void> {
   await page.getByTestId('scanner-pin-digit-4').click();
 }
 
+export async function revealTenderIfMobile(page: Page): Promise<void> {
+  const pay = page.getByTestId('pos-mobile-pay');
+  if (await pay.isVisible()) {
+    await pay.click();
+  }
+}
+
 export async function signInAndUnlockRegister(page: Page): Promise<void> {
   await page.goto('/login');
   await expect(page.getByTestId('pos-login')).toBeVisible();
