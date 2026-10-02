@@ -2,6 +2,8 @@
 
 This guide is for **business owners, warehouse managers, and office staff** who are new to the product or moving from spreadsheets / another ERP. It explains concepts in everyday language and walks through setup, migration, and daily work.
 
+If you are **not** in warehouse operations and just need to look up products, enter orders, invoice, use the store register, or shop the wholesale catalog, start with [`usermanual.md`](usermanual.md) instead.
+
 Technical deep-dives live in `DATABASE_GUIDE.md`, `DEVELOPER_ARCHITECTURE.md`, and `SEQUENCE_FLOW.md`.
 
 ---
@@ -346,6 +348,7 @@ Pickers and Viewers do not see this hub.
 
 - In-app **support assistant** (chat FAB), when your deployment includes it — role-aware answers from product manuals  
 - Your **warehouse manager / admin** — if the chat button is missing, the optional support module may be turned off  
+- **usermanual.md** — everyday users with no warehouse background (office, register, wholesale portal)  
 - **README.md** — install, demo users, URLs  
 - **DATABASE_GUIDE.md** — why the ledger and tenancy work this way  
 - **DEVELOPER_ARCHITECTURE.md** / **SEQUENCE_FLOW.md** — for IT / implementers integrating or extending the product  
